@@ -1,0 +1,38 @@
+name: mobile_chat_app
+description: Bricks – a chat-first creation app powered by Agent Core.
+version: 0.1.0+1
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Bricks packages
+  agent_sdk_contract:
+    path: ../../packages/agent_sdk_contract
+  agent_core:
+    path: ../../packages/agent_core
+  workspace_fs:
+    path: ../../packages/workspace_fs
+  project_system:
+    path: ../../packages/project_system
+  chat_domain:
+    path: ../../packages/chat_domain
+  platform_bridge:
+    path: ../../packages/platform_bridge
+  design_system:
+    path: ../../packages/design_system
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^3.0.0
+  test_harness:
+    path: ../../packages/test_harness
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,24 @@
+# App Defaults Configuration
+# These values are merged at runtime with user/workspace config.
+
+app:
+  name: Bricks
+  version: "0.1.0"
+
+workspace:
+  default_name: default
+  auto_create_default: true
+
+agent:
+  max_context_tokens: 32768
+  max_tool_calls_per_turn: 20
+  stream_events: true
+  default_provider: anthropic
+
+chat:
+  max_messages_visible: 100
+  composer_max_lines: 10
+
+preview:
+  local_server_port: 7474
+  auto_reload: true
