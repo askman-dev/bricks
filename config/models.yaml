@@ -1,0 +1,31 @@
+# Model Configuration
+# Define available AI model providers and their settings.
+
+providers:
+  anthropic:
+    default_model: claude-sonnet-4-5
+    models:
+      - id: claude-opus-4-5
+        context_window: 200000
+        supports_tools: true
+        supports_streaming: true
+      - id: claude-sonnet-4-5
+        context_window: 200000
+        supports_tools: true
+        supports_streaming: true
+      - id: claude-haiku-3-5
+        context_window: 200000
+        supports_tools: true
+        supports_streaming: true
+
+  openai:
+    default_model: gpt-4o
+    models:
+      - id: gpt-4o
+        context_window: 128000
+        supports_tools: true
+        supports_streaming: true
+      - id: gpt-4o-mini
+        context_window: 128000
+        supports_tools: true
+        supports_streaming: true

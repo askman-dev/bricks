@@ -1,0 +1,23 @@
+# Experiments Configuration
+# Feature flags for gradual rollout and A/B testing.
+
+experiments:
+  # Enable multi-agent collaboration features
+  multi_agent_collaboration:
+    enabled: false
+    rollout: 0.0
+
+  # Enable website publish feature
+  website_publish:
+    enabled: false
+    rollout: 0.0
+
+  # Enable resource attachment in chat
+  resource_attachments:
+    enabled: true
+    rollout: 1.0
+
+  # Enable workspace switching UI
+  workspace_switching:
+    enabled: true
+    rollout: 1.0

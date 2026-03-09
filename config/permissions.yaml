@@ -1,0 +1,25 @@
+# Permissions Configuration
+# Define default tool and agent permissions.
+
+tools:
+  filesystem:
+    read: allow
+    write: prompt   # prompt user before allowing write operations
+    delete: prompt
+
+  network:
+    outbound: prompt
+    local_server: allow
+
+  system:
+    run_process: deny
+    clipboard: allow
+
+agents:
+  sub_agents:
+    enabled: true
+    max_depth: 3
+
+  skills:
+    auto_load: true
+    directory: skills/

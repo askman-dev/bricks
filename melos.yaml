@@ -1,0 +1,32 @@
+name: bricks
+
+repository: https://github.com/askman-dev/bricks
+
+packages:
+  - apps/**
+  - packages/**
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+
+scripts:
+  analyze:
+    run: dart analyze
+    exec:
+      concurrency: 4
+
+  test:
+    run: dart test
+    exec:
+      concurrency: 4
+
+  format:
+    run: dart format .
+    exec:
+      concurrency: 4
+
+  clean:
+    run: |
+      melos exec -- \
+        "rm -rf build .dart_tool pubspec_overrides.yaml"

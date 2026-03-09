@@ -1,0 +1,14 @@
+name: agent_sdk_contract
+description: Stable interface contracts for the Bricks agent system. Consumers depend on this package, not on agent_core internals.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  meta: ^1.9.0
+
+dev_dependencies:
+  lints: ^3.0.0
+  test: ^1.24.0
