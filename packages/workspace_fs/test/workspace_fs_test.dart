@@ -66,6 +66,51 @@ void main() {
       expect(await Directory(ws.path).exists(), isTrue);
     });
 
+    test('createWorkspace throws ArgumentError for path traversal name',
+        () async {
+      expect(
+        () => repo.createWorkspace('../escape'),
+        throwsArgumentError,
+      );
+      expect(
+        () => repo.createWorkspace('a/b'),
+        throwsArgumentError,
+      );
+      expect(
+        () => repo.createWorkspace(''),
+        throwsArgumentError,
+      );
+      // Standalone '..' is blocked; names with embedded dots are allowed
+      expect(
+        () => repo.createWorkspace('..'),
+        throwsArgumentError,
+      );
+    });
+
+    test('ensureDefaultWorkspace repairs missing subdirectories', () async {
+      // Create the default dir without subdirs
+      final path =
+          '${locator.workspacesPath}${Platform.pathSeparator}default';
+      await Directory(path).create(recursive: true);
+
+      // Pre-populate metadata to verify it is preserved after repair
+      final metaPath =
+          '$path${Platform.pathSeparator}.bricks${Platform.pathSeparator}workspace.yaml';
+      await Directory('$path${Platform.pathSeparator}.bricks')
+          .create(recursive: true);
+      await File(metaPath).writeAsString('name: default\ncreated_at: ORIGINAL\n');
+
+      final ws = await repo.ensureDefaultWorkspace();
+      expect(ws.isDefault, isTrue);
+      expect(
+        await Directory('$path${Platform.pathSeparator}projects').exists(),
+        isTrue,
+      );
+      // Existing metadata must not be overwritten
+      final metaContent = await File(metaPath).readAsString();
+      expect(metaContent, contains('ORIGINAL'));
+    });
+
     test('ensureDefaultWorkspace is idempotent', () async {
       await repo.ensureDefaultWorkspace();
       final ws2 = await repo.ensureDefaultWorkspace();
@@ -100,6 +145,20 @@ void main() {
       final data = await repo.loadConversation('conv-1');
       expect(data, isNotNull);
       expect(data!['title'], equals('Hello'));
+    });
+
+    test('loadConversation throws for path traversal id', () async {
+      expect(
+        () => repo.loadConversation('../escape'),
+        throwsArgumentError,
+      );
+    });
+
+    test('saveConversation throws for path traversal id', () async {
+      expect(
+        () => repo.saveConversation('../escape', {}),
+        throwsArgumentError,
+      );
     });
 
     test('loadConversation returns null for unknown id', () async {

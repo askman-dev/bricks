@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'path_validator.dart';
 
 /// Persists and retrieves conversation JSON files within a workspace.
 class ConversationsRepository {
@@ -25,7 +26,10 @@ class ConversationsRepository {
   }
 
   /// Loads a conversation by [id]. Returns null if not found.
+  ///
+  /// Throws [ArgumentError] if [id] contains path separators or `..`.
   Future<Map<String, Object?>?> loadConversation(String id) async {
+    PathValidator.validateSegment(id, 'id');
     final file = File('$_conversationsPath${Platform.pathSeparator}$id.json');
     if (!await file.exists()) return null;
     final contents = await file.readAsString();
@@ -33,10 +37,13 @@ class ConversationsRepository {
   }
 
   /// Saves a conversation.
+  ///
+  /// Throws [ArgumentError] if [id] contains path separators or `..`.
   Future<void> saveConversation(
     String id,
     Map<String, Object?> data,
   ) async {
+    PathValidator.validateSegment(id, 'id');
     final dir = Directory(_conversationsPath);
     if (!await dir.exists()) await dir.create(recursive: true);
 

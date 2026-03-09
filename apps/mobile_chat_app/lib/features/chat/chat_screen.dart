@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:design_system/design_system.dart';
+import 'chat_message.dart';
 import 'widgets/message_list.dart';
 import 'widgets/composer_bar.dart';
 
@@ -15,14 +15,14 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final List<_ChatMessage> _messages = [];
+  final List<ChatMessage> _messages = [];
   bool _isSending = false;
 
   void _sendMessage(String text) {
     if (text.trim().isEmpty) return;
 
     setState(() {
-      _messages.add(_ChatMessage(role: 'user', content: text));
+      _messages.add(ChatMessage(role: 'user', content: text));
       _isSending = true;
     });
 
@@ -31,7 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _messages.add(
-          _ChatMessage(role: 'assistant', content: '(stub) Received: $text'),
+          ChatMessage(role: 'assistant', content: '(stub) Received: $text'),
         );
         _isSending = false;
       });
@@ -52,10 +52,4 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-}
-
-class _ChatMessage {
-  const _ChatMessage({required this.role, required this.content});
-  final String role;
-  final String content;
 }

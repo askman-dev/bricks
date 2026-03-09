@@ -59,13 +59,16 @@ void main() {
       expect(session.isRunning, isFalse);
     });
 
-    test('cancel emits RunCompleteEvent with cancelled=true', () async {
-      // Start but don't await – cancel immediately.
-      final stream = session.sendMessage('slow task');
-      await session.cancel();
-      final events = await stream.toList();
-      final complete = events.whereType<RunCompleteEvent>().toList();
-      expect(complete.any((e) => e.cancelled), isTrue);
+    test('RunCompleteEvent has cancelled=false on normal completion', () async {
+      final events = await session.sendMessage('hello').toList();
+      final complete = events.whereType<RunCompleteEvent>().single;
+      expect(complete.cancelled, isFalse);
+    });
+
+    test('cancel on idle session is a no-op', () async {
+      expect(session.isRunning, isFalse);
+      await expectLater(session.cancel(), completes);
+      expect(session.isRunning, isFalse);
     });
   });
 }

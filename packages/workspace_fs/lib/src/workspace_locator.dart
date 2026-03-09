@@ -2,8 +2,11 @@ import 'dart:io';
 
 /// Locates the root Bricks directory on the device filesystem.
 ///
-/// On mobile/desktop this resolves to `<documents>/bricks/`.
-/// In tests, the root can be overridden via [WorkspaceLocator.withRoot].
+/// This class is a thin wrapper around the root path string. The caller is
+/// responsible for resolving the platform-specific root (e.g., via
+/// [platform_bridge]'s `PlatformPaths.bricksRootDirectory()`).
+///
+/// Use [WorkspaceLocator.withRoot] in tests to supply a temporary directory.
 class WorkspaceLocator {
   WorkspaceLocator({required String rootPath}) : _rootPath = rootPath;
 

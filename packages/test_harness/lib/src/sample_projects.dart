@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:project_system/project_system.dart';
 
 /// Provides pre-built sample [Project] instances for tests.
@@ -12,12 +13,17 @@ class SampleProjects {
   );
 
   /// A minimal hello-world website project (no filesystem side-effects).
-  static Project helloWorld({String basePath = '/tmp/projects'}) => Project(
-        name: 'hello-world',
-        path: '$basePath/hello-world',
-        type: ProjectType.website,
-        manifest: _manifest,
-        createdAt: DateTime(2025, 1, 1),
-        updatedAt: DateTime(2025, 1, 1),
-      );
+  ///
+  /// [basePath] defaults to [Directory.systemTemp] when not supplied.
+  static Project helloWorld({String? basePath}) {
+    final resolvedBase = basePath ?? Directory.systemTemp.path;
+    return Project(
+      name: 'hello-world',
+      path: '$resolvedBase${Platform.pathSeparator}hello-world',
+      type: ProjectType.website,
+      manifest: _manifest,
+      createdAt: DateTime(2025, 1, 1),
+      updatedAt: DateTime(2025, 1, 1),
+    );
+  }
 }

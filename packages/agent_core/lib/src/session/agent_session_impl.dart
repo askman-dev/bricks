@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import '../context/context_manager.dart';
-import '../tools/tool_executor.dart';
 
 /// Concrete implementation of [AgentSession].
 ///
@@ -10,17 +9,16 @@ import '../tools/tool_executor.dart';
 class AgentSessionImpl implements AgentSession {
   AgentSessionImpl({required this.settings})
       : sessionId = _generateId(),
-        _context = ContextManager(maxTokens: settings.maxContextTokens),
-        _toolExecutor = ToolExecutor();
+        _context = ContextManager(maxTokens: settings.maxContextTokens);
 
   @override
   final String sessionId;
 
   final AgentSettings settings;
   final ContextManager _context;
-  final ToolExecutor _toolExecutor;
 
   bool _running = false;
+  bool _cancelled = false;
   StreamController<AgentSessionEvent>? _controller;
 
   @override
@@ -39,30 +37,46 @@ class AgentSessionImpl implements AgentSession {
 
   Future<void> _run(String message) async {
     _running = true;
+    _cancelled = false;
 
     try {
       _context.addUserMessage(message);
 
+      // Capture cancellation state once before emitting any events, so all
+      // emissions in this turn are consistent even if cancel() is called
+      // concurrently on the event loop.
+      final wasCancelled = _cancelled;
       // TODO(agent_core): integrate with real provider via providers layer.
       // Placeholder: emit a stub response.
-      _controller!.add(const TextDeltaEvent('(agent_core stub) '));
-      _controller!.add(TextDeltaEvent('Received: $message'));
-      _controller!.add(MessageCompleteEvent('(agent_core stub) Received: $message'));
-      _controller!.add(const RunCompleteEvent());
+      if (!wasCancelled) {
+        _controller!.add(const TextDeltaEvent('(agent_core stub) '));
+        _controller!.add(TextDeltaEvent('Received: $message'));
+        _controller!.add(
+          MessageCompleteEvent('(agent_core stub) Received: $message'),
+        );
+      }
     } catch (e) {
-      _controller!.add(AgentErrorEvent(message: e.toString(), isFatal: true));
+      if (!_cancelled) {
+        _controller!.add(AgentErrorEvent(message: e.toString(), isFatal: true));
+      }
     } finally {
       _running = false;
-      await _controller!.close();
+      // Emit the terminal event and close the controller exactly once here.
+      final ctrl = _controller;
+      if (ctrl != null && !ctrl.isClosed) {
+        ctrl.add(RunCompleteEvent(cancelled: _cancelled));
+        await ctrl.close();
+      }
     }
   }
 
   @override
   Future<void> cancel() async {
     if (!_running) return;
-    _controller?.add(const RunCompleteEvent(cancelled: true));
+    // Signal _run()'s loop to stop. _run()'s finally block will emit
+    // RunCompleteEvent(cancelled: true) and close the controller.
+    _cancelled = true;
     _running = false;
-    await _controller?.close();
   }
 
   @override

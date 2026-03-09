@@ -1,18 +1,6 @@
 import 'dart:io';
 import 'workspace_locator.dart';
-
-/// Metadata about a workspace directory.
-class Workspace {
-  const Workspace({
-    required this.name,
-    required this.path,
-    this.isDefault = false,
-  });
-
-  final String name;
-  final String path;
-  final bool isDefault;
-}
+import 'path_validator.dart';
 
 /// Manages workspace directories on the local filesystem.
 class WorkspaceRepository {
@@ -42,7 +30,9 @@ class WorkspaceRepository {
   ///
   /// Throws [WorkspaceAlreadyExistsException] if a workspace with that name
   /// already exists.
+  /// Throws [ArgumentError] if [name] contains path separators or `..`.
   Future<Workspace> createWorkspace(String name) async {
+    PathValidator.validateSegment(name, 'name');
     final path = '${_locator.workspacesPath}${Platform.pathSeparator}$name';
     final dir = Directory(path);
 
@@ -51,35 +41,51 @@ class WorkspaceRepository {
     }
 
     await dir.create(recursive: true);
-    await _createWorkspaceStructure(path, name);
+    await _ensureWorkspaceStructure(path, name);
 
     return Workspace(name: name, path: path, isDefault: name == 'default');
   }
 
   /// Ensures the default workspace exists, creating it if necessary.
+  ///
+  /// If the directory already exists, any missing subdirectories or metadata
+  /// are created (repairs partial/incomplete workspaces).
   Future<Workspace> ensureDefaultWorkspace() async {
     const defaultName = 'default';
     final path =
         '${_locator.workspacesPath}${Platform.pathSeparator}$defaultName';
-    final dir = Directory(path);
-
-    if (!await dir.exists()) {
-      return createWorkspace(defaultName);
-    }
-
+    await Directory(path).create(recursive: true);
+    await _ensureWorkspaceStructure(path, defaultName);
     return Workspace(name: defaultName, path: path, isDefault: true);
   }
 
-  Future<void> _createWorkspaceStructure(String path, String name) async {
+  Future<void> _ensureWorkspaceStructure(String path, String name) async {
     final sep = Platform.pathSeparator;
-    // Create subdirectories
+    // Create subdirectories (create is idempotent when recursive: true).
     for (final subdir in ['conversations', 'projects', 'resources', '.bricks']) {
       await Directory('$path$sep$subdir').create(recursive: true);
     }
-    // Write workspace metadata
+    // Write workspace metadata only if absent (preserve existing metadata).
     final metaFile = File('$path${sep}.bricks${sep}workspace.yaml');
-    await metaFile.writeAsString('name: $name\ncreated_at: ${DateTime.now().toIso8601String()}\n');
+    if (!await metaFile.exists()) {
+      await metaFile.writeAsString(
+        'name: $name\ncreated_at: ${DateTime.now().toIso8601String()}\n',
+      );
+    }
   }
+}
+
+/// Metadata about a workspace directory.
+class Workspace {
+  const Workspace({
+    required this.name,
+    required this.path,
+    this.isDefault = false,
+  });
+
+  final String name;
+  final String path;
+  final bool isDefault;
 }
 
 /// Thrown when attempting to create a workspace that already exists.

@@ -3,12 +3,15 @@ import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 /// A fake [AgentSession] that emits a canned response.
 class FakeAgentSession implements AgentSession {
   FakeAgentSession({
-    required AgentSettings settings,
+    required this.settings,
     this.cannedResponse = 'Fake agent response.',
   }) : sessionId = 'fake-session-${++_counter}';
 
   @override
   final String sessionId;
+
+  /// The settings this session was created with.
+  final AgentSettings settings;
 
   final String cannedResponse;
 

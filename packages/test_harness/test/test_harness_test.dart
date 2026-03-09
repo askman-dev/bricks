@@ -44,6 +44,13 @@ void main() {
       await session.sendMessage('test').toList();
       expect(session.isRunning, isFalse);
     });
+
+    test('settings are stored and accessible for test assertions', () {
+      final client = FakeAgentClient();
+      const settings = AgentSettings(provider: 'test', model: 'fake-large');
+      final session = client.createSession(settings) as FakeAgentSession;
+      expect(session.settings.model, equals('fake-large'));
+    });
   });
 
   group('FakeWorkspace', () {

@@ -19,9 +19,15 @@ class WorkspaceWatcher {
   }
 
   /// Starts watching the workspace directory.
+  ///
+  /// If already started, the previous subscription is cancelled before
+  /// creating a new one.
   void start() {
-    final dir = Directory(_watchPath);
+    // Cancel any existing subscription to avoid duplicated events / leaks.
+    _subscription?.cancel();
     _controller ??= StreamController<FileSystemEvent>.broadcast();
+
+    final dir = Directory(_watchPath);
     _subscription = dir
         .watch(recursive: true)
         .listen(_controller!.add, onError: _controller!.addError);

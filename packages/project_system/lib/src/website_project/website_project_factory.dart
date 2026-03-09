@@ -46,11 +46,16 @@ class WebsiteProjectFactory {
     );
   }
 
-  String _manifestToYaml(ProjectManifest m) => '''
-name: ${m.name}
-type: ${m.type.name}
-description: ${m.description ?? ''}
-entry_point: ${m.entryPoint}
-version: ${m.version}
-''';
+  String _manifestToYaml(ProjectManifest m) {
+    final buf = StringBuffer()
+      ..writeln('name: ${m.name}')
+      ..writeln('type: ${m.type.name}');
+    if (m.description != null) {
+      buf.writeln('description: ${m.description}');
+    }
+    buf
+      ..writeln('entry_point: ${m.entryPoint}')
+      ..writeln('version: ${m.version}');
+    return buf.toString();
+  }
 }

@@ -11,3 +11,4 @@ export 'src/projects_repository.dart';
 export 'src/conversations_repository.dart';
 export 'src/app_config_repository.dart';
 export 'src/watchers.dart';
+export 'src/path_validator.dart';

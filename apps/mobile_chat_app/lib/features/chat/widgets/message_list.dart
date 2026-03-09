@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:design_system/design_system.dart';
+import '../chat_message.dart';
 
 /// Displays the list of chat messages.
 class MessageList extends StatelessWidget {
   const MessageList({super.key, required this.messages});
 
-  final List<dynamic> messages;
+  final List<ChatMessage> messages;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +40,7 @@ class MessageList extends StatelessWidget {
               borderRadius: BorderRadius.circular(BricksRadius.md),
             ),
             child: Text(
-              msg.content as String,
+              msg.content,
               style: TextStyle(
                 color: isUser
                     ? Theme.of(context).colorScheme.onPrimary

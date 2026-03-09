@@ -3,18 +3,39 @@ import 'package:test/test.dart';
 
 void main() {
   group('Message', () {
-    test('toMap / fromMap round-trip', () {
+    test('toMap / fromMap round-trip with no attachments', () {
       final msg = Message(
         id: 'msg-1',
         role: MessageRole.user,
         content: 'Hello agent',
-        attachments: ['resource/avatar.png'],
       );
       final restored = Message.fromMap(msg.toMap());
       expect(restored.id, equals(msg.id));
       expect(restored.role, equals(MessageRole.user));
       expect(restored.content, equals('Hello agent'));
-      expect(restored.attachments, equals(['resource/avatar.png']));
+      expect(restored.attachments, isEmpty);
+    });
+
+    test('toMap / fromMap round-trip with attachments', () {
+      final msg = Message(
+        id: 'msg-2',
+        role: MessageRole.user,
+        content: 'With attachment',
+        attachments: [
+          const ResourceAttachment(
+            id: 'r1',
+            name: 'avatar.png',
+            resourcePath: 'resources/avatar.png',
+          ),
+        ],
+      );
+      final restored = Message.fromMap(msg.toMap());
+      expect(restored.attachments, hasLength(1));
+      expect(restored.attachments.first, isA<ResourceAttachment>());
+      expect(
+        (restored.attachments.first as ResourceAttachment).resourcePath,
+        equals('resources/avatar.png'),
+      );
     });
   });
 
@@ -84,6 +105,21 @@ void main() {
       expect(att.sizeBytes, equals(102400));
     });
 
+    test('FileAttachment toMap / fromMap round-trip', () {
+      const att = FileAttachment(
+        id: 'a1',
+        name: 'photo.jpg',
+        path: '/storage/photo.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 102400,
+      );
+      final restored = Attachment.fromMap(att.toMap()) as FileAttachment;
+      expect(restored.id, equals('a1'));
+      expect(restored.path, equals('/storage/photo.jpg'));
+      expect(restored.mimeType, equals('image/jpeg'));
+      expect(restored.sizeBytes, equals(102400));
+    });
+
     test('ResourceAttachment holds resourcePath', () {
       const att = ResourceAttachment(
         id: 'r1',
@@ -91,6 +127,24 @@ void main() {
         resourcePath: 'resources/avatar.png',
       );
       expect(att.resourcePath, equals('resources/avatar.png'));
+    });
+
+    test('ResourceAttachment toMap / fromMap round-trip', () {
+      const att = ResourceAttachment(
+        id: 'r1',
+        name: 'avatar.png',
+        resourcePath: 'resources/avatar.png',
+      );
+      final restored = Attachment.fromMap(att.toMap()) as ResourceAttachment;
+      expect(restored.id, equals('r1'));
+      expect(restored.resourcePath, equals('resources/avatar.png'));
+    });
+
+    test('fromMap throws for unknown type', () {
+      expect(
+        () => Attachment.fromMap({'type': 'unknown', 'id': 'x', 'name': 'x'}),
+        throwsArgumentError,
+      );
     });
   });
 }

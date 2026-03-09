@@ -14,8 +14,6 @@ dependencies:
   # Bricks packages
   agent_sdk_contract:
     path: ../../packages/agent_sdk_contract
-  agent_core:
-    path: ../../packages/agent_core
   workspace_fs:
     path: ../../packages/workspace_fs
   project_system:
