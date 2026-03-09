@@ -5,8 +5,8 @@ void main() {
   group('AiGenerateResult', () {
     // Case 2.1: constructs with required fields
     test('constructs with required output and finishReason', () {
-      const result = AiGenerateResult(
-        output: [AiTextBlock('Hello, world!')],
+      final result = AiGenerateResult(
+        output: const [AiTextBlock('Hello, world!')],
         finishReason: AiFinishReason.stop,
       );
 
@@ -26,8 +26,8 @@ void main() {
       );
       const metadata = {'requestId': 'req-001', 'region': 'us-east-1'};
 
-      const result = AiGenerateResult(
-        output: [AiTextBlock('response')],
+      final result = AiGenerateResult(
+        output: const [AiTextBlock('response')],
         finishReason: AiFinishReason.stop,
         usage: usage,
         metadata: metadata,
@@ -67,7 +67,7 @@ void main() {
         AiTextBlock('After the tool call.'),
       ];
 
-      const result = AiGenerateResult(
+      final result = AiGenerateResult(
         output: output,
         finishReason: AiFinishReason.toolCall,
       );

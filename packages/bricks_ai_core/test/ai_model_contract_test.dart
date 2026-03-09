@@ -5,8 +5,8 @@ import 'fixtures/fake_ai_model.dart';
 import 'fixtures/fake_stream_outputs.dart';
 
 void main() {
-  const baseRequest = AiRequest(
-    messages: [AiMessage(role: 'user', content: 'Hello')],
+  final baseRequest = AiRequest(
+    messages: const [AiMessage(role: 'user', content: 'Hello')],
   );
 
   group('AiModel contract', () {
@@ -25,8 +25,8 @@ void main() {
 
     // Case 7.2: generate returns AiGenerateResult
     test('generate() returns the configured AiGenerateResult', () async {
-      const expected = AiGenerateResult(
-        output: [AiTextBlock('The answer is 42.')],
+      final expected = AiGenerateResult(
+        output: const [AiTextBlock('The answer is 42.')],
         finishReason: AiFinishReason.stop,
       );
       final model = FakeAiModel(

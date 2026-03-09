@@ -2,13 +2,17 @@
 ///
 /// Providers accept these options at model construction time; unused fields
 /// are silently ignored by providers that do not support them.
+///
+/// [headers] and [extra] are stored as unmodifiable views so options remain
+/// stable for the model's lifetime.
 class AiProviderOptions {
-  const AiProviderOptions({
+  AiProviderOptions({
     this.baseUrl,
     this.apiKey,
-    this.headers = const {},
-    this.extra = const {},
-  });
+    Map<String, String> headers = const {},
+    Map<String, Object?> extra = const {},
+  })  : headers = Map.unmodifiable(headers),
+        extra = Map.unmodifiable(extra);
 
   /// Override for the provider API base URL (e.g. for proxies or local servers).
   final String? baseUrl;

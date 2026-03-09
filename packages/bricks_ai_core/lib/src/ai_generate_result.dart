@@ -68,14 +68,18 @@ final class AiToolCallBlock extends AiOutputBlock {
 }
 
 /// The result of a non-streaming [AiModel.generate] call.
+///
+/// [output] and [metadata] are stored as unmodifiable views to prevent
+/// post-return mutation from affecting caches, logs, or retry logic.
 class AiGenerateResult {
-  const AiGenerateResult({
-    required this.output,
+  AiGenerateResult({
+    required List<AiOutputBlock> output,
     required this.finishReason,
     this.usage,
-    this.metadata = const {},
+    Map<String, Object?> metadata = const {},
     this.rawResponse,
-  });
+  })  : output = List.unmodifiable(output),
+        metadata = Map.unmodifiable(metadata);
 
   /// The list of output blocks produced by the model, in emission order.
   final List<AiOutputBlock> output;

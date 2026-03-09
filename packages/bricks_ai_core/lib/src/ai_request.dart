@@ -2,11 +2,11 @@ import 'ai_message.dart';
 
 /// Describes a tool that can be invoked by the AI model.
 class AiToolSchema {
-  const AiToolSchema({
+  AiToolSchema({
     required this.name,
     required this.description,
-    required this.inputSchema,
-  });
+    required Map<String, Object?> inputSchema,
+  }) : inputSchema = Map.unmodifiable(inputSchema);
 
   /// The unique name of the tool (snake_case).
   final String name;
@@ -22,17 +22,23 @@ class AiToolSchema {
 ///
 /// All fields that are not required have sensible defaults so that callers
 /// only need to provide what they explicitly care about.
+///
+/// Collections ([messages], [tools], [providerOptions], [metadata]) are stored
+/// as unmodifiable views so the request cannot be mutated after construction.
 class AiRequest {
-  const AiRequest({
-    required this.messages,
-    this.tools = const [],
+  AiRequest({
+    required List<AiMessage> messages,
+    List<AiToolSchema> tools = const [],
     this.toolChoice,
     this.temperature,
     this.maxOutputTokens,
     this.systemInstruction,
-    this.providerOptions = const {},
-    this.metadata = const {},
-  });
+    Map<String, Object?> providerOptions = const {},
+    Map<String, Object?> metadata = const {},
+  })  : messages = List.unmodifiable(messages),
+        tools = List.unmodifiable(tools),
+        providerOptions = Map.unmodifiable(providerOptions),
+        metadata = Map.unmodifiable(metadata);
 
   /// The conversation history to send to the model.
   final List<AiMessage> messages;

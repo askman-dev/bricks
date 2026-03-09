@@ -5,8 +5,8 @@ void main() {
   group('AiRequest', () {
     // Case 1.1: constructs with minimal required fields
     test('constructs with only messages and applies default values', () {
-      const request = AiRequest(
-        messages: [AiMessage(role: 'user', content: 'Hello')],
+      final request = AiRequest(
+        messages: const [AiMessage(role: 'user', content: 'Hello')],
       );
 
       expect(request.messages, hasLength(1));
@@ -21,8 +21,8 @@ void main() {
 
     // Case 1.2: preserves optional fields
     test('preserves optional fields exactly', () {
-      const request = AiRequest(
-        messages: [AiMessage(role: 'user', content: 'Hi')],
+      final request = AiRequest(
+        messages: const [AiMessage(role: 'user', content: 'Hi')],
         toolChoice: 'required',
         temperature: 0.7,
         maxOutputTokens: 512,
@@ -37,9 +37,9 @@ void main() {
 
     // Case 1.3: preserves provider-specific options
     test('preserves provider-specific options without normalization', () {
-      const request = AiRequest(
-        messages: [AiMessage(role: 'user', content: 'Test')],
-        providerOptions: {
+      final request = AiRequest(
+        messages: const [AiMessage(role: 'user', content: 'Test')],
+        providerOptions: const {
           'thinkingBudget': 1024,
           'responseFormat': 'json',
         },
@@ -58,8 +58,8 @@ void main() {
         'userId': 'user-789',
       };
 
-      const request = AiRequest(
-        messages: [AiMessage(role: 'user', content: 'Test')],
+      final request = AiRequest(
+        messages: const [AiMessage(role: 'user', content: 'Test')],
         metadata: tracingMetadata,
       );
 

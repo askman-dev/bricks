@@ -22,7 +22,7 @@ void main() {
     // Case 6.3: provider options are accepted at model construction
     test('provider accepts AiProviderOptions without error', () {
       final provider = FakeAiProvider(id: 'anthropic');
-      const options = AiProviderOptions(
+      final options = AiProviderOptions(
         baseUrl: 'https://api.example.com',
         apiKey: 'sk-test-key',
         headers: {'X-Custom': 'value'},

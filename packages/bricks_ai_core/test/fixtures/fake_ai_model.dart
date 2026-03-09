@@ -14,8 +14,8 @@ class FakeAiModel implements AiModel {
     List<AiStreamEvent>? streamEvents,
     AiModelCapabilities? capabilities,
   })  : _generateResult = generateResult ??
-            const AiGenerateResult(
-              output: [AiTextBlock('fake response')],
+            AiGenerateResult(
+              output: const [AiTextBlock('fake response')],
               finishReason: AiFinishReason.stop,
             ),
         _streamEvents = streamEvents ?? const [],

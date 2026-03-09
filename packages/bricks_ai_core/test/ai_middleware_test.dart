@@ -42,8 +42,8 @@ class RecordingMiddleware implements AiMiddleware {
 }
 
 void main() {
-  const baseRequest = AiRequest(
-    messages: [AiMessage(role: 'user', content: 'Hello')],
+  final baseRequest = AiRequest(
+    messages: const [AiMessage(role: 'user', content: 'Hello')],
   );
 
   group('AiMiddleware – generate interception', () {
