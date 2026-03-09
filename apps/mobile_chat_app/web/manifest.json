@@ -1,0 +1,12 @@
+{
+    "name": "Bricks",
+    "short_name": "Bricks",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0175C2",
+    "theme_color": "#0175C2",
+    "description": "Bricks – a chat-first creation app powered by Agent Core.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": []
+}
