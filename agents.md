@@ -4,13 +4,13 @@ This repository supports natural-language use case files for Copilot and human a
 
 ## Location
 
-- Store use case files under `tests/usercases/`.
-- Name each file as `tests/usercases/<module-name>.yaml`.
+- Store use case files under `tests/usecases/`.
+- Name each file as `tests/usecases/<module-name>.yaml`.
 - `<module-name>` must be the module or package being validated, for example `agent_core.yaml` or `workspace_fs.yaml`.
 
 ## Authoring rules
 
-When Copilot creates or updates a file in `tests/usercases/`, it must follow these rules:
+When Copilot creates or updates a file in `tests/usecases/`, it must follow these rules:
 
 1. Write all descriptions in English.
 2. Use natural language sentences instead of code-like assertions.
@@ -56,7 +56,7 @@ conversation_continuity:
 
 When Copilot is asked to add a natural-language test case:
 
-- choose the target module name first, then create or update `tests/usercases/<module-name>.yaml`
+- choose the target module name first, then create or update `tests/usecases/<module-name>.yaml`
 - add or extend the relevant top-level capability section
 - keep `given`, `when`, and `then` descriptions readable and specific
 - prefer multiple `when` branches under the same `given` when they share the same starting context
