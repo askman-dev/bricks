@@ -19,6 +19,6 @@ class LocalServerImpl implements LocalServer {
 
   @override
   Uri previewUrl(String projectName, {String entryPoint = 'index.html'}) {
-    return Uri.parse('/$projectName/$entryPoint');
+    return Uri.base.resolve('$projectName/$entryPoint');
   }
 }
