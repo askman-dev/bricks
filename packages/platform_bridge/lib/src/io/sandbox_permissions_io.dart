@@ -12,7 +12,7 @@ class SandboxPermissionsImpl implements SandboxPermissions {
   @override
   Future<bool> canRead(String path) async {
     try {
-      await Directory(path).list().first;
+      await Directory(path).list().take(1).drain();
       return true;
     } catch (_) {
       return false;
