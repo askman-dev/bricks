@@ -1,0 +1,29 @@
+module: agent_core
+
+conversation_continuity:
+  description: Verify that an agent session keeps the right conversation context across follow-up turns.
+  given:
+    - description: A workspace already contains a saved conversation with earlier user and assistant messages.
+      when:
+        - description: The user resumes the same conversation in the chat app.
+          then:
+            - The agent restores the existing conversation history before generating a new reply.
+            - The next assistant response is based on the restored context instead of starting a new session.
+        - description: The user sends a follow-up request after the conversation is restored.
+          then:
+            - The new user message is appended after the existing history in the same conversation.
+            - The agent handles the request as a continuation of the current session.
+
+tool_execution_feedback:
+  description: Verify that tool usage is reflected back to the session in a clear and traceable way.
+  given:
+    - description: The agent decides that a tool call is required to answer the user's request.
+      when:
+        - description: The tool call completes successfully.
+          then:
+            - The session records the tool result so the agent can continue the same run.
+            - The assistant response can reference the tool outcome in plain language.
+        - description: The tool call fails with an execution error.
+          then:
+            - The failure is surfaced to the session as an error outcome.
+            - The assistant can explain the failure or recover according to the runtime policy.
