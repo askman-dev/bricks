@@ -1,10 +1,10 @@
 # agents.md
 
-This repository supports natural-language user case files for Copilot and human authors.
+This repository supports natural-language use case files for Copilot and human authors.
 
 ## Location
 
-- Store user case files under `tests/usercases/`.
+- Store use case files under `tests/usercases/`.
 - Name each file as `tests/usercases/<module-name>.yaml`.
 - `<module-name>` must be the module or package being validated, for example `agent_core.yaml` or `workspace_fs.yaml`.
 
