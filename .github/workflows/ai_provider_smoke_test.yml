@@ -1,0 +1,50 @@
+name: AI Provider Smoke Tests
+
+on:
+  pull_request:
+    paths:
+      - 'packages/bricks_ai_smoke_test/**'
+      - '.github/workflows/ai_provider_smoke_test.yml'
+  workflow_dispatch:
+  # Optional: Run on a schedule (every day at 2 AM UTC)
+  # schedule:
+  #   - cron: '0 2 * * *'
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap dependencies
+        run: melos bootstrap
+
+      - name: Run smoke tests (unit tests only, no real API calls)
+        working-directory: packages/bricks_ai_smoke_test
+        run: dart test --exclude-tags=integration
+
+      - name: Run integration tests with real APIs
+        if: vars.TEST_ANTHROPIC_BASE_URL != '' || vars.TEST_GEMINI_BASE_URL != ''
+        working-directory: packages/bricks_ai_smoke_test
+        env:
+          TEST_ANTHROPIC_BASE_URL: ${{ vars.TEST_ANTHROPIC_BASE_URL }}
+          TEST_ANTHROPIC_API_KEY: ${{ secrets.TEST_ANTHROPIC_API_KEY }}
+          TEST_GEMINI_BASE_URL: ${{ vars.TEST_GEMINI_BASE_URL }}
+          TEST_GEMINI_API_KEY: ${{ secrets.TEST_GEMINI_API_KEY }}
+        run: dart test --tags=integration
+
+      - name: Log test results
+        if: always()
+        run: |
+          echo "Smoke tests completed"
+          echo "Check test output above for results"
