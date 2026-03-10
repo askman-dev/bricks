@@ -224,7 +224,7 @@ Reply with exactly: gemini-ok
    - Gemini: `gemini-1.5-flash`（快速、便宜、可靠）
 
 4. ✅ **HTTP 客户端选择**
-   - 使用 `package:http`（Dart 标准 HTTP 客户端）
+   - 使用 `package:http`（Dart 官方维护的常用 HTTP 客户端包）
 
 5. ✅ **响应格式文档**
    - 记录 Anthropic Messages API 的响应结构
