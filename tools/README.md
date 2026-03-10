@@ -4,21 +4,24 @@ This directory contains developer tooling scripts for the Bricks monorepo.
 
 ## Available tools
 
-- `init_dev_env.sh` – initialize local environment (auto-install Flutter when missing, check Dart, install Melos if needed, and run `melos bootstrap`)
+### Shell Scripts
 
-```bash
-# from repo root
-bash tools/init_dev_env.sh
+- **`common.sh`** – Shared library with reusable validation functions
+  - Color output helpers (`print_step`, `print_success`, `print_error`, `print_warning`)
+  - Command existence checker (`command_exists`)
+  - Prerequisites validation (`check_prerequisites`)
+  - Used by both `build.sh` and `init_dev_env.sh`
 
-# optional flags
-bash tools/init_dev_env.sh --no-doctor
-bash tools/init_dev_env.sh --no-bootstrap
-bash tools/init_dev_env.sh --flutter-home "$HOME/.local/flutter"
-bash tools/init_dev_env.sh --channel stable
-```
+- **`init_dev_env.sh`** – Initialize development environment
+  - Checks prerequisites (Flutter, Dart, Melos)
+  - Sets up Flutter web support
+  - Bootstraps monorepo dependencies with Melos
+  - Provides guidance for next steps
+  - Usage: `./tools/init_dev_env.sh [--skip-bootstrap] [--skip-flutter-setup]`
 
 ## Planned tools
 
 - `generate_fixtures.dart` – generate sample workspace/project fixtures
 - `check_pubspecs.dart` – validate pubspec.yaml consistency across packages
 - `changelog.dart` – generate changelog from git history
+

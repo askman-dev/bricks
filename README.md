@@ -49,6 +49,22 @@ bricks/
 
 ## Getting Started
 
+### Quick Setup
+
+Initialize your development environment with one command:
+
+```bash
+./tools/init_dev_env.sh
+```
+
+This will:
+- Check prerequisites (Flutter, Dart, Melos)
+- Set up Flutter web support
+- Bootstrap all package dependencies
+- Show next steps
+
+Or follow the manual steps below:
+
 ### Prerequisites
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.x
@@ -77,6 +93,16 @@ melos test
 
 ```bash
 melos analyze
+```
+
+### Build
+
+For comprehensive build instructions, see [BUILD.md](BUILD.md).
+
+Quick build using the automated script:
+
+```bash
+./build.sh
 ```
 
 ---

@@ -1,11 +1,30 @@
 #!/usr/bin/env bash
+
+# Initialize Development Environment Script
+# This script sets up a development environment for the Bricks monorepo
+
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source common functions
+source "${SCRIPT_DIR}/common.sh"
+
+# Configuration
 RUN_BOOTSTRAP=1
 RUN_DOCTOR=1
 FLUTTER_CHANNEL="stable"
 FLUTTER_HOME="${FLUTTER_HOME:-$HOME/.local/flutter}"
+
+# Display banner
+show_banner() {
+    echo "╔═══════════════════════════════════════════════════════╗"
+    echo "║    Bricks Development Environment Setup              ║"
+    echo "╚═══════════════════════════════════════════════════════╝"
+    echo ""
+}
 
 print_help() {
   cat <<'USAGE'
@@ -22,20 +41,12 @@ Options:
 USAGE
 }
 
-log() {
-  printf '[init] %s\n' "$*"
-}
-
-fail() {
-  printf '[init][error] %s\n' "$*" >&2
-  exit 1
-}
-
 ensure_cmd() {
   local cmd="$1"
   local hint="$2"
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    fail "Missing required command: $cmd. $hint"
+  if ! command_exists "$cmd"; then
+    print_error "Missing required command: $cmd. $hint"
+    exit 1
   fi
 }
 
@@ -49,22 +60,22 @@ append_to_path_if_dir() {
 persist_shell_path_hint() {
   local flutter_bin="$1"
   if [[ -n "${SHELL:-}" ]]; then
-    log "If needed, add Flutter to your shell profile: export PATH=\"$flutter_bin:\$PATH\""
+    print_step "If needed, add Flutter to your shell profile: export PATH=\"$flutter_bin:\$PATH\""
   fi
 }
 
 install_flutter_if_missing() {
-  if command -v flutter >/dev/null 2>&1; then
+  if command_exists flutter; then
     return
   fi
 
   ensure_cmd git "Git is required to install Flutter automatically."
 
-  log "Flutter not found. Installing Flutter ($FLUTTER_CHANNEL) to: $FLUTTER_HOME"
+  print_step "Flutter not found. Installing Flutter ($FLUTTER_CHANNEL) to: $FLUTTER_HOME"
   mkdir -p "$(dirname "$FLUTTER_HOME")"
 
   if [[ -d "$FLUTTER_HOME/.git" ]]; then
-    log "Existing Flutter git checkout detected. Updating channel: $FLUTTER_CHANNEL"
+    print_step "Existing Flutter git checkout detected. Updating channel: $FLUTTER_CHANNEL"
     git -C "$FLUTTER_HOME" fetch --all --tags
     git -C "$FLUTTER_HOME" checkout "$FLUTTER_CHANNEL"
     git -C "$FLUTTER_HOME" pull --ff-only
@@ -77,8 +88,78 @@ install_flutter_if_missing() {
   persist_shell_path_hint "$FLUTTER_HOME/bin"
 
   ensure_cmd flutter "Flutter installation failed."
+  print_success "Flutter installed successfully"
 }
 
+# Setup Flutter environment
+setup_flutter_environment() {
+    print_step "Setting up Flutter environment..."
+
+    if command_exists flutter; then
+        print_step "Enabling Flutter web support..."
+        flutter config --enable-web || print_warning "Could not enable web support"
+        print_success "Flutter web support configured"
+    else
+        print_error "Flutter is not installed. This should not happen after install_flutter_if_missing."
+        return 1
+    fi
+
+    echo ""
+}
+
+# Bootstrap dependencies
+bootstrap_dependencies() {
+    print_step "Bootstrapping monorepo dependencies..."
+
+    cd "$ROOT_DIR"
+
+    if command_exists melos; then
+        melos bootstrap
+        print_success "Dependencies bootstrapped successfully"
+    else
+        print_error "Melos is not available. Cannot bootstrap dependencies."
+        return 1
+    fi
+
+    echo ""
+}
+
+# Setup Git hooks (if any exist)
+setup_git_hooks() {
+    print_step "Checking for Git hooks..."
+
+    if [ -d "$ROOT_DIR/.git/hooks" ]; then
+        print_success "Git hooks directory exists"
+        # Future: Add pre-commit hooks setup here
+    else
+        print_warning "Not a Git repository or hooks directory not found"
+    fi
+
+    echo ""
+}
+
+# Show next steps
+show_next_steps() {
+    echo "╔═══════════════════════════════════════════════════════╗"
+    echo "║         Development Environment Ready!                ║"
+    echo "╚═══════════════════════════════════════════════════════╝"
+    echo ""
+    print_success "Your development environment is set up!"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Run tests:    melos test"
+    echo "  2. Run analysis: melos analyze"
+    echo "  3. Format code:  melos format"
+    echo "  4. Build web:    cd apps/mobile_chat_app && flutter run -d chrome"
+    echo "  5. Full build:   ./build.sh"
+    echo ""
+    echo "For more information, see:"
+    echo "  - README.md"
+    echo "  - BUILD.md"
+    echo ""
+}
+
+# Parse command-line arguments
 while (($#)); do
   case "$1" in
     --no-bootstrap)
@@ -89,12 +170,12 @@ while (($#)); do
       ;;
     --flutter-home)
       shift
-      [[ $# -gt 0 ]] || fail "--flutter-home requires a path argument."
+      [[ $# -gt 0 ]] || { print_error "--flutter-home requires a path argument."; exit 1; }
       FLUTTER_HOME="$1"
       ;;
     --channel)
       shift
-      [[ $# -gt 0 ]] || fail "--channel requires a value."
+      [[ $# -gt 0 ]] || { print_error "--channel requires a value."; exit 1; }
       FLUTTER_CHANNEL="$1"
       ;;
     -h|--help)
@@ -102,40 +183,64 @@ while (($#)); do
       exit 0
       ;;
     *)
-      fail "Unknown option: $1. Use --help to see available options."
+      print_error "Unknown option: $1. Use --help to see available options."
+      exit 1
       ;;
   esac
   shift
 done
 
-log "Repository root: $ROOT_DIR"
-ensure_cmd git "Please install Git first."
-ensure_cmd bash "Please use a shell environment with bash available."
+# Main execution
+main() {
+    show_banner
 
-install_flutter_if_missing
-append_to_path_if_dir "$FLUTTER_HOME/bin"
+    print_step "Repository root: $ROOT_DIR"
 
-ensure_cmd flutter "Install Flutter SDK >= 3.x and ensure it is in PATH."
-ensure_cmd dart "Dart is bundled with Flutter; ensure Flutter bin is in PATH."
+    # Ensure basic tools are available
+    ensure_cmd git "Please install Git first."
+    ensure_cmd bash "Please use a shell environment with bash available."
 
-if command -v melos >/dev/null 2>&1; then
-  log "Melos already installed: $(melos --version)"
-else
-  log "Melos not found in PATH. Installing via: dart pub global activate melos"
-  dart pub global activate melos
-  append_to_path_if_dir "$HOME/.pub-cache/bin"
-fi
+    # Install Flutter if missing
+    install_flutter_if_missing
+    append_to_path_if_dir "$FLUTTER_HOME/bin"
 
-ensure_cmd melos "Run 'dart pub global activate melos' and add \"$HOME/.pub-cache/bin\" to PATH."
+    # Verify Flutter and Dart are available
+    ensure_cmd flutter "Install Flutter SDK >= 3.x and ensure it is in PATH."
+    ensure_cmd dart "Dart is bundled with Flutter; ensure Flutter bin is in PATH."
 
-if [[ "$RUN_DOCTOR" -eq 1 ]]; then
-  log "Running flutter doctor"
-  flutter doctor -v || log "flutter doctor reported issues; continuing."
-fi
+    # Check and install Melos
+    if command_exists melos; then
+        print_success "Melos already installed: $(melos --version 2>&1 || echo 'unknown version')"
+    else
+        print_step "Melos not found in PATH. Installing via: dart pub global activate melos"
+        dart pub global activate melos
+        append_to_path_if_dir "$HOME/.pub-cache/bin"
+        ensure_cmd melos "Run 'dart pub global activate melos' and add \"$HOME/.pub-cache/bin\" to PATH."
+        print_success "Melos installed successfully"
+    fi
 
-if [[ "$RUN_BOOTSTRAP" -eq 1 ]]; then
-  log "Running melos bootstrap"
-  (cd "$ROOT_DIR" && melos bootstrap)
-fi
+    # Setup Flutter environment
+    setup_flutter_environment
 
-log "Initialization completed successfully."
+    # Run Flutter doctor if requested
+    if [[ "$RUN_DOCTOR" -eq 1 ]]; then
+        print_step "Running flutter doctor"
+        flutter doctor -v || print_warning "flutter doctor reported issues; continuing."
+        echo ""
+    fi
+
+    # Bootstrap dependencies if requested
+    if [[ "$RUN_BOOTSTRAP" -eq 1 ]]; then
+        bootstrap_dependencies
+    fi
+
+    # Setup Git hooks
+    setup_git_hooks
+
+    # Show completion message
+    show_next_steps
+    print_success "Initialization completed successfully."
+}
+
+# Run main function
+main "$@"
