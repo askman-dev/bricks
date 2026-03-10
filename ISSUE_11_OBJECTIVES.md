@@ -156,13 +156,13 @@ class ProviderSmokeResult {
 
 #### Anthropic 配置
 - `TEST_ANTHROPIC_BASE_URL`: API 基础 URL
-- `TEST_ANTHROPIC_API_KEY`: API 密钥（敏感信息）
+- `TEST_ANTHROPIC_API_KEY`: API 密钥（敏感信息，部分历史讨论/CI 配置中曾使用旧名 `TEST_ANTHROPIC_AUTH_TOKEN`，推荐统一迁移为本变量名）
 
 #### Gemini 配置
 - `TEST_GEMINI_BASE_URL`: API 基础 URL
 - `TEST_GEMINI_API_KEY`: API 密钥（敏感信息）
 
-**注意**: 根据评审建议，统一使用 `TEST_` 前缀以表明这是测试/验证用途。
+**注意**: 根据评审建议，统一使用 `TEST_` 前缀以表明这是测试/验证用途；Anthropic 凭证的规范变量名为 `TEST_ANTHROPIC_API_KEY`，如现有 CI 中仍保留旧变量 `TEST_ANTHROPIC_AUTH_TOKEN`，应在迁移时予以明确说明或同步更新。
 
 ---
 
