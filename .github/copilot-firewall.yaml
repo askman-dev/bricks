@@ -1,0 +1,12 @@
+# GitHub Copilot Agent Firewall Configuration
+#
+# This file configures the firewall allowlist for the GitHub Copilot coding agent.
+# The agent will be allowed to make network requests to the domains specified below.
+#
+# For more information, see:
+# https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-firewall
+
+allowlist:
+  # Zhipu AI (智谱AI) - Chinese AI model provider
+  # Used for GLM (General Language Model) API access
+  - "open.bigmodel.cn"
