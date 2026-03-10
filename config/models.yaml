@@ -29,3 +29,11 @@ providers:
         context_window: 128000
         supports_tools: true
         supports_streaming: true
+
+  gemini:
+    default_model: gemini-3-flash-preview
+    models:
+      - id: gemini-3-flash-preview
+        context_window: 1000000
+        supports_tools: true
+        supports_streaming: true
