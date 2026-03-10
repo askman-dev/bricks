@@ -17,9 +17,9 @@
 ### 关键成功标准 / Key Success Criteria
 
 1. ✅ **配置加载能力 / Configuration Loading**
-   - 从环境变量中读取 Anthropic 配置（BASE_URL 和 API_KEY）
-   - 从环境变量中读取 Gemini 配置（BASE_URL 和 API_KEY）
-   - 配置缺失时提供清晰的错误信息
+   - 从环境变量中读取 Anthropic 配置（`TEST_ANTHROPIC_BASE_URL` 和 **规范名称** `TEST_ANTHROPIC_API_KEY`；`TEST_ANTHROPIC_AUTH_TOKEN` 仅作为向后兼容的**弃用别名**，行为应在实现与文档中保持一致并标注迁移计划）
+   - 从环境变量中读取 Gemini 配置（例如 `TEST_GEMINI_BASE_URL` 和 `TEST_GEMINI_API_KEY`）
+   - 配置缺失时提供清晰的错误信息（包括在同时设置 `TEST_ANTHROPIC_API_KEY` 与 `TEST_ANTHROPIC_AUTH_TOKEN` 时的优先级与警告策略）
 
 2. ✅ **请求构建能力 / Request Construction**
    - 为 Anthropic API 构建符合规范的请求负载
