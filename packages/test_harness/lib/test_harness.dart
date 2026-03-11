@@ -4,6 +4,7 @@
 /// helpers, sample workspace and project fixtures, and e2e test helpers.
 library test_harness;
 
+export 'package:project_system/project_system.dart' show ProjectType;
 export 'src/fake_agent_client.dart';
 export 'src/fake_agent_session.dart';
 export 'src/fake_workspace.dart';

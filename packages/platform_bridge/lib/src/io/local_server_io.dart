@@ -84,14 +84,10 @@ class LocalServerImpl implements LocalServer {
       }
     } catch (_) {
       // In case of unexpected errors, return a generic server error.
-      if (!request.response.headersSent) {
-        request.response
-          ..statusCode = HttpStatus.internalServerError
-          ..close();
-      } else {
-        // If headers are already sent, just close the response.
-        await request.response.close();
-      }
+      // Close the response with an error status.
+      request.response
+        ..statusCode = HttpStatus.internalServerError
+        ..close();
     }
   }
 
