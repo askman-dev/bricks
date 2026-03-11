@@ -22,17 +22,14 @@ jobs:
         with:
           channel: stable
 
-      - name: Install Melos
+      - name: Bootstrap workspace with Melos
         run: |
           dart pub global activate melos
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
-
-      - name: Bootstrap dependencies
-        working-directory: ${{ github.workspace }}
-        run: melos bootstrap
+          export PATH="$HOME/.pub-cache/bin:$PATH"
+          melos bootstrap
 
       - name: Run code analysis
-        working-directory: ${{ github.workspace }}
         run: melos analyze
 
   test:
@@ -48,17 +45,14 @@ jobs:
         with:
           channel: stable
 
-      - name: Install Melos
+      - name: Bootstrap workspace with Melos
         run: |
           dart pub global activate melos
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
-
-      - name: Bootstrap dependencies
-        working-directory: ${{ github.workspace }}
-        run: melos bootstrap
+          export PATH="$HOME/.pub-cache/bin:$PATH"
+          melos bootstrap
 
       - name: Run unit tests
-        working-directory: ${{ github.workspace }}
         run: melos test -- --exclude-tags=integration
 
       - name: Log test results
