@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/packages/agent_core/melos_agent_core.iml" filepath="$PROJECT_DIR$/packages/agent_core/melos_agent_core.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/agent_sdk_contract/melos_agent_sdk_contract.iml" filepath="$PROJECT_DIR$/packages/agent_sdk_contract/melos_agent_sdk_contract.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/bricks_ai_core/melos_bricks_ai_core.iml" filepath="$PROJECT_DIR$/packages/bricks_ai_core/melos_bricks_ai_core.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/bricks_ai_smoke_test/melos_bricks_ai_smoke_test.iml" filepath="$PROJECT_DIR$/packages/bricks_ai_smoke_test/melos_bricks_ai_smoke_test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/chat_domain/melos_chat_domain.iml" filepath="$PROJECT_DIR$/packages/chat_domain/melos_chat_domain.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/design_system/melos_design_system.iml" filepath="$PROJECT_DIR$/packages/design_system/melos_design_system.iml" />
+      <module fileurl="file://$PROJECT_DIR$/apps/mobile_chat_app/melos_mobile_chat_app.iml" filepath="$PROJECT_DIR$/apps/mobile_chat_app/melos_mobile_chat_app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/platform_bridge/melos_platform_bridge.iml" filepath="$PROJECT_DIR$/packages/platform_bridge/melos_platform_bridge.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/project_system/melos_project_system.iml" filepath="$PROJECT_DIR$/packages/project_system/melos_project_system.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/test_harness/melos_test_harness.iml" filepath="$PROJECT_DIR$/packages/test_harness/melos_test_harness.iml" />
+      <module fileurl="file://$PROJECT_DIR$/packages/workspace_fs/melos_workspace_fs.iml" filepath="$PROJECT_DIR$/packages/workspace_fs/melos_workspace_fs.iml" />
+      <module fileurl="file://$PROJECT_DIR$/melos_bricks.iml" filepath="$PROJECT_DIR$/melos_bricks.iml" />
+    </modules>
+  </component>
+</project>
