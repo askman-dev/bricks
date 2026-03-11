@@ -58,8 +58,11 @@ jobs:
           dart pub get
           melos bootstrap
 
-      - name: Run unit tests
-        run: melos test -- --exclude-tags=integration
+      - name: Run Dart tests
+        run: melos test:dart -- --exclude-tags=integration
+
+      - name: Run Flutter tests
+        run: melos test:flutter -- --exclude-tags=integration
 
       - name: Log test results
         if: always()

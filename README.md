@@ -89,6 +89,16 @@ flutter run
 melos test
 ```
 
+Or run tests for specific package types:
+
+```bash
+# Run tests for Dart-only packages
+melos test:dart
+
+# Run tests for Flutter packages
+melos test:flutter
+```
+
 ### Analyze
 
 ```bash

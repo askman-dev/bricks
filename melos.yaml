@@ -16,10 +16,29 @@ scripts:
     exec:
       concurrency: 4
 
-  test:
+  test:dart:
     run: dart test
+    description: Run tests for non-Flutter packages
+    packageFilters:
+      flutter: false
+      dirExists: test
     exec:
       concurrency: 4
+
+  test:flutter:
+    run: flutter test
+    description: Run tests for Flutter packages
+    packageFilters:
+      flutter: true
+      dirExists: test
+    exec:
+      concurrency: 4
+
+  test:
+    run: |
+      melos test:dart "$@"
+      melos test:flutter "$@"
+    description: Run all tests (both Dart and Flutter)
 
   format:
     run: dart format .
