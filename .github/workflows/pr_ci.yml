@@ -22,18 +22,16 @@ jobs:
         with:
           channel: stable
 
-      - name: Bootstrap workspace with Melos
+      - name: Install Melos
         run: |
-          cd "$GITHUB_WORKSPACE"
-          dart pub global activate melos
-          export PATH="$HOME/.pub-cache/bin:$PATH"
+          dart pub global activate melos 6.3.0
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
-          melos bootstrap
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
 
       - name: Run code analysis
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          melos analyze
+        run: melos analyze
 
   test:
     runs-on: ubuntu-latest
@@ -48,18 +46,16 @@ jobs:
         with:
           channel: stable
 
-      - name: Bootstrap workspace with Melos
+      - name: Install Melos
         run: |
-          cd "$GITHUB_WORKSPACE"
-          dart pub global activate melos
-          export PATH="$HOME/.pub-cache/bin:$PATH"
+          dart pub global activate melos 6.3.0
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
-          melos bootstrap
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
 
       - name: Run unit tests
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          melos test -- --exclude-tags=integration
+        run: melos test -- --exclude-tags=integration
 
       - name: Log test results
         if: always()
