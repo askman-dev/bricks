@@ -43,7 +43,10 @@ class AnthropicEnvConfig {
     final baseUrlStr =
         env['TEST_ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
     final baseUrl = Uri.tryParse(baseUrlStr);
-    if (baseUrl == null) {
+    if (baseUrl == null ||
+        !baseUrl.hasScheme ||
+        (baseUrl.scheme != 'http' && baseUrl.scheme != 'https') ||
+        !baseUrl.hasAuthority) {
       throw ConfigError(
         'Invalid TEST_ANTHROPIC_BASE_URL: $baseUrlStr',
       );
