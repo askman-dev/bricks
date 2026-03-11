@@ -35,9 +35,6 @@ class AnthropicSmokeClient {
         'max_tokens': maxTokens,
       };
 
-      // Sanitize API key for logging (show only first 8 and last 4 chars)
-      final sanitizedKey = _sanitizeApiKey(config.apiKey);
-
       final response = await httpClient!
           .post(
             endpoint,
