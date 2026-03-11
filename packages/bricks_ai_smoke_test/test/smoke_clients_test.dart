@@ -44,7 +44,7 @@ void main() {
     });
 
     // Case B3: Anthropic exact-response check
-    test('trims whitespace from response', () async {
+    test('returns raw response text without trimming', () async {
       final responseBody = json.encode({
         'content': [
           {'type': 'text', 'text': '  anthropic-ok  \n'}
@@ -184,7 +184,7 @@ void main() {
     });
 
     // Case B4: Gemini exact-response check
-    test('trims whitespace from response', () async {
+    test('returns raw response text without trimming', () async {
       final responseBody = json.encode({
         'candidates': [
           {

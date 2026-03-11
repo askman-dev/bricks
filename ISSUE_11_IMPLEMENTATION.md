@@ -4,7 +4,7 @@ This document summarizes how the implementation satisfies all acceptance criteri
 
 ## Acceptance Criteria Checklist
 
-### ✅ Code can read `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY`
+### ✅ Code can read `TEST_ANTHROPIC_BASE_URL` and `TEST_ANTHROPIC_API_KEY`
 
 **Implementation**: `packages/bricks_ai_smoke_test/lib/src/provider_env_config.dart:30-59`
 
@@ -31,7 +31,7 @@ factory AnthropicEnvConfig.fromEnvironment([Map<String, String>? environment]) {
 
 ---
 
-### ✅ Code can read `GEMINI_BASE_URL` and `GEMINI_API_KEY`
+### ✅ Code can read `TEST_GEMINI_BASE_URL` and `TEST_GEMINI_API_KEY`
 
 **Implementation**: `packages/bricks_ai_smoke_test/lib/src/provider_env_config.dart:90-119`
 
@@ -207,24 +207,16 @@ Error handling includes:
 
 **Implementation**:
 
-1. **API Key Sanitization** (`anthropic_smoke_client.dart:90-93`):
-```dart
-String _sanitizeApiKey(String key) {
-  if (key.length <= 12) return '***';
-  return '${key.substring(0, 8)}...${key.substring(key.length - 4)}';
-}
-```
-
-2. **ProviderSmokeResult.toString()** (`smoke_result.dart:27-38`):
+1. **ProviderSmokeResult.toString()** (`smoke_result.dart:27-38`):
 - Only shows provider name, status, and sanitized output
 - Never includes API keys or tokens
 - Truncates output text to 50 chars in toString()
 
-3. **Gemini Client**:
+2. **Gemini Client**:
 - API key passed as query parameter (not logged by HTTP client)
 - No debug logging of full URLs with keys
 
-4. **Integration Tests**:
+3. **Integration Tests**:
 - Only print sanitized result summaries
 - No raw request/response logging
 

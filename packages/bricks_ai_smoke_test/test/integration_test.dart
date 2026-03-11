@@ -22,105 +22,124 @@ void main() {
   final geminiKeyPresent =
       Platform.environment['TEST_GEMINI_API_KEY']?.isNotEmpty ?? false;
 
-  group('Anthropic integration tests', () {
-    // Case B1: Anthropic request returns output
-    test(
-      'can send request and receive response from Anthropic',
-      () async {
+  ProviderSmokeResult? anthropicResult;
+
+  group(
+    'Anthropic integration tests',
+    () {
+      setUpAll(() async {
         final runner = ProviderSmokeRunner();
-        final result = await runner.runAnthropicTest();
+        anthropicResult = await runner.runAnthropicTest();
+      });
 
-        expect(result.provider, equals('anthropic'));
-        expect(result.success, isTrue,
-            reason: 'Failed: ${result.errorMessage}');
-        expect(result.statusCode, equals(200));
-        expect(result.outputText, isNotNull);
-        expect(result.outputText, isNotEmpty);
-        expect(result.errorMessage, isNull);
+      // Case B1: Anthropic request returns output
+      test(
+        'can send request and receive response from Anthropic',
+        () async {
+          final result = anthropicResult;
+          if (result == null) {
+            fail('Anthropic result not available');
+          }
 
-        // Log result for debugging
-        print('Anthropic test result: $result');
-      },
-      skip: !anthropicKeyPresent
-          ? 'TEST_ANTHROPIC_API_KEY not set'
-          : null,
-    );
+          expect(result.provider, equals('anthropic'));
+          expect(result.success, isTrue,
+              reason: 'Failed: ${result.errorMessage}');
+          expect(result.statusCode, equals(200));
+          expect(result.outputText, isNotNull);
+          expect(result.outputText, isNotEmpty);
+          expect(result.errorMessage, isNull);
 
-    // Case B3: Anthropic exact-response check
-    test(
-      'returns expected text from Anthropic',
-      () async {
+          // Log result for debugging
+          print('Anthropic test result: $result');
+        },
+      );
+
+      // Case B3: Anthropic exact-response check
+      test(
+        'returns expected text from Anthropic',
+        () async {
+          final result = anthropicResult;
+          if (result == null) {
+            fail('Anthropic result not available');
+          }
+
+          expect(result.success, isTrue,
+              reason: 'Failed: ${result.errorMessage}');
+
+          // Check if response contains or matches expected text (after trim)
+          final trimmedOutput = result.outputText?.trim().toLowerCase() ?? '';
+          expect(
+            trimmedOutput,
+            contains('anthropic'),
+            reason:
+                'Expected response to contain "anthropic", got: $trimmedOutput',
+          );
+
+          print('Anthropic response: ${result.outputText}');
+        },
+      );
+    },
+    skip: !anthropicKeyPresent ? 'TEST_ANTHROPIC_API_KEY not set' : null,
+  );
+
+  ProviderSmokeResult? geminiResult;
+
+  group(
+    'Gemini integration tests',
+    () {
+      setUpAll(() async {
         final runner = ProviderSmokeRunner();
-        final result = await runner.runAnthropicTest();
+        geminiResult = await runner.runGeminiTest();
+      });
 
-        expect(result.success, isTrue,
-            reason: 'Failed: ${result.errorMessage}');
+      // Case B2: Gemini request returns output
+      test(
+        'can send request and receive response from Gemini',
+        () async {
+          final result = geminiResult;
+          if (result == null) {
+            fail('Gemini result not available');
+          }
 
-        // Check if response contains or matches expected text (after trim)
-        final trimmedOutput = result.outputText?.trim().toLowerCase() ?? '';
-        expect(
-          trimmedOutput,
-          contains('anthropic'),
-          reason: 'Expected response to contain "anthropic", got: $trimmedOutput',
-        );
+          expect(result.provider, equals('gemini'));
+          expect(result.success, isTrue,
+              reason: 'Failed: ${result.errorMessage}');
+          expect(result.statusCode, equals(200));
+          expect(result.outputText, isNotNull);
+          expect(result.outputText, isNotEmpty);
+          expect(result.errorMessage, isNull);
 
-        print('Anthropic response: ${result.outputText}');
-      },
-      skip: !anthropicKeyPresent
-          ? 'TEST_ANTHROPIC_API_KEY not set'
-          : null,
-    );
-  });
+          // Log result for debugging
+          print('Gemini test result: $result');
+        },
+      );
 
-  group('Gemini integration tests', () {
-    // Case B2: Gemini request returns output
-    test(
-      'can send request and receive response from Gemini',
-      () async {
-        final runner = ProviderSmokeRunner();
-        final result = await runner.runGeminiTest();
+      // Case B4: Gemini exact-response check
+      test(
+        'returns expected text from Gemini',
+        () async {
+          final result = geminiResult;
+          if (result == null) {
+            fail('Gemini result not available');
+          }
 
-        expect(result.provider, equals('gemini'));
-        expect(result.success, isTrue,
-            reason: 'Failed: ${result.errorMessage}');
-        expect(result.statusCode, equals(200));
-        expect(result.outputText, isNotNull);
-        expect(result.outputText, isNotEmpty);
-        expect(result.errorMessage, isNull);
+          expect(result.success, isTrue,
+              reason: 'Failed: ${result.errorMessage}');
 
-        // Log result for debugging
-        print('Gemini test result: $result');
-      },
-      skip: !geminiKeyPresent
-          ? 'TEST_GEMINI_API_KEY not set'
-          : null,
-    );
+          // Check if response contains or matches expected text (after trim)
+          final trimmedOutput = result.outputText?.trim().toLowerCase() ?? '';
+          expect(
+            trimmedOutput,
+            contains('gemini'),
+            reason: 'Expected response to contain "gemini", got: $trimmedOutput',
+          );
 
-    // Case B4: Gemini exact-response check
-    test(
-      'returns expected text from Gemini',
-      () async {
-        final runner = ProviderSmokeRunner();
-        final result = await runner.runGeminiTest();
-
-        expect(result.success, isTrue,
-            reason: 'Failed: ${result.errorMessage}');
-
-        // Check if response contains or matches expected text (after trim)
-        final trimmedOutput = result.outputText?.trim().toLowerCase() ?? '';
-        expect(
-          trimmedOutput,
-          contains('gemini'),
-          reason: 'Expected response to contain "gemini", got: $trimmedOutput',
-        );
-
-        print('Gemini response: ${result.outputText}');
-      },
-      skip: !geminiKeyPresent
-          ? 'TEST_GEMINI_API_KEY not set'
-          : null,
-    );
-  });
+          print('Gemini response: ${result.outputText}');
+        },
+      );
+    },
+    skip: !geminiKeyPresent ? 'TEST_GEMINI_API_KEY not set' : null,
+  );
 
   group('ProviderSmokeRunner', () {
     test(

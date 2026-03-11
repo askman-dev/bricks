@@ -105,7 +105,10 @@ class GeminiEnvConfig {
     final baseUrlStr = env['TEST_GEMINI_BASE_URL'] ??
         'https://generativelanguage.googleapis.com';
     final baseUrl = Uri.tryParse(baseUrlStr);
-    if (baseUrl == null) {
+    if (baseUrl == null ||
+        !baseUrl.isAbsolute ||
+        (baseUrl.scheme != 'http' && baseUrl.scheme != 'https') ||
+        baseUrl.host.isEmpty) {
       throw ConfigError(
         'Invalid TEST_GEMINI_BASE_URL: $baseUrlStr',
       );
