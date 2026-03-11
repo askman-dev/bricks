@@ -28,9 +28,11 @@ jobs:
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
       - name: Bootstrap dependencies
+        working-directory: ${{ github.workspace }}
         run: melos bootstrap
 
       - name: Run code analysis
+        working-directory: ${{ github.workspace }}
         run: melos analyze
 
   test:
@@ -52,9 +54,11 @@ jobs:
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
       - name: Bootstrap dependencies
+        working-directory: ${{ github.workspace }}
         run: melos bootstrap
 
       - name: Run unit tests
+        working-directory: ${{ github.workspace }}
         run: melos test -- --exclude-tags=integration
 
       - name: Log test results
