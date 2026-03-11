@@ -28,7 +28,9 @@ jobs:
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
       - name: Bootstrap workspace
-        run: melos bootstrap
+        run: |
+          dart pub get
+          melos bootstrap
 
       - name: Run code analysis
         run: melos analyze
@@ -52,7 +54,9 @@ jobs:
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
       - name: Bootstrap workspace
-        run: melos bootstrap
+        run: |
+          dart pub get
+          melos bootstrap
 
       - name: Run unit tests
         run: melos test -- --exclude-tags=integration
