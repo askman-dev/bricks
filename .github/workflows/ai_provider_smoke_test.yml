@@ -1,6 +1,12 @@
 name: AI Provider Smoke Tests
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/bricks_ai_smoke_test/**'
+      - '.github/workflows/ai_provider_smoke_test.yml'
   pull_request:
     paths:
       - 'packages/bricks_ai_smoke_test/**'
@@ -36,7 +42,7 @@ jobs:
         run: dart test --exclude-tags=integration
 
       - name: Run integration tests with real APIs
-        if: secrets.TEST_ANTHROPIC_API_KEY != '' || secrets.TEST_GEMINI_API_KEY != ''
+        if: ${{ secrets.TEST_ANTHROPIC_API_KEY != '' || secrets.TEST_GEMINI_API_KEY != '' }}
         working-directory: packages/bricks_ai_smoke_test
         env:
           TEST_ANTHROPIC_BASE_URL: ${{ vars.TEST_ANTHROPIC_BASE_URL }}
