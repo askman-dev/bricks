@@ -12,6 +12,9 @@ permissions:
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout repository
@@ -35,6 +38,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     needs: analyze
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout repository
