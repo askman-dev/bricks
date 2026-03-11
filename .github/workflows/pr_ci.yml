@@ -12,9 +12,6 @@ permissions:
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout repository
@@ -27,20 +24,20 @@ jobs:
 
       - name: Bootstrap workspace with Melos
         run: |
+          cd "$GITHUB_WORKSPACE"
           dart pub global activate melos
-          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.pub-cache/bin:$PATH"
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
           melos bootstrap
 
       - name: Run code analysis
-        run: melos analyze
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          melos analyze
 
   test:
     runs-on: ubuntu-latest
     needs: analyze
-    defaults:
-      run:
-        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout repository
@@ -53,13 +50,16 @@ jobs:
 
       - name: Bootstrap workspace with Melos
         run: |
+          cd "$GITHUB_WORKSPACE"
           dart pub global activate melos
-          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.pub-cache/bin:$PATH"
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
           melos bootstrap
 
       - name: Run unit tests
-        run: melos test -- --exclude-tags=integration
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          melos test -- --exclude-tags=integration
 
       - name: Log test results
         if: always()
