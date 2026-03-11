@@ -98,12 +98,6 @@ class AnthropicSmokeClient {
     return textBlock['text'] as String;
   }
 
-  /// Sanitize API key for safe logging.
-  String _sanitizeApiKey(String key) {
-    if (key.length <= 12) return '***';
-    return '${key.substring(0, 8)}...${key.substring(key.length - 4)}';
-  }
-
   /// Format error for user-friendly display.
   String _formatError(Object error) {
     if (error is http.ClientException) {

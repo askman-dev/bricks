@@ -1,7 +1,3 @@
-import 'dart:io';
-import 'package:bricks_ai_smoke_test/bricks_ai_smoke_test.dart';
-import 'package:test/test.dart';
-
 /// Integration tests for smoke testing AI providers.
 ///
 /// These tests require real API keys to be set in environment variables:
@@ -16,6 +12,12 @@ import 'package:test/test.dart';
 ///
 /// Tests are skipped if required environment variables are not set.
 @Tags(['integration'])
+library;
+
+import 'dart:io';
+import 'package:bricks_ai_smoke_test/bricks_ai_smoke_test.dart';
+import 'package:test/test.dart';
+
 void main() {
   final anthropicKeyPresent =
       Platform.environment['TEST_ANTHROPIC_API_KEY']?.isNotEmpty ?? false;
