@@ -69,6 +69,24 @@ Or follow the manual steps below:
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.x
 - [Melos](https://melos.invertase.dev/) (`dart pub global activate melos`)
+- [Node.js](https://nodejs.org/) ≥ 20.19.0 (for OpenSpec CLI)
+
+### OpenSpec
+
+This repository is initialized for OpenSpec with GitHub Copilot prompts and skills under `.github/` and project config under `openspec/`.
+
+Install the CLI locally if you want to refresh the setup or use the terminal workflow:
+
+```bash
+npm install -g @fission-ai/openspec@latest
+openspec init --tools github-copilot
+```
+
+Then start a spec-driven change with:
+
+```text
+/opsx:propose "your idea"
+```
 
 ### Bootstrap
 
