@@ -82,7 +82,7 @@ npm install -g @fission-ai/openspec@latest
 openspec init --tools github-copilot
 ```
 
-Then start a spec-driven change with:
+Then start a spec-driven change by creating a new OpenSpec proposal with:
 
 ```text
 /opsx:propose "your idea"
