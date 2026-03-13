@@ -12,6 +12,8 @@ dependencies:
     sdk: flutter
 
   # Bricks packages
+  agent_core:
+    path: ../../packages/agent_core
   agent_sdk_contract:
     path: ../../packages/agent_sdk_contract
   workspace_fs:
