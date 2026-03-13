@@ -26,6 +26,7 @@ dependencies:
     path: ../../packages/platform_bridge
   design_system:
     path: ../../packages/design_system
+  file_picker: ^6.1.1
 
 dev_dependencies:
   flutter_test:

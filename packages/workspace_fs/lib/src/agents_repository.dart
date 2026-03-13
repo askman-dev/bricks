@@ -1,74 +1,42 @@
-import 'dart:io';
-import 'path_validator.dart';
+import 'agents_repository_io.dart'
+    if (dart.library.html) 'agents_repository_web.dart' as impl;
 
-/// Persists and retrieves agent `.md` files within the agents directory.
+/// Persists and retrieves agent definitions across platforms.
 ///
-/// Each agent is stored as a single `<name>.md` file.
-/// The repository operates on raw file content; callers use
-/// [AgentFileCodec] from `chat_domain` to convert to/from
-/// [AgentDefinition] objects.
+/// On native platforms this uses the local filesystem; on Web it falls back
+/// to IndexedDB. Callers work with raw `.md` content and use
+/// `chat_domain`'s `AgentFileCodec` to convert to/from [AgentDefinition]
+/// objects.
 class AgentsRepository {
-  AgentsRepository({required String agentsPath}) : _agentsPath = agentsPath;
+  AgentsRepository({required String agentsPath})
+      : _delegate = impl.AgentsRepositoryDelegate(agentsPath);
 
-  final String _agentsPath;
+  final impl.AgentsRepositoryDelegate _delegate;
 
   /// Returns the file names (without extension) of all stored agents.
-  Future<List<String>> listAgentNames() async {
-    final dir = Directory(_agentsPath);
-    if (!await dir.exists()) return [];
-
-    final names = <String>[];
-    await for (final entity in dir.list()) {
-      if (entity is File && entity.path.endsWith('.md')) {
-        final filename = entity.path.split(Platform.pathSeparator).last;
-        names.add(filename.replaceAll('.md', ''));
-      }
-    }
-    return names;
-  }
+  Future<List<String>> listAgentNames() => _delegate.listAgentNames();
 
   /// Loads the raw `.md` content for the agent with the given [name].
   ///
   /// Returns `null` if the file does not exist.
   /// Throws [ArgumentError] if [name] contains path separators or `..`.
-  Future<String?> loadAgent(String name) async {
-    PathValidator.validateSegment(name, 'name');
-    final file = File('$_agentsPath${Platform.pathSeparator}$name.md');
-    if (!await file.exists()) return null;
-    return file.readAsString();
-  }
+  Future<String?> loadAgent(String name) => _delegate.loadAgent(name);
 
   /// Saves raw `.md` content for the agent with the given [name].
   ///
   /// Creates the agents directory if it does not exist.
   /// Throws [ArgumentError] if [name] contains path separators or `..`.
-  Future<void> saveAgent(String name, String content) async {
-    PathValidator.validateSegment(name, 'name');
-    final dir = Directory(_agentsPath);
-    if (!await dir.exists()) await dir.create(recursive: true);
-
-    final file = File('$_agentsPath${Platform.pathSeparator}$name.md');
-    await file.writeAsString(content);
-  }
+  Future<void> saveAgent(String name, String content) =>
+      _delegate.saveAgent(name, content);
 
   /// Deletes the agent file with the given [name].
   ///
   /// Does nothing if the file does not exist.
   /// Throws [ArgumentError] if [name] contains path separators or `..`.
-  Future<void> deleteAgent(String name) async {
-    PathValidator.validateSegment(name, 'name');
-    final file = File('$_agentsPath${Platform.pathSeparator}$name.md');
-    if (await file.exists()) {
-      await file.delete();
-    }
-  }
+  Future<void> deleteAgent(String name) => _delegate.deleteAgent(name);
 
   /// Returns `true` if an agent file with the given [name] already exists.
   ///
   /// Throws [ArgumentError] if [name] contains path separators or `..`.
-  Future<bool> exists(String name) async {
-    PathValidator.validateSegment(name, 'name');
-    final file = File('$_agentsPath${Platform.pathSeparator}$name.md');
-    return file.exists();
-  }
+  Future<bool> exists(String name) => _delegate.exists(name);
 }
