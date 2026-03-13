@@ -73,15 +73,21 @@ Or follow the manual steps below:
 
 ### OpenSpec
 
-This repository is initialized for OpenSpec with GitHub Copilot prompts and skills already committed under `.github/` and project config under `openspec/`.
+This repository is initialized for OpenSpec with checked-in tool integrations for GitHub Copilot, Codex, and Claude Code, plus project config under `openspec/`.
 
-You do not need to install OpenSpec just to use the checked-in Copilot prompts in this repository.
+Committed OpenSpec artifacts in this repository include:
+
+- `.github/` for GitHub Copilot prompts and skills
+- `.codex/` for Codex skills
+- `.claude/` for Claude Code commands and skills
+
+You do not need to install OpenSpec just to use these checked-in integrations in this repository.
 
 Install the CLI locally only if you want to refresh the setup or use the terminal workflow:
 
 ```bash
 npm install -g @fission-ai/openspec@latest
-openspec init --tools github-copilot
+openspec init --tools github-copilot,codex,claude
 ```
 
 Then start a spec-driven change by creating a new OpenSpec proposal with:
