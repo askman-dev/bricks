@@ -9,6 +9,8 @@ class Message {
     required this.id,
     required this.role,
     required this.content,
+    this.agentId,
+    this.agentName,
     DateTime? createdAt,
     List<Attachment>? attachments,
   })  : createdAt = createdAt ?? DateTime.now(),
@@ -20,12 +22,25 @@ class Message {
   final DateTime createdAt;
   final List<Attachment> attachments;
 
+  /// Identifier of the agent that produced this message.
+  ///
+  /// Corresponds to [AgentParticipant.agentId] from issue #24.
+  /// `null` for user messages or messages without agent attribution.
+  final String? agentId;
+
+  /// Display name of the agent that produced this message.
+  ///
+  /// `null` for user messages or messages without agent attribution.
+  final String? agentName;
+
   Map<String, Object?> toMap() => {
         'id': id,
         'role': role.name,
         'content': content,
         'created_at': createdAt.toIso8601String(),
         'attachments': attachments.map((a) => a.toMap()).toList(),
+        if (agentId != null) 'agent_id': agentId,
+        if (agentName != null) 'agent_name': agentName,
       };
 
   factory Message.fromMap(Map<String, Object?> map) {
@@ -38,6 +53,8 @@ class Message {
               ?.map((e) => Attachment.fromMap(e as Map<String, Object?>))
               .toList() ??
           [],
+      agentId: map['agent_id'] as String?,
+      agentName: map['agent_name'] as String?,
     );
   }
 }

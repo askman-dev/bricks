@@ -5,3 +5,4 @@
 library agent_core;
 
 export 'src/api/agent_core_client.dart';
+export 'src/session/participant_manager.dart';

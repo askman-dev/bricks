@@ -1,0 +1,72 @@
+module: multi_agent_session
+
+session_participant_management:
+  description: Verify that multiple agents can be added to, removed from, and configured within a single session.
+  given:
+    - description: A session exists with no agents participating.
+      when:
+        - description: The user adds an agent with a specified probability via session settings.
+          then:
+            - The agent appears in the participant list with the configured probability.
+            - The agent is enabled by default.
+        - description: The user adds a second agent to the same session.
+          then:
+            - Both agents appear in the participant list.
+            - Each agent retains its own independent probability setting.
+        - description: The user tries to add the same agent twice.
+          then:
+            - The system rejects the duplicate and the participant list remains unchanged.
+    - description: A session has multiple agents already participating.
+      when:
+        - description: The user disables an agent via the session settings checkbox.
+          then:
+            - The agent remains in the participant list but is marked as disabled.
+            - The disabled agent is excluded from proactive speaking decisions.
+        - description: The user removes an agent from the session.
+          then:
+            - The agent is no longer in the participant list.
+            - Remaining agents are unaffected.
+
+probability_based_proactive_speaking:
+  description: Verify that agents proactively speak based on their configured probability after a user message.
+  given:
+    - description: A session has agents with various probability settings (some high, some low, some disabled).
+      when:
+        - description: The user sends a message in the conversation.
+          then:
+            - Each enabled agent is independently evaluated based on its probability.
+            - An agent with probability 1.0 always speaks.
+            - An agent with probability 0.0 never speaks.
+            - A disabled agent never speaks regardless of probability.
+        - description: Multiple agents are triggered to speak simultaneously.
+          then:
+            - All triggered agents produce responses in the conversation.
+            - Each agent response is attributed to the correct agent via agent ID and name.
+
+probability_adjustment:
+  description: Verify that probability can be adjusted per agent within valid bounds.
+  given:
+    - description: An agent is participating in a session with an initial probability.
+      when:
+        - description: The user adjusts the probability via the slider to a new value between 0 and 100 percent.
+          then:
+            - The agent probability is updated to the new value.
+            - Future proactive speaking decisions use the updated probability.
+        - description: The user tries to set a probability outside the valid range.
+          then:
+            - The system rejects the invalid value.
+            - The previous probability remains unchanged.
+
+agent_message_attribution:
+  description: Verify that messages from agents are clearly attributed to identify which agent spoke.
+  given:
+    - description: Multiple agents are active in a session.
+      when:
+        - description: An agent produces a proactive response in the conversation.
+          then:
+            - The message includes the agent ID and agent name for display.
+            - The conversation history preserves the agent attribution for each message.
+        - description: The user reviews past messages in the conversation.
+          then:
+            - Each agent message shows a visual tag or avatar indicating which agent authored it.
+            - User messages remain unattributed (no agent ID).

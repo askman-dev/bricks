@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:agent_core/agent_core.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import 'package:test/test.dart';
@@ -71,4 +72,155 @@ void main() {
       expect(session.isRunning, isFalse);
     });
   });
+
+  group('ParticipantManager', () {
+    late ParticipantManager manager;
+
+    setUp(() => manager = ParticipantManager());
+
+    test('starts with no participants', () {
+      expect(manager.participants.participants, isEmpty);
+    });
+
+    test('addParticipant adds an agent', () {
+      manager.addParticipant(
+        const AgentParticipant(
+          agentId: 'analyst',
+          agentName: 'Analyst',
+          probability: 0.3,
+        ),
+      );
+      expect(manager.participants.participants, hasLength(1));
+      expect(
+        manager.participants.findById('analyst')!.probability,
+        equals(0.3),
+      );
+    });
+
+    test('addParticipant rejects duplicates', () {
+      manager.addParticipant(
+        const AgentParticipant(agentId: 'a', agentName: 'A'),
+      );
+      expect(
+        () => manager.addParticipant(
+          const AgentParticipant(agentId: 'a', agentName: 'A'),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('removeParticipant removes an agent', () {
+      manager.addParticipant(
+        const AgentParticipant(agentId: 'a', agentName: 'A'),
+      );
+      manager.removeParticipant('a');
+      expect(manager.participants.participants, isEmpty);
+    });
+
+    test('updateProbability changes probability', () {
+      manager.addParticipant(
+        const AgentParticipant(agentId: 'a', agentName: 'A', probability: 0.1),
+      );
+      manager.updateProbability('a', 0.7);
+      expect(manager.participants.findById('a')!.probability, equals(0.7));
+    });
+
+    test('updateProbability rejects out-of-range values', () {
+      manager.addParticipant(
+        const AgentParticipant(agentId: 'a', agentName: 'A'),
+      );
+      expect(() => manager.updateProbability('a', 1.5), throwsA(isA<RangeError>()));
+      expect(() => manager.updateProbability('a', -0.1), throwsA(isA<RangeError>()));
+    });
+
+    test('updateProbability throws for unknown agent', () {
+      expect(
+        () => manager.updateProbability('unknown', 0.5),
+        throwsArgumentError,
+      );
+    });
+
+    test('setEnabled toggles participant', () {
+      manager.addParticipant(
+        const AgentParticipant(agentId: 'a', agentName: 'A', isEnabled: true),
+      );
+      manager.setEnabled('a', false);
+      expect(manager.participants.findById('a')!.isEnabled, isFalse);
+      expect(manager.participants.active, isEmpty);
+    });
+
+    test('decideProactiveSpeakers returns agents based on probability', () {
+      // Use a deterministic random that always returns 0.25
+      final deterministicRandom = _FixedRandom(0.25);
+      final mgr = ParticipantManager(random: deterministicRandom);
+
+      mgr.addParticipant(
+        const AgentParticipant(
+          agentId: 'analyst',
+          agentName: 'Analyst',
+          probability: 0.3, // 0.25 < 0.3 → speaks
+        ),
+      );
+      mgr.addParticipant(
+        const AgentParticipant(
+          agentId: 'critic',
+          agentName: 'Critic',
+          probability: 0.1, // 0.25 >= 0.1 → does not speak
+        ),
+      );
+      mgr.addParticipant(
+        const AgentParticipant(
+          agentId: 'summarizer',
+          agentName: 'Summarizer',
+          isEnabled: false, // disabled → does not speak
+          probability: 1.0,
+        ),
+      );
+
+      final speakers = mgr.decideProactiveSpeakers();
+      expect(speakers, equals(['analyst']));
+    });
+
+    test('decideProactiveSpeakers always includes probability 1.0 agents', () {
+      final mgr = ParticipantManager();
+      mgr.addParticipant(
+        const AgentParticipant(
+          agentId: 'always',
+          agentName: 'Always',
+          probability: 1.0,
+        ),
+      );
+      // With probability 1.0, the agent should always speak.
+      final speakers = mgr.decideProactiveSpeakers();
+      expect(speakers, contains('always'));
+    });
+
+    test('decideProactiveSpeakers never includes probability 0.0 agents', () {
+      final mgr = ParticipantManager();
+      mgr.addParticipant(
+        const AgentParticipant(
+          agentId: 'silent',
+          agentName: 'Silent',
+          probability: 0.0,
+        ),
+      );
+      final speakers = mgr.decideProactiveSpeakers();
+      expect(speakers, isEmpty);
+    });
+  });
+}
+
+/// A [Random] that always returns a fixed value for [nextDouble].
+class _FixedRandom implements Random {
+  _FixedRandom(this._value);
+  final double _value;
+
+  @override
+  double nextDouble() => _value;
+
+  @override
+  int nextInt(int max) => 0;
+
+  @override
+  bool nextBool() => false;
 }
