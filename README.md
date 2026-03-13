@@ -69,6 +69,32 @@ Or follow the manual steps below:
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.x
 - [Melos](https://melos.invertase.dev/) (`dart pub global activate melos`)
+- [Node.js](https://nodejs.org/) ≥ 20.19.0 (for OpenSpec CLI)
+
+### OpenSpec
+
+This repository is initialized for OpenSpec with checked-in tool integrations for GitHub Copilot, Codex, and Claude Code, plus project config under `openspec/`.
+
+Committed OpenSpec artifacts in this repository include:
+
+- `.github/` for GitHub Copilot prompts and skills
+- `.codex/` for Codex skills
+- `.claude/` for Claude Code commands and skills
+
+You do not need to install OpenSpec just to use these checked-in integrations in this repository.
+
+Install the CLI locally only if you want to refresh the setup or use the terminal workflow:
+
+```bash
+npm install -g @fission-ai/openspec@latest
+openspec init --tools github-copilot,codex,claude
+```
+
+Then start a spec-driven change by creating a new OpenSpec proposal with:
+
+```text
+/opsx:propose "your idea"
+```
 
 ### Bootstrap
 

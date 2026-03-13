@@ -1,0 +1,16 @@
+schema: spec-driven
+context: |
+  Tech stack: Dart and Flutter monorepo managed with Melos.
+  The app entry point lives in apps/mobile_chat_app and shared packages live in packages/.
+  Validate repository changes from the repo root with `melos analyze` and `melos test`.
+  Natural-language use case specs belong in `tests/usecases/<module-name>.yaml`.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
