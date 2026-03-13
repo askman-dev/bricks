@@ -73,9 +73,11 @@ Or follow the manual steps below:
 
 ### OpenSpec
 
-This repository is initialized for OpenSpec with GitHub Copilot prompts and skills under `.github/` and project config under `openspec/`.
+This repository is initialized for OpenSpec with GitHub Copilot prompts and skills already committed under `.github/` and project config under `openspec/`.
 
-Install the CLI locally if you want to refresh the setup or use the terminal workflow:
+You do not need to install OpenSpec just to use the checked-in Copilot prompts in this repository.
+
+Install the CLI locally only if you want to refresh the setup or use the terminal workflow:
 
 ```bash
 npm install -g @fission-ai/openspec@latest
