@@ -41,4 +41,20 @@ class PlatformPathsImpl implements PlatformPaths {
     final docs = await documentsDirectory();
     return '$docs/Bricks';
   }
+
+  @override
+  Future<String> agentsDirectory() async {
+    if (Platform.isMacOS) {
+      return '${Platform.environment['HOME']}/Library/Application Support/bricks/agents';
+    }
+    if (Platform.isLinux) {
+      return '${Platform.environment['HOME']}/.local/share/bricks/agents';
+    }
+    if (Platform.isWindows) {
+      return '${Platform.environment['LOCALAPPDATA']}\\bricks\\agents';
+    }
+    throw UnsupportedError(
+      'agentsDirectory is not supported on this platform.',
+    );
+  }
 }

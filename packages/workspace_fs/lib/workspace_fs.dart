@@ -4,6 +4,7 @@
 /// workspaces, projects, resources, conversations, and app config.
 library workspace_fs;
 
+export 'src/agents_repository.dart';
 export 'src/workspace_locator.dart';
 export 'src/workspace_repository.dart';
 export 'src/resources_repository.dart';
