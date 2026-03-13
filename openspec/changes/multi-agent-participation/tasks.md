@@ -14,13 +14,13 @@
 
 ## UI Layer
 
-- [ ] Create `SessionSettingsPage` Flutter widget in `apps/mobile_chat_app` with agent participant list
-- [ ] Implement `AgentParticipantTile` with enable/disable checkbox and probability slider (0–100%)
-- [ ] Wire session settings page to `SessionCoordinator` (read participants, call `setEnabled` / `updateProbability`)
-- [ ] Add navigation entry point: Session → Settings → Agent Participants
-- [ ] Display agent attribution in conversation message list (avatar/chip when `agentId` is non-null)
+- [x] Create `SessionSettingsPage` Flutter widget in `apps/mobile_chat_app` with agent participant list
+- [x] Implement `AgentParticipantTile` with enable/disable checkbox and probability slider (0–100%)
+- [x] Wire session settings page to `SessionCoordinator` (read participants, call `setEnabled` / `updateProbability`)
+- [x] Add navigation entry point: Session → Settings → Agent Participants
+- [x] Display agent attribution in conversation message list (avatar/chip when `agentId` is non-null)
 
 ## Integration
 
-- [ ] Integrate `ParticipantManager.decideProactiveSpeakers()` into the chat session dispatch after each user message
-- [ ] For each decided speaker, invoke the agent session and emit attributed `Message` with `agentId`/`agentName`
+- [x] Integrate `ParticipantManager.decideProactiveSpeakers()` into the chat session dispatch after each user message
+- [x] For each decided speaker, invoke the agent session and emit attributed `Message` with `agentId`/`agentName`
