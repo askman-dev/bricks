@@ -37,6 +37,48 @@ void main() {
         equals('resources/avatar.png'),
       );
     });
+
+    test('agent attribution fields are optional', () {
+      final msg = Message(
+        id: 'msg-3',
+        role: MessageRole.user,
+        content: 'No agent',
+      );
+      expect(msg.agentId, isNull);
+      expect(msg.agentName, isNull);
+      // toMap should NOT include null agent fields
+      final map = msg.toMap();
+      expect(map.containsKey('agent_id'), isFalse);
+      expect(map.containsKey('agent_name'), isFalse);
+    });
+
+    test('toMap / fromMap round-trip with agent attribution', () {
+      final msg = Message(
+        id: 'msg-4',
+        role: MessageRole.assistant,
+        content: 'Agent response',
+        agentId: 'analyst',
+        agentName: 'Analyst',
+      );
+      expect(msg.agentId, equals('analyst'));
+      expect(msg.agentName, equals('Analyst'));
+
+      final restored = Message.fromMap(msg.toMap());
+      expect(restored.agentId, equals('analyst'));
+      expect(restored.agentName, equals('Analyst'));
+    });
+
+    test('fromMap handles missing agent fields gracefully', () {
+      final map = {
+        'id': 'msg-5',
+        'role': 'assistant',
+        'content': 'Legacy message',
+        'created_at': DateTime.now().toIso8601String(),
+      };
+      final msg = Message.fromMap(map);
+      expect(msg.agentId, isNull);
+      expect(msg.agentName, isNull);
+    });
   });
 
   group('Conversation', () {
