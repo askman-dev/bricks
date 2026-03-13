@@ -13,4 +13,7 @@ class PlatformPathsImpl implements PlatformPaths {
 
   @override
   Future<String> bricksRootDirectory() => Future.value('');
+
+  @override
+  Future<String> agentsDirectory() => Future.value('');
 }

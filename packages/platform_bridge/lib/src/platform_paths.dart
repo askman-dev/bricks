@@ -11,4 +11,14 @@ abstract interface class PlatformPaths {
 
   /// Returns the absolute path used as the Bricks root directory.
   Future<String> bricksRootDirectory();
+
+  /// Returns the absolute path to the directory where agent `.md` files
+  /// are stored.
+  ///
+  /// Platform-specific:
+  /// - macOS: `~/Library/Application Support/bricks/agents/`
+  /// - Linux: `~/.local/share/bricks/agents/`
+  /// - Windows: `%LOCALAPPDATA%\bricks\agents\`
+  /// - Web: empty string (uses IndexedDB instead)
+  Future<String> agentsDirectory();
 }
