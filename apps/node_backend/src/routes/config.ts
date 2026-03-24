@@ -34,6 +34,11 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    // Validate config is a plain, non-null object
+    if (typeof config !== 'object' || config === null || Array.isArray(config)) {
+      res.status(400).json({ error: 'Invalid config: must be a non-null object' });
+      return;
+    }
     const apiConfig = await createApiConfig(userId, {
       category,
       provider,
