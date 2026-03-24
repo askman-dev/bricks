@@ -18,13 +18,28 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet());
 
 // CORS configuration
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || '*',
-    credentials: true,
-  })
-);
+const corsOrigin = process.env.CORS_ORIGIN || '*';
+const corsOptions =
+  corsOrigin === '*'
+    ? {
+        origin: '*',
+        credentials: false,
+      }
+    : {
+        origin: (origin, callback) => {
+          const allowedOrigins = corsOrigin.split(',').map((o) => o.trim());
+          if (!origin) {
+            return callback(null, false);
+          }
+          if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+          return callback(new Error('Not allowed by CORS'), false);
+        },
+        credentials: true,
+      };
 
+app.use(cors(corsOptions));
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
