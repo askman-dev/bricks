@@ -254,21 +254,28 @@ export async function deleteApiConfig(
 }
 
 // Helper to decrypt API config
-function decryptApiConfig(config: ApiConfig): ApiConfig {
-  const decrypted = { ...config };
+function decryptApiConfig<T extends { config?: unknown }>(config: T): T {
+  const decrypted: T & { config?: unknown } = { ...config };
 
-  if (decrypted.config && typeof decrypted.config === 'string') {
-    decrypted.config = JSON.parse(decrypted.config as unknown as string);
-  }
-
-  if (decrypted.config?.api_key && typeof decrypted.config.api_key === 'string') {
+  if (typeof decrypted.config === 'string') {
     try {
-      decrypted.config.api_key = decrypt(decrypted.config.api_key);
+      decrypted.config = JSON.parse(decrypted.config);
     } catch (error) {
-      console.error('Failed to decrypt API key:', error);
-      // Keep encrypted value if decryption fails
+      console.error('Failed to parse config JSON:', error);
+      // If parsing fails, leave config as the original string
     }
   }
 
+  if (decrypted.config && typeof decrypted.config === 'object') {
+    const cfg = decrypted.config as { [key: string]: unknown };
+    if (typeof cfg.api_key === 'string') {
+      try {
+        cfg.api_key = decrypt(cfg.api_key);
+      } catch (error) {
+        console.error('Failed to decrypt API key:', error);
+        // Keep encrypted value if decryption fails
+      }
+    }
+  }
   return decrypted;
 }
