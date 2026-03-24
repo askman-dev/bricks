@@ -127,7 +127,17 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 
     if (category !== undefined) updates.category = category;
     if (provider !== undefined) updates.provider = provider;
-    if (config !== undefined) updates.config = config;
+    if (config !== undefined) {
+      if (
+        config === null ||
+        typeof config !== 'object' ||
+        Array.isArray(config)
+      ) {
+        res.status(400).json({ error: 'Invalid config: must be an object' });
+        return;
+      }
+      updates.config = config as Record<string, unknown>;
+    }
     if (is_default !== undefined) updates.is_default = is_default;
 
     const updatedConfig = await updateApiConfig(userId, id, updates);
