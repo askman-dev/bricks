@@ -101,18 +101,20 @@ async function startServer() {
   }
 }
 
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  process.exit(0);
-});
+// Handle graceful shutdown and start server only when run directly
+if (require.main === module) {
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully...');
+    process.exit(0);
+  });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully...');
-  process.exit(0);
-});
+  process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully...');
+    process.exit(0);
+  });
 
-// Start the server
-startServer();
+  // Start the server
+  startServer();
+}
 
 export default app;
