@@ -12,6 +12,13 @@ interface GitHubUser {
   email: string;
 }
 
+interface GitHubEmail {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+  visibility: string | null;
+}
+
 interface GitHubTokenResponse {
   access_token: string;
   token_type: string;
@@ -91,11 +98,29 @@ router.get('/github/callback', async (req: Request, res: Response) => {
 
     const githubUser = userResponse.data;
 
+    // Get GitHub user emails to find the primary verified email
+    const emailsResponse = await axios.get<GitHubEmail[]>(
+      'https://api.github.com/user/emails',
+      {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    const primaryEmail = emailsResponse.data.find(e => e.primary && e.verified)?.email
+      ?? emailsResponse.data.find(e => e.verified)?.email
+      ?? null;
+
     // Find or create user in our database
     const user = await findOrCreateUserByOAuth(
       'github',
       githubUser.id.toString(),
-      access_token
+      access_token,
+      undefined,
+      undefined,
+      primaryEmail ?? undefined
     );
 
     // Generate JWT token
@@ -106,6 +131,7 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       token,
       user: {
         id: user.id,
+        email: user.email ?? null,
         created_at: user.created_at,
       },
     });
@@ -141,6 +167,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
     res.json({
       user: {
         id: user.id,
+        email: user.email ?? null,
         created_at: user.created_at,
         updated_at: user.updated_at,
       },

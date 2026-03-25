@@ -8,7 +8,6 @@ export interface AuthRequest extends Request {
 interface JWTPayload {
   userId: string;
   iat?: number;
-  exp?: number;
 }
 
 function getJWTSecret(): string {
@@ -23,8 +22,7 @@ function getJWTSecret(): string {
 export function generateToken(userId: string): string {
   return jwt.sign(
     { userId },
-    getJWTSecret(),
-    { expiresIn: '7d' }
+    getJWTSecret()
   );
 }
 
@@ -51,8 +49,6 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
       res.status(401).json({ error: 'Invalid token' });
-    } else if (error instanceof jwt.TokenExpiredError) {
-      res.status(401).json({ error: 'Token expired' });
     } else {
       res.status(500).json({ error: 'Internal server error' });
     }
