@@ -1,0 +1,95 @@
+module: deployment_vercel
+
+unified_same_domain_deployment:
+  description: >
+    Validate and implement a unified Vercel deployment so that the Flutter Web frontend
+    and the Node.js backend are both served from the same domain (bricks.askman.dev),
+    with the frontend at the root path and the backend API under /api/*.
+  given:
+    - description: >
+        The repository has no root-level vercel.json. The frontend is currently deployed
+        via a GitHub Pages workflow that builds Flutter Web from apps/mobile_chat_app and
+        publishes the build output at apps/mobile_chat_app/build/web. The backend lives
+        in apps/node_backend and starts as a traditional Express service using app.listen(),
+        including database connection checks and auto-migrations. A separate vercel.json
+        already exists at apps/node_backend/vercel.json for independent backend deployment.
+      when:
+        - description: >
+            A developer proposes adding a root-level vercel.json that routes /api/* to
+            apps/node_backend/src/index.ts and /* to apps/mobile_chat_app/web/index.html,
+            and also proposes deleting apps/node_backend/vercel.json immediately.
+          then:
+            - The proposal is flagged as unsafe because the backend entry point uses app.listen() and is not a Vercel-compatible serverless handler.
+            - The proposal is flagged as inaccurate because apps/mobile_chat_app/web/index.html is a Flutter source file, not the build artifact; the correct deployable path is apps/mobile_chat_app/build/web.
+            - Deletion of apps/node_backend/vercel.json is blocked until a replacement deployment path is fully validated in production.
+            - The GitHub Pages workflow is identified as the current production frontend path and must remain active until a verified Vercel alternative is in place.
+
+    - description: >
+        A phase-1 verification task is started to check whether the Node.js backend
+        can be adapted for Vercel's serverless runtime without breaking the existing
+        database initialisation and migration logic.
+      when:
+        - description: The backend entry point is inspected for Vercel compatibility.
+          then:
+            - The app.listen() call is identified as incompatible with Vercel's serverless invocation model.
+            - A serverless adapter or conditional startup path is required before the backend can be routed through Vercel.
+            - The existing apps/node_backend/vercel.json is preserved as the fallback deployment configuration during this investigation.
+        - description: The Flutter Web build pipeline is tested in a non-local CI environment.
+          then:
+            - The build output directory is confirmed to be apps/mobile_chat_app/build/web.
+            - Any Flutter SDK installation step required in the Vercel build environment is identified and documented.
+            - The build command and output path are verified before a root-level vercel.json is drafted.
+
+    - description: >
+        Phase-1 verification passes and a unified deployment design is ready for phase-2 staging.
+      when:
+        - description: A Vercel Preview deployment is created using the drafted root-level configuration.
+          then:
+            - "`https://bricks.askman.dev/` loads the Flutter Web homepage from the build output."
+            - "`https://bricks.askman.dev/api/health` returns HTTP 200."
+            - GitHub OAuth login completes successfully using the preview-specific callback URL.
+            - No sensitive environment variable appears in the client-side Flutter Web bundle.
+            - The /api/* route is not intercepted by the Flutter Web SPA fallback handler.
+        - description: The Vercel Preview environment is validated and production cutover is authorised.
+          then:
+            - "DNS is updated with `CNAME bricks` pointing to `cname.vercel-dns.com`."
+            - "The GitHub OAuth App production callback URL is set to `https://bricks.askman.dev/api/auth/github/callback`."
+            - All required production environment variables are configured in the Vercel Dashboard before the first production deployment.
+            - The GitHub Pages deployment remains active in parallel until the Vercel production deployment passes all health checks.
+            - apps/node_backend/vercel.json is removed only after the unified deployment has been confirmed stable for at least one full deployment cycle.
+            - The GitHub Pages workflow is retired only after the Vercel-hosted frontend is confirmed to be the sole active production path.
+
+environment_variable_boundary:
+  description: >
+    Ensure that sensitive server-side environment variables are never exposed to the
+    Flutter Web client bundle when the frontend and backend share a single Vercel project.
+  given:
+    - description: >
+        A unified Vercel project is configured and environment variables are being set
+        for both the frontend build step and the backend runtime.
+      when:
+        - description: A developer sets DATABASE_URL, JWT_SECRET, ENCRYPTION_KEY, or GITHUB_CLIENT_SECRET in the Vercel project environment.
+          then:
+            - These variables are scoped to the server-side runtime only and are not injected into the Flutter Web build process.
+            - The Flutter Web client bundle does not contain any of these values after a successful build.
+        - description: A developer needs to pass GITHUB_CLIENT_ID to the frontend.
+          then:
+            - GITHUB_CLIENT_ID is explicitly approved as a publicly safe value and is documented in the environment variable boundary table.
+            - Any additional variable intended for the frontend must be individually reviewed and approved before being added to the build environment.
+
+rollback_procedure:
+  description: >
+    Verify that the system can be safely restored to the pre-Vercel deployment state
+    if the unified deployment fails or causes regressions.
+  given:
+    - description: >
+        A unified Vercel production deployment has been attempted but health checks fail
+        or the GitHub OAuth callback is broken.
+      when:
+        - description: The rollback procedure is invoked.
+          then:
+            - The GitHub Pages deployment is confirmed active because the gh-pages branch was not deleted during the migration.
+            - The apps/node_backend/vercel.json file is intact, allowing the independent backend Vercel project to be re-deployed without reconfiguration.
+            - DNS is reverted to the previous CNAME target.
+            - The GitHub OAuth App callback URL is restored to the previous value.
+            - No data loss occurs as a result of the rollback.
