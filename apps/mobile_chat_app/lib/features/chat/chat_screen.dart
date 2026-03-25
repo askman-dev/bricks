@@ -9,7 +9,7 @@ import 'package:workspace_fs/workspace_fs.dart';
 
 import '../agents/agents_screen.dart';
 import '../session/session_settings_page.dart';
-import '../services/agents_repository_factory.dart';
+import '../../services/agents_repository_factory.dart';
 import 'chat_message.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
@@ -289,7 +289,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _openAgentsScreen() async {
     final updated = await Navigator.push<AgentDefinition?>(
       context,
-      MaterialPageRoute<void>(builder: (_) => const AgentsScreen()),
+      MaterialPageRoute<AgentDefinition?>(builder: (_) => const AgentsScreen()),
     );
     await _reloadAgents();
     if (updated != null) {

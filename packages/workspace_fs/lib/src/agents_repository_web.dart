@@ -36,9 +36,15 @@ class AgentsRepositoryDelegate {
     final db = await _openDb();
     final txn = db.transaction(_storeName, 'readonly');
     final store = txn.objectStore(_storeName);
-    final keys = await store.getAllKeys();
+    final keys = <String>[];
+    await for (final cursor in store.openCursor(autoAdvance: true)) {
+      final key = cursor.key;
+      if (key is String) {
+        keys.add(key);
+      }
+    }
     await txn.completed;
-    return keys.whereType<String>().toList();
+    return keys;
   }
 
   Future<String?> loadAgent(String name) async {

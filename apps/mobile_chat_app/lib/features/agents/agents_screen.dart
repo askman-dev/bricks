@@ -6,7 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
-import '../services/agents_repository_factory.dart';
+import '../../services/agents_repository_factory.dart';
 
 /// Screen for viewing and managing sub-agents.
 class AgentsScreen extends StatefulWidget {

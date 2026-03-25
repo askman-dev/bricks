@@ -2,11 +2,12 @@
 class PathValidator {
   const PathValidator._();
 
-  /// Throws [ArgumentError] if [value] is empty, contains path separators,
-  /// or contains `..`.
+  /// Throws [ArgumentError] if [value] is empty, contains `/` or `\`
+  /// path separators, or equals `..` exactly.
   ///
-  /// Checks both the platform-specific separator and the POSIX `/` separator
-  /// to guard against cross-platform path traversal attempts.
+  /// Both `/` and `\` are checked regardless of the current platform to
+  /// prevent cross-platform path traversal attempts. The `..` check uses
+  /// exact equality so names like `my..workspace` are still accepted.
   static void validateSegment(String value, String paramName) {
     if (value.isEmpty) {
       throw ArgumentError.value(
