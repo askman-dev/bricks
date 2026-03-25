@@ -6,6 +6,7 @@ import 'chat_message.dart';
 import 'widgets/message_list.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/agent_selector.dart';
+import '../session/model_selection_dialog.dart';
 import '../session/session_settings_page.dart';
 
 /// The main chat screen – the app's entry point.
@@ -34,6 +35,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// The currently selected agent ID for processing messages.
   String? _selectedAgentId;
+
+  /// The AI model selected for this session.
+  String _selectedModel = kGeminiModels.first;
 
   /// Session name displayed in the top bar.
   final String _sessionName = 'New Session';
@@ -221,7 +225,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _openSessionSettings() {
+  void _openMultiAgentSettings() {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
@@ -240,6 +244,16 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
     });
+  }
+
+  Future<void> _openModelSelection() async {
+    final model = await showDialog<String>(
+      context: context,
+      builder: (_) => ModelSelectionDialog(currentModel: _selectedModel),
+    );
+    if (model != null && mounted) {
+      setState(() => _selectedModel = model);
+    }
   }
 
   void _onAgentSelected(String agentId) {
@@ -276,10 +290,27 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.people_outline),
+          PopupMenuButton<_SessionMenu>(
+            icon: const Icon(Icons.settings_outlined),
             tooltip: 'Session Settings',
-            onPressed: _openSessionSettings,
+            onSelected: (item) {
+              switch (item) {
+                case _SessionMenu.model:
+                  _openModelSelection();
+                case _SessionMenu.multiAgent:
+                  _openMultiAgentSettings();
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: _SessionMenu.model,
+                child: Text('Model Settings'),
+              ),
+              PopupMenuItem(
+                value: _SessionMenu.multiAgent,
+                child: Text('Multi-Agent Settings'),
+              ),
+            ],
           ),
         ],
       ),
@@ -296,3 +327,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+/// Menu items for the session settings popup.
+enum _SessionMenu { model, multiAgent }
