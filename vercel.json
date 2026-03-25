@@ -1,0 +1,14 @@
+{
+  "framework": null,
+  "outputDirectory": "apps/mobile_chat_app/build/web",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
