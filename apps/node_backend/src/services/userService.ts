@@ -2,6 +2,7 @@ import pool from '../db/index.js';
 
 export interface User {
   id: string;
+  email?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -23,7 +24,8 @@ export async function findOrCreateUserByOAuth(
   providerUserId: string,
   accessToken?: string,
   refreshToken?: string,
-  expiresAt?: Date
+  expiresAt?: Date,
+  email?: string
 ): Promise<User> {
   const client = await pool.connect();
 
@@ -50,10 +52,18 @@ export async function findOrCreateUserByOAuth(
           [accessToken, refreshToken, expiresAt, provider, providerUserId]
         );
       }
+
+      if (email) {
+        await client.query(
+          'UPDATE users SET email = $1 WHERE id = $2 AND (email IS NULL OR email != $1)',
+          [email, userId]
+        );
+      }
     } else {
       // Create new user
       const userResult = await client.query(
-        'INSERT INTO users DEFAULT VALUES RETURNING *'
+        'INSERT INTO users (email) VALUES ($1) RETURNING *',
+        [email ?? null]
       );
       userId = userResult.rows[0].id;
 
