@@ -1,0 +1,28 @@
+module: session_model_selection
+
+model_selection_dropdown:
+  description: Verify that the session settings dropdown allows the user to switch the AI model for the current session.
+  given:
+    - description: The user is on the chat screen with the session settings icon visible in the AppBar.
+      when:
+        - description: The user taps the session settings icon.
+          then:
+            - A dropdown menu appears with a "Model Settings" option and a "Multi-Agent Settings" option.
+        - description: The user selects "Model Settings" from the dropdown.
+          then:
+            - A model selection dialog opens showing the three hard-coded Gemini 3.x model IDs.
+            - The dialog pre-selects the currently active model.
+        - description: The user taps a different model in the model selection dialog and confirms with the "Select" button.
+          then:
+            - The dialog closes and the selected model becomes the active model for the session.
+        - description: The user taps "Cancel" in the model selection dialog.
+          then:
+            - The dialog closes without changing the active model.
+        - description: The user selects "Multi-Agent Settings" from the dropdown.
+          then:
+            - The app navigates to the existing session settings page for configuring agent participants.
+    - description: The model selection dialog is open with the default model pre-selected.
+      when:
+        - description: The user reviews the available models.
+          then:
+            - The dialog lists exactly three models in this order: gemini-3.1-pro-preview, gemini-3.1-flash-lite-preview, and gemini-3-flash-preview.
