@@ -3,7 +3,7 @@
   "name": "bricks-backend",
   "builds": [
     {
-      "src": "src/index.ts",
+      "src": "api/index.ts",
       "use": "@vercel/node",
       "config": {
         "includeFiles": ["src/**/*.ts", "src/db/migrations/*.sql"]
@@ -13,7 +13,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "src/index.ts"
+      "dest": "api/index.ts"
     }
   ],
   "env": {
