@@ -1,3 +1,20 @@
-// Vercel serverless entry point for the backend.
-// Exports the Express app for @vercel/node to use as a serverless handler.
-export { default } from '../src/app.js';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+type AppHandler = (req: VercelRequest, res: VercelResponse) => void | Promise<void>;
+
+let appHandlerPromise: Promise<AppHandler> | null = null;
+
+const loadAppHandler = async (): Promise<AppHandler> => {
+  if (!appHandlerPromise) {
+    appHandlerPromise = Function('p', 'return import(p)')('../src/app.js').then(
+      (mod: { default: AppHandler }) => mod.default,
+    );
+  }
+
+  return appHandlerPromise;
+};
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const app = await loadAppHandler();
+  return app(req, res);
+}
