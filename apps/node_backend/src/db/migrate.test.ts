@@ -138,6 +138,35 @@ CREATE INDEX idx_foo ON foo(id);
     expect(stmts[0]).toContain('TEXT');
   });
 
+  it('rewrites ADD COLUMN IF NOT EXISTS to ADD COLUMN for Turso compatibility', () => {
+    const sql = `ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255);`;
+    const stmts = adaptMigrationForSqlite(sql);
+    expect(stmts).toHaveLength(1);
+    expect(stmts[0]).not.toMatch(/IF NOT EXISTS/i);
+    expect(stmts[0]).toMatch(/ALTER TABLE users ADD COLUMN email VARCHAR/i);
+  });
+
+  it('correctly adapts 004_add_user_email.sql for Turso', () => {
+    const migration004 = `-- Migration: Add email column to users table
+-- Description: Stores the primary verified email fetched from GitHub OAuth
+-- Version: 004
+-- Date: 2026-03-25
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
+`;
+
+    const stmts = adaptMigrationForSqlite(migration004);
+
+    // Should produce exactly 2 statements
+    expect(stmts).toHaveLength(2);
+    // IF NOT EXISTS stripped from ALTER TABLE ADD COLUMN
+    expect(stmts[0]).not.toMatch(/IF NOT EXISTS/i);
+    expect(stmts[0]).toMatch(/ALTER TABLE users ADD COLUMN email VARCHAR/i);
+    // CREATE UNIQUE INDEX IF NOT EXISTS is valid SQLite and should be kept as-is
+    expect(stmts[1]).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email/i);
+  });
+
   // -------------------------------------------------------------------------
   // Multi-statement splitting
   // -------------------------------------------------------------------------
