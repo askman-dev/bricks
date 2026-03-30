@@ -29,6 +29,12 @@ interface GitHubTokenResponse {
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+// GITHUB_CALLBACK_URL must include the full /api prefix that the router is mounted under.
+// This router is mounted at both /api/auth and /api in app.ts, so the effective callback
+// paths are /api/auth/github/callback and /api/github/callback.
+// Correct examples:
+//   Local:      http://localhost:3000/api/auth/github/callback
+//   Production: https://your-domain.com/api/auth/github/callback
 const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
 
 /** Name of the HttpOnly cookie used to store the CSRF state nonce. */
