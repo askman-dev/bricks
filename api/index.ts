@@ -1,9 +1,20 @@
-// Root-level Vercel serverless entry for the unified monorepo deployment.
-// Vercel auto-detects files in the root api/ directory as serverless functions.
-// All /api/* requests are rewritten here (see root vercel.json).
-//
-// Note: apps/node_backend/api/index.ts is a separate entry used when deploying
-// only the backend standalone (via apps/node_backend/vercel.json).
-import app from '../apps/node_backend/src/app.js';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default app;
+type AppHandler = (req: VercelRequest, res: VercelResponse) => void | Promise<void>;
+
+let appHandlerPromise: Promise<AppHandler> | null = null;
+
+const loadAppHandler = async (): Promise<AppHandler> => {
+  if (!appHandlerPromise) {
+    appHandlerPromise = Function('p', 'return import(p)')('../apps/node_backend/src/app.js').then(
+      (mod: { default: AppHandler }) => mod.default,
+    );
+  }
+
+  return appHandlerPromise;
+};
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const app = await loadAppHandler();
+  return app(req, res);
+}
