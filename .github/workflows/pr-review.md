@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: read
 
 engine:
   id: copilot
@@ -39,8 +40,8 @@ timeout-minutes: 10
 You are reviewing pull request #${{ github.event.pull_request.number }} in the Bricks monorepo.
 
 **PR title**: "${{ github.event.pull_request.title }}"
-**Author**: @${{ github.event.pull_request.user.login }}
-**Base branch**: `${{ github.event.pull_request.base.ref }}`
+**Author**: @${{ github.actor }}
+**Base commit**: `${{ github.event.pull_request.base.sha }}`
 
 ## Your Task
 
