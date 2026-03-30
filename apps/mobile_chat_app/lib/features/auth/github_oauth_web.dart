@@ -1,6 +1,6 @@
-// ignore_for_file: deprecated_member_use
-
 import 'dart:async';
+// TODO(migrate): Switch from `dart:html` to `package:web` + `dart:js_interop`.
+// ignore: deprecated_member_use
 import 'dart:html' as html;
 
 Future<String?> performGitHubOAuth() async {
