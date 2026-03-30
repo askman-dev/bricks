@@ -68,6 +68,25 @@ persist_shell_path_hint() {
   fi
 }
 
+ensure_flutter_shims() {
+  local flutter_bin="$1"
+  local shim_dir="$HOME/.local/bin"
+
+  mkdir -p "$shim_dir"
+
+  if [[ -x "$flutter_bin/flutter" ]]; then
+    ln -snf "$flutter_bin/flutter" "$shim_dir/flutter"
+  fi
+
+  if [[ -x "$flutter_bin/dart" ]]; then
+    ln -snf "$flutter_bin/dart" "$shim_dir/dart"
+  fi
+
+  append_to_path_if_dir "$shim_dir"
+  print_step "Created/updated Flutter shims in: $shim_dir"
+  print_step "If needed, add shims to your shell profile: export PATH=\"$shim_dir:\$PATH\""
+}
+
 install_flutter_if_missing() {
   if command_exists flutter; then
     return
@@ -90,6 +109,7 @@ install_flutter_if_missing() {
 
   append_to_path_if_dir "$FLUTTER_HOME/bin"
   persist_shell_path_hint "$FLUTTER_HOME/bin"
+  ensure_flutter_shims "$FLUTTER_HOME/bin"
 
   ensure_cmd flutter "Flutter installation failed."
   print_success "Flutter installed successfully"
@@ -157,6 +177,11 @@ show_next_steps() {
     echo "  4. Build web:    cd apps/mobile_chat_app && flutter run -d chrome"
     echo "  5. Full build:   ./build.sh"
     echo ""
+    echo "Environment notes:"
+    echo "  - This script creates ~/.local/bin/flutter and ~/.local/bin/dart shims."
+    echo "  - If flutter/dart are missing in new shells, add: export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo "  - UI integration tests require a runnable target (e.g. Chrome/Android/iOS)."
+    echo ""
     echo "For more information, see:"
     echo "  - README.md"
     echo "  - BUILD.md"
@@ -207,6 +232,7 @@ main() {
     # Install Flutter if missing
     install_flutter_if_missing
     append_to_path_if_dir "$FLUTTER_HOME/bin"
+    ensure_flutter_shims "$FLUTTER_HOME/bin"
 
     # Verify Flutter and Dart are available
     ensure_cmd flutter "Install Flutter SDK >= 3.x and ensure it is in PATH."
