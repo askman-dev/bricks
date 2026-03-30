@@ -13,7 +13,7 @@ const app = express();
 
 // Only enable trust proxy when running behind Vercel (or another trusted proxy),
 // so non-proxied environments keep the safer default behavior.
-if (process.env.VERCEL === '1' || process.env.VERCEL_ENV) {
+if (process.env.VERCEL || process.env.VERCEL_ENV) {
   app.set('trust proxy', 1);
 }
 
