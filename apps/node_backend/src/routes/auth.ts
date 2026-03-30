@@ -110,14 +110,26 @@ function buildPopupResponse(res: Response, token: string, returnOrigin: string):
       (function () {
         var token = ${escapedToken};
         var returnOrigin = ${escapedOrigin};
+        // PRIMARY: BroadcastChannel – works even when window.opener is severed by
+        // the OAuth provider's Cross-Origin-Opener-Policy (COOP) headers, because
+        // BroadcastChannel is scoped to the origin rather than the browsing-context
+        // group.  This is the most reliable delivery path.
+        try {
+          var bc = new BroadcastChannel('bricks:github-auth');
+          bc.postMessage({ type: 'bricks:github-auth', token: token });
+          bc.close();
+          window.close();
+          return;
+        } catch (bcErr) {
+          // BroadcastChannel unavailable (very old browser); fall through.
+        }
+        // SECONDARY: postMessage via window.opener (works when opener is not severed).
         if (window.opener) {
           window.opener.postMessage({ type: 'bricks:github-auth', token: token }, returnOrigin);
           window.close();
           return;
         }
-        // window.opener was severed by the OAuth provider's Cross-Origin-Opener-Policy
-        // headers. Write the token to localStorage so the parent tab can receive it
-        // via a storage event, then close this popup.
+        // TERTIARY: localStorage – parent tab polls / listens for storage events.
         // If localStorage is unavailable (e.g. storage blocked in private mode) we
         // cannot communicate with the parent tab automatically, so keep the popup
         // open and surface a clear recovery message instead of silently closing.
