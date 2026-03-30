@@ -44,6 +44,7 @@ function stripSqlComments(sql: string): string {
  *   - CREATE EXTENSION (not supported in SQLite)
  *   - PL/pgSQL function definitions (dollar-quoted $$...$$)
  *   - Triggers that call EXECUTE FUNCTION (PostgreSQL-only trigger syntax)
+ *   - ADD COLUMN IF NOT EXISTS → ADD COLUMN  (libSQL/Turso does not support the IF NOT EXISTS clause)
  *   - gen_random_uuid()  → SQLite randomblob UUID expression
  *   - SERIAL             → INTEGER
  *   - JSONB              → TEXT
@@ -75,6 +76,7 @@ export function adaptMigrationForSqlite(sql: string): string[] {
     if (/\bCREATE\s+EXTENSION\b/i.test(stmt)) continue;
     if (/\bEXECUTE\s+FUNCTION\b/i.test(stmt)) continue;
 
+    stmt = stmt.replace(/\bADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b/gi, 'ADD COLUMN');
     stmt = stmt.replace(/\bgen_random_uuid\(\)/g, SQLITE_UUID_EXPR);
     stmt = stmt.replace(/\bSERIAL\b/g, 'INTEGER');
     stmt = stmt.replace(/\bJSONB\b/gi, 'TEXT');
