@@ -3,104 +3,18 @@ import 'dart:async';
 // ignore: deprecated_member_use
 import 'dart:html' as html;
 
+/// Redirects the current browser tab to the GitHub OAuth consent screen.
+///
+/// The backend callback page will store the JWT in localStorage (in the
+/// format expected by Flutter Web's shared_preferences plugin) and then
+/// redirect back to `/`.  The Flutter startup router reads the token from
+/// SharedPreferences and navigates to the chat screen automatically.
+///
+/// This function triggers a full-page navigation. The returned future
+/// completes with `null` after initiating navigation so that callers
+/// awaiting it do not hang if the navigation is blocked or fails.
 Future<String?> performGitHubOAuth() async {
-  // Clear any stale token from a previous incomplete flow.
-  try {
-    html.window.localStorage.remove('bricks:auth:callback');
-  } catch (_) {
-    // localStorage may be blocked; continue without clearing.
-  }
-
-  final returnOrigin = Uri.encodeComponent(html.window.location.origin);
-  final popup = html.window.open(
-    '/api/auth/github?mode=popup&origin=$returnOrigin',
-    'github_oauth',
-    'width=520,height=720',
-  );
-
-
-  final completer = Completer<String?>();
-  late final StreamSubscription<html.MessageEvent> subscription;
-  late final StreamSubscription<html.StorageEvent> storageSubscription;
-  Timer? timeoutTimer;
-  Timer? popupWatcher;
-
-  void complete(String? token) {
-    if (completer.isCompleted) {
-      return;
-    }
-
-    timeoutTimer?.cancel();
-    popupWatcher?.cancel();
-    subscription.cancel();
-    storageSubscription.cancel();
-
-    if (popup.closed == false) {
-      popup.close();
-    }
-
-    completer.complete(token);
-  }
-
-  subscription = html.window.onMessage.listen((event) {
-    if (event.origin != html.window.location.origin) {
-      return;
-    }
-
-    final data = event.data;
-    if (data is! Map) {
-      return;
-    }
-
-    if (data['type'] == 'bricks:github-auth') {
-      final token = data['token'];
-      complete(token is String ? token : null);
-    }
-  });
-
-  storageSubscription = html.window.onStorage.listen((event) {
-    if (event.key == 'bricks:auth:callback') {
-      final token = event.newValue;
-      // Ignore removal/clear events which have a null or empty newValue.
-      if (token == null || token.isEmpty) return;
-      // Remove before calling complete() so the popupWatcher safety-net check
-      // (below) won't find a stale entry and call complete() a second time.
-      try {
-        html.window.localStorage.remove('bricks:auth:callback');
-      } catch (_) {
-        // Ignore removal errors; the important part is completing with the token.
-      }
-      complete(token);
-    }
-  });
-
-  popupWatcher = Timer.periodic(const Duration(milliseconds: 250), (_) {
-    if (popup.closed == true) {
-      // The popup may have closed after writing to localStorage but before the
-      // storage event was delivered. Check localStorage directly as a safety net.
-      try {
-        final stored = html.window.localStorage['bricks:auth:callback'];
-        if (stored != null) {
-          try {
-            html.window.localStorage.remove('bricks:auth:callback');
-          } catch (_) {
-            // Ignore removal errors; complete with the token we already read.
-          }
-          complete(stored);
-        } else {
-          complete(null);
-        }
-      } catch (_) {
-        // localStorage access itself failed; complete with null so the caller
-        // is not left waiting until the timeout.
-        complete(null);
-      }
-    }
-  });
-
-  timeoutTimer = Timer(const Duration(minutes: 2), () {
-    complete(null);
-  });
-
-  return completer.future;
+  html.window.location.assign('/api/auth/github');
+  // Complete with null immediately after requesting navigation.
+  return null;
 }
