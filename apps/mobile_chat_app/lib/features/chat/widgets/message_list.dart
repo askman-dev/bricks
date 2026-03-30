@@ -46,7 +46,7 @@ class MessageList extends StatelessWidget {
                       children: [
                         const Icon(Icons.smart_toy_outlined, size: 14),
                         const SizedBox(width: BricksSpacing.xs),
-                        SelectableText(
+                        Text(
                           msg.agentName!,
                           style: Theme.of(context)
                               .textTheme
@@ -76,7 +76,7 @@ class MessageList extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SelectableText(
+                      Text(
                         msg.content,
                         style: TextStyle(
                           color: isUser
@@ -110,7 +110,7 @@ class MessageList extends StatelessWidget {
                     right: BricksSpacing.xs,
                     bottom: BricksSpacing.md,
                   ),
-                  child: SelectableText(
+                  child: Text(
                     _formatTime(msg.timestamp),
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Theme.of(context).colorScheme.outline,
