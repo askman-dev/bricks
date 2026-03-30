@@ -152,11 +152,7 @@ async function upsertPrComment(body) {
 
     if (!comments.length) break;
 
-    existing = comments.find(
-      (comment) =>
-        comment.user?.login === 'github-actions[bot]' &&
-        comment.body?.includes(COMMENT_MARKER),
-    );
+    existing = comments.find((comment) => comment.body?.includes(COMMENT_MARKER));
 
     page += 1;
   }
