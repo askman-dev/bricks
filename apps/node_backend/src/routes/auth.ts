@@ -118,8 +118,16 @@ function buildPopupResponse(res: Response, token: string, returnOrigin: string):
         // window.opener was severed by the OAuth provider's Cross-Origin-Opener-Policy
         // headers. Write the token to localStorage so the parent tab can receive it
         // via a storage event, then close this popup.
-        try { localStorage.setItem('bricks:auth:callback', token); } catch (e) { console.error('bricks: localStorage unavailable', e); }
-        window.close();
+        // If localStorage is unavailable (e.g. storage blocked in private mode) we
+        // cannot communicate with the parent tab automatically, so keep the popup
+        // open and surface a clear recovery message instead of silently closing.
+        try {
+          localStorage.setItem('bricks:auth:callback', token);
+          window.close();
+        } catch (e) {
+          console.error('bricks: localStorage unavailable', e);
+          document.body.innerHTML = '<p>Authentication successful! Please close this window and refresh the main page to continue.</p>';
+        }
       })();
     </script>
   </body>

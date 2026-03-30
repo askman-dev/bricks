@@ -5,7 +5,11 @@ import 'dart:html' as html;
 
 Future<String?> performGitHubOAuth() async {
   // Clear any stale token from a previous incomplete flow.
-  html.window.localStorage.remove('bricks:auth:callback');
+  try {
+    html.window.localStorage.remove('bricks:auth:callback');
+  } catch (_) {
+    // localStorage may be blocked; continue without clearing.
+  }
 
   final returnOrigin = Uri.encodeComponent(html.window.location.origin);
   final popup = html.window.open(
@@ -61,7 +65,11 @@ Future<String?> performGitHubOAuth() async {
       if (token == null || token.isEmpty) return;
       // Remove before calling complete() so the popupWatcher safety-net check
       // (below) won't find a stale entry and call complete() a second time.
-      html.window.localStorage.remove('bricks:auth:callback');
+      try {
+        html.window.localStorage.remove('bricks:auth:callback');
+      } catch (_) {
+        // Ignore removal errors; the important part is completing with the token.
+      }
       complete(token);
     }
   });
@@ -70,11 +78,21 @@ Future<String?> performGitHubOAuth() async {
     if (popup.closed == true) {
       // The popup may have closed after writing to localStorage but before the
       // storage event was delivered. Check localStorage directly as a safety net.
-      final stored = html.window.localStorage['bricks:auth:callback'];
-      if (stored != null) {
-        html.window.localStorage.remove('bricks:auth:callback');
-        complete(stored);
-      } else {
+      try {
+        final stored = html.window.localStorage['bricks:auth:callback'];
+        if (stored != null) {
+          try {
+            html.window.localStorage.remove('bricks:auth:callback');
+          } catch (_) {
+            // Ignore removal errors; complete with the token we already read.
+          }
+          complete(stored);
+        } else {
+          complete(null);
+        }
+      } catch (_) {
+        // localStorage access itself failed; complete with null so the caller
+        // is not left waiting until the timeout.
         complete(null);
       }
     }
