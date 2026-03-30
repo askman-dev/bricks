@@ -2,7 +2,12 @@ import 'dart:async';
 import 'dart:html' as html;
 
 Future<String?> performGitHubOAuth() async {
-  final popup = html.window.open('/api/auth/github?mode=popup', 'github_oauth', 'width=520,height=720');
+  final returnOrigin = Uri.encodeComponent(html.window.location.origin);
+  final popup = html.window.open(
+    '/api/auth/github?mode=popup&origin=$returnOrigin',
+    'github_oauth',
+    'width=520,height=720',
+  );
   if (popup == null) {
     return null;
   }

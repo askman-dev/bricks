@@ -25,25 +25,88 @@ interface GitHubTokenResponse {
   scope: string;
 }
 
+interface OAuthStatePayload {
+  mode?: 'popup';
+  return_origin?: string;
+}
+
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
+const OAUTH_ALLOWED_RETURN_ORIGINS = process.env.OAUTH_ALLOWED_RETURN_ORIGINS;
 
-function buildPopupResponse(res: Response, token: string): void {
+function parseStatePayload(stateValue: string | undefined): OAuthStatePayload {
+  if (!stateValue) {
+    return {};
+  }
+
+  try {
+    const decoded = Buffer.from(stateValue, 'base64url').toString('utf8');
+    const payload = JSON.parse(decoded) as OAuthStatePayload;
+    return payload ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveAllowedReturnOrigins(req: Request): Set<string> {
+  const allowed = new Set<string>();
+  const requestOrigin = `${req.protocol}://${req.get('host')}`;
+  allowed.add(requestOrigin);
+
+  if (GITHUB_CALLBACK_URL) {
+    try {
+      allowed.add(new URL(GITHUB_CALLBACK_URL).origin);
+    } catch {
+      // Ignore malformed callback URL and fall back to request origin.
+    }
+  }
+
+  if (OAUTH_ALLOWED_RETURN_ORIGINS) {
+    OAUTH_ALLOWED_RETURN_ORIGINS
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+      .forEach((origin) => allowed.add(origin));
+  }
+
+  return allowed;
+}
+
+function isAllowedReturnOrigin(returnOrigin: string, req: Request): boolean {
+  try {
+    const parsed = new URL(returnOrigin);
+    if (parsed.protocol !== 'https:') {
+      return false;
+    }
+
+    if (resolveAllowedReturnOrigins(req).has(parsed.origin)) {
+      return true;
+    }
+
+    return parsed.hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+}
+
+function buildPopupResponse(res: Response, token: string, returnOrigin: string): void {
   const escapedToken = JSON.stringify(token);
+  const escapedOrigin = JSON.stringify(returnOrigin);
   res.type('html').send(`<!doctype html>
 <html>
   <body>
     <script>
       (function () {
         var token = ${escapedToken};
+        var returnOrigin = ${escapedOrigin};
         if (window.opener) {
-          window.opener.postMessage({ type: 'bricks:github-auth', token: token }, window.location.origin);
+          window.opener.postMessage({ type: 'bricks:github-auth', token: token }, returnOrigin);
           window.close();
           return;
         }
-        window.location.replace('/?auth_token=' + encodeURIComponent(token));
+        window.location.replace(returnOrigin + '/?auth_token=' + encodeURIComponent(token));
       })();
     </script>
   </body>
@@ -52,6 +115,7 @@ function buildPopupResponse(res: Response, token: string): void {
 
 async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
   const { code, state } = req.query;
+  const parsedState = parseStatePayload(typeof state === 'string' ? state : undefined);
 
   if (!code || typeof code !== 'string') {
     res.status(400).json({ error: 'Authorization code required' });
@@ -125,8 +189,13 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
   // Generate JWT token
   const token = generateToken(user.id);
 
-  if (state === 'popup') {
-    buildPopupResponse(res, token);
+  if (parsedState.mode === 'popup') {
+    const fallbackOrigin = `${req.protocol}://${req.get('host')}`;
+    const returnOrigin = parsedState.return_origin && isAllowedReturnOrigin(parsedState.return_origin, req)
+      ? parsedState.return_origin
+      : fallbackOrigin;
+
+    buildPopupResponse(res, token, returnOrigin);
     return;
   }
 
@@ -152,7 +221,16 @@ router.get('/github', (req: Request, res: Response) => {
   }
 
   const scope = 'read:user user:email';
-  const state = req.query.mode === 'popup' ? 'popup' : undefined;
+  const requestedOrigin = typeof req.query.origin === 'string' ? req.query.origin : undefined;
+  const returnOrigin = requestedOrigin && isAllowedReturnOrigin(requestedOrigin, req)
+    ? requestedOrigin
+    : `${req.protocol}://${req.get('host')}`;
+  const statePayload: OAuthStatePayload | undefined = req.query.mode === 'popup'
+    ? { mode: 'popup', return_origin: returnOrigin }
+    : undefined;
+  const state = statePayload
+    ? Buffer.from(JSON.stringify(statePayload), 'utf8').toString('base64url')
+    : undefined;
   const stateQuery = state ? `&state=${encodeURIComponent(state)}` : '';
   const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${GITHUB_CALLBACK_URL}${stateQuery}`;
 
