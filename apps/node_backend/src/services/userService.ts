@@ -49,7 +49,7 @@ export async function findOrCreateUserByOAuth(
           `UPDATE oauth_connections
            SET access_token = $1, refresh_token = $2, expires_at = $3
            WHERE provider = $4 AND provider_user_id = $5`,
-          [accessToken, refreshToken, expiresAt, provider, providerUserId]
+          [accessToken ?? null, refreshToken ?? null, expiresAt ?? null, provider, providerUserId]
         );
       }
 
@@ -72,7 +72,7 @@ export async function findOrCreateUserByOAuth(
         `INSERT INTO oauth_connections
          (user_id, provider, provider_user_id, access_token, refresh_token, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [userId, provider, providerUserId, accessToken, refreshToken, expiresAt]
+        [userId, provider, providerUserId, accessToken ?? null, refreshToken ?? null, expiresAt ?? null]
       );
     }
 
