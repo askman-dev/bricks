@@ -11,6 +11,11 @@ dotenv.config();
 
 const app = express();
 
+// Vercel and most reverse proxies forward client IP/host headers.
+// Trusting the first proxy hop prevents middleware (such as rate limiting)
+// from treating forwarded headers as spoofed and throwing runtime errors.
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 
