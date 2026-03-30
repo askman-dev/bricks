@@ -25,10 +25,190 @@ interface GitHubTokenResponse {
   scope: string;
 }
 
+interface OAuthStatePayload {
+  mode?: 'popup';
+  return_origin?: string;
+}
+
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
+const OAUTH_ALLOWED_RETURN_ORIGINS = process.env.OAUTH_ALLOWED_RETURN_ORIGINS;
+
+function parseStatePayload(stateValue: string | undefined): OAuthStatePayload {
+  if (!stateValue) {
+    return {};
+  }
+
+  try {
+    const decoded = Buffer.from(stateValue, 'base64url').toString('utf8');
+    const payload = JSON.parse(decoded) as OAuthStatePayload;
+    return payload ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveAllowedReturnOrigins(req: Request): Set<string> {
+  const allowed = new Set<string>();
+  const requestOrigin = `${req.protocol}://${req.get('host')}`;
+  allowed.add(requestOrigin);
+
+  if (GITHUB_CALLBACK_URL) {
+    try {
+      allowed.add(new URL(GITHUB_CALLBACK_URL).origin);
+    } catch {
+      // Ignore malformed callback URL and fall back to request origin.
+    }
+  }
+
+  if (OAUTH_ALLOWED_RETURN_ORIGINS) {
+    OAUTH_ALLOWED_RETURN_ORIGINS
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+      .forEach((origin) => allowed.add(origin));
+  }
+
+  return allowed;
+}
+
+function isAllowedReturnOrigin(returnOrigin: string, req: Request): boolean {
+  try {
+    const parsed = new URL(returnOrigin);
+    if (parsed.protocol !== 'https:') {
+      return false;
+    }
+
+    if (resolveAllowedReturnOrigins(req).has(parsed.origin)) {
+      return true;
+    }
+
+    return parsed.hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+}
+
+function buildPopupResponse(res: Response, token: string, returnOrigin: string): void {
+  const escapedToken = JSON.stringify(token);
+  const escapedOrigin = JSON.stringify(returnOrigin);
+  res.type('html').send(`<!doctype html>
+<html>
+  <body>
+    <script>
+      (function () {
+        var token = ${escapedToken};
+        var returnOrigin = ${escapedOrigin};
+        if (window.opener) {
+          window.opener.postMessage({ type: 'bricks:github-auth', token: token }, returnOrigin);
+          window.close();
+          return;
+        }
+        window.location.replace(returnOrigin + '/?auth_token=' + encodeURIComponent(token));
+      })();
+    </script>
+  </body>
+</html>`);
+}
+
+async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
+  const { code, state } = req.query;
+  const parsedState = parseStatePayload(typeof state === 'string' ? state : undefined);
+
+  if (!code || typeof code !== 'string') {
+    res.status(400).json({ error: 'Authorization code required' });
+    return;
+  }
+
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+    res.status(500).json({ error: 'GitHub OAuth not configured' });
+    return;
+  }
+
+  // Exchange code for access token
+  const tokenResponse = await axios.post<GitHubTokenResponse>(
+    'https://github.com/login/oauth/access_token',
+    {
+      client_id: GITHUB_CLIENT_ID,
+      client_secret: GITHUB_CLIENT_SECRET,
+      code,
+      redirect_uri: GITHUB_CALLBACK_URL,
+    },
+    {
+      headers: { Accept: 'application/json' },
+    }
+  );
+
+  const { access_token } = tokenResponse.data;
+
+  if (!access_token) {
+    res.status(400).json({ error: 'Failed to obtain access token' });
+    return;
+  }
+
+  // Get GitHub user info
+  const userResponse = await axios.get<GitHubUser>(
+    'https://api.github.com/user',
+    {
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        Accept: 'application/json',
+      },
+    }
+  );
+
+  const githubUser = userResponse.data;
+
+  // Get GitHub user emails to find the primary verified email
+  const emailsResponse = await axios.get<GitHubEmail[]>(
+    'https://api.github.com/user/emails',
+    {
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        Accept: 'application/json',
+      },
+    }
+  );
+
+  const primaryEmail = emailsResponse.data.find(e => e.primary && e.verified)?.email
+    ?? emailsResponse.data.find(e => e.verified)?.email
+    ?? null;
+
+  // Find or create user in our database
+  const user = await findOrCreateUserByOAuth(
+    'github',
+    githubUser.id.toString(),
+    access_token,
+    undefined,
+    undefined,
+    primaryEmail ?? undefined
+  );
+
+  // Generate JWT token
+  const token = generateToken(user.id);
+
+  if (parsedState.mode === 'popup') {
+    const fallbackOrigin = `${req.protocol}://${req.get('host')}`;
+    const returnOrigin = parsedState.return_origin && isAllowedReturnOrigin(parsedState.return_origin, req)
+      ? parsedState.return_origin
+      : fallbackOrigin;
+
+    buildPopupResponse(res, token, returnOrigin);
+    return;
+  }
+
+  // Return token and user info
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      email: user.email ?? null,
+      created_at: user.created_at,
+    },
+  });
+}
 
 /**
  * GET /auth/github
@@ -41,7 +221,18 @@ router.get('/github', (req: Request, res: Response) => {
   }
 
   const scope = 'read:user user:email';
-  const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${GITHUB_CALLBACK_URL}`;
+  const requestedOrigin = typeof req.query.origin === 'string' ? req.query.origin : undefined;
+  const returnOrigin = requestedOrigin && isAllowedReturnOrigin(requestedOrigin, req)
+    ? requestedOrigin
+    : `${req.protocol}://${req.get('host')}`;
+  const statePayload: OAuthStatePayload | undefined = req.query.mode === 'popup'
+    ? { mode: 'popup', return_origin: returnOrigin }
+    : undefined;
+  const state = statePayload
+    ? Buffer.from(JSON.stringify(statePayload), 'utf8').toString('base64url')
+    : undefined;
+  const stateQuery = state ? `&state=${encodeURIComponent(state)}` : '';
+  const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${GITHUB_CALLBACK_URL}${stateQuery}`;
 
   res.redirect(redirectUrl);
 });
@@ -52,91 +243,22 @@ router.get('/github', (req: Request, res: Response) => {
  */
 router.get('/github/callback', async (req: Request, res: Response) => {
   try {
-    const { code } = req.query;
-
-    if (!code || typeof code !== 'string') {
-      res.status(400).json({ error: 'Authorization code required' });
-      return;
-    }
-
-    if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
-      res.status(500).json({ error: 'GitHub OAuth not configured' });
-      return;
-    }
-
-    // Exchange code for access token
-    const tokenResponse = await axios.post<GitHubTokenResponse>(
-      'https://github.com/login/oauth/access_token',
-      {
-        client_id: GITHUB_CLIENT_ID,
-        client_secret: GITHUB_CLIENT_SECRET,
-        code,
-        redirect_uri: GITHUB_CALLBACK_URL,
-      },
-      {
-        headers: { Accept: 'application/json' },
-      }
-    );
-
-    const { access_token } = tokenResponse.data;
-
-    if (!access_token) {
-      res.status(400).json({ error: 'Failed to obtain access token' });
-      return;
-    }
-
-    // Get GitHub user info
-    const userResponse = await axios.get<GitHubUser>(
-      'https://api.github.com/user',
-      {
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-          Accept: 'application/json',
-        },
-      }
-    );
-
-    const githubUser = userResponse.data;
-
-    // Get GitHub user emails to find the primary verified email
-    const emailsResponse = await axios.get<GitHubEmail[]>(
-      'https://api.github.com/user/emails',
-      {
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-          Accept: 'application/json',
-        },
-      }
-    );
-
-    const primaryEmail = emailsResponse.data.find(e => e.primary && e.verified)?.email
-      ?? emailsResponse.data.find(e => e.verified)?.email
-      ?? null;
-
-    // Find or create user in our database
-    const user = await findOrCreateUserByOAuth(
-      'github',
-      githubUser.id.toString(),
-      access_token,
-      undefined,
-      undefined,
-      primaryEmail ?? undefined
-    );
-
-    // Generate JWT token
-    const token = generateToken(user.id);
-
-    // Return token and user info
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email ?? null,
-        created_at: user.created_at,
-      },
-    });
+    await handleGitHubCallback(req, res);
   } catch (error) {
     console.error('GitHub OAuth error:', error);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+});
+
+/**
+ * GET /callback
+ * Alternate callback route used by app-level OAuth callback URLs.
+ */
+router.get('/callback', async (req: Request, res: Response) => {
+  try {
+    await handleGitHubCallback(req, res);
+  } catch (error) {
+    console.error('GitHub OAuth callback error:', error);
     res.status(500).json({ error: 'Authentication failed' });
   }
 });

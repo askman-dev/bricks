@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../chat/chat_screen.dart';
 import 'auth_service.dart';
+import 'github_oauth.dart';
 
 /// Login screen with GitHub and Apple sign-in options.
 ///
@@ -80,12 +81,7 @@ class _GitHubSignInButtonState extends State<_GitHubSignInButton> {
   Future<void> _signIn() async {
     setState(() => _isLoading = true);
     try {
-      // The backend initiates GitHub OAuth via GET /api/auth/github and
-      // eventually returns a JWT token.  In the mobile app this flow is
-      // handled by opening a browser / web-view; the received token is
-      // then saved here.  For now we expose a stub that callers can replace
-      // with a real OAuth + deep-link integration.
-      final token = await _performGitHubOAuth();
+      final token = await performGitHubOAuth();
       if (token != null) {
         await AuthService.saveToken(token);
         widget.onSuccess();
@@ -93,15 +89,6 @@ class _GitHubSignInButtonState extends State<_GitHubSignInButton> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  /// Stub for the real GitHub OAuth flow.
-  ///
-  /// Replace with a web-view / deep-link implementation that opens
-  /// `GET /api/auth/github`, captures the callback and returns the JWT.
-  Future<String?> _performGitHubOAuth() async {
-    // TODO: implement real OAuth web-view flow
-    return null;
   }
 
   @override
