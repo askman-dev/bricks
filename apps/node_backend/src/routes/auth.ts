@@ -105,7 +105,7 @@ function buildPopupResponse(res: Response, token: string, returnOrigin: string):
   res.type('html').send(`<!doctype html>
 <html>
   <body>
-    <p>Authentication successful. This window will close automatically.</p>
+    <p>Authentication successful. You can close this window.</p>
     <script nonce="${nonce}">
       (function () {
         var token = ${escapedToken};
