@@ -9,7 +9,7 @@ ensure_flutter() {
     return 0
   fi
 
-  local flutter_version="${FLUTTER_VERSION:-3.24.0}"
+  local flutter_version="${FLUTTER_VERSION:-stable}"
   local flutter_root="${FLUTTER_HOME:-${HOME}/.local/flutter}"
 
   if [ ! -d "${flutter_root}" ]; then
