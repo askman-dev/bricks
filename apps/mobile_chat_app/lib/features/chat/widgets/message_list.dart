@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:design_system/design_system.dart';
+import 'package:intl/intl.dart';
 import '../chat_message.dart';
 
-/// Displays the list of chat messages.
+/// Displays the list of chat messages in timeline format.
 class MessageList extends StatelessWidget {
   const MessageList({super.key, required this.messages});
 
   final List<ChatMessage> messages;
+
+  String _formatTime(DateTime timestamp) {
+    return DateFormat('HH:mm').format(timestamp);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,13 +70,48 @@ class MessageList extends StatelessWidget {
                       : Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(BricksRadius.md),
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      msg.content,
+                      style: TextStyle(
+                        color: isUser
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    if (msg.isStreaming)
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isUser
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Show timestamp below the bubble.
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: BricksSpacing.xs,
+                  right: BricksSpacing.xs,
+                  bottom: BricksSpacing.md,
+                ),
                 child: Text(
-                  msg.content,
-                  style: TextStyle(
-                    color: isUser
-                        ? Theme.of(context).colorScheme.onPrimary
-                        : Theme.of(context).colorScheme.onSurface,
-                  ),
+                  _formatTime(msg.timestamp),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                 ),
               ),
             ],

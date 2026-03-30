@@ -31,6 +31,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _messages = [];
   bool _isSending = false;
+  bool _isStreaming = false;
   bool _loadingAgents = true;
 
   /// Manages which agents participate and at what probability.
@@ -38,6 +39,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   final AgentClient _client = AgentCoreClient();
   final Map<String, AgentSession> _sessions = {};
+  StreamSubscription<AgentSessionEvent>? _currentSubscription;
   AgentsRepository? _agentsRepository;
   List<AgentDefinition> _agents = [];
   AgentDefinition? _activeAgent;
@@ -50,6 +52,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
     }
@@ -160,15 +163,16 @@ class _ChatScreenState extends State<ChatScreen> {
     return session;
   }
 
-  void _updateMessageContent(int index, String content) {
+  void _updateMessageContent(
+    int index,
+    String content, {
+    bool isStreaming = false,
+  }) {
     if (!mounted || index < 0 || index >= _messages.length) return;
-    final current = _messages[index];
     setState(() {
-      _messages[index] = ChatMessage(
-        role: current.role,
+      _messages[index] = _messages[index].copyWith(
         content: content,
-        agentId: current.agentId,
-        agentName: current.agentName,
+        isStreaming: isStreaming,
       );
     });
   }
@@ -191,38 +195,85 @@ class _ChatScreenState extends State<ChatScreen> {
         content: '',
         agentId: agent?.name,
         agentName: agent?.name,
+        isStreaming: true,
       ),
     );
 
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _isStreaming = true;
+    });
 
-    _sessionForAgent(agent).then((session) async {
-      try {
-        final stream = session.sendMessage(text);
-        await for (final event in stream) {
+    _sessionForAgent(agent).then((session) {
+      final stream = session.sendMessage(text);
+      _currentSubscription = stream.listen(
+        (event) {
           if (event is TextDeltaEvent) {
+            final current = _messages[agentMessageIndex];
             _updateMessageContent(
               agentMessageIndex,
-              _messages[agentMessageIndex].content + event.delta,
+              current.content + event.delta,
+              isStreaming: true,
             );
           } else if (event is MessageCompleteEvent) {
-            _updateMessageContent(agentMessageIndex, event.fullText);
+            _updateMessageContent(
+              agentMessageIndex,
+              event.fullText,
+              isStreaming: false,
+            );
           } else if (event is AgentErrorEvent) {
             _updateMessageContent(
               agentMessageIndex,
               'Error: ${event.message}',
+              isStreaming: false,
             );
           }
-        }
-      } catch (e) {
-        _updateMessageContent(agentMessageIndex, 'Error: $e');
-      } finally {
-        if (mounted) {
-          await _handleProactiveResponses(text);
-          setState(() => _isSending = false);
-        }
-      }
+        },
+        onError: (error) {
+          _updateMessageContent(
+            agentMessageIndex,
+            'Error: $error',
+            isStreaming: false,
+          );
+          if (mounted) {
+            setState(() {
+              _isSending = false;
+              _isStreaming = false;
+            });
+          }
+        },
+        onDone: () async {
+          if (mounted) {
+            await _handleProactiveResponses(text);
+          }
+          if (mounted) {
+            setState(() {
+              _isSending = false;
+              _isStreaming = false;
+            });
+          }
+        },
+        cancelOnError: true,
+      );
     });
+  }
+
+  void _stopStreaming() {
+    _currentSubscription?.cancel();
+    _currentSubscription = null;
+    if (mounted) {
+      setState(() {
+        _isSending = false;
+        _isStreaming = false;
+        // Mark any streaming messages as complete.
+        for (var i = _messages.length - 1; i >= 0; i--) {
+          if (_messages[i].isStreaming) {
+            _messages[i] = _messages[i].copyWith(isStreaming: false);
+            break;
+          }
+        }
+      });
+    }
   }
 
   AgentDefinition? _findAgent(String agentId) {
@@ -255,24 +306,31 @@ class _ChatScreenState extends State<ChatScreen> {
         content: '',
         agentId: agent.name,
         agentName: agentName,
+        isStreaming: true,
       ),
     );
     final session = await _sessionForAgent(agent);
     try {
       await for (final event in session.sendMessage(userMessage)) {
         if (event is TextDeltaEvent) {
+          final current = _messages[index];
           _updateMessageContent(
             index,
-            _messages[index].content + event.delta,
+            current.content + event.delta,
+            isStreaming: true,
           );
         } else if (event is MessageCompleteEvent) {
-          _updateMessageContent(index, event.fullText);
+          _updateMessageContent(index, event.fullText, isStreaming: false);
         } else if (event is AgentErrorEvent) {
-          _updateMessageContent(index, 'Error: ${event.message}');
+          _updateMessageContent(
+            index,
+            'Error: ${event.message}',
+            isStreaming: false,
+          );
         }
       }
     } catch (e) {
-      _updateMessageContent(index, 'Error: $e');
+      _updateMessageContent(index, 'Error: $e', isStreaming: false);
     }
   }
 
@@ -376,6 +434,8 @@ class _ChatScreenState extends State<ChatScreen> {
             agents: _agents,
             onAgentSelected: _selectAgent,
             onSend: _isSending ? null : _sendMessage,
+            onStop: _stopStreaming,
+            isStreaming: _isStreaming,
           ),
         ],
       ),

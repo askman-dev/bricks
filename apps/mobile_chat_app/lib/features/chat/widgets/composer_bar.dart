@@ -10,6 +10,8 @@ class ComposerBar extends StatefulWidget {
     this.activeAgent,
     this.onSend,
     this.onAgentSelected,
+    this.onStop,
+    this.isStreaming = false,
   });
 
   /// Available agents for @mention selection.
@@ -24,15 +26,32 @@ class ComposerBar extends StatefulWidget {
   /// Called when the user picks an agent from the @ menu.
   final void Function(AgentDefinition agent)? onAgentSelected;
 
+  /// Called when the user stops streaming output.
+  final VoidCallback? onStop;
+
+  /// Whether AI is currently streaming output.
+  final bool isStreaming;
+
   @override
   State<ComposerBar> createState() => _ComposerBarState();
 }
 
-class _ComposerBarState extends State<ComposerBar> {
+class _ComposerBarState extends State<ComposerBar>
+    with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   String _mentionQuery = '';
   int _mentionStart = -1;
   bool _showMentions = false;
+  late AnimationController _spinController;
+
+  @override
+  void initState() {
+    super.initState();
+    _spinController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat();
+  }
 
   void _submit() {
     final text = _controller.text.trim();
@@ -105,8 +124,16 @@ class _ComposerBarState extends State<ComposerBar> {
     _hideMentions();
   }
 
+  void _handleVoiceInput() {
+    // TODO(chat): Implement voice input (placeholder for future).
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Voice input coming soon')),
+    );
+  }
+
   @override
   void dispose() {
+    _spinController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -126,10 +153,17 @@ class _ComposerBarState extends State<ComposerBar> {
           children: [
             Row(
               children: [
+                // Voice input button.
+                IconButton(
+                  onPressed: widget.isStreaming ? null : _handleVoiceInput,
+                  icon: const Icon(Icons.mic_outlined),
+                  tooltip: 'Voice input',
+                ),
+                const SizedBox(width: BricksSpacing.xs),
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    enabled: !isSending,
+                    enabled: !isSending && !widget.isStreaming,
                     maxLines: 5,
                     minLines: 1,
                     textInputAction: TextInputAction.send,
@@ -153,16 +187,39 @@ class _ComposerBarState extends State<ComposerBar> {
                   ),
                 ),
                 const SizedBox(width: BricksSpacing.sm),
-                IconButton.filled(
-                  onPressed: isSending ? null : _submit,
-                  icon: isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                ),
+                // Send or Stop button.
+                if (widget.isStreaming)
+                  RotationTransition(
+                    turns: _spinController,
+                    child: IconButton.filled(
+                      onPressed: widget.onStop,
+                      icon: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(Icons.stop, size: 16),
+                      ),
+                      tooltip: 'Stop',
+                    ),
+                  )
+                else
+                  IconButton.filled(
+                    onPressed: isSending ? null : _submit,
+                    icon: isSending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send),
+                    tooltip: 'Send',
+                  ),
               ],
             ),
             if (_showMentions && filtered.isNotEmpty)

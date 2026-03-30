@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "name": "bricks-backend",
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["src/**/*.ts", "src/db/migrations/*.sql"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.ts"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

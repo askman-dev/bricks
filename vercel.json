@@ -1,0 +1,16 @@
+{
+  "framework": null,
+  "installCommand": "bash ./tools/vercel-build.sh --install-only && cd apps/node_backend && npm ci --omit=dev",
+  "buildCommand": "bash ./tools/vercel-build.sh",
+  "outputDirectory": "apps/mobile_chat_app/build/web",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

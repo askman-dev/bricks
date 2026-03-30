@@ -6,7 +6,8 @@ void main() {
   testWidgets('BricksApp renders ChatScreen with composer', (tester) async {
     await tester.pumpWidget(const BricksApp());
 
-    expect(find.text('Bricks'), findsOneWidget);
+    // Check that session name is displayed in the AppBar
+    expect(find.text('| New Session'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
   });
 

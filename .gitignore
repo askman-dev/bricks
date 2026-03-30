@@ -8,6 +8,10 @@
 .history
 .idea/
 
+# IntelliJ/Melos generated files
+*.iml
+melos_*.iml
+
 
 
 # Flutter repo-specific
