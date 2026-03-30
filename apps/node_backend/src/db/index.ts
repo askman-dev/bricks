@@ -43,7 +43,8 @@ function resolvePostgresUrl(): string {
 }
 
 function convertPgPlaceholdersToSqlite(text: string): string {
-  return text.replace(/\$\d+/g, '?');
+  // Preserve parameter indices: map PostgreSQL-style $1, $2, ... to SQLite-style ?1, ?2, ...
+  return text.replace(/\$(\d+)/g, '?$1');
 }
 
 function createTursoPool(): QueryablePool {
