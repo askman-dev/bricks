@@ -48,7 +48,7 @@ All require `Authorization: Bearer <token>` header.
 - `DELETE /api/config/:id` - Delete configuration
 
 ### Health Check
-- `GET /health` - Service health status
+- `GET /api/health` - Service health status
 
 ## Example: Create API Configuration
 
