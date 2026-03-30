@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/app/app.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({'auth_token': 'mock_token'});
+  });
+
   testWidgets('BricksApp renders ChatScreen with composer', (tester) async {
     await tester.pumpWidget(const BricksApp());
+    await tester.pump(); // allow FutureBuilder to resolve auth state
+    await tester.pump(); // rebuild with ChatScreen
 
     // Check that session name is displayed in the AppBar
     expect(find.text('| New Session'), findsOneWidget);
@@ -13,6 +20,8 @@ void main() {
 
   testWidgets('Sending an empty message does nothing', (tester) async {
     await tester.pumpWidget(const BricksApp());
+    await tester.pump(); // allow FutureBuilder to resolve auth state
+    await tester.pump(); // rebuild with ChatScreen
 
     // Tap send without entering text
     await tester.tap(find.byIcon(Icons.send));

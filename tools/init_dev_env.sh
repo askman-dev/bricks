@@ -30,7 +30,7 @@ print_help() {
   cat <<'USAGE'
 Usage: tools/init_dev_env.sh [options]
 
-Initialize local development environment for the Bricks monorepo.
+Initialize local/Codex development environment for the Bricks monorepo.
 
 Options:
   --no-bootstrap       Skip `melos bootstrap`.
@@ -38,6 +38,10 @@ Options:
   --flutter-home PATH  Flutter installation location (default: $HOME/.local/flutter or $FLUTTER_HOME).
   --channel NAME       Flutter channel to install when missing (default: stable).
   -h, --help           Show this help message.
+
+Examples:
+  ./tools/init_dev_env.sh
+  ./tools/init_dev_env.sh --no-bootstrap --no-doctor
 USAGE
 }
 

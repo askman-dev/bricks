@@ -109,10 +109,10 @@ void main() {
         ),
       );
 
-      // The radio for the current model should be selected.
-      final radios = tester.widgetList<Radio<String>>(find.byType(Radio<String>));
-      final selected = radios.where((r) => r.groupValue == r.value);
-      expect(selected.map((r) => r.value).single, equals(current));
+      final radioGroup = tester.widget<RadioGroup<String>>(
+        find.byType(RadioGroup<String>),
+      );
+      expect(radioGroup.groupValue, equals(current));
     });
 
     testWidgets('tapping a radio changes selection', (tester) async {
@@ -128,9 +128,10 @@ void main() {
       await tester.tap(find.text(kGeminiModels[1]));
       await tester.pump();
 
-      final radios = tester.widgetList<Radio<String>>(find.byType(Radio<String>));
-      final selected = radios.where((r) => r.groupValue == r.value);
-      expect(selected.map((r) => r.value).single, equals(kGeminiModels[1]));
+      final radioGroup = tester.widget<RadioGroup<String>>(
+        find.byType(RadioGroup<String>),
+      );
+      expect(radioGroup.groupValue, equals(kGeminiModels[1]));
     });
 
     testWidgets('Cancel button dismisses dialog without returning value',

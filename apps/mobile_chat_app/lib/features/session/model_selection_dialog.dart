@@ -44,16 +44,26 @@ class _ModelSelectionDialogState extends State<ModelSelectionDialog> {
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
-        children: kGeminiModels.map((modelId) {
-          return RadioListTile<String>(
-            title: Text(modelId),
-            value: modelId,
+        children: [
+          RadioGroup<String>(
             groupValue: _selected,
             onChanged: (value) {
-              if (value != null) setState(() => _selected = value);
+              if (value == null) {
+                return;
+              }
+              setState(() => _selected = value);
             },
-          );
-        }).toList(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: kGeminiModels.map((modelId) {
+                return RadioListTile<String>(
+                  title: Text(modelId),
+                  value: modelId,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
       actions: [
         TextButton(
