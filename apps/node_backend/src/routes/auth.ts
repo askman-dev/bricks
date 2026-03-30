@@ -115,7 +115,11 @@ function buildPopupResponse(res: Response, token: string, returnOrigin: string):
           window.close();
           return;
         }
-        window.location.replace(returnOrigin + '/?auth_token=' + encodeURIComponent(token));
+        // window.opener was severed by the OAuth provider's Cross-Origin-Opener-Policy
+        // headers. Write the token to localStorage so the parent tab can receive it
+        // via a storage event, then close this popup.
+        try { localStorage.setItem('bricks:auth:callback', token); } catch (e) { console.error('bricks: localStorage unavailable', e); }
+        window.close();
       })();
     </script>
   </body>
