@@ -10,7 +10,8 @@ void main() {
 
   testWidgets('BricksApp renders ChatScreen with composer', (tester) async {
     await tester.pumpWidget(const BricksApp());
-    await tester.pumpAndSettle();
+    await tester.pump(); // allow FutureBuilder to resolve auth state
+    await tester.pump(); // rebuild with ChatScreen
 
     // Check that session name is displayed in the AppBar
     expect(find.text('| New Session'), findsOneWidget);
@@ -19,7 +20,8 @@ void main() {
 
   testWidgets('Sending an empty message does nothing', (tester) async {
     await tester.pumpWidget(const BricksApp());
-    await tester.pumpAndSettle();
+    await tester.pump(); // allow FutureBuilder to resolve auth state
+    await tester.pump(); // rebuild with ChatScreen
 
     // Tap send without entering text
     await tester.tap(find.byIcon(Icons.send));
