@@ -105,7 +105,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ### Database Setup
 
-Migrations run automatically on every server startup (including Vercel cold starts).  The migration runner is idempotent – already-applied migrations are skipped.  Set `AUTO_MIGRATE=false` to disable automatic migrations and manage them manually instead.
+Migrations run automatically on every server startup (including Vercel cold starts). The migration runner is idempotent – already-applied migrations are skipped. Set `AUTO_MIGRATE=false` to disable automatic migrations on standard server startup and manage them manually instead. **Note:** On Vercel, migrations triggered via the `app.ts` middleware will still run even when `AUTO_MIGRATE=false`.
 
 The migration runner supports both **PostgreSQL** and **Turso/libSQL (SQLite)** backends; PostgreSQL-specific syntax (extensions, PL/pgSQL functions, `gen_random_uuid()`, `JSONB`) is transparently adapted when the Turso driver is active.
 
