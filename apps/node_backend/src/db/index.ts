@@ -60,9 +60,13 @@ function createTursoPool(): QueryablePool {
     authToken: tursoAuthToken,
   });
 
-  const query = async <T = any>(text: string, params: unknown[] = []): Promise<QueryResult<T>> => {
+  const executeWithClient = async <T = any>(
+    client: typeof tursoClient,
+    text: string,
+    params: unknown[] = []
+  ): Promise<QueryResult<T>> => {
     const statement = convertPgPlaceholdersToSqlite(text);
-    const result = await tursoClient.execute({
+    const result = await client.execute({
       sql: statement,
       args: params as any[],
     });
@@ -73,12 +77,67 @@ function createTursoPool(): QueryablePool {
     };
   };
 
+  const query = async <T = any>(text: string, params: unknown[] = []): Promise<QueryResult<T>> => {
+    return executeWithClient<T>(tursoClient, text, params);
+  };
+
   return {
     query,
-    connect: async () => ({
-      query,
-      release: () => {},
-    }),
+    connect: async () => {
+      let activeTx: Awaited<ReturnType<typeof tursoClient.transaction>> | null = null;
+
+      return {
+        query: async <T = any>(text: string, params: unknown[] = []): Promise<QueryResult<T>> => {
+          const cmd = text.trim().toUpperCase();
+
+          if (cmd === 'BEGIN') {
+            activeTx = await tursoClient.transaction('write');
+            return { rows: [], rowCount: 0 };
+          }
+
+          if (cmd === 'COMMIT') {
+            if (activeTx) {
+              await activeTx.commit();
+              activeTx = null;
+            }
+            return { rows: [], rowCount: 0 };
+          }
+
+          if (cmd === 'ROLLBACK') {
+            if (activeTx) {
+              try {
+                await activeTx.rollback();
+              } catch (err) {
+                // Transaction may already be closed by a prior error; log and continue
+                console.warn('Turso transaction rollback skipped:', (err as Error).message);
+              }
+              activeTx = null;
+            }
+            return { rows: [], rowCount: 0 };
+          }
+
+          if (activeTx) {
+            const statement = convertPgPlaceholdersToSqlite(text);
+            const result = await activeTx.execute({
+              sql: statement,
+              args: params as any[],
+            });
+            return {
+              rows: result.rows as T[],
+              rowCount: result.rowsAffected,
+            };
+          }
+
+          return executeWithClient<T>(tursoClient, text, params);
+        },
+        release: () => {
+          if (activeTx) {
+            activeTx.close();
+            activeTx = null;
+          }
+        },
+      };
+    },
     end: async () => {},
   };
 }
