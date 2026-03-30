@@ -98,7 +98,10 @@ function buildPopupResponse(res: Response, token: string, returnOrigin: string):
   const nonce = randomBytes(16).toString('base64');
   // Override Helmet's default CSP for this page: only the nonced inline script
   // needs to run; everything else can stay locked down.
-  res.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'`);
+  res.setHeader(
+    'Content-Security-Policy',
+    `default-src 'none'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+  );
   res.type('html').send(`<!doctype html>
 <html>
   <body>
