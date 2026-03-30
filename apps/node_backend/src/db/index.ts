@@ -127,15 +127,17 @@ export const pool: QueryablePool = process.env.TURSO_DATABASE_URL
 
 // Test database connection
 export async function testConnection(): Promise<boolean> {
+  let client: QueryableClient | undefined;
   try {
-    const client = await pool.connect();
+    client = await pool.connect();
     await client.query('SELECT 1');
-    client.release();
     console.log('Database connection successful');
     return true;
   } catch (error) {
     console.error('Database connection failed:', error);
     return false;
+  } finally {
+    client?.release();
   }
 }
 
