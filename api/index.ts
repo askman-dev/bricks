@@ -6,7 +6,7 @@ let appHandlerPromise: Promise<AppHandler> | null = null;
 
 const loadAppHandler = async (): Promise<AppHandler> => {
   if (!appHandlerPromise) {
-    appHandlerPromise = import('../apps/node_backend/src/app.ts').then(
+    appHandlerPromise = import('../apps/node_backend/src/app').then(
       (mod: { default: AppHandler }) => mod.default,
     );
   }
