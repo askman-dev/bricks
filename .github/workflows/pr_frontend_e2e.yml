@@ -1,0 +1,73 @@
+name: PR Frontend E2E
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  homepage-e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install Flutter dependencies
+        working-directory: apps/mobile_chat_app
+        run: flutter pub get
+
+      - name: Build Flutter web app
+        working-directory: apps/mobile_chat_app
+        run: flutter build web --release
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install E2E dependencies
+        run: |
+          npm install --no-save playwright serve wait-on
+          npx playwright install chromium --with-deps
+
+      - name: Start web server
+        run: npx serve -s apps/mobile_chat_app/build/web -l 4173 &
+
+      - name: Wait for web server
+        run: npx wait-on http://127.0.0.1:4173 --timeout 120000
+
+      - name: Run homepage E2E and take screenshot
+        env:
+          E2E_BASE_URL: http://127.0.0.1:4173
+        run: node .github/scripts/e2e_homepage_screenshot.js
+
+      - name: Upload homepage screenshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-homepage-screenshot-${{ github.event.pull_request.number || github.run_number }}
+          path: screenshots/home.png
+          retention-days: 7
+
+      - name: Publish screenshot to PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: node .github/scripts/publish_pr_homepage_screenshot.js
