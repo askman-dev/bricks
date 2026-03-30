@@ -39,7 +39,8 @@ apps/node_backend/
 │  │  └─ migrations/
 │  │     ├─ 001_create_users.sql
 │  │     ├─ 002_create_oauth_connections.sql
-│  │     └─ 003_create_api_configs.sql
+│  │     ├─ 003_create_api_configs.sql
+│  │     └─ 004_add_user_email.sql
 │  ├─ services/
 │  │  ├─ userService.ts           # User management logic
 │  │  └─ configService.ts         # API config with encryption
@@ -104,7 +105,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ### Database Setup
 
-The application will automatically run migrations on startup if `AUTO_MIGRATE=true` in `.env`.
+Migrations run automatically on every server startup (including Vercel cold starts). The migration runner is idempotent – already-applied migrations are skipped. Set `AUTO_MIGRATE=false` to disable automatic migrations on standard server startup and manage them manually instead. **Note:** On Vercel, migrations triggered via the `app.ts` middleware will still run even when `AUTO_MIGRATE=false`.
+
+The migration runner supports both **PostgreSQL** and **Turso/libSQL (SQLite)** backends; PostgreSQL-specific syntax (extensions, PL/pgSQL functions, `gen_random_uuid()`, `JSONB`) is transparently adapted when the Turso driver is active.
 
 To run migrations manually:
 

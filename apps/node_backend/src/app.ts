@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import configRoutes from './routes/config.js';
+import { runMigrations } from './db/migrate.js';
 
 // Load environment variables (no-op in Vercel production where env vars are injected directly)
 dotenv.config();
@@ -56,6 +57,28 @@ app.use('/api/', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Run database migrations once per process / Vercel cold start.
+// The promise is cached so subsequent requests incur no overhead.
+let _migrationsPromise: Promise<void> | null = null;
+
+function ensureMigrations(): Promise<void> {
+  if (!_migrationsPromise) {
+    _migrationsPromise = runMigrations();
+    // On failure reset the cache so the next request retries.
+    _migrationsPromise.catch(() => {
+      _migrationsPromise = null;
+    });
+  }
+  return _migrationsPromise;
+}
+
+// Ensure migrations have run before handling any request.
+// On migration failure, forward the error to Express's error handler so the
+// caller receives a proper 500 response instead of a cryptic DB table error.
+app.use((_req: Request, _res: Response, next: NextFunction) => {
+  ensureMigrations().then(() => next()).catch((err: unknown) => next(err));
+});
 
 // Health check endpoint (under /api/ prefix for unified Vercel routing)
 app.get('/api/health', (req: Request, res: Response) => {

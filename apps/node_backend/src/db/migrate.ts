@@ -6,6 +6,60 @@ import pool from './index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const isTurso = Boolean(process.env.TURSO_DATABASE_URL);
+
+// RFC 4122 v4 UUID expression for SQLite, using the built-in randomblob() function.
+// Produces: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx  (y is one of 8, 9, a, b)
+const SQLITE_UUID_EXPR =
+  `(lower(hex(randomblob(4)))` +                                       // time_low    (8 hex)
+  ` || '-' || lower(hex(randomblob(2)))` +                             // time_mid    (4 hex)
+  ` || '-' || '4' || lower(substr(hex(randomblob(2)),2))` +            // version=4   (4 hex)
+  ` || '-' || substr('89ab', 1 + (abs(random()) % 4), 1)` +           // RFC variant bit
+  ` || lower(substr(hex(randomblob(2)),2))` +                          // clock_seq   (3 hex)
+  ` || '-' || lower(hex(randomblob(6))))`;                             // node        (12 hex)
+
+/**
+ * Adapt a PostgreSQL migration SQL file to individual SQLite/Turso-compatible
+ * statements.  Handles the most common PostgreSQL-isms present in this repo's
+ * migration files:
+ *   - CREATE EXTENSION (not supported in SQLite)
+ *   - PL/pgSQL function definitions (dollar-quoted $$...$$)
+ *   - Triggers that call EXECUTE FUNCTION (PostgreSQL-only trigger syntax)
+ *   - gen_random_uuid()  → SQLite randomblob UUID expression
+ *   - SERIAL             → INTEGER
+ *   - JSONB              → TEXT
+ *   - NOW()              → CURRENT_TIMESTAMP
+ *
+ * Note: statements are split on top-level semicolons.  This is safe for the
+ * migration files in this repo (no semicolons inside string literals), but
+ * would need revisiting if future migrations contain string literals with ';'.
+ */
+function adaptMigrationForSqlite(sql: string): string[] {
+  // Remove PL/pgSQL function definitions ($$-quoted blocks) before splitting,
+  // so their internal semicolons do not confuse the statement splitter.
+  sql = sql.replace(
+    /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b[\s\S]*?\$\$[\s\S]*?\$\$\s+LANGUAGE\s+\w+\s*;/gi,
+    '',
+  );
+
+  const statements: string[] = [];
+
+  for (let stmt of sql.split(';').map((s) => s.trim()).filter(Boolean)) {
+    // Skip PostgreSQL-only DDL statements (may have leading SQL comments)
+    if (/\bCREATE\s+EXTENSION\b/i.test(stmt)) continue;
+    if (/\bEXECUTE\s+FUNCTION\b/i.test(stmt)) continue;
+
+    stmt = stmt.replace(/\bgen_random_uuid\(\)/g, SQLITE_UUID_EXPR);
+    stmt = stmt.replace(/\bSERIAL\b/g, 'INTEGER');
+    stmt = stmt.replace(/\bJSONB\b/gi, 'TEXT');
+    stmt = stmt.replace(/\bNOW\(\)/gi, 'CURRENT_TIMESTAMP');
+
+    statements.push(stmt);
+  }
+
+  return statements;
+}
+
 interface Migration {
   version: string;
   filename: string;
@@ -14,14 +68,19 @@ interface Migration {
 
 // Create migrations tracking table
 async function createMigrationsTable(): Promise<void> {
-  const query = `
-    CREATE TABLE IF NOT EXISTS migrations (
-      id SERIAL PRIMARY KEY,
-      version VARCHAR(10) NOT NULL UNIQUE,
-      filename VARCHAR(255) NOT NULL,
-      applied_at TIMESTAMP DEFAULT NOW()
-    );
-  `;
+  const query = isTurso
+    ? `CREATE TABLE IF NOT EXISTS migrations (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         version TEXT NOT NULL UNIQUE,
+         filename TEXT NOT NULL,
+         applied_at TEXT DEFAULT (datetime('now'))
+       )`
+    : `CREATE TABLE IF NOT EXISTS migrations (
+         id SERIAL PRIMARY KEY,
+         version VARCHAR(10) NOT NULL UNIQUE,
+         filename VARCHAR(255) NOT NULL,
+         applied_at TIMESTAMP DEFAULT NOW()
+       )`;
   await pool.query(query);
 }
 
@@ -58,8 +117,15 @@ async function applyMigration(migration: Migration): Promise<void> {
   try {
     await client.query('BEGIN');
 
-    // Execute migration SQL
-    await client.query(migration.sql);
+    if (isTurso) {
+      // SQLite/Turso: execute each statement individually after adaptation
+      for (const stmt of adaptMigrationForSqlite(migration.sql)) {
+        await client.query(stmt);
+      }
+    } else {
+      // PostgreSQL: execute the whole file as one batch
+      await client.query(migration.sql);
+    }
 
     // Record migration
     await client.query(
