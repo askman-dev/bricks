@@ -4,8 +4,11 @@ import 'package:mobile_chat_app/app/app.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('BricksApp renders ChatScreen with composer', (tester) async {
+  setUp(() {
     SharedPreferences.setMockInitialValues({'auth_token': 'mock_token'});
+  });
+
+  testWidgets('BricksApp renders ChatScreen with composer', (tester) async {
     await tester.pumpWidget(const BricksApp());
     await tester.pumpAndSettle();
 
@@ -15,7 +18,6 @@ void main() {
   });
 
   testWidgets('Sending an empty message does nothing', (tester) async {
-    SharedPreferences.setMockInitialValues({'auth_token': 'mock_token'});
     await tester.pumpWidget(const BricksApp());
     await tester.pumpAndSettle();
 
