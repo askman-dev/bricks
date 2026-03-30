@@ -9,8 +9,11 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
   issues: write
+
+concurrency:
+  group: pr-homepage-e2e-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   homepage-e2e:
@@ -62,7 +65,7 @@ jobs:
           retention-days: 7
 
       - name: Publish screenshot to PR comment
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}

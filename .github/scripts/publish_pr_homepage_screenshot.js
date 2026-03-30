@@ -74,6 +74,7 @@ async function githubRequest(apiPath, options = {}) {
       `GitHub API ${options.method || 'GET'} ${apiPath} failed: ${response.status}${apiMessage}`,
     );
     error.response = data !== null ? data : text;
+    error.status = response.status;
     throw error;
   }
 
@@ -88,7 +89,7 @@ async function ensurePreviewBranch() {
 
     const repoInfo = await githubRequest(`/repos/${owner}/${repo}`);
     const defaultRef = await githubRequest(
-      `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(repoInfo.default_branch)}`,
+      `/repos/${owner}/${repo}/git/ref/heads/${repoInfo.default_branch}`,
     );
 
     await githubRequest(`/repos/${owner}/${repo}/git/refs`, {
@@ -115,16 +116,29 @@ async function getExistingPreviewFileSha() {
 
 async function uploadPreviewImage(existingSha) {
   const content = fs.readFileSync(screenshotPath).toString('base64');
+  const maxRetries = 3;
+  let currentSha = existingSha;
 
-  await githubRequest(`/repos/${owner}/${repo}/contents/${encodedPath(`${previewDir}/${SCREENSHOT_FILE}`)}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      message: `chore: update homepage screenshot preview for PR #${prNumber}`,
-      branch: PREVIEW_BRANCH,
-      content,
-      sha: existingSha,
-    }),
-  });
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await githubRequest(`/repos/${owner}/${repo}/contents/${encodedPath(`${previewDir}/${SCREENSHOT_FILE}`)}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          message: `chore: update homepage screenshot preview for PR #${prNumber}`,
+          branch: PREVIEW_BRANCH,
+          content,
+          sha: currentSha,
+        }),
+      });
+      return;
+    } catch (error) {
+      if (error.status === 409 && attempt < maxRetries) {
+        currentSha = await getExistingPreviewFileSha();
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 async function upsertPrComment(body) {
