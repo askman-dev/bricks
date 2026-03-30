@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import express, { Request, Response } from 'express';
 import axios from 'axios';
 import { findOrCreateUserByOAuth } from '../services/userService.js';
@@ -94,10 +95,15 @@ function isAllowedReturnOrigin(returnOrigin: string, req: Request): boolean {
 function buildPopupResponse(res: Response, token: string, returnOrigin: string): void {
   const escapedToken = JSON.stringify(token);
   const escapedOrigin = JSON.stringify(returnOrigin);
+  const nonce = randomBytes(16).toString('base64');
+  // Override Helmet's default CSP for this page: only the nonced inline script
+  // needs to run; everything else can stay locked down.
+  res.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'`);
   res.type('html').send(`<!doctype html>
 <html>
   <body>
-    <script>
+    <p>Authentication successful. This window will close automatically.</p>
+    <script nonce="${nonce}">
       (function () {
         var token = ${escapedToken};
         var returnOrigin = ${escapedOrigin};
