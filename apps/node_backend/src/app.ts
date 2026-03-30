@@ -11,6 +11,12 @@ dotenv.config();
 
 const app = express();
 
+// Only enable trust proxy when running behind Vercel (or another trusted proxy),
+// so non-proxied environments keep the safer default behavior.
+if (process.env.VERCEL || process.env.VERCEL_ENV) {
+  app.set('trust proxy', 1);
+}
+
 // Security middleware
 app.use(helmet());
 
