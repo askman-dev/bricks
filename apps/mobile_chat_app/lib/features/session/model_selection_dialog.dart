@@ -47,7 +47,12 @@ class _ModelSelectionDialogState extends State<ModelSelectionDialog> {
         children: [
           RadioGroup<String>(
             groupValue: _selected,
-            onChanged: (value) => setState(() => _selected = value),
+            onChanged: (value) {
+              if (value == null) {
+                return;
+              }
+              setState(() => _selected = value);
+            },
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: kGeminiModels.map((modelId) {
