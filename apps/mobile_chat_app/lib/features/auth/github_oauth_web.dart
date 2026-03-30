@@ -1,16 +1,15 @@
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
 import 'dart:html' as html;
 
 Future<String?> performGitHubOAuth() async {
   final returnOrigin = Uri.encodeComponent(html.window.location.origin);
-  final popup = html.window.open(
+  html.window.open(
     '/api/auth/github?mode=popup&origin=$returnOrigin',
     'github_oauth',
     'width=520,height=720',
   );
-  if (popup == null) {
-    return null;
-  }
 
   final completer = Completer<String?>();
   late final StreamSubscription<html.MessageEvent> subscription;
