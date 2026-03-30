@@ -48,9 +48,14 @@ class AuthService {
     await prefs.remove(_tokenKey);
   }
 
-  /// Returns true when a token is present in local storage.
+  /// Returns true when a token is persisted in local storage.
+  ///
+  /// This intentionally checks only [SharedPreferences] so that test-mode
+  /// users still land on the login screen until they explicitly tap the
+  /// quick-login button (which persists the injected token).
   static Future<bool> isLoggedIn() async {
-    final token = await getToken();
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_tokenKey);
     return token != null && token.isNotEmpty;
   }
 }

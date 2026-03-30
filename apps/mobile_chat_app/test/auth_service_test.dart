@@ -18,5 +18,18 @@ void main() {
       final token = await AuthService.getToken();
       expect(token, equals('prefs-token'));
     });
+
+    test('isLoggedIn checks only persisted storage, not injected token',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final loggedIn = await AuthService.isLoggedIn();
+      expect(loggedIn, isFalse);
+    });
+
+    test('isLoggedIn returns true when token is persisted', () async {
+      SharedPreferences.setMockInitialValues({'auth_token': 'stored-token'});
+      final loggedIn = await AuthService.isLoggedIn();
+      expect(loggedIn, isTrue);
+    });
   });
 }

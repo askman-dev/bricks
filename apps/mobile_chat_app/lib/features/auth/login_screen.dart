@@ -25,7 +25,7 @@ class LoginScreen extends StatelessWidget {
                 _GitHubSignInButton(
                   onSuccess: () => _onSignInSuccess(context),
                 ),
-                if (AuthService.isTestMode()) ...[
+                if (AuthService.getInjectedTestToken() != null) ...[
                   const SizedBox(height: 12),
                   _TestQuickLoginButton(
                     onSuccess: () => _onSignInSuccess(context),
@@ -142,7 +142,9 @@ class _TestQuickLoginButtonState extends State<_TestQuickLoginButton> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Test token missing. Set BRICKS_TEST_TOKEN.'),
+            content: Text(
+              'Test token missing. Pass BRICKS_TEST_TOKEN via --dart-define.',
+            ),
           ),
         );
         return;

@@ -71,20 +71,27 @@ persist_shell_path_hint() {
 ensure_flutter_shims() {
   local flutter_bin="$1"
   local shim_dir="$HOME/.local/bin"
+  local created=0
 
   mkdir -p "$shim_dir"
 
   if [[ -x "$flutter_bin/flutter" ]]; then
     ln -snf "$flutter_bin/flutter" "$shim_dir/flutter"
+    created=1
   fi
 
   if [[ -x "$flutter_bin/dart" ]]; then
     ln -snf "$flutter_bin/dart" "$shim_dir/dart"
+    created=1
   fi
 
-  append_to_path_if_dir "$shim_dir"
-  print_step "Created/updated Flutter shims in: $shim_dir"
-  print_step "If needed, add shims to your shell profile: export PATH=\"$shim_dir:\$PATH\""
+  if [[ "$created" -eq 1 ]]; then
+    append_to_path_if_dir "$shim_dir"
+    print_step "Created/updated Flutter shims in: $shim_dir"
+    print_step "If needed, add shims to your shell profile: export PATH=\"$shim_dir:\$PATH\""
+  else
+    print_warning "No flutter/dart executables found in $flutter_bin; skipping shim creation."
+  fi
 }
 
 install_flutter_if_missing() {
@@ -231,8 +238,21 @@ main() {
 
     # Install Flutter if missing
     install_flutter_if_missing
-    append_to_path_if_dir "$FLUTTER_HOME/bin"
-    ensure_flutter_shims "$FLUTTER_HOME/bin"
+
+    # Determine the active Flutter bin directory for PATH and shims
+    flutter_bin_dir=""
+    if [[ -x "$FLUTTER_HOME/bin/flutter" ]]; then
+        flutter_bin_dir="$FLUTTER_HOME/bin"
+    elif command -v flutter >/dev/null 2>&1; then
+        flutter_bin_dir="$(cd "$(dirname "$(command -v flutter)")" && pwd)"
+    fi
+
+    if [[ -n "${flutter_bin_dir:-}" ]]; then
+        append_to_path_if_dir "$flutter_bin_dir"
+        ensure_flutter_shims "$flutter_bin_dir"
+    else
+        print_warning "Flutter installation not found in FLUTTER_HOME or PATH; skipping shim creation."
+    fi
 
     # Verify Flutter and Dart are available
     ensure_cmd flutter "Install Flutter SDK >= 3.x and ensure it is in PATH."
