@@ -31,6 +31,32 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
 
+/** Name of the HttpOnly cookie used to store the CSRF state nonce. */
+const OAUTH_STATE_COOKIE = 'oauth_state';
+
+/**
+ * Parses the `Cookie` request header into a key/value map.
+ * Avoids a `cookie-parser` dependency while keeping the logic minimal and safe.
+ */
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!cookieHeader) return result;
+  for (const pair of cookieHeader.split(';')) {
+    const idx = pair.indexOf('=');
+    if (idx === -1) continue;
+    const key = pair.slice(0, idx).trim();
+    const value = pair.slice(idx + 1).trim();
+    if (key) {
+      try {
+        result[key] = decodeURIComponent(value);
+      } catch {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * Builds the OAuth callback response for the redirect (non-popup) flow.
  *
@@ -53,6 +79,8 @@ function buildRedirectResponse(res: Response, token: string): void {
     'Content-Security-Policy',
     `default-src 'none'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
   );
+  // Prevent any cache layer from storing the JWT token.
+  res.setHeader('Cache-Control', 'no-store');
   res.type('html').send(`<!doctype html>
 <html>
   <body>
@@ -81,7 +109,19 @@ function buildRedirectResponse(res: Response, token: string): void {
 }
 
 async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
-  const { code } = req.query;
+  const { code, state } = req.query;
+
+  // Validate CSRF state: compare the query parameter with the HttpOnly cookie.
+  const cookies = parseCookies(req.headers.cookie);
+  const expectedState = cookies[OAUTH_STATE_COOKIE];
+
+  if (!expectedState || typeof state !== 'string' || state !== expectedState) {
+    res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
+    return;
+  }
+
+  // Clear the one-time state cookie regardless of what happens next.
+  res.clearCookie(OAUTH_STATE_COOKIE, { path: '/api' });
 
   if (!code || typeof code !== 'string') {
     res.status(400).json({ error: 'Authorization code required' });
@@ -160,6 +200,9 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
 /**
  * GET /auth/github
  * Redirects the current browser tab to the GitHub OAuth consent screen.
+ * A random CSRF state nonce is generated, stored in a short-lived HttpOnly
+ * cookie, and included in the GitHub authorize URL so the callback can
+ * verify it and reject forged requests.
  */
 router.get('/github', (req: Request, res: Response) => {
   if (!GITHUB_CLIENT_ID) {
@@ -167,8 +210,27 @@ router.get('/github', (req: Request, res: Response) => {
     return;
   }
 
+  if (!GITHUB_CALLBACK_URL) {
+    res.status(500).json({ error: 'GitHub OAuth callback URL not configured' });
+    return;
+  }
+
+  // Generate a cryptographically random state nonce for CSRF protection.
+  const state = randomBytes(32).toString('hex');
+
+  // Store the nonce in a short-lived, HttpOnly, SameSite=Lax cookie.
+  // Path is set to /api so it is sent back for all callback routes
+  // (/api/auth/github/callback, /api/auth/callback, etc.).
+  res.cookie(OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/api',
+    maxAge: 10 * 60 * 1000, // 10 minutes
+  });
+
   const scope = 'read:user user:email';
-  const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${GITHUB_CALLBACK_URL}`;
+  const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${encodeURIComponent(GITHUB_CALLBACK_URL)}&state=${encodeURIComponent(state)}`;
 
   res.redirect(redirectUrl);
 });
