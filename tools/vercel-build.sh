@@ -36,7 +36,7 @@ if [ "${INSTALL_ONLY}" = "--install-only" ]; then
     cd apps/mobile_chat_app
     flutter pub get
   )
-  flutter precache --web >/dev/null 2>&1 || true
+  flutter precache --web 2>&1 || echo "Warning: flutter precache --web failed; build may be slower." >&2
   echo "Install-only step finished."
   exit 0
 fi
