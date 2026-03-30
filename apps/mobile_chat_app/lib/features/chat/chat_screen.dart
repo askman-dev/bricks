@@ -1,13 +1,18 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
 import 'package:agent_core/agent_core.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
-import 'chat_message.dart';
-import 'widgets/message_list.dart';
-import 'widgets/composer_bar.dart';
-import 'widgets/agent_selector.dart';
-import '../session/model_selection_dialog.dart';
+import 'package:chat_domain/chat_domain.dart';
+import 'package:design_system/design_system.dart';
+import 'package:flutter/material.dart';
+import 'package:workspace_fs/workspace_fs.dart';
+
+import '../agents/agents_screen.dart';
 import '../session/session_settings_page.dart';
+import '../../services/agents_repository_factory.dart';
+import 'chat_message.dart';
+import 'widgets/composer_bar.dart';
+import 'widgets/message_list.dart';
 
 /// The main chat screen – the app's entry point.
 ///
@@ -27,290 +32,397 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _messages = [];
   bool _isSending = false;
   bool _isStreaming = false;
-  AgentSession? _currentSession;
-  StreamSubscription<AgentSessionEvent>? _streamSubscription;
+  bool _loadingAgents = true;
 
   /// Manages which agents participate and at what probability.
   final ParticipantManager _participantManager = ParticipantManager();
 
-  /// The currently selected agent ID for processing messages.
-  String? _selectedAgentId;
-
-  /// The AI model selected for this session.
-  String _selectedModel = kGeminiModels.first;
-
-  /// Session name displayed in the top bar.
-  final String _sessionName = 'New Session';
+  final AgentClient _client = AgentCoreClient();
+  final Map<String, AgentSession> _sessions = {};
+  StreamSubscription<AgentSessionEvent>? _currentSubscription;
+  AgentsRepository? _agentsRepository;
+  List<AgentDefinition> _agents = [];
+  AgentDefinition? _activeAgent;
 
   @override
   void initState() {
     super.initState();
-    // Initialize with some default agents for testing.
-    _participantManager.addParticipant(
-      const AgentParticipant(
-        agentId: 'notebook',
-        agentName: 'Notebook',
-        isEnabled: true,
-        probability: 0.8,
-      ),
-    );
-    _participantManager.addParticipant(
-      const AgentParticipant(
-        agentId: 'gemini',
-        agentName: 'Gemini',
-        isEnabled: true,
-        probability: 0.5,
-      ),
-    );
-    // Select the first agent by default.
-    if (_participantManager.participants.participants.isNotEmpty) {
-      _selectedAgentId =
-          _participantManager.participants.participants.first.agentId;
+    _loadAgents();
+  }
+
+  @override
+  void dispose() {
+    _currentSubscription?.cancel();
+    for (final session in _sessions.values) {
+      unawaited(session.dispose());
     }
+    super.dispose();
+  }
+
+  Future<void> _loadAgents() async {
+    final repo = await createAgentsRepository();
+    final definitions = await _readAgentDefinitions(repo);
+    if (!mounted) return;
+    _agentsRepository = repo;
+    _syncParticipants(definitions);
+    setState(() {
+      _agents = definitions;
+      _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
+      _loadingAgents = false;
+    });
+  }
+
+  Future<void> _reloadAgents() async {
+    final repo = _agentsRepository ?? await createAgentsRepository();
+    final definitions = await _readAgentDefinitions(repo);
+    if (!mounted) return;
+    _syncParticipants(definitions);
+    setState(() {
+      _agentsRepository = repo;
+      _agents = definitions;
+      _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
+    });
+  }
+
+  Future<List<AgentDefinition>> _readAgentDefinitions(
+    AgentsRepository repository,
+  ) async {
+    final names = await repository.listAgentNames();
+    final definitions = <AgentDefinition>[];
+    for (final name in names) {
+      final content = await repository.loadAgent(name);
+      if (content == null) continue;
+      try {
+        definitions.add(AgentFileCodec.decode(content));
+      } catch (_) {
+        // Skip invalid agent files to keep the UI responsive.
+      }
+    }
+    return definitions;
+  }
+
+  void _syncParticipants(List<AgentDefinition> definitions) {
+    for (final agent in definitions) {
+      final exists =
+          _participantManager.participants.findById(agent.name) != null;
+      if (!exists) {
+        _participantManager.addParticipant(
+          AgentParticipant(
+            agentId: agent.name,
+            agentName: agent.name,
+            probability: 0.0,
+          ),
+        );
+      }
+    }
+  }
+
+  void _selectAgent(AgentDefinition agent) {
+    setState(() => _activeAgent = agent);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Responding as @${agent.name}')),
+    );
+  }
+
+  AgentSettings _settingsForAgent(AgentDefinition? agent) {
+    final modelId = _resolveModelId(agent?.model);
+    return AgentSettings(
+      provider: _providerForModel(modelId),
+      model: modelId,
+      systemPrompt: agent?.systemPrompt,
+    );
+  }
+
+  String _providerForModel(String model) {
+    if (model.startsWith('gemini')) return 'gemini';
+    return 'anthropic';
+  }
+
+  String _resolveModelId(String? model) {
+    switch (model) {
+      case 'gemini-flash':
+        return 'gemini-3-flash-preview';
+      case 'gemini-pro':
+        return 'gemini-pro';
+      case 'haiku':
+        return 'claude-haiku-3-5';
+      case 'opus':
+        return 'claude-opus-4-5';
+      case 'sonnet':
+      default:
+        return model ?? 'claude-sonnet-4-5';
+    }
+  }
+
+  Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
+    final key = agent?.name ?? '_default';
+    final existing = _sessions[key];
+    if (existing != null) return existing;
+    final session = _client.createSession(_settingsForAgent(agent));
+    _sessions[key] = session;
+    return session;
+  }
+
+  void _updateMessageContent(
+    int index,
+    String content, {
+    bool isStreaming = false,
+  }) {
+    if (!mounted || index < 0 || index >= _messages.length) return;
+    setState(() {
+      _messages[index] = _messages[index].copyWith(
+        content: content,
+        isStreaming: isStreaming,
+      );
+    });
+  }
+
+  int _appendMessage(ChatMessage message) {
+    setState(() {
+      _messages.add(message);
+    });
+    return _messages.length - 1;
   }
 
   void _sendMessage(String text) {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || _isSending) return;
 
-    final userMessage = ChatMessage(role: 'user', content: text);
-    setState(() {
-      _messages.add(userMessage);
-      _isSending = true;
-    });
-
-    // Get the selected agent or fall back to the first available.
-    final selectedAgent = _selectedAgentId != null
-        ? _participantManager.participants.findById(_selectedAgentId!)
-        : _participantManager.participants.participants.firstOrNull;
-
-    if (selectedAgent == null) {
-      setState(() {
-        _messages.add(
-          ChatMessage(
-            role: 'assistant',
-            content: 'No agent selected. Please add agents to continue.',
-          ),
-        );
-        _isSending = false;
-      });
-      return;
-    }
-
-    // Create a session with the selected agent's settings.
-    final session = AgentCoreClient().createSession(
-      const AgentSettings(
-        provider: 'stub',
-        model: 'stub-model',
-        streamEvents: true,
+    final agent = _activeAgent;
+    _appendMessage(ChatMessage(role: 'user', content: text));
+    final agentMessageIndex = _appendMessage(
+      ChatMessage(
+        role: 'assistant',
+        content: '',
+        agentId: agent?.name,
+        agentName: agent?.name,
+        isStreaming: true,
       ),
     );
-    _currentSession = session;
-
-    // Create a placeholder streaming message.
-    final streamingMessage = ChatMessage(
-      role: 'assistant',
-      content: '',
-      agentId: selectedAgent.agentId,
-      agentName: selectedAgent.agentName,
-      isStreaming: true,
-    );
 
     setState(() {
-      _messages.add(streamingMessage);
-      _isSending = false;
+      _isSending = true;
       _isStreaming = true;
     });
 
-    // Listen to the stream and update the message content.
-    final stream = session.sendMessage(text);
-    final buffer = StringBuffer();
-
-    _streamSubscription = stream.listen(
-      (event) {
-        if (event is TextDeltaEvent) {
-          buffer.write(event.delta);
-          setState(() {
-            // Update the last message with accumulated content.
-            if (_messages.isNotEmpty && _messages.last.isStreaming) {
-              _messages[_messages.length - 1] = _messages.last.copyWith(
-                content: buffer.toString(),
-              );
-            }
-          });
-        } else if (event is MessageCompleteEvent) {
-          setState(() {
-            // Mark the message as complete.
-            if (_messages.isNotEmpty && _messages.last.isStreaming) {
-              _messages[_messages.length - 1] = _messages.last.copyWith(
-                content: event.fullText,
-                isStreaming: false,
-              );
-            }
-          });
-        } else if (event is RunCompleteEvent) {
-          setState(() {
-            _isStreaming = false;
-            // Ensure the last message is marked as not streaming.
-            if (_messages.isNotEmpty && _messages.last.isStreaming) {
-              _messages[_messages.length - 1] = _messages.last.copyWith(
-                isStreaming: false,
-              );
-            }
-          });
-
-          // After the main response, decide which agents speak proactively.
-          final speakers = _participantManager.decideProactiveSpeakers();
-          for (final agentId in speakers) {
-            // Skip the agent that just responded.
-            if (agentId == selectedAgent.agentId) continue;
-
-            final participant =
-                _participantManager.participants.findById(agentId);
-            if (participant == null) continue;
-
-            setState(() {
-              _messages.add(
-                ChatMessage(
-                  role: 'assistant',
-                  content:
-                      '(stub) ${participant.agentName} responds proactively.',
-                  agentId: agentId,
-                  agentName: participant.agentName,
-                ),
-              );
-            });
-          }
-        } else if (event is AgentErrorEvent) {
-          setState(() {
-            _isStreaming = false;
-            if (_messages.isNotEmpty && _messages.last.isStreaming) {
-              _messages[_messages.length - 1] = _messages.last.copyWith(
-                content: 'Error: ${event.message}',
-                isStreaming: false,
-              );
-            }
-          });
-        }
-      },
-      onError: (error) {
-        setState(() {
-          _isStreaming = false;
-          if (_messages.isNotEmpty && _messages.last.isStreaming) {
-            _messages[_messages.length - 1] = _messages.last.copyWith(
-              content: 'Error: $error',
+    _sessionForAgent(agent).then((session) {
+      final stream = session.sendMessage(text);
+      _currentSubscription = stream.listen(
+        (event) {
+          if (event is TextDeltaEvent) {
+            final current = _messages[agentMessageIndex];
+            _updateMessageContent(
+              agentMessageIndex,
+              current.content + event.delta,
+              isStreaming: true,
+            );
+          } else if (event is MessageCompleteEvent) {
+            _updateMessageContent(
+              agentMessageIndex,
+              event.fullText,
+              isStreaming: false,
+            );
+          } else if (event is AgentErrorEvent) {
+            _updateMessageContent(
+              agentMessageIndex,
+              'Error: ${event.message}',
               isStreaming: false,
             );
           }
-        });
-      },
-      onDone: () {
-        setState(() {
-          _isStreaming = false;
-        });
-      },
-    );
-  }
-
-  void _stopStreaming() {
-    _currentSession?.cancel();
-    _streamSubscription?.cancel();
-    setState(() {
-      _isStreaming = false;
-      // Mark the last streaming message as complete with current content.
-      if (_messages.isNotEmpty && _messages.last.isStreaming) {
-        _messages[_messages.length - 1] = _messages.last.copyWith(
-          isStreaming: false,
-        );
-      }
+        },
+        onError: (error) {
+          _updateMessageContent(
+            agentMessageIndex,
+            'Error: $error',
+            isStreaming: false,
+          );
+          if (mounted) {
+            setState(() {
+              _isSending = false;
+              _isStreaming = false;
+            });
+          }
+        },
+        onDone: () async {
+          if (mounted) {
+            await _handleProactiveResponses(text);
+          }
+          if (mounted) {
+            setState(() {
+              _isSending = false;
+              _isStreaming = false;
+            });
+          }
+        },
+        cancelOnError: true,
+      );
     });
   }
 
-  void _openMultiAgentSettings() {
+  void _stopStreaming() {
+    _currentSubscription?.cancel();
+    _currentSubscription = null;
+    if (mounted) {
+      setState(() {
+        _isSending = false;
+        _isStreaming = false;
+        // Mark any streaming messages as complete.
+        for (var i = _messages.length - 1; i >= 0; i--) {
+          if (_messages[i].isStreaming) {
+            _messages[i] = _messages[i].copyWith(isStreaming: false);
+            break;
+          }
+        }
+      });
+    }
+  }
+
+  AgentDefinition? _findAgent(String agentId) {
+    for (final agent in _agents) {
+      if (agent.name == agentId) return agent;
+    }
+    return null;
+  }
+
+  Future<void> _handleProactiveResponses(String userMessage) async {
+    final speakers = _participantManager.decideProactiveSpeakers();
+    final futures = <Future<void>>[];
+    for (final agentId in speakers) {
+      final participant = _participantManager.participants.findById(agentId);
+      final agent = _findAgent(agentId);
+      if (participant == null || agent == null) continue;
+      futures.add(_runAgentResponse(agent, participant.agentName, userMessage));
+    }
+    await Future.wait(futures);
+  }
+
+  Future<void> _runAgentResponse(
+    AgentDefinition agent,
+    String agentName,
+    String userMessage,
+  ) async {
+    final index = _appendMessage(
+      ChatMessage(
+        role: 'assistant',
+        content: '',
+        agentId: agent.name,
+        agentName: agentName,
+        isStreaming: true,
+      ),
+    );
+    final session = await _sessionForAgent(agent);
+    try {
+      await for (final event in session.sendMessage(userMessage)) {
+        if (event is TextDeltaEvent) {
+          final current = _messages[index];
+          _updateMessageContent(
+            index,
+            current.content + event.delta,
+            isStreaming: true,
+          );
+        } else if (event is MessageCompleteEvent) {
+          _updateMessageContent(index, event.fullText, isStreaming: false);
+        } else if (event is AgentErrorEvent) {
+          _updateMessageContent(
+            index,
+            'Error: ${event.message}',
+            isStreaming: false,
+          );
+        }
+      }
+    } catch (e) {
+      _updateMessageContent(index, 'Error: $e', isStreaming: false);
+    }
+  }
+
+  void _openSessionSettings() {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
         builder: (_) =>
             SessionSettingsPage(coordinator: _participantManager),
       ),
-    ).then((_) {
-      // Refresh the UI after settings change.
-      setState(() {
-        // If the selected agent was removed, select the first available agent.
-        if (_selectedAgentId != null &&
-            _participantManager.participants.findById(_selectedAgentId!) ==
-                null) {
-          _selectedAgentId =
-              _participantManager.participants.participants.firstOrNull?.agentId;
-        }
-      });
-    });
+    ).then((_) => setState(() {}));
   }
 
-  Future<void> _openModelSelection() async {
-    final model = await showDialog<String>(
-      context: context,
-      builder: (_) => ModelSelectionDialog(currentModel: _selectedModel),
+  Future<void> _openAgentsScreen() async {
+    final updated = await Navigator.push<AgentDefinition?>(
+      context,
+      MaterialPageRoute<AgentDefinition?>(builder: (_) => const AgentsScreen()),
     );
-    if (model != null && mounted) {
-      setState(() => _selectedModel = model);
+    await _reloadAgents();
+    if (updated != null) {
+      _selectAgent(updated);
     }
   }
 
-  void _onAgentSelected(String agentId) {
-    setState(() {
-      _selectedAgentId = agentId;
-    });
-  }
-
-  @override
-  void dispose() {
-    _streamSubscription?.cancel();
-    _currentSession?.dispose();
-    super.dispose();
+  PreferredSizeWidget _buildActiveAgentsIndicator() {
+    final active = _participantManager.participants.active;
+    if (active.isEmpty) {
+      return const PreferredSize(
+        preferredSize: Size.fromHeight(0),
+        child: SizedBox.shrink(),
+      );
+    }
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(44),
+      child: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(
+          left: BricksSpacing.md,
+          bottom: BricksSpacing.xs,
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: active.map((p) {
+              final pct = (p.probability * 100).round();
+              return Padding(
+                padding: const EdgeInsets.only(right: BricksSpacing.xs),
+                child: Chip(
+                  avatar: const Icon(Icons.smart_toy_outlined, size: 16),
+                  label: Text('${p.agentName} • $pct%'),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loadingAgents) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final activeAgentName = _activeAgent?.name;
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Agent selector dropdown.
-            AgentSelector(
-              selectedAgentId: _selectedAgentId,
-              participants: _participantManager.participants.participants,
-              onAgentSelected: _onAgentSelected,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '| $_sessionName',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            const Text('Bricks'),
+            if (activeAgentName != null)
+              Text(
+                'Responding as @$activeAgentName',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
           ],
         ),
+        bottom: _buildActiveAgentsIndicator(),
         actions: [
-          PopupMenuButton<_SessionMenu>(
-            icon: const Icon(Icons.settings_outlined),
+          IconButton(
+            icon: const Icon(Icons.account_tree_outlined),
+            tooltip: 'Manage Agents',
+            onPressed: _openAgentsScreen,
+          ),
+          IconButton(
+            icon: const Icon(Icons.people_outline),
             tooltip: 'Session Settings',
-            onSelected: (item) {
-              switch (item) {
-                case _SessionMenu.model:
-                  _openModelSelection();
-                case _SessionMenu.multiAgent:
-                  _openMultiAgentSettings();
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: _SessionMenu.model,
-                child: Text('Model Settings'),
-              ),
-              PopupMenuItem(
-                value: _SessionMenu.multiAgent,
-                child: Text('Multi-Agent Settings'),
-              ),
-            ],
+            onPressed: _openSessionSettings,
           ),
         ],
       ),
@@ -318,7 +430,10 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(child: MessageList(messages: _messages)),
           ComposerBar(
-            onSend: _isSending || _isStreaming ? null : _sendMessage,
+            activeAgent: _activeAgent,
+            agents: _agents,
+            onAgentSelected: _selectAgent,
+            onSend: _isSending ? null : _sendMessage,
             onStop: _stopStreaming,
             isStreaming: _isStreaming,
           ),
@@ -327,6 +442,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
-/// Menu items for the session settings popup.
-enum _SessionMenu { model, multiAgent }

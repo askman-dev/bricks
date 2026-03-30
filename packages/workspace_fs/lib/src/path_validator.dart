@@ -1,14 +1,13 @@
-import 'dart:io';
-
 /// Shared path validation utilities for workspace filesystem operations.
 class PathValidator {
   const PathValidator._();
 
-  /// Throws [ArgumentError] if [value] is empty, contains path separators,
-  /// or contains `..`.
+  /// Throws [ArgumentError] if [value] is empty, contains `/` or `\`
+  /// path separators, or equals `..` exactly.
   ///
-  /// Checks both the platform-specific separator and the POSIX `/` separator
-  /// to guard against cross-platform path traversal attempts.
+  /// Both `/` and `\` are checked regardless of the current platform to
+  /// prevent cross-platform path traversal attempts. The `..` check uses
+  /// exact equality so names like `my..workspace` are still accepted.
   static void validateSegment(String value, String paramName) {
     if (value.isEmpty) {
       throw ArgumentError.value(
@@ -17,12 +16,10 @@ class PathValidator {
         '$paramName must not be empty',
       );
     }
-    // Reject the platform separator and POSIX '/' to guard against traversal.
+    // Reject common path separators to guard against traversal.
     // Use exact equality for '..' rather than contains() to avoid rejecting
     // legitimate names like 'my..workspace'.
-    if (value.contains('/') ||
-        value.contains(Platform.pathSeparator) ||
-        value == '..') {
+    if (value.contains('/') || value.contains('\\') || value == '..') {
       throw ArgumentError.value(
         value,
         paramName,
