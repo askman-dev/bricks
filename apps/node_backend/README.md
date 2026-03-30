@@ -76,7 +76,9 @@ cp .env.example .env
 
 Edit `.env` and configure:
 
-- `DATABASE_URL`: PostgreSQL connection string
+- `DATABASE_URL` (preferred): PostgreSQL connection string
+- `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING` are also accepted for Vercel Postgres compatibility
+- `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` (optional alternative): Turso/libSQL connection
 - `JWT_SECRET`: Secure random string (≥32 characters)
 - `ENCRYPTION_KEY`: Secure random string (≥32 characters)
 - `GITHUB_CLIENT_ID`: Your GitHub OAuth app client ID
@@ -460,7 +462,9 @@ docker run -p 3000:3000 --env-file .env bricks-backend
 Required environment variables for production deployment:
 
 - `NODE_ENV=production`
-- `DATABASE_URL`: PostgreSQL connection string
+- `DATABASE_URL` (preferred): PostgreSQL connection string
+- `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING` are also accepted for Vercel Postgres compatibility
+- `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` (optional alternative): Turso/libSQL connection
 - `JWT_SECRET`: Secure secret for JWT signing
 - `ENCRYPTION_KEY`: Secure key for API key encryption
 - `GITHUB_CLIENT_ID`: GitHub OAuth client ID
@@ -521,7 +525,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3000/api/config
 
 ### Database Connection Issues
 
-- Verify `DATABASE_URL` is correct
+- Verify either Turso (`TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`) or PostgreSQL (`DATABASE_URL`, `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`) env vars are set correctly
 - Check PostgreSQL is running
 - Ensure database exists
 - Check network connectivity
