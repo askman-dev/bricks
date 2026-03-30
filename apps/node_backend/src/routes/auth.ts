@@ -26,78 +26,29 @@ interface GitHubTokenResponse {
   scope: string;
 }
 
-interface OAuthStatePayload {
-  mode?: 'popup';
-  return_origin?: string;
-}
-
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
-const OAUTH_ALLOWED_RETURN_ORIGINS = process.env.OAUTH_ALLOWED_RETURN_ORIGINS;
 
-function parseStatePayload(stateValue: string | undefined): OAuthStatePayload {
-  if (!stateValue) {
-    return {};
-  }
-
-  try {
-    const decoded = Buffer.from(stateValue, 'base64url').toString('utf8');
-    const payload = JSON.parse(decoded) as OAuthStatePayload;
-    return payload ?? {};
-  } catch {
-    return {};
-  }
-}
-
-function resolveAllowedReturnOrigins(req: Request): Set<string> {
-  const allowed = new Set<string>();
-  const requestOrigin = `${req.protocol}://${req.get('host')}`;
-  allowed.add(requestOrigin);
-
-  if (GITHUB_CALLBACK_URL) {
-    try {
-      allowed.add(new URL(GITHUB_CALLBACK_URL).origin);
-    } catch {
-      // Ignore malformed callback URL and fall back to request origin.
-    }
-  }
-
-  if (OAUTH_ALLOWED_RETURN_ORIGINS) {
-    OAUTH_ALLOWED_RETURN_ORIGINS
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-      .forEach((origin) => allowed.add(origin));
-  }
-
-  return allowed;
-}
-
-function isAllowedReturnOrigin(returnOrigin: string, req: Request): boolean {
-  try {
-    const parsed = new URL(returnOrigin);
-    if (parsed.protocol !== 'https:') {
-      return false;
-    }
-
-    if (resolveAllowedReturnOrigins(req).has(parsed.origin)) {
-      return true;
-    }
-
-    return parsed.hostname.endsWith('.vercel.app');
-  } catch {
-    return false;
-  }
-}
-
-function buildPopupResponse(res: Response, token: string, returnOrigin: string): void {
+/**
+ * Builds the OAuth callback response for the redirect (non-popup) flow.
+ *
+ * The returned HTML page stores the JWT token in localStorage using the key
+ * and encoding format expected by Flutter Web's shared_preferences plugin
+ * (key: `flutter.auth_token`, value: JSON.stringify(token)), then redirects
+ * the browser to the app root (`/`) so that Flutter's startup router can
+ * pick it up via AuthService.isLoggedIn().
+ *
+ * If localStorage is unavailable (e.g. blocked in private mode) the page
+ * shows a clear recovery message instead of silently failing.
+ */
+function buildRedirectResponse(res: Response, token: string): void {
   const escapedToken = JSON.stringify(token);
-  const escapedOrigin = JSON.stringify(returnOrigin);
   const nonce = randomBytes(16).toString('base64');
-  // Override Helmet's default CSP for this page: only the nonced inline script
-  // needs to run; everything else can stay locked down.
+  // Tight CSP: only the nonced inline script is allowed; everything else is
+  // locked down.  form-action is restricted to 'none' and frame-ancestors
+  // prevents clickjacking.
   res.setHeader(
     'Content-Security-Policy',
     `default-src 'none'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
@@ -105,41 +56,24 @@ function buildPopupResponse(res: Response, token: string, returnOrigin: string):
   res.type('html').send(`<!doctype html>
 <html>
   <body>
-    <p>Authentication successful. You can close this window.</p>
+    <p>Authentication successful. Redirecting…</p>
     <script nonce="${nonce}">
       (function () {
         var token = ${escapedToken};
-        var returnOrigin = ${escapedOrigin};
-        // PRIMARY: BroadcastChannel – works even when window.opener is severed by
-        // the OAuth provider's Cross-Origin-Opener-Policy (COOP) headers, because
-        // BroadcastChannel is scoped to the origin rather than the browsing-context
-        // group.  This is the most reliable delivery path.
+        // Flutter Web's shared_preferences plugin stores String values as
+        // JSON.stringify(value) under the key prefix 'flutter.'.
+        // Writing directly here lets the Flutter startup router read the
+        // token immediately after the redirect without any extra round-trip.
         try {
-          var bc = new BroadcastChannel('bricks:github-auth');
-          bc.postMessage({ type: 'bricks:github-auth', token: token });
-          bc.close();
-          window.close();
-          return;
-        } catch (bcErr) {
-          // BroadcastChannel unavailable (very old browser); fall through.
-        }
-        // SECONDARY: postMessage via window.opener (works when opener is not severed).
-        if (window.opener) {
-          window.opener.postMessage({ type: 'bricks:github-auth', token: token }, returnOrigin);
-          window.close();
-          return;
-        }
-        // TERTIARY: localStorage – parent tab polls / listens for storage events.
-        // If localStorage is unavailable (e.g. storage blocked in private mode) we
-        // cannot communicate with the parent tab automatically, so keep the popup
-        // open and surface a clear recovery message instead of silently closing.
-        try {
-          localStorage.setItem('bricks:auth:callback', token);
-          window.close();
+          localStorage.setItem('flutter.auth_token', JSON.stringify(token));
         } catch (e) {
           console.error('bricks: localStorage unavailable', e);
-          document.body.innerHTML = '<p>Authentication successful! Please close this window and refresh the main page to continue.</p>';
+          var msg = document.createElement('p');
+          msg.textContent = 'Authentication successful! Please enable cookies/storage for this site and try again.';
+          document.body.replaceChildren(msg);
+          return;
         }
+        window.location.replace('/');
       })();
     </script>
   </body>
@@ -147,8 +81,7 @@ function buildPopupResponse(res: Response, token: string, returnOrigin: string):
 }
 
 async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
-  const { code, state } = req.query;
-  const parsedState = parseStatePayload(typeof state === 'string' ? state : undefined);
+  const { code } = req.query;
 
   if (!code || typeof code !== 'string') {
     res.status(400).json({ error: 'Authorization code required' });
@@ -219,33 +152,14 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
     primaryEmail ?? undefined
   );
 
-  // Generate JWT token
+  // Generate JWT token and deliver it to the Flutter app via the redirect flow.
   const token = generateToken(user.id);
-
-  if (parsedState.mode === 'popup') {
-    const fallbackOrigin = `${req.protocol}://${req.get('host')}`;
-    const returnOrigin = parsedState.return_origin && isAllowedReturnOrigin(parsedState.return_origin, req)
-      ? parsedState.return_origin
-      : fallbackOrigin;
-
-    buildPopupResponse(res, token, returnOrigin);
-    return;
-  }
-
-  // Return token and user info
-  res.json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email ?? null,
-      created_at: user.created_at,
-    },
-  });
+  buildRedirectResponse(res, token);
 }
 
 /**
  * GET /auth/github
- * Redirects user to GitHub OAuth consent screen
+ * Redirects the current browser tab to the GitHub OAuth consent screen.
  */
 router.get('/github', (req: Request, res: Response) => {
   if (!GITHUB_CLIENT_ID) {
@@ -254,18 +168,7 @@ router.get('/github', (req: Request, res: Response) => {
   }
 
   const scope = 'read:user user:email';
-  const requestedOrigin = typeof req.query.origin === 'string' ? req.query.origin : undefined;
-  const returnOrigin = requestedOrigin && isAllowedReturnOrigin(requestedOrigin, req)
-    ? requestedOrigin
-    : `${req.protocol}://${req.get('host')}`;
-  const statePayload: OAuthStatePayload | undefined = req.query.mode === 'popup'
-    ? { mode: 'popup', return_origin: returnOrigin }
-    : undefined;
-  const state = statePayload
-    ? Buffer.from(JSON.stringify(statePayload), 'utf8').toString('base64url')
-    : undefined;
-  const stateQuery = state ? `&state=${encodeURIComponent(state)}` : '';
-  const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${GITHUB_CALLBACK_URL}${stateQuery}`;
+  const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${GITHUB_CALLBACK_URL}`;
 
   res.redirect(redirectUrl);
 });
