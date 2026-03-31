@@ -25,6 +25,12 @@ class LoginScreen extends StatelessWidget {
                 _GitHubSignInButton(
                   onSuccess: () => _onSignInSuccess(context),
                 ),
+                if (AuthService.getInjectedTestToken() != null) ...[
+                  const SizedBox(height: 12),
+                  _TestQuickLoginButton(
+                    onSuccess: () => _onSignInSuccess(context),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 const _AppleSignInButton(),
               ],
@@ -111,6 +117,61 @@ class _GitHubSignInButtonState extends State<_GitHubSignInButton> {
             borderRadius: BorderRadius.circular(8),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TestQuickLoginButton extends StatefulWidget {
+  const _TestQuickLoginButton({required this.onSuccess});
+
+  final VoidCallback onSuccess;
+
+  @override
+  State<_TestQuickLoginButton> createState() => _TestQuickLoginButtonState();
+}
+
+class _TestQuickLoginButtonState extends State<_TestQuickLoginButton> {
+  bool _isLoading = false;
+
+  Future<void> _quickLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      final testToken = AuthService.getInjectedTestToken();
+      if (testToken == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Test token missing. Pass BRICKS_TEST_TOKEN via --dart-define.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await AuthService.saveToken(testToken);
+      widget.onSuccess();
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 44,
+      child: OutlinedButton.icon(
+        onPressed: _isLoading ? null : _quickLogin,
+        icon: _isLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.bolt),
+        label: const Text('Quick Login (Test)'),
       ),
     );
   }
