@@ -4,6 +4,10 @@
 - Before running Flutter/Dart workspace checks in this repository, run `./tools/init_dev_env.sh` from the repo root.
 - `tools/init_dev_env.sh` is the standard bootstrap entrypoint for both local and Codex/container environments.
 
+## Plan persistence
+- For each feature or task, create and save a markdown plan file in `docs/plans/`.
+- Name plan files with a `YYYY-mm-dd-hh-mm` prefix.
+
 ## GitHub Agentic Workflows (gh-aw)
 
 This repository uses [GitHub Agentic Workflows](https://github.github.com/gh-aw/) to run AI coding agents on a schedule or in response to repository events.
