@@ -1,9 +1,7 @@
 name: Deploy to Vercel
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch: # Manual fallback only; Vercel auto-deploys via its own Git integration
 
 # Allow one concurrent deployment
 concurrency:
