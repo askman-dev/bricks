@@ -84,7 +84,7 @@ void main() {
       final testEnv = {
         'TEST_GEMINI_API_KEY': 'test-gemini-key-67890',
         'TEST_GEMINI_BASE_URL': 'https://generativelanguage.googleapis.com',
-        'TEST_GEMINI_MODEL': 'gemini-1.5-flash',
+        'TEST_GEMINI_MODEL': 'gemini-2.5-flash',
       };
 
       final config = GeminiEnvConfig.fromEnvironment(testEnv);
@@ -92,7 +92,7 @@ void main() {
       expect(config.apiKey, equals('test-gemini-key-67890'));
       expect(config.baseUrl.toString(),
           equals('https://generativelanguage.googleapis.com'));
-      expect(config.model, equals('gemini-1.5-flash'));
+      expect(config.model, equals('gemini-2.5-flash'));
     });
 
     // Case A2.1: uses default base URL if not provided
@@ -106,7 +106,7 @@ void main() {
       expect(config.apiKey, equals('test-gemini-key-67890'));
       expect(config.baseUrl.toString(),
           equals('https://generativelanguage.googleapis.com'));
-      expect(config.model, equals('gemini-1.5-flash'));
+      expect(config.model, equals('gemini-2.5-flash'));
     });
 
     // Case A4: missing Gemini env vars fails clearly

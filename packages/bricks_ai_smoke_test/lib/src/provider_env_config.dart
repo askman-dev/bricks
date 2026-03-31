@@ -115,7 +115,7 @@ class GeminiEnvConfig {
     }
 
     // Optional: Model with default
-    final model = env['TEST_GEMINI_MODEL'] ?? 'gemini-1.5-flash';
+    final model = env['TEST_GEMINI_MODEL'] ?? 'gemini-2.5-flash';
 
     return GeminiEnvConfig(
       baseUrl: baseUrl,
