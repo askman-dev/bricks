@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   createApiConfig,
@@ -9,6 +9,26 @@ import {
 } from '../services/configService.js';
 
 const router = express.Router();
+const ALLOWED_PROVIDERS = new Set(['anthropic', 'google_ai_studio']);
+
+function maskApiKey(value: string): string {
+  if (!value) return value;
+  const visible = Math.min(4, value.length);
+  return `****${value.slice(value.length - visible)}`;
+}
+
+function sanitizeConfigForResponse<T extends { config?: unknown }>(raw: T): T {
+  const sanitized: T & { config?: unknown } = { ...raw };
+  if (!sanitized.config || typeof sanitized.config !== 'object') {
+    return sanitized;
+  }
+  const config = { ...(sanitized.config as Record<string, unknown>) };
+  if (typeof config.api_key === 'string') {
+    config.api_key = maskApiKey(config.api_key);
+  }
+  sanitized.config = config;
+  return sanitized;
+}
 
 // All routes require authentication
 router.use(authenticate);
@@ -33,6 +53,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       res.status(400).json({ error: 'Missing required fields: category, provider, config' });
       return;
     }
+    if (category === 'llm' && !ALLOWED_PROVIDERS.has(provider)) {
+      res.status(400).json({ error: 'Invalid provider' });
+      return;
+    }
 
     // Validate config is a plain, non-null object
     if (typeof config !== 'object' || config === null || Array.isArray(config)) {
@@ -46,7 +70,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       is_default,
     });
 
-    res.status(201).json(apiConfig);
+    res.status(201).json(sanitizeConfigForResponse(apiConfig));
   } catch (error) {
     console.error('Create config error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -71,7 +95,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const configs = await getApiConfigs(userId, category);
 
-    res.json(configs);
+    res.json(configs.map(sanitizeConfigForResponse));
   } catch (error) {
     console.error('Get configs error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -100,7 +124,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    res.json(config);
+    res.json(sanitizeConfigForResponse(config));
   } catch (error) {
     console.error('Get config error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -131,7 +155,23 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     } = {};
 
     if (category !== undefined) updates.category = category;
-    if (provider !== undefined) updates.provider = provider;
+    if (provider !== undefined) {
+      let effectiveCategory = category;
+      if (effectiveCategory === undefined) {
+        // Look up the existing config to determine the effective category
+        const existing = await getApiConfig(userId, id);
+        if (!existing) {
+          res.status(404).json({ error: 'Configuration not found' });
+          return;
+        }
+        effectiveCategory = existing.category;
+      }
+      if (effectiveCategory === 'llm' && !ALLOWED_PROVIDERS.has(provider)) {
+        res.status(400).json({ error: 'Invalid provider' });
+        return;
+      }
+      updates.provider = provider;
+    }
     if (config !== undefined) {
       if (
         config === null ||
@@ -152,7 +192,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    res.json(updatedConfig);
+    res.json(sanitizeConfigForResponse(updatedConfig));
   } catch (error) {
     console.error('Update config error:', error);
     res.status(500).json({ error: 'Internal server error' });

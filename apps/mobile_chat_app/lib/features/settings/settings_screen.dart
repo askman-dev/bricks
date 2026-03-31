@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../auth/auth_service.dart';
 import '../auth/login_screen.dart';
+import 'model_settings_screen.dart';
 
 /// Screen for managing app and agent settings.
 class SettingsScreen extends StatelessWidget {
@@ -40,6 +41,18 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          ListTile(
+            leading: const Icon(Icons.tune_outlined),
+            title: const Text('Model Settings'),
+            subtitle: const Text('Provider, Base URL, API Key'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ModelSettingsScreen(),
+                ),
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Sign Out'),

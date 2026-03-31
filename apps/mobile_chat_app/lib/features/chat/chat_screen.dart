@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import '../agents/agents_screen.dart';
+import '../settings/settings_screen.dart';
 import '../session/session_settings_page.dart';
 import '../../services/agents_repository_factory.dart';
 import 'chat_message.dart';
@@ -338,8 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) =>
-            SessionSettingsPage(coordinator: _participantManager),
+        builder: (_) => SessionSettingsPage(coordinator: _participantManager),
       ),
     ).then((_) => setState(() {}));
   }
@@ -353,6 +353,64 @@ class _ChatScreenState extends State<ChatScreen> {
     if (updated != null) {
       _selectAgent(updated);
     }
+  }
+
+  Future<void> _openSettingsScreen() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          children: [
+            const ListTile(
+              title: Text('Bricks'),
+              subtitle: Text('Navigation'),
+            ),
+            const Divider(),
+            const ListTile(
+              leading: Icon(Icons.chat_bubble_outline),
+              title: Text('Current Chat'),
+            ),
+            const ListTile(
+              leading: Icon(Icons.history),
+              title: Text('Sessions'),
+              subtitle: Text('Coming soon'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_tree_outlined),
+              title: const Text('Manage Agents'),
+              onTap: () {
+                Navigator.pop(context);
+                _openAgentsScreen();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people_outline),
+              title: const Text('Session Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                _openSessionSettings();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                _openSettingsScreen();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   PreferredSizeWidget _buildActiveAgentsIndicator() {
@@ -400,6 +458,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final activeAgentName = _activeAgent?.name;
     return Scaffold(
+      drawer: _buildDrawer(),
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -413,18 +472,6 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         bottom: _buildActiveAgentsIndicator(),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_tree_outlined),
-            tooltip: 'Manage Agents',
-            onPressed: _openAgentsScreen,
-          ),
-          IconButton(
-            icon: const Icon(Icons.people_outline),
-            tooltip: 'Session Settings',
-            onPressed: _openSessionSettings,
-          ),
-        ],
       ),
       body: Column(
         children: [

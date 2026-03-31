@@ -4,7 +4,6 @@ import pool from '../db/index.js';
 // Encryption utilities
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
 
 function getEncryptionKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
@@ -202,12 +201,17 @@ export async function updateApiConfig(
     }
 
     if (updates.config) {
-      const configToStore = { ...updates.config };
-      if (configToStore.api_key) {
-        configToStore.api_key = encrypt(configToStore.api_key);
+      // Merge with existing config so omitted keys (e.g. api_key) are preserved
+      const existingConfig = decryptApiConfig(existing.rows[0]).config ?? {};
+      const merged = { ...existingConfig, ...updates.config };
+      if (updates.config.api_key) {
+        merged.api_key = encrypt(updates.config.api_key);
+      } else if (typeof existingConfig.api_key === 'string' && existingConfig.api_key.trim()) {
+        // Re-encrypt the existing key (decryptApiConfig already decrypted it)
+        merged.api_key = encrypt(existingConfig.api_key);
       }
       updateFields.push(`config = $${paramCount++}`);
-      values.push(JSON.stringify(configToStore));
+      values.push(JSON.stringify(merged));
     }
 
     if (updates.is_default !== undefined) {

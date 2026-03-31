@@ -47,6 +47,28 @@ All require `Authorization: Bearer <token>` header.
 - `PUT /api/config/:id` - Update configuration
 - `DELETE /api/config/:id` - Delete configuration
 
+### Unified LLM API (AI protocol-compatible)
+All require `Authorization: Bearer <token>` header and use user's default `llm`
+configuration unless `provider` is explicitly passed.
+
+- `POST /api/llm/chat` - Single response generation
+- `POST /api/llm/chat/stream` - SSE streaming response
+
+Example request:
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-5",
+  "messages": [
+    { "role": "system", "content": "You are concise." },
+    { "role": "user", "content": "Hello" }
+  ],
+  "temperature": 0.2,
+  "maxTokens": 512
+}
+```
+
 ### Health Check
 - `GET /api/health` - Service health status
 
