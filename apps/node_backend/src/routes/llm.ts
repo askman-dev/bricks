@@ -1,6 +1,6 @@
 import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
-import { generateWithUserConfig } from '../llm/llm_service.js';
+import { generateWithUserConfig, streamWithUserConfig } from '../llm/llm_service.js';
 import { LlmProvider, UnifiedChatRequest } from '../llm/types.js';
 
 const router = express.Router();
@@ -99,7 +99,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const response = await generateWithUserConfig(
+    const { textStream, provider: resolvedProvider, modelId } = await streamWithUserConfig(
       userId,
       {
         model: typeof model === 'string' ? model : undefined,
@@ -114,15 +114,14 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const chunks = response.text.split(/(\s+)/).filter(Boolean);
-    for (const chunk of chunks) {
+    for await (const chunk of textStream) {
       res.write(`data: ${JSON.stringify({ type: 'text-delta', delta: chunk })}\n\n`);
     }
     res.write(
       `data: ${JSON.stringify({
         type: 'done',
-        provider: response.provider,
-        model: response.model,
+        provider: resolvedProvider,
+        model: modelId,
       })}\n\n`
     );
     res.end();

@@ -1,3 +1,5 @@
+import type { LanguageModel } from 'ai';
+
 export type LlmProvider = 'anthropic' | 'google_ai_studio';
 
 export interface UnifiedMessage {
@@ -27,5 +29,5 @@ export interface LlmRuntimeConfig {
 
 export interface LlmProviderAdapter {
   readonly provider: LlmProvider;
-  generate(request: UnifiedChatRequest, config: LlmRuntimeConfig): Promise<UnifiedChatResponse>;
+  createModel(modelId: string, config: LlmRuntimeConfig): LanguageModel;
 }

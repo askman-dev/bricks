@@ -1,3 +1,5 @@
+import { generateText, streamText } from 'ai';
+import type { LanguageModel } from 'ai';
 import { getApiConfigs } from '../services/configService.js';
 import { AnthropicAdapter } from './providers/anthropic_adapter.js';
 import { GoogleAiStudioAdapter } from './providers/google_ai_studio_adapter.js';
@@ -41,14 +43,59 @@ interface StoredLlmConfig {
   };
 }
 
+function resolveModel(
+  request: UnifiedChatRequest,
+  runtimeConfig: LlmRuntimeConfig
+): { model: LanguageModel; modelId: string } {
+  const modelId = request.model || runtimeConfig.defaultModel;
+  const adapter = adapters[runtimeConfig.provider];
+  return { model: adapter.createModel(modelId, runtimeConfig), modelId };
+}
+
 export async function generateWithUserConfig(
   userId: string,
   request: UnifiedChatRequest,
   preferredProvider?: LlmProvider
 ): Promise<UnifiedChatResponse> {
   const runtimeConfig = await resolveRuntimeConfig(userId, preferredProvider);
-  const adapter = adapters[runtimeConfig.provider];
-  return adapter.generate(request, runtimeConfig);
+  const { model, modelId } = resolveModel(request, runtimeConfig);
+
+  const result = await generateText({
+    model,
+    messages: request.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    })),
+    temperature: request.temperature,
+    maxOutputTokens: request.maxTokens ?? 1024,
+  });
+
+  return {
+    provider: runtimeConfig.provider,
+    model: modelId,
+    text: result.text,
+  };
+}
+
+export async function streamWithUserConfig(
+  userId: string,
+  request: UnifiedChatRequest,
+  preferredProvider?: LlmProvider
+): Promise<{ textStream: AsyncIterable<string>; provider: LlmProvider; modelId: string }> {
+  const runtimeConfig = await resolveRuntimeConfig(userId, preferredProvider);
+  const { model, modelId } = resolveModel(request, runtimeConfig);
+
+  const result = streamText({
+    model,
+    messages: request.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    })),
+    temperature: request.temperature,
+    maxOutputTokens: request.maxTokens ?? 1024,
+  });
+
+  return { textStream: result.textStream, provider: runtimeConfig.provider, modelId };
 }
 
 async function resolveRuntimeConfig(
