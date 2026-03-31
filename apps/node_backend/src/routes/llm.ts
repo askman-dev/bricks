@@ -5,6 +5,27 @@ import { LlmProvider, UnifiedChatRequest } from '../llm/types.js';
 
 const router = express.Router();
 const SUPPORTED_PROVIDERS = new Set<LlmProvider>(['anthropic', 'google_ai_studio']);
+const VALID_ROLES = new Set(['system', 'user', 'assistant']);
+
+function validateMessages(
+  messages: unknown
+): { valid: true; normalized: UnifiedChatRequest['messages'] } | { valid: false; error: string } {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { valid: false, error: 'messages must be a non-empty array' };
+  }
+
+  const normalized: UnifiedChatRequest['messages'] = [];
+  for (const msg of messages) {
+    if (!msg || typeof msg !== 'object' || typeof msg.role !== 'string' || typeof msg.content !== 'string') {
+      return { valid: false, error: 'Each message must have a string role and content' };
+    }
+    if (!VALID_ROLES.has(msg.role)) {
+      return { valid: false, error: `Unsupported message role: '${msg.role}'. Must be one of: system, user, assistant` };
+    }
+    normalized.push({ role: msg.role as 'system' | 'user' | 'assistant', content: msg.content });
+  }
+  return { valid: true, normalized };
+}
 
 router.use(authenticate);
 
@@ -23,26 +44,9 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    if (!Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ error: 'messages must be a non-empty array' });
-      return;
-    }
-
-    const normalizedMessages = messages
-      .filter(
-        (message) =>
-          message &&
-          typeof message === 'object' &&
-          typeof message.role === 'string' &&
-          typeof message.content === 'string'
-      )
-      .map((message) => ({
-        role: message.role,
-        content: message.content,
-      }));
-
-    if (normalizedMessages.length !== messages.length) {
-      res.status(400).json({ error: 'Invalid message format' });
+    const result = validateMessages(messages);
+    if (!result.valid) {
+      res.status(400).json({ error: result.error });
       return;
     }
 
@@ -50,7 +54,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
       userId,
       {
         model: typeof model === 'string' ? model : undefined,
-        messages: normalizedMessages as UnifiedChatRequest['messages'],
+        messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
         maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
       },
@@ -88,8 +92,10 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
       res.status(400).json({ error: 'Invalid provider' });
       return;
     }
-    if (!Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ error: 'messages must be a non-empty array' });
+
+    const result = validateMessages(messages);
+    if (!result.valid) {
+      res.status(400).json({ error: result.error });
       return;
     }
 
@@ -97,7 +103,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
       userId,
       {
         model: typeof model === 'string' ? model : undefined,
-        messages: messages as UnifiedChatRequest['messages'],
+        messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
         maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
       },

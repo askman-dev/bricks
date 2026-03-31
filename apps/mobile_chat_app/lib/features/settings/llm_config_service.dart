@@ -178,9 +178,18 @@ class LlmConfigService {
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
       apiKey: '',
       defaultModel:
-          (modelPrefs['default_model'] as String?) ?? 'claude-sonnet-4-5',
+          (modelPrefs['default_model'] as String?) ?? _defaultModel(provider),
       isDefault: (config['is_default'] as bool?) ?? false,
     );
+  }
+
+  static String _defaultModel(LlmProvider provider) {
+    switch (provider) {
+      case LlmProvider.googleAiStudio:
+        return 'gemini-2.5-pro';
+      case LlmProvider.anthropic:
+        return 'claude-sonnet-4-5';
+    }
   }
 
   static String _defaultBaseUrl(LlmProvider provider) {

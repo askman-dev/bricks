@@ -156,7 +156,17 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 
     if (category !== undefined) updates.category = category;
     if (provider !== undefined) {
-      if (category === 'llm' && !ALLOWED_PROVIDERS.has(provider)) {
+      let effectiveCategory = category;
+      if (effectiveCategory === undefined) {
+        // Look up the existing config to determine the effective category
+        const existing = await getApiConfig(userId, id);
+        if (!existing) {
+          res.status(404).json({ error: 'Configuration not found' });
+          return;
+        }
+        effectiveCategory = existing.category;
+      }
+      if (effectiveCategory === 'llm' && !ALLOWED_PROVIDERS.has(provider)) {
         res.status(400).json({ error: 'Invalid provider' });
         return;
       }

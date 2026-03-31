@@ -8,6 +8,26 @@ const adapters: Record<LlmProvider, LlmProviderAdapter> = {
   google_ai_studio: new GoogleAiStudioAdapter(),
 };
 
+const ALLOWED_ENDPOINT_HOSTS = new Set([
+  'api.anthropic.com',
+  'generativelanguage.googleapis.com',
+]);
+
+function validateEndpointUrl(endpoint: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw new Error('Invalid endpoint URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Endpoint must use HTTPS');
+  }
+  if (!ALLOWED_ENDPOINT_HOSTS.has(parsed.hostname)) {
+    throw new Error(`Endpoint host '${parsed.hostname}' is not allowed`);
+  }
+}
+
 interface StoredLlmConfig {
   id: string;
   provider: string;
@@ -59,6 +79,7 @@ async function resolveRuntimeConfig(
   if (typeof endpoint !== 'string' || !endpoint.trim()) {
     throw new Error('Invalid provider endpoint');
   }
+  validateEndpointUrl(endpoint);
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
     throw new Error('Invalid provider api_key');
   }
