@@ -4,6 +4,9 @@ class AgentSettings {
     required this.provider,
     required this.model,
     this.systemPrompt,
+    this.apiBaseUrl,
+    this.authToken,
+    this.configId,
     this.maxContextTokens = 32768,
     this.maxToolCallsPerTurn = 20,
     this.streamEvents = true,
@@ -13,6 +16,9 @@ class AgentSettings {
   final String provider;
   final String model;
   final String? systemPrompt;
+  final String? apiBaseUrl;
+  final String? authToken;
+  final String? configId;
   final int maxContextTokens;
   final int maxToolCallsPerTurn;
   final bool streamEvents;

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import '../agents/agents_screen.dart';
+import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../session/session_settings_page.dart';
@@ -51,6 +52,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<LlmConfig> _llmConfigs = const [];
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
+  String? _authToken;
 
   @override
   void initState() {
@@ -70,10 +72,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadAgents() async {
     final repoFuture = createAgentsRepository();
     final llmConfigsFuture = _llmConfigService.fetchConfigs();
+    final tokenFuture = AuthService.getToken();
 
     try {
       final repo = await repoFuture;
       final llmConfigs = await llmConfigsFuture;
+      final authToken = await tokenFuture;
       final definitions = await _readAgentDefinitions(repo);
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
@@ -100,6 +104,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _sessionModelOverride ??=
             llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
         _loadingLlmConfigs = false;
+        _authToken = authToken;
       });
     } catch (error) {
       if (!mounted) return;
@@ -184,6 +189,9 @@ class _ChatScreenState extends State<ChatScreen> {
       provider: _providerForConfigOrModel(selectedConfig, selectedModel),
       model: selectedModel,
       systemPrompt: agent?.systemPrompt,
+      apiBaseUrl: LlmConfigService.resolveBaseUrl(),
+      authToken: _authToken,
+      configId: selectedConfig?.id,
       permissions: const AgentPermissions(allowNetworkOutbound: true),
     );
   }

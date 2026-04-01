@@ -81,17 +81,14 @@ class LlmConfigService {
   );
 
   Uri _buildUri(String path, [Map<String, String>? query]) {
-    if (_apiBaseUrl.isNotEmpty) {
-      return Uri.parse('$_apiBaseUrl$path').replace(queryParameters: query);
-    }
-    if (kIsWeb) {
-      return Uri.parse('${Uri.base.origin}$path').replace(
-        queryParameters: query,
-      );
-    }
-    return Uri.parse('http://localhost:3000$path').replace(
-      queryParameters: query,
-    );
+    final base = resolveBaseUrl();
+    return Uri.parse('$base$path').replace(queryParameters: query);
+  }
+
+  static String resolveBaseUrl() {
+    if (_apiBaseUrl.isNotEmpty) return _apiBaseUrl;
+    if (kIsWeb) return Uri.base.origin;
+    return 'http://localhost:3000';
   }
 
   Future<List<LlmConfig>> fetchConfigs() async {
