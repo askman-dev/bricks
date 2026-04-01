@@ -28,7 +28,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: pr-review-findings-auto-trigger-${{ github.event.pull_request.number }}
+  group: pr-review-findings-auto-trigger-${{ github.event.review.id }}
   cancel-in-progress: true
 
 jobs:
