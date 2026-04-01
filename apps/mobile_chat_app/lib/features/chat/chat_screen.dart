@@ -258,6 +258,18 @@ class _ChatScreenState extends State<ChatScreen> {
         },
         cancelOnError: true,
       );
+    }).catchError((error) {
+      _updateMessageContent(
+        agentMessageIndex,
+        'Error: $error',
+        isStreaming: false,
+      );
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+          _isStreaming = false;
+        });
+      }
     });
   }
 
