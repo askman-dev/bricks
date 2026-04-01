@@ -134,8 +134,9 @@ class LlmConfigService {
       throw Exception('Not authenticated');
     }
 
+    final normalizedSlotId = normalizedSlotIdForModel(config.defaultModel);
     final configPayload = <String, dynamic>{
-      'slot_id': config.slotId,
+      'slot_id': normalizedSlotId,
       'endpoint': config.baseUrl,
       'model_preferences': {
         'default_model': config.defaultModel,
@@ -149,7 +150,7 @@ class LlmConfigService {
       'category': 'llm',
       'provider': config.provider.wireValue,
       'config': configPayload,
-      'is_default': config.isDefault,
+      'is_default': config.isDefault ? 1 : 0,
     });
 
     final uri = config.id == null
@@ -196,18 +197,39 @@ class LlmConfigService {
 
     final configId = config['id']?.toString();
     final slotId = (map['slot_id'] as String?)?.trim();
+    final defaultModel =
+        (modelPrefs['default_model'] as String?) ?? _defaultModel(provider);
     return LlmConfig(
       id: configId,
       slotId: slotId != null && slotId.isNotEmpty
           ? slotId
-          : (configId ?? 'slot-${DateTime.now().millisecondsSinceEpoch}'),
+          : normalizedSlotIdForModel(defaultModel),
       provider: provider,
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
       apiKey: '',
-      defaultModel:
-          (modelPrefs['default_model'] as String?) ?? _defaultModel(provider),
-      isDefault: (config['is_default'] as bool?) ?? false,
+      defaultModel: defaultModel,
+      isDefault: _parseIsDefaultNumber(config['is_default']),
     );
+  }
+
+  static bool _parseIsDefaultNumber(dynamic value) {
+    if (value is num) return value != 0;
+    // Narrow fallback in case backend adapter returns bool in some environments.
+    if (value is bool) return value;
+    return false;
+  }
+
+  static String normalizedSlotIdForModel(String modelName) {
+    final normalized = modelName
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+    if (normalized.isEmpty) {
+      return 'slot-${DateTime.now().millisecondsSinceEpoch}';
+    }
+    return normalized;
   }
 
   static String _defaultModel(LlmProvider provider) {

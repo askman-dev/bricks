@@ -97,6 +97,14 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
     return config.id == null ? 'Will be created on save' : config.id!;
   }
 
+  String _activeSlotIdHint() {
+    final modelName = _defaultModelController.text.trim();
+    if (modelName.isEmpty) {
+      return _configs[_activeConfigIndex].slotId;
+    }
+    return LlmConfigService.normalizedSlotIdForModel(modelName);
+  }
+
   void _setDefaultsForProvider(LlmProvider provider) {
     _baseUrlController.text = _defaultBaseUrl(provider);
     _defaultModelController.text = _defaultModel(provider);
@@ -264,9 +272,13 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     decoration:
                         const InputDecoration(labelText: 'Default Model'),
                     onChanged: (value) {
+                      final trimmed = value.trim();
                       _configs[_activeConfigIndex] =
                           _configs[_activeConfigIndex].copyWith(
-                        defaultModel: value.trim(),
+                        defaultModel: trimmed,
+                        slotId: LlmConfigService.normalizedSlotIdForModel(
+                          trimmed,
+                        ),
                       );
                       setState(() {});
                     },
@@ -280,6 +292,11 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                   const SizedBox(height: 12),
                   Text(
                     'Config ID: ${_activeConfigIdHint()}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Config Slot: ${_activeSlotIdHint()}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 24),
