@@ -427,6 +427,88 @@ void main() {
       );
       expect(result, equals('Received: hello'));
     });
+
+    test('preserves base path when apiBaseUrl has a path prefix', () async {
+      final client = MockClient((request) async {
+        expect(
+          request.url.toString(),
+          equals('https://backend.example/myapp/api/llm/chat'),
+        );
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      final result = await gw.generate(
+        settings: const AgentSettings(
+          provider: 'anthropic',
+          model: 'claude-3-haiku',
+          apiBaseUrl: 'https://backend.example/myapp',
+          authToken: 'tok',
+        ),
+        message: 'hello',
+      );
+      expect(result, equals('ok'));
+    });
+
+    test('throws when apiBaseUrl is http for a non-local host', () async {
+      final gw = RealModelGateway(environment: {});
+      await expectLater(
+        () => gw.generate(
+          settings: const AgentSettings(
+            provider: 'anthropic',
+            model: 'claude-3-haiku',
+            apiBaseUrl: 'http://backend.example',
+            authToken: 'tok',
+          ),
+          message: 'hello',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('Insecure'),
+          ),
+        ),
+      );
+    });
+
+    test('allows http for localhost', () async {
+      final client = MockClient((request) async {
+        expect(
+          request.url.toString(),
+          equals('http://localhost:3000/api/llm/chat'),
+        );
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'local reply'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      final result = await gw.generate(
+        settings: const AgentSettings(
+          provider: 'anthropic',
+          model: 'claude-3-haiku',
+          apiBaseUrl: 'http://localhost:3000',
+          authToken: 'tok',
+        ),
+        message: 'hello',
+      );
+      expect(result, equals('local reply'));
+    });
   });
 
   group('RealModelGateway Gemini HTTP', () {

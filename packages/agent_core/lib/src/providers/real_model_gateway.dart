@@ -80,7 +80,19 @@ class RealModelGateway {
     }
 
     final baseUri = _validateBaseUrl(baseUrl, 'AgentSettings.apiBaseUrl');
-    final uri = baseUri.replace(path: '/api/llm/chat');
+    if (baseUri.scheme == 'http' &&
+        baseUri.host != 'localhost' &&
+        baseUri.host != '127.0.0.1' &&
+        baseUri.host != '::1') {
+      throw StateError(
+        'Insecure AgentSettings.apiBaseUrl "$baseUrl": use "https" for non-local hosts.',
+      );
+    }
+    final basePath = baseUri.path;
+    final normalizedBasePath = (basePath.isEmpty || basePath == '/')
+        ? ''
+        : basePath.replaceFirst(RegExp(r'/$'), '');
+    final uri = baseUri.replace(path: '$normalizedBasePath/api/llm/chat');
     final provider =
         settings.provider == 'gemini' ? 'google_ai_studio' : settings.provider;
     final payload = <String, dynamic>{

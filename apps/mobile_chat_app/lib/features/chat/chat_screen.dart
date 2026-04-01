@@ -4,7 +4,6 @@ import 'package:agent_core/agent_core.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
@@ -190,18 +189,11 @@ class _ChatScreenState extends State<ChatScreen> {
       provider: _providerForConfigOrModel(selectedConfig, selectedModel),
       model: selectedModel,
       systemPrompt: agent?.systemPrompt,
-      apiBaseUrl: _resolveApiBaseUrl(),
+      apiBaseUrl: LlmConfigService.resolveBaseUrl(),
       authToken: _authToken,
       configId: selectedConfig?.id,
       permissions: const AgentPermissions(allowNetworkOutbound: true),
     );
-  }
-
-  String _resolveApiBaseUrl() {
-    const fromEnv = String.fromEnvironment('BRICKS_API_BASE_URL');
-    if (fromEnv.isNotEmpty) return fromEnv;
-    if (kIsWeb) return Uri.base.origin;
-    return 'http://localhost:3000';
   }
 
   String _providerForConfigOrModel(LlmConfig? config, String model) {
