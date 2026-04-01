@@ -43,3 +43,9 @@ This iteration adds a concrete execution plan and measurable acceptance criteria
 6. Validation commands succeed:
    - `flutter analyze`
    - `npm run type-check`
+
+## General verification TODO
+- Run `melos analyze` locally and ensure it passes before opening/merging a PR.
+- Run `melos test:flutter -- --exclude-tags=integration` locally and ensure it passes before opening/merging a PR.
+- Treat analyzer deprecation warnings in touched packages as blocking for the current change.
+

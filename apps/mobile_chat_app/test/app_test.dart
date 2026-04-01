@@ -4,7 +4,8 @@ import 'package:mobile_chat_app/app/app.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('BricksApp shows login screen when no auth token', (tester) async {
+  testWidgets('BricksApp shows login screen when no auth token',
+      (tester) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(const BricksApp());
@@ -15,7 +16,8 @@ void main() {
     expect(find.text('Continue with Apple'), findsOneWidget);
   });
 
-  testWidgets('BricksApp shows a loading indicator before auth state resolves', (
+  testWidgets('BricksApp shows a loading indicator before auth state resolves',
+      (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
