@@ -132,6 +132,7 @@ class _ChatScreenState extends State<ChatScreen> {
       provider: _providerForModel(modelId),
       model: modelId,
       systemPrompt: agent?.systemPrompt,
+      permissions: const AgentPermissions(allowNetworkOutbound: true),
     );
   }
 
