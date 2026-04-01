@@ -31,14 +31,16 @@ extension LlmProviderWire on LlmProvider {
 class LlmConfig {
   const LlmConfig({
     this.id,
+    required this.slotId,
     required this.provider,
     required this.baseUrl,
     required this.apiKey,
     required this.defaultModel,
-    this.isDefault = true,
+    this.isDefault = false,
   });
 
   final String? id;
+  final String slotId;
   final LlmProvider provider;
   final String baseUrl;
   final String apiKey;
@@ -47,6 +49,7 @@ class LlmConfig {
 
   LlmConfig copyWith({
     String? id,
+    String? slotId,
     LlmProvider? provider,
     String? baseUrl,
     String? apiKey,
@@ -55,6 +58,7 @@ class LlmConfig {
   }) {
     return LlmConfig(
       id: id ?? this.id,
+      slotId: slotId ?? this.slotId,
       provider: provider ?? this.provider,
       baseUrl: baseUrl ?? this.baseUrl,
       apiKey: apiKey ?? this.apiKey,
@@ -86,9 +90,9 @@ class LlmConfigService {
     );
   }
 
-  Future<LlmConfig?> fetchDefault() async {
+  Future<List<LlmConfig>> fetchConfigs() async {
     final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) return null;
+    if (token == null || token.isEmpty) return const [];
 
     final response = await http.get(
       _buildUri('/api/config', {'category': 'llm'}),
@@ -103,26 +107,35 @@ class LlmConfigService {
 
     final decoded = jsonDecode(response.body);
     if (decoded is! List || decoded.isEmpty) {
-      return null;
+      return const [];
     }
 
-    final configs = decoded.whereType<Map<String, dynamic>>().toList();
-    if (configs.isEmpty) return null;
-    final selected = configs.firstWhere(
-      (cfg) => cfg['is_default'] == true,
-      orElse: () => configs.first,
-    );
+    final configs = decoded
+        .whereType<Map<dynamic, dynamic>>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map(_fromApiConfig)
+        .toList();
 
-    return _fromApiConfig(selected);
+    return configs;
   }
 
-  Future<void> save(LlmConfig config) async {
+  Future<LlmConfig?> fetchDefault() async {
+    final configs = await fetchConfigs();
+    if (configs.isEmpty) return null;
+    return configs.firstWhere(
+      (cfg) => cfg.isDefault,
+      orElse: () => configs.first,
+    );
+  }
+
+  Future<LlmConfig> save(LlmConfig config) async {
     final token = await AuthService.getToken();
     if (token == null || token.isEmpty) {
       throw Exception('Not authenticated');
     }
 
     final configPayload = <String, dynamic>{
+      'slot_id': config.slotId,
       'endpoint': config.baseUrl,
       'model_preferences': {
         'default_model': config.defaultModel,
@@ -159,21 +172,35 @@ class LlmConfigService {
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to save model settings (${response.statusCode})');
     }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      return config;
+    }
+    return _fromApiConfig(Map<String, dynamic>.from(decoded));
   }
 
   LlmConfig _fromApiConfig(Map<String, dynamic> config) {
     final rawConfig = config['config'];
-    final map =
-        rawConfig is Map<String, dynamic> ? rawConfig : <String, dynamic>{};
+    final map = rawConfig is Map
+        ? Map<String, dynamic>.from(rawConfig)
+        : <String, dynamic>{};
     final preferences = map['model_preferences'];
-    final modelPrefs =
-        preferences is Map<String, dynamic> ? preferences : <String, dynamic>{};
+    final modelPrefs = preferences is Map
+        ? Map<String, dynamic>.from(preferences)
+        : <String, dynamic>{};
 
     final provider = LlmProviderWire.fromWireValue(
       (config['provider'] as String?) ?? 'anthropic',
     );
+
+    final configId = config['id']?.toString();
+    final slotId = (map['slot_id'] as String?)?.trim();
     return LlmConfig(
-      id: config['id'] as String?,
+      id: configId,
+      slotId: slotId != null && slotId.isNotEmpty
+          ? slotId
+          : (configId ?? 'slot-${DateTime.now().millisecondsSinceEpoch}'),
       provider: provider,
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
       apiKey: '',
@@ -186,7 +213,7 @@ class LlmConfigService {
   static String _defaultModel(LlmProvider provider) {
     switch (provider) {
       case LlmProvider.googleAiStudio:
-        return 'gemini-2.5-pro';
+        return 'gemini-flash-latest';
       case LlmProvider.anthropic:
         return 'claude-sonnet-4-5';
     }

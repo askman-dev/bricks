@@ -16,8 +16,10 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   final _apiKeyController = TextEditingController();
   final _defaultModelController = TextEditingController();
 
+  final List<LlmConfig> _configs = [];
+  int _activeConfigIndex = 0;
+
   LlmProvider _provider = LlmProvider.anthropic;
-  String? _configId;
   bool _loading = true;
   bool _saving = false;
   bool _showApiKey = false;
@@ -38,29 +40,61 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
 
   Future<void> _load() async {
     try {
-      final config = await _service.fetchDefault();
+      final configs = await _service.fetchConfigs();
       if (!mounted) return;
-      if (config != null) {
-        _provider = config.provider;
-        _configId = config.id;
-        _baseUrlController.text = config.baseUrl;
-        _apiKeyController.text = config.apiKey;
-        _defaultModelController.text = config.defaultModel;
-      } else {
-        _setDefaultsForProvider(_provider);
+      _configs
+        ..clear()
+        ..addAll(configs);
+
+      if (_configs.isEmpty) {
+        _configs.add(_blankConfig(slotId: 'config-1', isDefault: true));
       }
+
+      _activeConfigIndex = _configs.indexWhere((cfg) => cfg.isDefault);
+      if (_activeConfigIndex < 0) {
+        _activeConfigIndex = 0;
+      }
+      _hydrateForm(_configs[_activeConfigIndex]);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to load model settings')),
         );
       }
-      _setDefaultsForProvider(_provider);
+      _configs
+        ..clear()
+        ..add(_blankConfig(slotId: 'config-1', isDefault: true));
+      _activeConfigIndex = 0;
+      _hydrateForm(_configs.first);
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  LlmConfig _blankConfig({required String slotId, required bool isDefault}) {
+    const provider = LlmProvider.anthropic;
+    return LlmConfig(
+      slotId: slotId,
+      provider: provider,
+      baseUrl: _defaultBaseUrl(provider),
+      apiKey: '',
+      defaultModel: _defaultModel(provider),
+      isDefault: isDefault,
+    );
+  }
+
+  void _hydrateForm(LlmConfig config) {
+    _provider = config.provider;
+    _baseUrlController.text = config.baseUrl;
+    _apiKeyController.clear();
+    _defaultModelController.text = config.defaultModel;
+  }
+
+  String _activeConfigIdHint() {
+    final config = _configs[_activeConfigIndex];
+    return config.id == null ? 'Will be created on save' : config.id!;
   }
 
   void _setDefaultsForProvider(LlmProvider provider) {
@@ -80,7 +114,7 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   static String _defaultModel(LlmProvider provider) {
     switch (provider) {
       case LlmProvider.googleAiStudio:
-        return 'gemini-2.5-pro';
+        return 'gemini-flash-latest';
       case LlmProvider.anthropic:
         return 'claude-sonnet-4-5';
     }
@@ -89,20 +123,32 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
+
+    final current = _configs[_activeConfigIndex];
     try {
-      await _service.save(
-        LlmConfig(
-          id: _configId,
+      final saved = await _service.save(
+        current.copyWith(
           provider: _provider,
           baseUrl: _baseUrlController.text.trim(),
           apiKey: _apiKeyController.text.trim(),
           defaultModel: _defaultModelController.text.trim(),
+          isDefault: true,
         ),
       );
+
       if (!mounted) return;
+
+      _configs[_activeConfigIndex] = saved;
+      for (var i = 0; i < _configs.length; i++) {
+        if (i != _activeConfigIndex) {
+          _configs[i] = _configs[i].copyWith(isDefault: false);
+        }
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Model settings saved')),
       );
+      setState(() {});
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -113,6 +159,41 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
         setState(() => _saving = false);
       }
     }
+  }
+
+  String _fallbackLabelForSlot(LlmConfig config, int index) {
+    final match = RegExp(r'(\d+)$').firstMatch(config.slotId);
+    if (match != null) {
+      return 'Config ${match.group(1)}';
+    }
+    if (config.slotId.trim().isNotEmpty) {
+      return 'Config ${config.slotId}';
+    }
+    return 'Config ${index + 1}';
+  }
+
+  Widget _buildConfigSelector() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: List.generate(_configs.length, (index) {
+        final config = _configs[index];
+        final modelName = config.defaultModel.trim();
+        final label = modelName.isEmpty
+            ? _fallbackLabelForSlot(config, index)
+            : modelName;
+        return ChoiceChip(
+          label: Text(label),
+          selected: index == _activeConfigIndex,
+          onSelected: (_) {
+            setState(() {
+              _activeConfigIndex = index;
+              _hydrateForm(_configs[index]);
+            });
+          },
+        );
+      }),
+    );
   }
 
   @override
@@ -126,7 +207,14 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  const Text('Configs'),
+                  const SizedBox(height: 8),
+                  _buildConfigSelector(),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<LlmProvider>(
+                    key: ValueKey(
+                      'provider-${_configs[_activeConfigIndex].slotId}-${_provider.wireValue}',
+                    ),
                     initialValue: _provider,
                     decoration: const InputDecoration(labelText: 'Provider'),
                     items: const [
@@ -167,7 +255,7 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     obscureText: !_showApiKey,
                     decoration: InputDecoration(
                       labelText: 'API Key',
-                      helperText: _configId == null
+                      helperText: _configs[_activeConfigIndex].id == null
                           ? null
                           : 'Leave blank to keep your existing key',
                       suffixIcon: IconButton(
@@ -179,7 +267,8 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                       ),
                     ),
                     validator: (value) {
-                      if (_configId == null && (value?.trim() ?? '').isEmpty) {
+                      if (_configs[_activeConfigIndex].id == null &&
+                          (value?.trim() ?? '').isEmpty) {
                         return 'API Key is required';
                       }
                       return null;
@@ -190,12 +279,24 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     controller: _defaultModelController,
                     decoration:
                         const InputDecoration(labelText: 'Default Model'),
+                    onChanged: (value) {
+                      _configs[_activeConfigIndex] =
+                          _configs[_activeConfigIndex].copyWith(
+                        defaultModel: value.trim(),
+                      );
+                      setState(() {});
+                    },
                     validator: (value) {
                       if ((value?.trim() ?? '').isEmpty) {
                         return 'Default model is required';
                       }
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Config ID: ${_activeConfigIdHint()}',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 24),
                   FilledButton.icon(

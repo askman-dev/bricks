@@ -184,7 +184,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
               ),
               const SizedBox(height: BricksSpacing.md),
               DropdownButtonFormField<String>(
-                value: _model,
+                initialValue: _model,
                 decoration: const InputDecoration(
                   labelText: 'Model',
                 ),
@@ -209,10 +209,9 @@ class _AgentsScreenState extends State<AgentsScreen> {
                 ),
                 maxLines: 8,
                 minLines: 4,
-                validator: (value) =>
-                    value == null || value.trim().isEmpty
-                        ? 'Prompt is required'
-                        : null,
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Prompt is required'
+                    : null,
                 enabled: !_saving,
               ),
               const SizedBox(height: BricksSpacing.lg),
