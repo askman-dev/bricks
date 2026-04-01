@@ -54,6 +54,88 @@ ensure_cmd() {
   fi
 }
 
+detect_pkg_manager() {
+  if command_exists apt-get; then echo "apt-get"; return; fi
+  if command_exists dnf; then echo "dnf"; return; fi
+  if command_exists yum; then echo "yum"; return; fi
+  if command_exists apk; then echo "apk"; return; fi
+  if command_exists pacman; then echo "pacman"; return; fi
+  if command_exists brew; then echo "brew"; return; fi
+  echo ""
+}
+
+install_package() {
+  local pkg="$1"
+  local manager
+  manager="$(detect_pkg_manager)"
+  local -a privilege_prefix=()
+
+  if [[ -z "$manager" ]]; then
+    return 1
+  fi
+
+  # Homebrew should run as the invoking user, not via sudo/doas.
+  if [[ "$manager" != "brew" ]]; then
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+      if command_exists sudo; then
+        privilege_prefix=(sudo)
+      elif command_exists doas; then
+        privilege_prefix=(doas)
+      else
+        print_error "Automatic installation of '$pkg' requires root privileges."
+        print_error "Please rerun tools/init_dev_env.sh with sudo/doas or install '$pkg' manually."
+        return 1
+      fi
+    fi
+  fi
+
+  print_step "Installing missing dependency '$pkg' using $manager..."
+  case "$manager" in
+    apt-get)
+      "${privilege_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get update -y
+      "${privilege_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg"
+      ;;
+    dnf)
+      "${privilege_prefix[@]}" dnf install -y "$pkg"
+      ;;
+    yum)
+      "${privilege_prefix[@]}" yum install -y "$pkg"
+      ;;
+    apk)
+      "${privilege_prefix[@]}" apk add --no-cache "$pkg"
+      ;;
+    pacman)
+      "${privilege_prefix[@]}" pacman -Syu --noconfirm "$pkg"
+      ;;
+    brew)
+      brew install "$pkg"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+ensure_or_install_cmd() {
+  local cmd="$1"
+  local pkg_name="$2"
+  local hint="$3"
+
+  if command_exists "$cmd"; then
+    return 0
+  fi
+
+  print_warning "Command '$cmd' not found. Attempting automatic installation..."
+  if install_package "$pkg_name" && command_exists "$cmd"; then
+    print_success "Installed missing command: $cmd"
+    return 0
+  fi
+
+  print_error "Unable to install required command: $cmd automatically."
+  print_error "$hint"
+  exit 1
+}
+
 append_to_path_if_dir() {
   local dir="$1"
   if [[ -d "$dir" && ":$PATH:" != *":$dir:"* ]]; then
@@ -211,6 +293,7 @@ show_next_steps() {
     echo ""
     echo "Environment notes:"
     echo "  - This script creates ~/.local/bin/flutter, ~/.local/bin/dart, and ~/.local/bin/melos shims."
+    echo "  - GitHub automation helpers in this repo require: curl and jq."
     echo "  - If commands are missing in new shells, add: export PATH=\"\$HOME/.local/bin:\$PATH\""
     echo "  - UI integration tests require a runnable target (e.g. Chrome/Android/iOS)."
     echo ""
@@ -260,6 +343,8 @@ main() {
     # Ensure basic tools are available
     ensure_cmd git "Please install Git first."
     ensure_cmd bash "Please use a shell environment with bash available."
+    ensure_or_install_cmd curl curl "Install curl manually (required for GitHub API/GraphQL automation workflows)."
+    ensure_or_install_cmd jq jq "Install jq manually (required for JSON processing in GitHub automation skills)."
 
     # Install Flutter if missing
     install_flutter_if_missing
