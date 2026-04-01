@@ -6,7 +6,7 @@
 
 ## Plan persistence
 - For each feature or task, create and save a markdown plan file in `docs/plans/`.
-- Name plan files with a `YYYY-mm-dd-hh-mm` prefix.
+- Name plan files with a `YYYY-MM-DD-HH-mm` prefix using 24-hour time (optionally appending a timezone such as `-UTC`).
 
 ## GitHub Agentic Workflows (gh-aw)
 
