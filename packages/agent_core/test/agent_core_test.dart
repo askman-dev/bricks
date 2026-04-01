@@ -15,7 +15,7 @@ void main() {
 
     test('createSession returns an AgentSession', () {
       const settings = AgentSettings(
-        provider: 'anthropic',
+        provider: 'test',
         model: 'claude-sonnet-4-5',
       );
       final session = client.createSession(settings);
@@ -33,7 +33,7 @@ void main() {
       client = AgentCoreClient();
       session = client.createSession(
         const AgentSettings(
-          provider: 'anthropic',
+          provider: 'test',
           model: 'claude-sonnet-4-5',
         ),
       );
@@ -50,8 +50,7 @@ void main() {
 
     test('sendMessage emits MessageCompleteEvent', () async {
       final events = await session.sendMessage('Hi').toList();
-      final complete =
-          events.whereType<MessageCompleteEvent>().toList();
+      final complete = events.whereType<MessageCompleteEvent>().toList();
       expect(complete, hasLength(1));
     });
 
@@ -129,8 +128,10 @@ void main() {
       manager.addParticipant(
         const AgentParticipant(agentId: 'a', agentName: 'A'),
       );
-      expect(() => manager.updateProbability('a', 1.5), throwsA(isA<RangeError>()));
-      expect(() => manager.updateProbability('a', -0.1), throwsA(isA<RangeError>()));
+      expect(() => manager.updateProbability('a', 1.5),
+          throwsA(isA<RangeError>()));
+      expect(() => manager.updateProbability('a', -0.1),
+          throwsA(isA<RangeError>()));
     });
 
     test('updateProbability throws for unknown agent', () {

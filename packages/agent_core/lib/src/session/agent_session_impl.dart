@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import '../context/context_manager.dart';
+import '../providers/real_model_gateway.dart';
 
 /// Concrete implementation of [AgentSession].
 ///
 /// Owns the run loop: builds context, calls the provider, executes tools,
 /// and emits [AgentSessionEvent]s back to the caller.
 class AgentSessionImpl implements AgentSession {
-  AgentSessionImpl({required this.settings})
+  AgentSessionImpl({required this.settings, RealModelGateway? gateway})
       : sessionId = _generateId(),
+        _gateway = gateway ?? RealModelGateway(),
         _context = ContextManager(maxTokens: settings.maxContextTokens);
 
   @override
@@ -16,6 +18,7 @@ class AgentSessionImpl implements AgentSession {
 
   final AgentSettings settings;
   final ContextManager _context;
+  final RealModelGateway _gateway;
 
   bool _running = false;
   bool _cancelled = false;
@@ -46,14 +49,13 @@ class AgentSessionImpl implements AgentSession {
       // emissions in this turn are consistent even if cancel() is called
       // concurrently on the event loop.
       final wasCancelled = _cancelled;
-      // TODO(agent_core): integrate with real provider via providers layer.
-      // Placeholder: emit a stub response.
       if (!wasCancelled) {
-        _controller!.add(const TextDeltaEvent('(agent_core stub) '));
-        _controller!.add(TextDeltaEvent('Received: $message'));
-        _controller!.add(
-          MessageCompleteEvent('(agent_core stub) Received: $message'),
+        final response = await _gateway.generate(
+          settings: settings,
+          message: message,
         );
+        _controller!.add(TextDeltaEvent(response));
+        _controller!.add(MessageCompleteEvent(response));
       }
     } catch (e) {
       if (!_cancelled) {

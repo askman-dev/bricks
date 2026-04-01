@@ -10,6 +10,7 @@ dependencies:
   agent_sdk_contract:
     path: ../agent_sdk_contract
   meta: ^1.9.0
+  http: ^1.2.1
 
 dev_dependencies:
   lints: ^3.0.0

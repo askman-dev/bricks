@@ -94,6 +94,25 @@ ensure_flutter_shims() {
   fi
 }
 
+ensure_melos_shim() {
+  local shim_dir="$HOME/.local/bin"
+  mkdir -p "$shim_dir"
+
+  if ! command_exists melos; then
+    print_warning "Melos is not available; skipping melos shim creation."
+    return
+  fi
+
+  local melos_path
+  melos_path="$(command -v melos)"
+  if [[ -x "$melos_path" ]]; then
+    ln -snf "$melos_path" "$shim_dir/melos"
+    append_to_path_if_dir "$shim_dir"
+    print_step "Created/updated Melos shim in: $shim_dir"
+    print_step "If needed, add shims to your shell profile: export PATH=\"$shim_dir:\$PATH\""
+  fi
+}
+
 install_flutter_if_missing() {
   if command_exists flutter; then
     return
@@ -179,14 +198,15 @@ show_next_steps() {
     echo ""
     echo "Next steps:"
     echo "  1. Run tests:    melos test"
-    echo "  2. Run analysis: melos analyze"
-    echo "  3. Format code:  melos format"
-    echo "  4. Build web:    cd apps/mobile_chat_app && flutter run -d chrome"
-    echo "  5. Full build:   ./build.sh"
+    echo "  2. Run scoped tests: melos exec --scope=agent_core -- dart test"
+    echo "  3. Run analysis: melos analyze"
+    echo "  4. Format code:  melos format"
+    echo "  5. Build web:    cd apps/mobile_chat_app && flutter run -d chrome"
+    echo "  6. Full build:   ./build.sh"
     echo ""
     echo "Environment notes:"
-    echo "  - This script creates ~/.local/bin/flutter and ~/.local/bin/dart shims."
-    echo "  - If flutter/dart are missing in new shells, add: export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo "  - This script creates ~/.local/bin/flutter, ~/.local/bin/dart, and ~/.local/bin/melos shims."
+    echo "  - If commands are missing in new shells, add: export PATH=\"\$HOME/.local/bin:\$PATH\""
     echo "  - UI integration tests require a runnable target (e.g. Chrome/Android/iOS)."
     echo ""
     echo "For more information, see:"
@@ -261,11 +281,13 @@ main() {
     # Check and install Melos
     if command_exists melos; then
         print_success "Melos already installed: $(melos --version 2>&1 || echo 'unknown version')"
+        ensure_melos_shim
     else
         print_step "Melos not found in PATH. Installing via: dart pub global activate melos"
         dart pub global activate melos
         append_to_path_if_dir "$HOME/.pub-cache/bin"
         ensure_cmd melos "Run 'dart pub global activate melos' and add \"$HOME/.pub-cache/bin\" to PATH."
+        ensure_melos_shim
         print_success "Melos installed successfully"
     fi
 
