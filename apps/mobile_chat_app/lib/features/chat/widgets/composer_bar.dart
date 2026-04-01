@@ -124,13 +124,6 @@ class _ComposerBarState extends State<ComposerBar>
     _hideMentions();
   }
 
-  void _handleVoiceInput() {
-    // TODO(chat): Implement voice input (placeholder for future).
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice input coming soon')),
-    );
-  }
-
   @override
   void dispose() {
     _spinController.dispose();
@@ -153,13 +146,6 @@ class _ComposerBarState extends State<ComposerBar>
           children: [
             Row(
               children: [
-                // Voice input button.
-                IconButton(
-                  onPressed: widget.isStreaming ? null : _handleVoiceInput,
-                  icon: const Icon(Icons.mic_outlined),
-                  tooltip: 'Voice input',
-                ),
-                const SizedBox(width: BricksSpacing.xs),
                 Expanded(
                   child: TextField(
                     controller: _controller,

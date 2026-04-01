@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import '../agents/agents_screen.dart';
+import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../session/session_settings_page.dart';
 import '../../services/agents_repository_factory.dart';
@@ -42,14 +43,18 @@ class _ChatScreenState extends State<ChatScreen> {
   final AgentClient _client = AgentCoreClient();
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
+  final LlmConfigService _llmConfigService = const LlmConfigService();
   AgentsRepository? _agentsRepository;
   List<AgentDefinition> _agents = [];
   AgentDefinition? _activeAgent;
+  List<LlmConfig> _configuredModels = const [];
+  String? _activeModelId;
 
   @override
   void initState() {
     super.initState();
     _loadAgents();
+    _loadModelPreferences();
   }
 
   @override
@@ -84,6 +89,37 @@ class _ChatScreenState extends State<ChatScreen> {
       _agents = definitions;
       _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
     });
+  }
+
+  Future<void> _loadModelPreferences() async {
+    try {
+      final configs = await _llmConfigService.fetchConfigs();
+      if (!mounted) return;
+      final defaultConfig = configs.firstWhere(
+        (config) => config.isDefault,
+        orElse: () => configs.isNotEmpty
+            ? configs.first
+            : const LlmConfig(
+                slotId: '',
+                provider: LlmProvider.anthropic,
+                baseUrl: '',
+                apiKey: '',
+                defaultModel: 'claude-sonnet-4-5',
+              ),
+      );
+      setState(() {
+        _configuredModels = configs;
+        if (_activeModelId == null || _activeModelId!.trim().isEmpty) {
+          _activeModelId = defaultConfig.defaultModel;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _configuredModels = const [];
+        _activeModelId ??= 'claude-sonnet-4-5';
+      });
+    }
   }
 
   Future<List<AgentDefinition>> _readAgentDefinitions(
@@ -127,7 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   AgentSettings _settingsForAgent(AgentDefinition? agent) {
-    final modelId = _resolveModelId(agent?.model);
+    final modelId = _resolveModelId(_activeModelId ?? agent?.model);
     return AgentSettings(
       provider: _providerForModel(modelId),
       model: modelId,
@@ -157,7 +193,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
-    final key = agent?.name ?? '_default';
+    final key =
+        '${agent?.name ?? '_default'}::${_resolveModelId(_activeModelId ?? agent?.model)}';
     final existing = _sessions[key];
     if (existing != null) return existing;
     final session = _client.createSession(_settingsForAgent(agent));
@@ -359,9 +396,6 @@ class _ChatScreenState extends State<ChatScreen> {
       case ChatNavigationAction.manageAgents:
         await _openAgentsScreen();
         break;
-      case ChatNavigationAction.sessionSettings:
-        _openSessionSettings();
-        break;
       case ChatNavigationAction.appSettings:
         await _openSettingsScreen();
         break;
@@ -372,7 +406,12 @@ class _ChatScreenState extends State<ChatScreen> {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => SessionSettingsPage(coordinator: _participantManager),
+        builder: (_) => SessionSettingsPage(
+          coordinator: _participantManager,
+          currentModel: _activeModelId ?? 'claude-sonnet-4-5',
+          availableModels: _availableModelIds,
+          onModelSelected: _onModelSelectedFromSessionSettings,
+        ),
       ),
     ).then((_) => setState(() {}));
   }
@@ -394,7 +433,57 @@ class _ChatScreenState extends State<ChatScreen> {
       MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
     );
     if (!mounted) return;
+    await _loadModelPreferences();
     setState(() {});
+  }
+
+  List<String> get _availableModelIds {
+    final seen = <String>{};
+    final values = <String>[];
+    for (final config in _configuredModels) {
+      final modelId = config.defaultModel.trim();
+      if (modelId.isEmpty || seen.contains(modelId)) continue;
+      seen.add(modelId);
+      values.add(modelId);
+    }
+    if (values.isEmpty &&
+        _activeModelId != null &&
+        _activeModelId!.isNotEmpty) {
+      values.add(_activeModelId!);
+    }
+    return values;
+  }
+
+  Future<void> _onModelSelectedFromSessionSettings(String modelId) async {
+    if (modelId == _activeModelId) return;
+    if (mounted) {
+      setState(() => _activeModelId = modelId);
+    }
+    await _persistDefaultModel(modelId);
+  }
+
+  Future<void> _persistDefaultModel(String modelId) async {
+    if (_configuredModels.isEmpty) return;
+    final currentDefault = _configuredModels.firstWhere(
+      (config) => config.isDefault,
+      orElse: () => _configuredModels.first,
+    );
+    final updated =
+        currentDefault.copyWith(defaultModel: modelId, isDefault: true);
+    try {
+      final saved = await _llmConfigService.save(updated);
+      if (!mounted) return;
+      setState(() {
+        _configuredModels = _configuredModels
+            .map(
+              (cfg) =>
+                  cfg.id == saved.id ? saved : cfg.copyWith(isDefault: false),
+            )
+            .toList();
+      });
+    } catch (_) {
+      // Ignore persistence failures; in-session model still applies immediately.
+    }
   }
 
   PreferredSizeWidget _buildActiveAgentsIndicator() {
@@ -459,6 +548,13 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Session settings',
+            onPressed: _openSessionSettings,
+          ),
+        ],
         bottom: _buildActiveAgentsIndicator(),
       ),
       body: Column(

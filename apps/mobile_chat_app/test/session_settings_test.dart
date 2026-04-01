@@ -11,7 +11,16 @@ void main() {
       final coordinator = ParticipantManager();
 
       await tester.pumpWidget(
-        MaterialApp(home: SessionSettingsPage(coordinator: coordinator)),
+        MaterialApp(
+          home: SessionSettingsPage(
+            coordinator: coordinator,
+            currentModel: 'claude-sonnet-4-5',
+            availableModels: const [
+              'claude-sonnet-4-5',
+              'gemini-3-flash-preview'
+            ],
+          ),
+        ),
       );
 
       expect(find.text('Session Settings'), findsOneWidget);
@@ -29,7 +38,16 @@ void main() {
         ));
 
       await tester.pumpWidget(
-        MaterialApp(home: SessionSettingsPage(coordinator: coordinator)),
+        MaterialApp(
+          home: SessionSettingsPage(
+            coordinator: coordinator,
+            currentModel: 'claude-sonnet-4-5',
+            availableModels: const [
+              'claude-sonnet-4-5',
+              'gemini-3-flash-preview'
+            ],
+          ),
+        ),
       );
 
       expect(find.text('Analyst'), findsOneWidget);
@@ -50,7 +68,16 @@ void main() {
         ));
 
       await tester.pumpWidget(
-        MaterialApp(home: SessionSettingsPage(coordinator: coordinator)),
+        MaterialApp(
+          home: SessionSettingsPage(
+            coordinator: coordinator,
+            currentModel: 'claude-sonnet-4-5',
+            availableModels: const [
+              'claude-sonnet-4-5',
+              'gemini-3-flash-preview'
+            ],
+          ),
+        ),
       );
 
       // Uncheck the checkbox.
@@ -75,12 +102,47 @@ void main() {
         ));
 
       await tester.pumpWidget(
-        MaterialApp(home: SessionSettingsPage(coordinator: coordinator)),
+        MaterialApp(
+          home: SessionSettingsPage(
+            coordinator: coordinator,
+            currentModel: 'claude-sonnet-4-5',
+            availableModels: const [
+              'claude-sonnet-4-5',
+              'gemini-3-flash-preview'
+            ],
+          ),
+        ),
       );
 
       expect(find.text('Analyst'), findsOneWidget);
       expect(find.text('Critic'), findsOneWidget);
       expect(find.byType(Slider), findsNWidgets(2));
+    });
+
+    testWidgets('selecting a model calls onModelSelected', (tester) async {
+      final coordinator = ParticipantManager();
+      String? selected;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSettingsPage(
+            coordinator: coordinator,
+            currentModel: 'claude-sonnet-4-5',
+            availableModels: const [
+              'claude-sonnet-4-5',
+              'gemini-3-flash-preview'
+            ],
+            onModelSelected: (modelId) async {
+              selected = modelId;
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('gemini-3-flash-preview'));
+      await tester.pump();
+
+      expect(selected, equals('gemini-3-flash-preview'));
     });
   });
 
