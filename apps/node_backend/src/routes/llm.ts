@@ -29,6 +29,41 @@ function validateMessages(
 
 router.use(authenticate);
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return 'Unknown error';
+}
+
+function classifyLlmError(error: unknown): { status: number; message: string } {
+  const message = getErrorMessage(error);
+  const lower = message.toLowerCase();
+
+  if (
+    lower.includes('no llm configuration') ||
+    lower.includes('invalid provider') ||
+    lower.includes('invalid endpoint') ||
+    lower.includes('invalid provider endpoint') ||
+    lower.includes('invalid provider api_key') ||
+    lower.includes('decryption failed') ||
+    lower.includes('endpoint must use https') ||
+    lower.includes("endpoint host '")
+  ) {
+    return { status: 400, message };
+  }
+
+  if (lower.includes('api key') || lower.includes('unauthorized') || lower.includes('forbidden')) {
+    return { status: 401, message: 'Provider authentication failed. Please verify API credentials.' };
+  }
+
+  if (lower.includes('rate limit') || lower.includes('quota')) {
+    return { status: 429, message: 'Provider rate limit exceeded. Please retry later.' };
+  }
+
+  return { status: 500, message: 'Failed to generate completion' };
+}
+
 router.post('/chat', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
@@ -46,7 +81,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
     }
 
     const result = validateMessages(messages);
-    if (!result.valid) {
+    if (result.valid !== true) {
       res.status(400).json({ error: result.error });
       return;
     }
@@ -76,7 +111,8 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('Unified LLM chat error:', error);
-    res.status(500).json({ error: 'Failed to generate completion' });
+    const { status, message } = classifyLlmError(error);
+    res.status(status).json({ error: message });
   }
 });
 
@@ -97,7 +133,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
     }
 
     const result = validateMessages(messages);
-    if (!result.valid) {
+    if (result.valid !== true) {
       res.status(400).json({ error: result.error });
       return;
     }
@@ -132,7 +168,8 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Unified LLM stream error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to stream completion' });
+      const { status, message } = classifyLlmError(error);
+      res.status(status).json({ error: message });
       return;
     }
     res.write(`data: ${JSON.stringify({ type: 'error', message: 'stream failed' })}\n\n`);

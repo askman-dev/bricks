@@ -1,52 +1,25 @@
-import crypto from 'crypto';
 import pool from '../db/index.js';
+import { decryptSecret, deriveAes256Key, encryptSecret, isEncryptedSecretFormat } from './crypto_utils.js';
 
-// Encryption utilities
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
+function resolveEncryptionKeyMaterial(): string {
+  const resolved = process.env.ENCRYPTION_KEY;
+  if (typeof resolved === 'string' && resolved.trim().length > 0) {
+    return resolved;
+  }
+
+  throw new Error('Missing encryption secret: ENCRYPTION_KEY must be set and non-empty.');
+}
 
 function getEncryptionKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY;
-  if (!key) {
-    throw new Error('ENCRYPTION_KEY environment variable is not set');
-  }
-  // Ensure key is exactly 32 bytes for AES-256
-  return crypto.createHash('sha256').update(key).digest();
+  return deriveAes256Key(resolveEncryptionKeyMaterial());
 }
 
 function encrypt(text: string): string {
-  const key = getEncryptionKey();
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-
-  const authTag = cipher.getAuthTag();
-
-  // Format: iv:authTag:encrypted
-  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  return encryptSecret(text, getEncryptionKey());
 }
 
 function decrypt(encryptedText: string): string {
-  const key = getEncryptionKey();
-  const parts = encryptedText.split(':');
-
-  if (parts.length !== 3) {
-    throw new Error('Invalid encrypted text format');
-  }
-
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
-  const encrypted = parts[2];
-
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
+  return decryptSecret(encryptedText, getEncryptionKey());
 }
 
 export interface ApiConfig {
@@ -57,6 +30,7 @@ export interface ApiConfig {
   config: {
     endpoint?: string;
     api_key?: string;
+    api_key_encrypted?: boolean;
     model_preferences?: Record<string, unknown>;
     [key: string]: unknown;
   };
@@ -86,6 +60,7 @@ export async function createApiConfig(
     const configToStore = { ...input.config };
     if (configToStore.api_key) {
       configToStore.api_key = encrypt(configToStore.api_key);
+      configToStore.api_key_encrypted = true;
     }
 
     // If setting as default, unset other defaults in same category
@@ -206,9 +181,11 @@ export async function updateApiConfig(
       const merged = { ...existingConfig, ...updates.config };
       if (updates.config.api_key) {
         merged.api_key = encrypt(updates.config.api_key);
+        merged.api_key_encrypted = true;
       } else if (typeof existingConfig.api_key === 'string' && existingConfig.api_key.trim()) {
         // Re-encrypt the existing key (decryptApiConfig already decrypted it)
         merged.api_key = encrypt(existingConfig.api_key);
+        merged.api_key_encrypted = true;
       }
       updateFields.push(`config = $${paramCount++}`);
       values.push(JSON.stringify(merged));
@@ -272,12 +249,19 @@ function decryptApiConfig<T extends { config?: unknown }>(config: T): T {
 
   if (decrypted.config && typeof decrypted.config === 'object') {
     const cfg = decrypted.config as { [key: string]: unknown };
-    if (typeof cfg.api_key === 'string') {
+    const shouldDecrypt =
+      cfg.api_key_encrypted === true ||
+      (typeof cfg.api_key === 'string' && isEncryptedSecretFormat(cfg.api_key));
+    if (typeof cfg.api_key === 'string' && shouldDecrypt) {
       try {
         cfg.api_key = decrypt(cfg.api_key);
+        cfg.api_key_encrypted = false;
       } catch (error) {
         console.error('Failed to decrypt API key:', error);
-        // Keep encrypted value if decryption fails
+        // Never pass through undecryptable ciphertext as an API key value.
+        // This most commonly indicates ENCRYPTION_KEY mismatch across environments.
+        cfg.api_key = '';
+        cfg.api_key_encrypted = false;
       }
     }
   }
