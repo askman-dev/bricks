@@ -1,0 +1,188 @@
+name: PR Review Findings Auto Trigger
+
+on:
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: 'PR number to test against'
+        required: true
+        type: number
+      review_id:
+        description: 'Review ID to simulate (use a real review ID from the PR)'
+        required: true
+        type: number
+      review_state:
+        description: 'Review state to simulate'
+        required: true
+        default: 'commented'
+        type: choice
+        options:
+          - commented
+          - changes_requested
+          - approved
+
+permissions:
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pr-review-findings-auto-trigger-${{ github.event.review.id }}
+  cancel-in-progress: true
+
+jobs:
+  trigger-copilot:
+    runs-on: ubuntu-latest
+    environment: copilot
+    steps:
+      - name: Evaluate review and trigger Copilot comment
+        id: evaluate
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            // Support workflow_dispatch inputs for pre-merge testing
+            const isManual = context.eventName === 'workflow_dispatch';
+            const pull_number = isManual
+              ? Number(context.payload.inputs.pull_number)
+              : context.payload.pull_request?.number;
+            const review_id = isManual
+              ? Number(context.payload.inputs.review_id)
+              : context.payload.review?.id;
+            const review_state = isManual
+              ? (context.payload.inputs.review_state || '').toLowerCase()
+              : (context.payload.review?.state || '').toLowerCase();
+            const actionableStates = new Set(['commented', 'changes_requested']);
+            const marker = `<!-- copilot-review-trigger:review-id:${review_id} -->`;
+            const defaultComment = '@copilot Please go through the PR review comments and address them. Use your own judgment—don\'t just blindly follow the suggestions. Commit code for the necessary fixes, but for comments you think should be ignored, just leave a reply explaining your reasoning. Make sure to mark all comments as resolved once you\'re done.';
+
+            async function printTelemetry(data) {
+              const entries = Object.entries(data)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(' | ');
+              core.info(`telemetry | ${entries}`);
+              await core.summary
+                .addHeading('PR Review Findings Auto Trigger')
+                .addRaw(`- PR number: ${data.pr_number}\n`)
+                .addRaw(`- Review id: ${data.review_id}\n`)
+                .addRaw(`- Review state: ${data.review_state}\n`)
+                .addRaw(`- Review comments count: ${data.comments_count}\n`)
+                .addRaw(`- Triggered: ${data.triggered}\n`)
+                .addRaw(`- Skip reason: ${data.skip_reason || 'n/a'}\n`)
+                .write();
+            }
+
+            try {
+              let skip_reason = '';
+              let triggered = false;
+              let comments_count = 0;
+
+              if (!pull_number || !review_id) {
+                skip_reason = 'missing pull_request.number or review.id';
+                await printTelemetry({
+                  pr_number: pull_number ?? 'n/a',
+                  review_id: review_id ?? 'n/a',
+                  review_state: review_state || 'n/a',
+                  comments_count,
+                  triggered,
+                  skip_reason,
+                });
+                return;
+              }
+
+              if (!actionableStates.has(review_state)) {
+                skip_reason = `review_state_not_actionable:${review_state}`;
+                await printTelemetry({
+                  pr_number: pull_number,
+                  review_id,
+                  review_state,
+                  comments_count,
+                  triggered,
+                  skip_reason,
+                });
+                return;
+              }
+
+              const reviewComments = await github.paginate(
+                github.rest.pulls.listCommentsForReview,
+                { owner, repo, pull_number, review_id, per_page: 100 },
+              );
+              comments_count = reviewComments.length;
+
+              if (comments_count === 0) {
+                skip_reason = 'no_review_comments';
+                await printTelemetry({
+                  pr_number: pull_number,
+                  review_id,
+                  review_state,
+                  comments_count,
+                  triggered,
+                  skip_reason,
+                });
+                return;
+              }
+
+              let markerExists = false;
+              for await (const { data: commentsPage } of github.paginate.iterator(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number: pull_number, per_page: 100 },
+              )) {
+                if (
+                  commentsPage.some(
+                    (comment) => typeof comment.body === 'string' && comment.body.includes(marker),
+                  )
+                ) {
+                  markerExists = true;
+                  break;
+                }
+              }
+
+              if (markerExists) {
+                skip_reason = 'marker_already_exists';
+                await printTelemetry({
+                  pr_number: pull_number,
+                  review_id,
+                  review_state,
+                  comments_count,
+                  triggered,
+                  skip_reason,
+                });
+                return;
+              }
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body: `${defaultComment}\n\n${marker}`,
+              });
+
+              triggered = true;
+              await printTelemetry({
+                pr_number: pull_number,
+                review_id,
+                review_state,
+                comments_count,
+                triggered,
+                skip_reason,
+              });
+            } catch (error) {
+              const status = error?.status ?? 'unknown';
+              const apiMessage = error?.response?.data?.message || error?.message || 'Unknown API error';
+              const acceptedPermissions = error?.response?.headers?.['x-accepted-github-permissions'] || 'n/a';
+              core.error(`GitHub API error (status=${status}): ${apiMessage}`);
+              core.error(`x-accepted-github-permissions: ${acceptedPermissions}`);
+              core.setFailed(
+                `Failed to evaluate or trigger Copilot comment. Ensure workflow permissions include pull-requests:read and issues:write for issue comment creation. API status=${status}.`,
+              );
+            }
+
+      - name: Emit outputs
+        if: always()
+        run: |
+          echo "PR=${{ github.event.pull_request.number }}"
+          echo "REVIEW_ID=${{ github.event.review.id }}"
+          echo "STATE=${{ github.event.review.state }}"
