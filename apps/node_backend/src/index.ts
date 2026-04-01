@@ -4,10 +4,18 @@ import app from './app.js';
 
 const PORT = process.env.PORT || 3000;
 
+function validateRequiredSecrets(): void {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (typeof encryptionKey !== 'string' || encryptionKey.trim().length === 0) {
+    throw new Error('ENCRYPTION_KEY must be set and non-empty before starting the backend.');
+  }
+}
+
 // Start server
 async function startServer() {
   try {
     console.log('Starting Bricks Backend Service...');
+    validateRequiredSecrets();
 
     // Test database connection
     const dbConnected = await testConnection();
