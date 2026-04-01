@@ -9,14 +9,14 @@ const PREVIEW_ROOT = '.github/pr-screenshots';
 const NOT_FOUND_MESSAGE = 'Not Found';
 const MAX_COMMENT_PAGES = 10;
 
-const token = process.env.GITHUB_TOKEN;
+const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 const repository = process.env.GITHUB_REPOSITORY;
 const runId = process.env.GITHUB_RUN_ID;
 const sha = process.env.GITHUB_SHA;
 const prNumber = process.env.PR_NUMBER;
 const prHeadRef = process.env.PR_HEAD_REF;
 
-if (!token) throw new Error('GITHUB_TOKEN is required.');
+if (!token) throw new Error('GITHUB_TOKEN or GH_TOKEN is required.');
 if (!repository || !prNumber || !runId || !prHeadRef || !sha) {
   throw new Error('Missing one or more required GitHub environment variables.');
 }
