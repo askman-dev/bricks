@@ -176,17 +176,40 @@ export async function updateApiConfig(
     }
 
     if (updates.config) {
-      // Merge with existing config so omitted keys (e.g. api_key) are preserved
-      const existingConfig = decryptApiConfig(existing.rows[0]).config ?? {};
-      const merged = { ...existingConfig, ...updates.config };
-      if (updates.config.api_key) {
-        merged.api_key = encrypt(updates.config.api_key);
-        merged.api_key_encrypted = true;
-      } else if (typeof existingConfig.api_key === 'string' && existingConfig.api_key.trim()) {
-        // Re-encrypt the existing key (decryptApiConfig already decrypted it)
-        merged.api_key = encrypt(existingConfig.api_key);
-        merged.api_key_encrypted = true;
+      // Use the raw stored JSON for merging rather than the decrypted value.
+      // Previously, decryptApiConfig was called here; if decryption failed it set api_key = '',
+      // which would then be merged back and written to DB, destroying the stored ciphertext.
+      let rawExistingConfig: Record<string, unknown> = {};
+      const rawConfigValue = existing.rows[0].config;
+      if (typeof rawConfigValue === 'string') {
+        try {
+          rawExistingConfig = JSON.parse(rawConfigValue) as Record<string, unknown>;
+        } catch {
+          rawExistingConfig = {};
+        }
+      } else if (rawConfigValue && typeof rawConfigValue === 'object') {
+        rawExistingConfig = rawConfigValue as Record<string, unknown>;
       }
+
+      const merged: Record<string, unknown> = { ...rawExistingConfig, ...(updates.config as Record<string, unknown>) };
+
+      const apiKeySpecifiedInUpdate = Object.prototype.hasOwnProperty.call(
+        updates.config as Record<string, unknown>,
+        'api_key'
+      );
+      if (apiKeySpecifiedInUpdate) {
+        const newApiKey = (updates.config as { api_key?: unknown }).api_key;
+        if (typeof newApiKey === 'string' && newApiKey.trim().length > 0) {
+          // Explicit non-empty api_key: encrypt and store
+          merged.api_key = encrypt(newApiKey);
+          merged.api_key_encrypted = true;
+        } else {
+          // Explicit clear (empty string, null, undefined): remove api_key
+          delete merged.api_key;
+          merged.api_key_encrypted = false;
+        }
+      }
+      // No api_key in updates: preserve the existing stored value (encrypted or not) untouched
       updateFields.push(`config = $${paramCount++}`);
       values.push(JSON.stringify(merged));
     }

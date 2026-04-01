@@ -2,8 +2,10 @@ import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
 const ENCRYPTION_PREFIX = 'enc:v1:';
 const LEGACY_REGEX = /^[a-f0-9]{32}:[a-f0-9]{32}:[a-f0-9]+$/i;
+const HEX_REGEX = /^[0-9a-fA-F]+$/;
 
 export function deriveAes256Key(keyMaterial: string): Buffer {
   return crypto.createHash('sha256').update(keyMaterial).digest();
@@ -33,9 +35,17 @@ export function decryptSecret(encryptedText: string, key: Buffer): string {
     throw new Error('Invalid encrypted text format');
   }
 
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
-  const encrypted = parts[2];
+  const [ivHex, authTagHex, encrypted] = parts;
+
+  if (!HEX_REGEX.test(ivHex) || ivHex.length !== IV_LENGTH * 2) {
+    throw new Error('Invalid encrypted text format: malformed IV');
+  }
+  if (!HEX_REGEX.test(authTagHex) || authTagHex.length !== AUTH_TAG_LENGTH * 2) {
+    throw new Error('Invalid encrypted text format: malformed auth tag');
+  }
+
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
 
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
