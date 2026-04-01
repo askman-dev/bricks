@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'llm_config_service.dart';
 
 class ModelSettingsScreen extends StatefulWidget {
-  const ModelSettingsScreen({super.key});
+  const ModelSettingsScreen({super.key, LlmConfigService? service})
+      : _service = service ?? const LlmConfigService();
+
+  final LlmConfigService _service;
 
   @override
   State<ModelSettingsScreen> createState() => _ModelSettingsScreenState();
@@ -11,7 +14,7 @@ class ModelSettingsScreen extends StatefulWidget {
 
 class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _service = const LlmConfigService();
+  late final LlmConfigService _service;
   final _baseUrlController = TextEditingController();
   final _apiKeyController = TextEditingController();
   final _defaultModelController = TextEditingController();
@@ -28,6 +31,7 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _service = widget._service;
     _load();
   }
 
@@ -193,6 +197,7 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
         ),
       );
       if (confirmed != true) return;
+      if (!mounted) return;
     }
 
     setState(() => _deleting = true);

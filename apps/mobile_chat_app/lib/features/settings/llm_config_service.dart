@@ -189,8 +189,10 @@ class LlmConfigService {
       throw Exception('Not authenticated');
     }
 
+    final encodedId = Uri.encodeComponent(id);
+
     final response = await http.delete(
-      _buildUri('/api/config/$id'),
+      _buildUri('/api/config/$encodedId'),
       headers: {
         'Authorization': 'Bearer $token',
       },
