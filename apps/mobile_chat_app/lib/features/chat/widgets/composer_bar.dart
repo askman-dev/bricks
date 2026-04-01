@@ -2,6 +2,9 @@ import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
+/// Actions available in the composer popup menu.
+enum ComposerMenuAction { newContext, model, agents }
+
 /// The input composer bar at the bottom of the chat screen.
 class ComposerBar extends StatefulWidget {
   const ComposerBar({
@@ -181,27 +184,35 @@ class _ComposerBarState extends State<ComposerBar>
             const SizedBox(height: BricksSpacing.xs),
             Row(
               children: [
-                PopupMenuButton<String>(
+                PopupMenuButton<ComposerMenuAction>(
                   tooltip: 'Composer actions',
                   enabled: !widget.isStreaming,
                   icon: const Icon(Icons.tune),
-                  onSelected: (value) {
-                    if (value == 'model') {
-                      widget.onOpenModelSelection?.call();
+                  onSelected: (action) {
+                    switch (action) {
+                      case ComposerMenuAction.newContext:
+                        // TODO: implement new context action.
+                        break;
+                      case ComposerMenuAction.model:
+                        widget.onOpenModelSelection?.call();
+                        break;
+                      case ComposerMenuAction.agents:
+                        // TODO: implement agents action.
+                        break;
                     }
                   },
                   itemBuilder: (context) => const [
-                    PopupMenuItem<String>(
-                      value: 'new_context',
+                    PopupMenuItem<ComposerMenuAction>(
+                      value: ComposerMenuAction.newContext,
                       child: Text('新上下文'),
                     ),
                     PopupMenuDivider(),
-                    PopupMenuItem<String>(
-                      value: 'model',
+                    PopupMenuItem<ComposerMenuAction>(
+                      value: ComposerMenuAction.model,
                       child: Text('模型'),
                     ),
-                    PopupMenuItem<String>(
-                      value: 'agents',
+                    PopupMenuItem<ComposerMenuAction>(
+                      value: ComposerMenuAction.agents,
                       child: Text('Agents'),
                     ),
                   ],

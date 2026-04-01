@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 /// Actions that can be triggered from the chat navigation page.
 enum ChatNavigationAction { manageAgents, appSettings }
 
-/// Full-page navigation for chat-related routes.
+/// Navigation content for chat-related routes, intended for use in a
+/// [Drawer] or other side navigation container.
 class ChatNavigationPage extends StatelessWidget {
   const ChatNavigationPage({super.key, this.onActionSelected});
 
