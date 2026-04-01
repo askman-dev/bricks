@@ -10,15 +10,50 @@ class RealModelGateway {
 
   RealModelGateway({http.Client? httpClient, Map<String, String>? environment})
       : _httpClient = httpClient ?? http.Client(),
-        _environment = environment ?? Platform.environment;
+        _environment = _buildEnvironment(environment);
 
   final http.Client _httpClient;
   final Map<String, String> _environment;
+
+  static Map<String, String> _buildEnvironment(Map<String, String>? override) {
+    if (override != null) return override;
+
+    final values = <String, String>{
+      if (const String.fromEnvironment('BRICKS_ANTHROPIC_API_KEY').isNotEmpty)
+        'BRICKS_ANTHROPIC_API_KEY':
+            const String.fromEnvironment('BRICKS_ANTHROPIC_API_KEY'),
+      if (const String.fromEnvironment('BRICKS_ANTHROPIC_BASE_URL').isNotEmpty)
+        'BRICKS_ANTHROPIC_BASE_URL':
+            const String.fromEnvironment('BRICKS_ANTHROPIC_BASE_URL'),
+      if (const String.fromEnvironment('BRICKS_GEMINI_API_KEY').isNotEmpty)
+        'BRICKS_GEMINI_API_KEY':
+            const String.fromEnvironment('BRICKS_GEMINI_API_KEY'),
+      if (const String.fromEnvironment('BRICKS_GEMINI_BASE_URL').isNotEmpty)
+        'BRICKS_GEMINI_BASE_URL':
+            const String.fromEnvironment('BRICKS_GEMINI_BASE_URL'),
+    };
+
+    try {
+      values.addAll(Platform.environment);
+    } on UnsupportedError {
+      // Platform environment variables are unavailable on web.
+    }
+
+    return values;
+  }
 
   Future<String> generate({
     required AgentSettings settings,
     required String message,
   }) async {
+    final backendResult = await _generateViaBackendIfConfigured(
+      settings: settings,
+      message: message,
+    );
+    if (backendResult != null) {
+      return backendResult;
+    }
+
     switch (settings.provider) {
       case testProvider:
         return 'Received: $message';
@@ -32,6 +67,60 @@ class RealModelGateway {
           'Unsupported provider: ${settings.provider}. Supported providers: test, anthropic, gemini, google_ai_studio.',
         );
     }
+  }
+
+  Future<String?> _generateViaBackendIfConfigured({
+    required AgentSettings settings,
+    required String message,
+  }) async {
+    final baseUrl = settings.apiBaseUrl?.trim() ?? '';
+    final token = settings.authToken?.trim() ?? '';
+    if (baseUrl.isEmpty || token.isEmpty) {
+      return null;
+    }
+
+    final baseUri = _validateBaseUrl(baseUrl, 'AgentSettings.apiBaseUrl');
+    final uri = baseUri.replace(path: '/api/llm/chat');
+    final provider =
+        settings.provider == 'gemini' ? 'google_ai_studio' : settings.provider;
+    final payload = <String, dynamic>{
+      'provider': provider,
+      'model': settings.model,
+      'messages': [
+        {'role': 'user', 'content': message},
+      ],
+      if (settings.configId != null && settings.configId!.trim().isNotEmpty)
+        'configId': settings.configId!.trim(),
+    };
+    final response = await _httpClient
+        .post(
+          uri,
+          headers: {
+            'content-type': 'application/json',
+            'authorization': 'Bearer $token',
+          },
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'Backend chat request failed (${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+    final output = (data is Map<String, dynamic>) ? data['output'] : null;
+    if (output is! List || output.isEmpty) {
+      throw StateError('Backend chat response missing output.');
+    }
+    for (final item in output) {
+      if (item is Map<String, dynamic> && item['type'] == 'text') {
+        final text = item['text'];
+        if (text is String && text.trim().isNotEmpty) return text;
+      }
+    }
+    throw StateError('Backend chat response missing text output.');
   }
 
   /// Validates that [urlStr] is an absolute URL with a scheme of `http` or
@@ -54,8 +143,8 @@ class RealModelGateway {
     required String message,
   }) async {
     final apiKey = _environment['BRICKS_ANTHROPIC_API_KEY'] ?? '';
-    final endpointStr =
-        _environment['BRICKS_ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
+    final endpointStr = _environment['BRICKS_ANTHROPIC_BASE_URL'] ??
+        'https://api.anthropic.com';
 
     if (apiKey.isEmpty) {
       throw StateError('Missing BRICKS_ANTHROPIC_API_KEY.');

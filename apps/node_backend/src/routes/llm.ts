@@ -37,7 +37,8 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const { provider, model, messages, temperature, maxTokens } = req.body ?? {};
+    const { provider, model, configId, messages, temperature, maxTokens } =
+      req.body ?? {};
     const preferredProvider = parseProvider(provider);
     if (provider !== undefined && !preferredProvider) {
       res.status(400).json({ error: 'Invalid provider' });
@@ -54,6 +55,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
       userId,
       {
         model: typeof model === 'string' ? model : undefined,
+        configId: typeof configId === 'string' ? configId : undefined,
         messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
         maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
@@ -86,7 +88,8 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const { provider, model, messages, temperature, maxTokens } = req.body ?? {};
+    const { provider, model, configId, messages, temperature, maxTokens } =
+      req.body ?? {};
     const preferredProvider = parseProvider(provider);
     if (provider !== undefined && !preferredProvider) {
       res.status(400).json({ error: 'Invalid provider' });
@@ -103,6 +106,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
       userId,
       {
         model: typeof model === 'string' ? model : undefined,
+        configId: typeof configId === 'string' ? configId : undefined,
         messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
         maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
