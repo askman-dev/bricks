@@ -224,18 +224,28 @@ class LlmConfigService {
 
     final configId = config['id']?.toString();
     final slotId = (map['slot_id'] as String?)?.trim();
+    final defaultModelRaw =
+        ((modelPrefs['default_model'] as String?) ?? _defaultModel(provider))
+            .trim();
     final defaultModel =
-        (modelPrefs['default_model'] as String?) ?? _defaultModel(provider);
+        defaultModelRaw.isNotEmpty ? defaultModelRaw : _defaultModel(provider);
     final rawModels = modelPrefs['models'];
-    final models = rawModels is List
-        ? rawModels
-            .whereType<String>()
-            .map((m) => m.trim())
-            .where((m) => m.isNotEmpty)
-            .toList()
-        : <String>[];
-    if (!models.contains(defaultModel)) {
-      models.insert(0, defaultModel);
+    final models = <String>[];
+    final seen = <String>{};
+    void addModel(String model) {
+      final normalized = model.trim();
+      if (normalized.isEmpty) return;
+      final dedupeKey = normalized.toLowerCase();
+      if (seen.add(dedupeKey)) {
+        models.add(normalized);
+      }
+    }
+
+    addModel(defaultModel);
+    if (rawModels is List) {
+      for (final item in rawModels.whereType<String>()) {
+        addModel(item);
+      }
     }
     return LlmConfig(
       id: configId,

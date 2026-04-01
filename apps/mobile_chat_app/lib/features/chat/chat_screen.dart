@@ -68,39 +68,50 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadAgents() async {
-    final results = await Future.wait([
-      createAgentsRepository(),
-      _llmConfigService.fetchConfigs(),
-    ]);
-    final repo = results[0] as AgentsRepository;
-    final llmConfigs = results[1] as List<LlmConfig>;
-    final definitions = await _readAgentDefinitions(repo);
-    final defaultConfig = llmConfigs.firstWhere(
-      (cfg) => cfg.isDefault,
-      orElse: () => llmConfigs.isNotEmpty
-          ? llmConfigs.first
-          : const LlmConfig(
-              slotId: 'session-default',
-              provider: LlmProvider.anthropic,
-              baseUrl: '',
-              apiKey: '',
-              defaultModel: 'claude-sonnet-4-5',
-            ),
-    );
-    if (!mounted) return;
-    _agentsRepository = repo;
-    _syncParticipants(definitions);
-    setState(() {
-      _agents = definitions;
-      _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
-      _loadingAgents = false;
-      _llmConfigs = llmConfigs;
-      _sessionConfigSlotId ??=
-          llmConfigs.isNotEmpty ? defaultConfig.slotId : null;
-      _sessionModelOverride ??=
-          llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
-      _loadingLlmConfigs = false;
-    });
+    final repoFuture = createAgentsRepository();
+    final llmConfigsFuture = _llmConfigService.fetchConfigs();
+
+    try {
+      final repo = await repoFuture;
+      final llmConfigs = await llmConfigsFuture;
+      final definitions = await _readAgentDefinitions(repo);
+      final defaultConfig = llmConfigs.firstWhere(
+        (cfg) => cfg.isDefault,
+        orElse: () => llmConfigs.isNotEmpty
+            ? llmConfigs.first
+            : const LlmConfig(
+                slotId: 'session-default',
+                provider: LlmProvider.anthropic,
+                baseUrl: '',
+                apiKey: '',
+                defaultModel: 'claude-sonnet-4-5',
+              ),
+      );
+      if (!mounted) return;
+      _agentsRepository = repo;
+      _syncParticipants(definitions);
+      setState(() {
+        _agents = definitions;
+        _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
+        _loadingAgents = false;
+        _llmConfigs = llmConfigs;
+        _sessionConfigSlotId ??=
+            llmConfigs.isNotEmpty ? defaultConfig.slotId : null;
+        _sessionModelOverride ??=
+            llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
+        _loadingLlmConfigs = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingAgents = false;
+        _loadingLlmConfigs = false;
+        _llmConfigs = const [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load chat setup: $error')),
+      );
+    }
   }
 
   Future<void> _reloadAgents() async {
@@ -195,7 +206,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _resetSessions() async {
-    _currentSubscription?.cancel();
+    await _currentSubscription?.cancel();
     _currentSubscription = null;
     for (final session in _sessions.values) {
       await session.dispose();
