@@ -10,10 +10,37 @@ class RealModelGateway {
 
   RealModelGateway({http.Client? httpClient, Map<String, String>? environment})
       : _httpClient = httpClient ?? http.Client(),
-        _environment = environment ?? Platform.environment;
+        _environment = _buildEnvironment(environment);
 
   final http.Client _httpClient;
   final Map<String, String> _environment;
+
+  static Map<String, String> _buildEnvironment(Map<String, String>? override) {
+    if (override != null) return override;
+
+    final values = <String, String>{
+      if (const String.fromEnvironment('BRICKS_ANTHROPIC_API_KEY').isNotEmpty)
+        'BRICKS_ANTHROPIC_API_KEY':
+            const String.fromEnvironment('BRICKS_ANTHROPIC_API_KEY'),
+      if (const String.fromEnvironment('BRICKS_ANTHROPIC_BASE_URL').isNotEmpty)
+        'BRICKS_ANTHROPIC_BASE_URL':
+            const String.fromEnvironment('BRICKS_ANTHROPIC_BASE_URL'),
+      if (const String.fromEnvironment('BRICKS_GEMINI_API_KEY').isNotEmpty)
+        'BRICKS_GEMINI_API_KEY':
+            const String.fromEnvironment('BRICKS_GEMINI_API_KEY'),
+      if (const String.fromEnvironment('BRICKS_GEMINI_BASE_URL').isNotEmpty)
+        'BRICKS_GEMINI_BASE_URL':
+            const String.fromEnvironment('BRICKS_GEMINI_BASE_URL'),
+    };
+
+    try {
+      values.addAll(Platform.environment);
+    } on UnsupportedError {
+      // Platform environment variables are unavailable on web.
+    }
+
+    return values;
+  }
 
   Future<String> generate({
     required AgentSettings settings,
@@ -54,8 +81,8 @@ class RealModelGateway {
     required String message,
   }) async {
     final apiKey = _environment['BRICKS_ANTHROPIC_API_KEY'] ?? '';
-    final endpointStr =
-        _environment['BRICKS_ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
+    final endpointStr = _environment['BRICKS_ANTHROPIC_BASE_URL'] ??
+        'https://api.anthropic.com';
 
     if (apiKey.isEmpty) {
       throw StateError('Missing BRICKS_ANTHROPIC_API_KEY.');

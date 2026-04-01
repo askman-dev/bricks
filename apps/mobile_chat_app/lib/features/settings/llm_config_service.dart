@@ -36,6 +36,7 @@ class LlmConfig {
     required this.baseUrl,
     required this.apiKey,
     required this.defaultModel,
+    this.models = const [],
     this.isDefault = false,
   });
 
@@ -45,6 +46,7 @@ class LlmConfig {
   final String baseUrl;
   final String apiKey;
   final String defaultModel;
+  final List<String> models;
   final bool isDefault;
 
   LlmConfig copyWith({
@@ -54,6 +56,7 @@ class LlmConfig {
     String? baseUrl,
     String? apiKey,
     String? defaultModel,
+    List<String>? models,
     bool? isDefault,
   }) {
     return LlmConfig(
@@ -63,6 +66,7 @@ class LlmConfig {
       baseUrl: baseUrl ?? this.baseUrl,
       apiKey: apiKey ?? this.apiKey,
       defaultModel: defaultModel ?? this.defaultModel,
+      models: models ?? this.models,
       isDefault: isDefault ?? this.isDefault,
     );
   }
@@ -220,8 +224,29 @@ class LlmConfigService {
 
     final configId = config['id']?.toString();
     final slotId = (map['slot_id'] as String?)?.trim();
+    final defaultModelRaw =
+        ((modelPrefs['default_model'] as String?) ?? _defaultModel(provider))
+            .trim();
     final defaultModel =
-        (modelPrefs['default_model'] as String?) ?? _defaultModel(provider);
+        defaultModelRaw.isNotEmpty ? defaultModelRaw : _defaultModel(provider);
+    final rawModels = modelPrefs['models'];
+    final models = <String>[];
+    final seen = <String>{};
+    void addModel(String model) {
+      final normalized = model.trim();
+      if (normalized.isEmpty) return;
+      final dedupeKey = normalized.toLowerCase();
+      if (seen.add(dedupeKey)) {
+        models.add(normalized);
+      }
+    }
+
+    addModel(defaultModel);
+    if (rawModels is List) {
+      for (final item in rawModels.whereType<String>()) {
+        addModel(item);
+      }
+    }
     return LlmConfig(
       id: configId,
       slotId: slotId != null && slotId.isNotEmpty
@@ -231,6 +256,7 @@ class LlmConfigService {
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
       apiKey: '',
       defaultModel: defaultModel,
+      models: models,
       isDefault: _parseIsDefaultValue(config['is_default']),
     );
   }

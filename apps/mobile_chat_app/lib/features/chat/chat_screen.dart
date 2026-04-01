@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import '../agents/agents_screen.dart';
+import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../session/session_settings_page.dart';
 import '../../services/agents_repository_factory.dart';
@@ -35,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSending = false;
   bool _isStreaming = false;
   bool _loadingAgents = true;
+  bool _loadingLlmConfigs = true;
 
   /// Manages which agents participate and at what probability.
   final ParticipantManager _participantManager = ParticipantManager();
@@ -45,6 +47,10 @@ class _ChatScreenState extends State<ChatScreen> {
   AgentsRepository? _agentsRepository;
   List<AgentDefinition> _agents = [];
   AgentDefinition? _activeAgent;
+  final LlmConfigService _llmConfigService = const LlmConfigService();
+  List<LlmConfig> _llmConfigs = const [];
+  String? _sessionConfigSlotId;
+  String? _sessionModelOverride;
 
   @override
   void initState() {
@@ -62,16 +68,50 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadAgents() async {
-    final repo = await createAgentsRepository();
-    final definitions = await _readAgentDefinitions(repo);
-    if (!mounted) return;
-    _agentsRepository = repo;
-    _syncParticipants(definitions);
-    setState(() {
-      _agents = definitions;
-      _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
-      _loadingAgents = false;
-    });
+    final repoFuture = createAgentsRepository();
+    final llmConfigsFuture = _llmConfigService.fetchConfigs();
+
+    try {
+      final repo = await repoFuture;
+      final llmConfigs = await llmConfigsFuture;
+      final definitions = await _readAgentDefinitions(repo);
+      final defaultConfig = llmConfigs.firstWhere(
+        (cfg) => cfg.isDefault,
+        orElse: () => llmConfigs.isNotEmpty
+            ? llmConfigs.first
+            : const LlmConfig(
+                slotId: 'session-default',
+                provider: LlmProvider.anthropic,
+                baseUrl: '',
+                apiKey: '',
+                defaultModel: 'claude-sonnet-4-5',
+              ),
+      );
+      if (!mounted) return;
+      _agentsRepository = repo;
+      _syncParticipants(definitions);
+      setState(() {
+        _agents = definitions;
+        _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
+        _loadingAgents = false;
+        _llmConfigs = llmConfigs;
+        _sessionConfigSlotId ??=
+            llmConfigs.isNotEmpty ? defaultConfig.slotId : null;
+        _sessionModelOverride ??=
+            llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
+        _loadingLlmConfigs = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingAgents = false;
+        _loadingLlmConfigs = false;
+        _llmConfigs = const [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load chat setup: $error')),
+      );
+    }
   }
 
   Future<void> _reloadAgents() async {
@@ -126,19 +166,165 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  LlmConfig? get _activeLlmConfig {
+    final slot = _sessionConfigSlotId;
+    if (slot == null) return null;
+    for (final config in _llmConfigs) {
+      if (config.slotId == slot) return config;
+    }
+    return null;
+  }
+
   AgentSettings _settingsForAgent(AgentDefinition? agent) {
-    final modelId = _resolveModelId(agent?.model);
+    final selectedConfig = _activeLlmConfig;
+    final selectedModel = _sessionModelOverride ??
+        selectedConfig?.defaultModel ??
+        _resolveModelId(agent?.model);
     return AgentSettings(
-      provider: _providerForModel(modelId),
-      model: modelId,
+      provider: _providerForConfigOrModel(selectedConfig, selectedModel),
+      model: selectedModel,
       systemPrompt: agent?.systemPrompt,
       permissions: const AgentPermissions(allowNetworkOutbound: true),
     );
   }
 
+  String _providerForConfigOrModel(LlmConfig? config, String model) {
+    if (config != null) {
+      switch (config.provider) {
+        case LlmProvider.googleAiStudio:
+          return 'gemini';
+        case LlmProvider.anthropic:
+          return 'anthropic';
+      }
+    }
+    return _providerForModel(model);
+  }
+
   String _providerForModel(String model) {
     if (model.startsWith('gemini')) return 'gemini';
     return 'anthropic';
+  }
+
+  Future<void> _resetSessions() async {
+    await _currentSubscription?.cancel();
+    _currentSubscription = null;
+    for (final session in _sessions.values) {
+      await session.dispose();
+    }
+    _sessions.clear();
+  }
+
+  Future<void> _openRuntimeModelConfigDialog() async {
+    if (_llmConfigs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No model configuration found')),
+      );
+      return;
+    }
+
+    var selectedSlot = _sessionConfigSlotId ??
+        _llmConfigs
+            .firstWhere((c) => c.isDefault, orElse: () => _llmConfigs.first)
+            .slotId;
+    var selectedConfig =
+        _llmConfigs.firstWhere((cfg) => cfg.slotId == selectedSlot);
+    var selectedModel = _sessionModelOverride ?? selectedConfig.defaultModel;
+
+    final applied = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            selectedConfig = _llmConfigs.firstWhere(
+              (cfg) => cfg.slotId == selectedSlot,
+              orElse: () => _llmConfigs.first,
+            );
+            final models = selectedConfig.models.isNotEmpty
+                ? selectedConfig.models
+                : <String>[selectedConfig.defaultModel];
+            if (!models.contains(selectedModel)) {
+              selectedModel = models.first;
+            }
+            return AlertDialog(
+              title: const Text('Session model'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedSlot,
+                    decoration:
+                        const InputDecoration(labelText: 'Configuration'),
+                    items: _llmConfigs
+                        .map(
+                          (cfg) => DropdownMenuItem<String>(
+                            value: cfg.slotId,
+                            child: Text(
+                              cfg.isDefault
+                                  ? '${cfg.slotId} (default)'
+                                  : cfg.slotId,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() {
+                        selectedSlot = value;
+                        final cfg = _llmConfigs.firstWhere(
+                          (item) => item.slotId == value,
+                          orElse: () => _llmConfigs.first,
+                        );
+                        selectedModel = cfg.defaultModel;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: BricksSpacing.sm),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedModel,
+                    decoration: const InputDecoration(labelText: 'Model'),
+                    items: models
+                        .map(
+                          (model) => DropdownMenuItem<String>(
+                            value: model,
+                            child: Text(model),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() => selectedModel = value);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (applied != true || !mounted) return;
+    await _resetSessions();
+    if (!mounted) return;
+    setState(() {
+      _sessionConfigSlotId = selectedSlot;
+      _sessionModelOverride = selectedModel;
+      _isSending = false;
+      _isStreaming = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Session now uses $selectedModel')),
+    );
   }
 
   String _resolveModelId(String? model) {
@@ -447,7 +633,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loadingAgents) {
+    if (_loadingAgents || _loadingLlmConfigs) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -472,6 +658,13 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Session model config',
+            onPressed: _openRuntimeModelConfigDialog,
+          ),
+        ],
         bottom: _buildActiveAgentsIndicator(),
       ),
       body: Column(
