@@ -3,6 +3,25 @@ name: PR Review Findings Auto Trigger
 on:
   pull_request_review:
     types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: 'PR number to test against'
+        required: true
+        type: number
+      review_id:
+        description: 'Review ID to simulate (use a real review ID from the PR)'
+        required: true
+        type: number
+      review_state:
+        description: 'Review state to simulate'
+        required: true
+        default: 'commented'
+        type: choice
+        options:
+          - commented
+          - changes_requested
+          - approved
 
 permissions:
   pull-requests: read
@@ -23,9 +42,17 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const pull_number = context.payload.pull_request?.number;
-            const review_id = context.payload.review?.id;
-            const review_state = (context.payload.review?.state || '').toLowerCase();
+            // Support workflow_dispatch inputs for pre-merge testing
+            const isManual = context.eventName === 'workflow_dispatch';
+            const pull_number = isManual
+              ? Number(context.payload.inputs.pull_number)
+              : context.payload.pull_request?.number;
+            const review_id = isManual
+              ? Number(context.payload.inputs.review_id)
+              : context.payload.review?.id;
+            const review_state = isManual
+              ? (context.payload.inputs.review_state || '').toLowerCase()
+              : (context.payload.review?.state || '').toLowerCase();
             const actionableStates = new Set(['commented', 'changes_requested']);
             const marker = `<!-- copilot-review-trigger:review-id:${review_id} -->`;
             const defaultComment = '@copilot Please go through the PR review comments and address them. Use your own judgment—don\'t just blindly follow the suggestions. Commit code for the necessary fixes, but for comments you think should be ignored, just leave a reply explaining your reasoning. Make sure to mark all comments as resolved once you\'re done.';
