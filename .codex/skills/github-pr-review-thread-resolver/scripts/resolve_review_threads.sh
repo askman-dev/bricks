@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Bash-specific script (uses [[ ]], local vars, here-strings, and process substitution).
 set -euo pipefail
 
 usage() {

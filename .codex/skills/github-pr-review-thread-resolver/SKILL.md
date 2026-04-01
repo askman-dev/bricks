@@ -4,6 +4,7 @@ description: Resolve GitHub pull request review threads (especially outdated thr
 ---
 
 Resolve review threads on a GitHub pull request with a bash script.
+This skill targets **bash** explicitly and is not POSIX `sh` compatible.
 
 ## Steps
 
