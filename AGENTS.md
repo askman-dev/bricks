@@ -8,6 +8,9 @@
 - For each feature or task, create and save a markdown plan file in `docs/plans/`.
 - Name plan files with a `YYYY-MM-DD-HH-mm` prefix using 24-hour time (optionally appending a timezone such as `-UTC`).
 
+## API debugging workflow
+- When debugging API/interface errors, try the `vercel-api-log-context` skill first to collect Vercel deployment log context before proposing fixes.
+
 ## GitHub Agentic Workflows (gh-aw)
 
 This repository uses [GitHub Agentic Workflows](https://github.github.com/gh-aw/) to run AI coding agents on a schedule or in response to repository events.
