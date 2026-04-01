@@ -30,6 +30,28 @@ function sanitizeConfigForResponse<T extends { config?: unknown }>(raw: T): T {
   return sanitized;
 }
 
+function normalizeIsDefaultValue(
+  value: unknown
+): { ok: true; value: boolean } | { ok: false } {
+  if (typeof value === 'boolean') {
+    return { ok: true, value };
+  }
+  if (typeof value === 'number') {
+    if (value === 1) return { ok: true, value: true };
+    if (value === 0) return { ok: true, value: false };
+    return { ok: false };
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '1') return { ok: true, value: true };
+    if (trimmed === '0') return { ok: true, value: false };
+    if (trimmed.toLowerCase() === 'true') return { ok: true, value: true };
+    if (trimmed.toLowerCase() === 'false') return { ok: true, value: false };
+    return { ok: false };
+  }
+  return { ok: false };
+}
+
 // All routes require authentication
 router.use(authenticate);
 
@@ -47,6 +69,15 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     }
 
     const { category, provider, config, is_default } = req.body;
+    let normalizedIsDefault: boolean | undefined;
+    if (is_default !== undefined) {
+      const parsed = normalizeIsDefaultValue(is_default);
+      if (!parsed.ok) {
+        res.status(400).json({ error: 'Invalid is_default: expected boolean, 0/1, or "true"/"false"' });
+        return;
+      }
+      normalizedIsDefault = parsed.value;
+    }
 
     // Validate required fields
     if (!category || !provider || !config) {
@@ -67,7 +98,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       category,
       provider,
       config,
-      is_default,
+      is_default: normalizedIsDefault,
     });
 
     res.status(201).json(sanitizeConfigForResponse(apiConfig));
@@ -183,7 +214,14 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       }
       updates.config = config as Record<string, unknown>;
     }
-    if (is_default !== undefined) updates.is_default = is_default;
+    if (is_default !== undefined) {
+      const parsed = normalizeIsDefaultValue(is_default);
+      if (!parsed.ok) {
+        res.status(400).json({ error: 'Invalid is_default: expected boolean, 0/1, or "true"/"false"' });
+        return;
+      }
+      updates.is_default = parsed.value;
+    }
 
     const updatedConfig = await updateApiConfig(userId, id, updates);
 
