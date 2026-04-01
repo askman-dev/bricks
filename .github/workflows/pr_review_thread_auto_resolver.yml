@@ -47,15 +47,67 @@ jobs:
 
       - name: Resolve outdated review threads
         if: steps.find-pr.outputs.found == 'true'
+        id: resolve-threads
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          set -o pipefail
           PR="${{ steps.find-pr.outputs.pull_number }}"
+          LOG_FILE="$(mktemp)"
+          trap 'rm -f "$LOG_FILE"' EXIT
           echo "Resolving outdated threads for PR #${PR}..."
           bash .codex/skills/github-pr-review-thread-resolver/scripts/resolve_review_threads.sh \
             "${{ github.repository }}" \
             "${PR}" \
-            --mode outdated
+            --mode outdated 2>&1 | tee "$LOG_FILE"
+
+          RESOLVED_COUNT="$(sed -n 's/^resolved_threads=\([0-9][0-9]*\)$/\1/p' "$LOG_FILE" | tail -n 1)"
+          if [[ -z "$RESOLVED_COUNT" ]]; then
+            RESOLVED_COUNT=0
+          fi
+
+          RESOLVED_URLS="$(sed -n 's/^\[[0-9][0-9]*\].*url=\(https:\/\/github\.com\/[^[:space:]]*\)$/\1/p' "$LOG_FILE")"
+
+          {
+            echo "resolved_count=${RESOLVED_COUNT}"
+            echo "resolved_urls<<EOF"
+            echo "$RESOLVED_URLS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment resolved threads
+        if: steps.find-pr.outputs.found == 'true' && steps.resolve-threads.outputs.resolved_count != '0'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = Number('${{ steps.find-pr.outputs.pull_number }}');
+            const resolvedCount = Number('${{ steps.resolve-threads.outputs.resolved_count }}');
+            const urlsRaw = `${{ steps.resolve-threads.outputs.resolved_urls }}`;
+            const urls = urlsRaw
+              .split('\n')
+              .map((u) => u.trim())
+              .filter(Boolean);
+
+            let body = [
+              '✅ PR review thread auto resolver completed successfully.',
+              '',
+              `This automation resolved **${resolvedCount}** outdated review thread(s) using the resolver bot token.`,
+              'The resolved status for the thread(s) listed below was set by automation, not manually by a human reviewer.',
+            ].join('\n');
+
+            if (urls.length > 0) {
+              body += '\n\nResolved thread comment links:\n' + urls.map((u) => `- ${u}`).join('\n');
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
 
       - name: Emit summary
         if: always()
@@ -63,3 +115,4 @@ jobs:
           echo "PR=${{ steps.find-pr.outputs.pull_number }}"
           echo "BRANCH=${{ github.ref_name }}"
           echo "EVENT=${{ github.event_name }}"
+          echo "RESOLVED_COUNT=${{ steps.resolve-threads.outputs.resolved_count || '0' }}"
