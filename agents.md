@@ -61,3 +61,18 @@ When Copilot is asked to add a natural-language test case:
 - keep `given`, `when`, and `then` descriptions readable and specific
 - prefer multiple `when` branches under the same `given` when they share the same starting context
 - prefer multiple `then` outcomes under the same `when` when one action produces several expectations
+
+
+## Plan authoring method
+
+When an implementation plan is requested (for humans or agents), use the following method:
+
+1. Write the full plan in English.
+2. Include these sections in order:
+   - Background
+   - Goals
+   - Implementation Plan (phased)
+   - Acceptance Criteria
+3. Acceptance criteria must be testable and user-observable where applicable.
+4. If validation commands are relevant, include them explicitly (for example: `flutter analyze`, `npm run type-check`).
+5. Keep display naming and storage identity separate when defining extensible configuration systems (e.g., labels vs stable IDs).
