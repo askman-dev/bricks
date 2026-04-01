@@ -6,9 +6,12 @@ On the Model Settings screen, changing the default model name and pressing Save 
 2. Keep compatibility when reading `is_default` from either boolean or numeric payloads.
 3. Add focused test coverage for request payload shape and response parsing.
 
+> **Note:** Phase 1 below was superseded by follow-up feedback. The chosen wire format is numeric `1/0` (not boolean). The backend now normalizes both formats; see `docs/plans/2026-04-01-08-56-UTC-model-is-default-number-format.md` and `docs/plans/2026-04-01-09-22-UTC-backend-is-default-normalization.md`.
+
 # Implementation Plan (phased)
-## Phase 1: Save payload contract alignment
-- Update Flutter `LlmConfigService.save` to send `is_default` as a boolean.
+## Phase 1: Save payload contract alignment (superseded)
+- ~~Update Flutter `LlmConfigService.save` to send `is_default` as a boolean.~~
+- **Actual decision:** Keep mobile sending numeric `1/0`; add route-level normalization on the backend to accept boolean, numeric, and string representations.
 
 ## Phase 2: Defensive response parsing
 - Update `is_default` parsing helper to accept booleans and numeric/string equivalents without throwing.
@@ -19,5 +22,6 @@ On the Model Settings screen, changing the default model name and pressing Save 
 
 # Acceptance Criteria
 - Saving model settings after changing the model name no longer shows the failure snackbar for valid requests.
-- Save request payload includes boolean `is_default`.
+- Save request payload sends `is_default` as `1` or `0` (numeric).
+- Backend accepts `is_default` as boolean, `0/1`, or `"true"`/`"false"` for backward compatibility.
 - Parsing handles backend responses with either `true/false` or `1/0` safely.

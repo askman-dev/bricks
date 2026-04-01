@@ -73,7 +73,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     if (is_default !== undefined) {
       const parsed = normalizeIsDefaultValue(is_default);
       if (!parsed.ok) {
-        res.status(400).json({ error: 'Invalid is_default: expected boolean or 0/1' });
+        res.status(400).json({ error: 'Invalid is_default: expected boolean, 0/1, or "true"/"false"' });
         return;
       }
       normalizedIsDefault = parsed.value;
@@ -217,7 +217,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
     if (is_default !== undefined) {
       const parsed = normalizeIsDefaultValue(is_default);
       if (!parsed.ok) {
-        res.status(400).json({ error: 'Invalid is_default: expected boolean or 0/1' });
+        res.status(400).json({ error: 'Invalid is_default: expected boolean, 0/1, or "true"/"false"' });
         return;
       }
       updates.is_default = parsed.value;
