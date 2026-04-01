@@ -34,11 +34,13 @@ concurrency:
 jobs:
   trigger-copilot:
     runs-on: ubuntu-latest
+    environment: copilot
     steps:
       - name: Evaluate review and trigger Copilot comment
         id: evaluate
         uses: actions/github-script@v8
         with:
+          github-token: ${{ secrets.GH_TOKEN }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
