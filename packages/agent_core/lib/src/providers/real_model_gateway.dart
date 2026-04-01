@@ -46,6 +46,14 @@ class RealModelGateway {
     required AgentSettings settings,
     required String message,
   }) async {
+    final backendResult = await _generateViaBackendIfConfigured(
+      settings: settings,
+      message: message,
+    );
+    if (backendResult != null) {
+      return backendResult;
+    }
+
     switch (settings.provider) {
       case testProvider:
         return 'Received: $message';
@@ -59,6 +67,63 @@ class RealModelGateway {
           'Unsupported provider: ${settings.provider}. Supported providers: test, anthropic, gemini, google_ai_studio.',
         );
     }
+  }
+
+  Future<String?> _generateViaBackendIfConfigured({
+    required AgentSettings settings,
+    required String message,
+  }) async {
+    final baseUrl = settings.apiBaseUrl?.trim() ?? '';
+    final token = settings.authToken?.trim() ?? '';
+    if (baseUrl.isEmpty || token.isEmpty) {
+      return null;
+    }
+
+    final baseUri = _validateBaseUrl(baseUrl, 'AgentSettings.apiBaseUrl');
+    final uri = baseUri.replace(path: '/api/llm/chat');
+    final provider =
+        settings.provider == 'gemini' ? 'google_ai_studio' : settings.provider;
+    final payload = <String, dynamic>{
+      'provider': provider,
+      'model': settings.model,
+      'messages': [
+        if (settings.systemPrompt != null &&
+            settings.systemPrompt!.trim().isNotEmpty)
+          {'role': 'system', 'content': settings.systemPrompt!.trim()},
+        {'role': 'user', 'content': message},
+      ],
+      if (settings.configId != null && settings.configId!.trim().isNotEmpty)
+        'configId': settings.configId!.trim(),
+    };
+    final response = await _httpClient
+        .post(
+          uri,
+          headers: {
+            'content-type': 'application/json',
+            'authorization': 'Bearer $token',
+          },
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'Backend chat request failed (${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+    final output = (data is Map<String, dynamic>) ? data['output'] : null;
+    if (output is! List || output.isEmpty) {
+      throw StateError('Backend chat response missing output.');
+    }
+    for (final item in output) {
+      if (item is Map<String, dynamic> && item['type'] == 'text') {
+        final text = item['text'];
+        if (text is String && text.trim().isNotEmpty) return text;
+      }
+    }
+    throw StateError('Backend chat response missing text output.');
   }
 
   /// Validates that [urlStr] is an absolute URL with a scheme of `http` or

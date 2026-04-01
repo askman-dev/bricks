@@ -4,10 +4,12 @@ import 'package:agent_core/agent_core.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import '../agents/agents_screen.dart';
+import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../session/session_settings_page.dart';
@@ -51,6 +53,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<LlmConfig> _llmConfigs = const [];
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
+  String? _authToken;
 
   @override
   void initState() {
@@ -70,10 +73,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadAgents() async {
     final repoFuture = createAgentsRepository();
     final llmConfigsFuture = _llmConfigService.fetchConfigs();
+    final tokenFuture = AuthService.getToken();
 
     try {
       final repo = await repoFuture;
       final llmConfigs = await llmConfigsFuture;
+      final authToken = await tokenFuture;
       final definitions = await _readAgentDefinitions(repo);
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
@@ -100,6 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _sessionModelOverride ??=
             llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
         _loadingLlmConfigs = false;
+        _authToken = authToken;
       });
     } catch (error) {
       if (!mounted) return;
@@ -184,8 +190,18 @@ class _ChatScreenState extends State<ChatScreen> {
       provider: _providerForConfigOrModel(selectedConfig, selectedModel),
       model: selectedModel,
       systemPrompt: agent?.systemPrompt,
+      apiBaseUrl: _resolveApiBaseUrl(),
+      authToken: _authToken,
+      configId: selectedConfig?.id,
       permissions: const AgentPermissions(allowNetworkOutbound: true),
     );
+  }
+
+  String _resolveApiBaseUrl() {
+    const fromEnv = String.fromEnvironment('BRICKS_API_BASE_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) return Uri.base.origin;
+    return 'http://localhost:3000';
   }
 
   String _providerForConfigOrModel(LlmConfig? config, String model) {

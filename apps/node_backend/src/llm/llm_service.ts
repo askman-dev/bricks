@@ -57,7 +57,11 @@ export async function generateWithUserConfig(
   request: UnifiedChatRequest,
   preferredProvider?: LlmProvider
 ): Promise<UnifiedChatResponse> {
-  const runtimeConfig = await resolveRuntimeConfig(userId, preferredProvider);
+  const runtimeConfig = await resolveRuntimeConfig(
+    userId,
+    preferredProvider,
+    request.configId
+  );
   const { model, modelId } = resolveModel(request, runtimeConfig);
 
   const result = await generateText({
@@ -82,7 +86,11 @@ export async function streamWithUserConfig(
   request: UnifiedChatRequest,
   preferredProvider?: LlmProvider
 ): Promise<{ textStream: AsyncIterable<string>; provider: LlmProvider; modelId: string }> {
-  const runtimeConfig = await resolveRuntimeConfig(userId, preferredProvider);
+  const runtimeConfig = await resolveRuntimeConfig(
+    userId,
+    preferredProvider,
+    request.configId
+  );
   const { model, modelId } = resolveModel(request, runtimeConfig);
 
   const result = streamText({
@@ -100,7 +108,8 @@ export async function streamWithUserConfig(
 
 async function resolveRuntimeConfig(
   userId: string,
-  preferredProvider?: LlmProvider
+  preferredProvider?: LlmProvider,
+  preferredConfigId?: string
 ): Promise<LlmRuntimeConfig> {
   const allConfigs = (await getApiConfigs(userId, 'llm')) as StoredLlmConfig[];
   if (allConfigs.length === 0) {
@@ -108,6 +117,9 @@ async function resolveRuntimeConfig(
   }
 
   const selected =
+    (preferredConfigId
+      ? allConfigs.find((cfg) => cfg.id === preferredConfigId)
+      : undefined) ??
     (preferredProvider
       ? allConfigs.find((cfg) => cfg.provider === preferredProvider)
       : undefined) ??

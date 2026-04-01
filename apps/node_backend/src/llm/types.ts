@@ -9,6 +9,7 @@ export interface UnifiedMessage {
 
 export interface UnifiedChatRequest {
   model?: string;
+  configId?: string;
   messages: UnifiedMessage[];
   temperature?: number;
   maxTokens?: number;
