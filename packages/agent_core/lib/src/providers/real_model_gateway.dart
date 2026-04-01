@@ -1,0 +1,178 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:agent_sdk_contract/agent_sdk_contract.dart';
+import 'package:http/http.dart' as http;
+
+class RealModelGateway {
+  /// Provider name used for the synthetic test stub (no real HTTP calls).
+  static const String testProvider = 'test';
+
+  RealModelGateway({http.Client? httpClient, Map<String, String>? environment})
+      : _httpClient = httpClient ?? http.Client(),
+        _environment = environment ?? Platform.environment;
+
+  final http.Client _httpClient;
+  final Map<String, String> _environment;
+
+  Future<String> generate({
+    required AgentSettings settings,
+    required String message,
+  }) async {
+    switch (settings.provider) {
+      case testProvider:
+        return 'Received: $message';
+      case 'anthropic':
+        return _anthropicGenerate(settings: settings, message: message);
+      case 'gemini':
+      case 'google_ai_studio':
+        return _geminiGenerate(settings: settings, message: message);
+      default:
+        throw StateError(
+          'Unsupported provider: ${settings.provider}. Supported providers: test, anthropic, gemini, google_ai_studio.',
+        );
+    }
+  }
+
+  /// Validates that [urlStr] is an absolute URL with a scheme of `http` or
+  /// `https` and a non-empty host. Throws [StateError] on failure.
+  Uri _validateBaseUrl(String urlStr, String envVarName) {
+    final uri = Uri.tryParse(urlStr);
+    if (uri == null ||
+        !uri.isAbsolute ||
+        uri.host.isEmpty ||
+        (uri.scheme != 'https' && uri.scheme != 'http')) {
+      throw StateError(
+        'Invalid $envVarName: "$urlStr". Must be an absolute HTTP(S) URL.',
+      );
+    }
+    return uri;
+  }
+
+  Future<String> _anthropicGenerate({
+    required AgentSettings settings,
+    required String message,
+  }) async {
+    final apiKey = _environment['BRICKS_ANTHROPIC_API_KEY'] ?? '';
+    final endpointStr =
+        _environment['BRICKS_ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
+
+    if (apiKey.isEmpty) {
+      throw StateError('Missing BRICKS_ANTHROPIC_API_KEY.');
+    }
+
+    final baseUri = _validateBaseUrl(endpointStr, 'BRICKS_ANTHROPIC_BASE_URL');
+    final uri = baseUri.replace(path: '/v1/messages');
+    final bodyMap = <String, dynamic>{
+      'model': settings.model,
+      'max_tokens': 1024,
+      'messages': [
+        {'role': 'user', 'content': message},
+      ],
+    };
+    if (settings.systemPrompt != null &&
+        settings.systemPrompt!.trim().isNotEmpty) {
+      bodyMap['system'] = settings.systemPrompt;
+    }
+    final body = jsonEncode(bodyMap);
+
+    final response = await _httpClient
+        .post(
+          uri,
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: body,
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'Anthropic request failed (${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+    final content = (data is Map<String, dynamic>) ? data['content'] : null;
+    if (content is! List || content.isEmpty) {
+      throw StateError('Anthropic response missing content.');
+    }
+    final first = content.first;
+    final text = (first is Map<String, dynamic>) ? first['text'] : null;
+    if (text is! String || text.trim().isEmpty) {
+      throw StateError('Anthropic response text is empty.');
+    }
+    return text;
+  }
+
+  Future<String> _geminiGenerate({
+    required AgentSettings settings,
+    required String message,
+  }) async {
+    final apiKey = _environment['BRICKS_GEMINI_API_KEY'] ?? '';
+    final endpointStr = _environment['BRICKS_GEMINI_BASE_URL'] ??
+        'https://generativelanguage.googleapis.com';
+
+    if (apiKey.isEmpty) {
+      throw StateError('Missing BRICKS_GEMINI_API_KEY.');
+    }
+
+    final baseUri = _validateBaseUrl(endpointStr, 'BRICKS_GEMINI_BASE_URL');
+    // Gemini API requires the API key as a `key` query parameter per the
+    // official REST authentication scheme (header-based auth is not supported).
+    final uri = baseUri
+        .replace(path: '/v1beta/models/${settings.model}:generateContent')
+        .replace(queryParameters: {'key': apiKey});
+
+    final body = jsonEncode({
+      'contents': [
+        {
+          'parts': [
+            {'text': message},
+          ],
+        },
+      ],
+      if (settings.systemPrompt != null && settings.systemPrompt!.isNotEmpty)
+        'systemInstruction': {
+          'parts': [
+            {'text': settings.systemPrompt},
+          ],
+        },
+    });
+
+    final response = await _httpClient
+        .post(
+          uri,
+          headers: {'content-type': 'application/json'},
+          body: body,
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'Gemini request failed (${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+    final candidates =
+        (data is Map<String, dynamic>) ? data['candidates'] : null;
+    if (candidates is! List || candidates.isEmpty) {
+      throw StateError('Gemini response missing candidates.');
+    }
+    final first = candidates.first;
+    final content = (first is Map<String, dynamic>) ? first['content'] : null;
+    final parts = (content is Map<String, dynamic>) ? content['parts'] : null;
+    if (parts is! List || parts.isEmpty) {
+      throw StateError('Gemini response missing text parts.');
+    }
+    final firstPart = parts.first;
+    final text = (firstPart is Map<String, dynamic>) ? firstPart['text'] : null;
+    if (text is! String || text.trim().isEmpty) {
+      throw StateError('Gemini response text is empty.');
+    }
+    return text;
+  }
+}
