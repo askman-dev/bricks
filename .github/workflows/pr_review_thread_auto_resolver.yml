@@ -1,9 +1,8 @@
 name: PR Review Thread Auto Resolver
 
 on:
-  push:
-    branches-ignore:
-      - main
+  pull_request:
+    types: [synchronize]
   workflow_dispatch:
     inputs:
       pull_number:
@@ -32,8 +31,7 @@ jobs:
         with:
           github-token: ${{ secrets.GH_TOKEN }}
           script: |
-            const isManual = context.eventName === 'workflow_dispatch';
-            if (isManual) {
+            if (context.eventName === 'workflow_dispatch') {
               const pull_number = Number(context.payload.inputs.pull_number);
               core.setOutput('pull_number', pull_number);
               core.setOutput('found', 'true');
@@ -41,23 +39,10 @@ jobs:
               return;
             }
 
-            const branch = context.ref.replace('refs/heads/', '');
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              head: `${context.repo.owner}:${branch}`,
-            });
-
-            if (prs.length === 0) {
-              core.info(`No open PR found for branch: ${branch}. Skipping.`);
-              core.setOutput('found', 'false');
-              return;
-            }
-
-            const pr = prs[0];
-            core.info(`Found open PR #${pr.number}: ${pr.title}`);
-            core.setOutput('pull_number', pr.number);
+            // pull_request event: PR number is directly available
+            const pull_number = context.payload.pull_request.number;
+            core.info(`pull_request event: using PR #${pull_number}`);
+            core.setOutput('pull_number', pull_number);
             core.setOutput('found', 'true');
 
       - name: Resolve outdated review threads
