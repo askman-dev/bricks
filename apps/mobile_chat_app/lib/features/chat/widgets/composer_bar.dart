@@ -10,6 +10,7 @@ class ComposerBar extends StatefulWidget {
     this.activeAgent,
     this.onSend,
     this.onAgentSelected,
+    this.onOpenModelSelection,
     this.onStop,
     this.isStreaming = false,
   });
@@ -25,6 +26,9 @@ class ComposerBar extends StatefulWidget {
 
   /// Called when the user picks an agent from the @ menu.
   final void Function(AgentDefinition agent)? onAgentSelected;
+
+  /// Opens runtime model selection UI.
+  final VoidCallback? onOpenModelSelection;
 
   /// Called when the user stops streaming output.
   final VoidCallback? onStop;
@@ -124,13 +128,6 @@ class _ComposerBarState extends State<ComposerBar>
     _hideMentions();
   }
 
-  void _handleVoiceInput() {
-    // TODO(chat): Implement voice input (placeholder for future).
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice input coming soon')),
-    );
-  }
-
   @override
   void dispose() {
     _spinController.dispose();
@@ -153,13 +150,6 @@ class _ComposerBarState extends State<ComposerBar>
           children: [
             Row(
               children: [
-                // Voice input button.
-                IconButton(
-                  onPressed: widget.isStreaming ? null : _handleVoiceInput,
-                  icon: const Icon(Icons.mic_outlined),
-                  tooltip: 'Voice input',
-                ),
-                const SizedBox(width: BricksSpacing.xs),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -186,8 +176,37 @@ class _ComposerBarState extends State<ComposerBar>
                     ),
                   ),
                 ),
-                const SizedBox(width: BricksSpacing.sm),
-                // Send or Stop button.
+              ],
+            ),
+            const SizedBox(height: BricksSpacing.xs),
+            Row(
+              children: [
+                PopupMenuButton<String>(
+                  tooltip: 'Composer actions',
+                  enabled: !widget.isStreaming,
+                  icon: const Icon(Icons.tune),
+                  onSelected: (value) {
+                    if (value == 'model') {
+                      widget.onOpenModelSelection?.call();
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem<String>(
+                      value: 'new_context',
+                      child: Text('新上下文'),
+                    ),
+                    PopupMenuDivider(),
+                    PopupMenuItem<String>(
+                      value: 'model',
+                      child: Text('模型'),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'agents',
+                      child: Text('Agents'),
+                    ),
+                  ],
+                ),
+                const Spacer(),
                 if (widget.isStreaming)
                   RotationTransition(
                     turns: _spinController,

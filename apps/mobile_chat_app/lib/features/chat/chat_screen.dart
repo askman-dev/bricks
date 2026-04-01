@@ -11,7 +11,6 @@ import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
-import '../session/session_settings_page.dart';
 import '../../services/agents_repository_factory.dart';
 import 'chat_message.dart';
 import 'chat_navigation_page.dart';
@@ -543,47 +542,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _openNavigationPage() async {
-    final slideTween = Tween<Offset>(
-      begin: const Offset(-1, 0),
-      end: Offset.zero,
-    ).chain(CurveTween(curve: Curves.easeOutCubic));
-
-    final action = await Navigator.push<ChatNavigationAction>(
-      context,
-      PageRouteBuilder<ChatNavigationAction>(
-        pageBuilder: (_, __, ___) => const ChatNavigationPage(),
-        transitionsBuilder: (_, animation, __, child) {
-          return SlideTransition(
-            position: animation.drive(slideTween),
-            child: child,
-          );
-        },
-      ),
-    );
-    if (!mounted || action == null) return;
-    switch (action) {
-      case ChatNavigationAction.manageAgents:
-        await _openAgentsScreen();
-        break;
-      case ChatNavigationAction.sessionSettings:
-        _openSessionSettings();
-        break;
-      case ChatNavigationAction.appSettings:
-        await _openSettingsScreen();
-        break;
-    }
-  }
-
-  void _openSessionSettings() {
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => SessionSettingsPage(coordinator: _participantManager),
-      ),
-    ).then((_) => setState(() {}));
-  }
-
   Future<void> _openAgentsScreen() async {
     final updated = await Navigator.push<AgentDefinition?>(
       context,
@@ -648,45 +606,61 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final activeAgentName = _activeAgent?.name;
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          tooltip: 'Open navigation',
-          onPressed: _openNavigationPage,
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        drawer: Drawer(
+          child: SafeArea(
+            child: ChatNavigationPage(
+              onActionSelected: (action) {
+                Navigator.of(context).pop();
+                switch (action) {
+                  case ChatNavigationAction.manageAgents:
+                    _openAgentsScreen();
+                    break;
+                  case ChatNavigationAction.appSettings:
+                    _openSettingsScreen();
+                    break;
+                }
+              },
+            ),
+          ),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        appBar: AppBar(
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu),
+              tooltip: 'Open navigation',
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Bricks'),
+              if (activeAgentName != null)
+                Text(
+                  'Responding as @$activeAgentName',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+            ],
+          ),
+          bottom: _buildActiveAgentsIndicator(),
+        ),
+        body: Column(
           children: [
-            const Text('Bricks'),
-            if (activeAgentName != null)
-              Text(
-                'Responding as @$activeAgentName',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
+            Expanded(child: MessageList(messages: _messages)),
+            ComposerBar(
+              activeAgent: _activeAgent,
+              agents: _agents,
+              onAgentSelected: _selectAgent,
+              onOpenModelSelection: _openRuntimeModelConfigDialog,
+              onSend: _isSending ? null : _sendMessage,
+              onStop: _stopStreaming,
+              isStreaming: _isStreaming,
+            ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: 'Session model config',
-            onPressed: _openRuntimeModelConfigDialog,
-          ),
-        ],
-        bottom: _buildActiveAgentsIndicator(),
-      ),
-      body: Column(
-        children: [
-          Expanded(child: MessageList(messages: _messages)),
-          ComposerBar(
-            activeAgent: _activeAgent,
-            agents: _agents,
-            onAgentSelected: _selectAgent,
-            onSend: _isSending ? null : _sendMessage,
-            onStop: _stopStreaming,
-            isStreaming: _isStreaming,
-          ),
-        ],
       ),
     );
   }
