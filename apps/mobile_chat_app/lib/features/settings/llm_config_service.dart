@@ -183,6 +183,25 @@ class LlmConfigService {
     return _fromApiConfig(Map<String, dynamic>.from(decoded));
   }
 
+  Future<void> deleteConfig(String id) async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.delete(
+      _buildUri('/api/config/$id'),
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception(
+          'Failed to delete model settings (${response.statusCode})');
+    }
+  }
+
   LlmConfig _fromApiConfig(Map<String, dynamic> config) {
     final rawConfig = config['config'];
     final map = rawConfig is Map
