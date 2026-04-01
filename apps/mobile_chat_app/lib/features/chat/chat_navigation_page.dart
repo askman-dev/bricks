@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Actions that can be triggered from the chat navigation page.
-enum ChatNavigationAction { manageAgents, sessionSettings, appSettings }
+enum ChatNavigationAction { manageAgents, appSettings }
 
 /// Full-page navigation for chat-related routes.
 class ChatNavigationPage extends StatelessWidget {
@@ -30,13 +30,6 @@ class ChatNavigationPage extends StatelessWidget {
               title: const Text('Manage Agents'),
               onTap: () {
                 Navigator.pop(context, ChatNavigationAction.manageAgents);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.people_outline),
-              title: const Text('Session Settings'),
-              onTap: () {
-                Navigator.pop(context, ChatNavigationAction.sessionSettings);
               },
             ),
             ListTile(
