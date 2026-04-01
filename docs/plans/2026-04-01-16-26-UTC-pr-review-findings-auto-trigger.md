@@ -21,4 +21,4 @@ PR authors currently need to manually add an `@copilot` follow-up comment after 
 - A single review submission with multiple review comments creates exactly one `@copilot` trigger comment.
 - Re-running the same workflow for the same `review_id` does not add a second trigger comment.
 - Reviews with zero comments do not create trigger comments.
-- If token permissions are insufficient, logs include both the API error and a remediation hint indicating required scopes (`pull_requests: read`, `issues: write` or `pull_requests: write`).
+- If token permissions are insufficient, logs include both the API error and a remediation hint indicating required scopes (`pull_requests: read`, `issues: write`).
