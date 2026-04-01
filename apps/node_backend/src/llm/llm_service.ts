@@ -145,7 +145,7 @@ async function resolveRuntimeConfig(
 function fallbackModel(provider: LlmProvider): string {
   switch (provider) {
     case 'google_ai_studio':
-      return 'gemini-2.5-pro';
+      return 'gemini-flash-latest';
     case 'anthropic':
       return 'claude-sonnet-4-5';
   }
