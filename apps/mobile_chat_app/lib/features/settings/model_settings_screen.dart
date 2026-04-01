@@ -178,13 +178,17 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
       runSpacing: 8,
       children: List.generate(_configs.length, (index) {
         final config = _configs[index];
-        final modelName = config.defaultModel.trim();
+        final isActive = index == _activeConfigIndex;
+        final modelName = (isActive
+                ? _defaultModelController.text
+                : config.defaultModel)
+            .trim();
         final label = modelName.isEmpty
             ? _fallbackLabelForSlot(config, index)
             : modelName;
         return ChoiceChip(
           label: Text(label),
-          selected: index == _activeConfigIndex,
+          selected: isActive,
           onSelected: (_) {
             setState(() {
               _activeConfigIndex = index;
