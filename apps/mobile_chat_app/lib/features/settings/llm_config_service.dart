@@ -36,6 +36,7 @@ class LlmConfig {
     required this.baseUrl,
     required this.apiKey,
     required this.defaultModel,
+    this.models = const [],
     this.isDefault = false,
   });
 
@@ -45,6 +46,7 @@ class LlmConfig {
   final String baseUrl;
   final String apiKey;
   final String defaultModel;
+  final List<String> models;
   final bool isDefault;
 
   LlmConfig copyWith({
@@ -54,6 +56,7 @@ class LlmConfig {
     String? baseUrl,
     String? apiKey,
     String? defaultModel,
+    List<String>? models,
     bool? isDefault,
   }) {
     return LlmConfig(
@@ -63,6 +66,7 @@ class LlmConfig {
       baseUrl: baseUrl ?? this.baseUrl,
       apiKey: apiKey ?? this.apiKey,
       defaultModel: defaultModel ?? this.defaultModel,
+      models: models ?? this.models,
       isDefault: isDefault ?? this.isDefault,
     );
   }
@@ -222,6 +226,17 @@ class LlmConfigService {
     final slotId = (map['slot_id'] as String?)?.trim();
     final defaultModel =
         (modelPrefs['default_model'] as String?) ?? _defaultModel(provider);
+    final rawModels = modelPrefs['models'];
+    final models = rawModels is List
+        ? rawModels
+            .whereType<String>()
+            .map((m) => m.trim())
+            .where((m) => m.isNotEmpty)
+            .toList()
+        : <String>[];
+    if (!models.contains(defaultModel)) {
+      models.insert(0, defaultModel);
+    }
     return LlmConfig(
       id: configId,
       slotId: slotId != null && slotId.isNotEmpty
@@ -231,6 +246,7 @@ class LlmConfigService {
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
       apiKey: '',
       defaultModel: defaultModel,
+      models: models,
       isDefault: _parseIsDefaultValue(config['is_default']),
     );
   }
