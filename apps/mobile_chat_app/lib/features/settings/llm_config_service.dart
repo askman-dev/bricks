@@ -223,8 +223,9 @@ class LlmConfigService {
       );
       return false;
     }
-    // Narrow fallback in case backend adapter returns bool in some environments.
-    if (value is bool) return value;
+    debugPrint(
+      'Unexpected is_default non-numeric value: $value (treating as false)',
+    );
     return false;
   }
 
