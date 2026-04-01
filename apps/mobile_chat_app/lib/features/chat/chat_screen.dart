@@ -12,6 +12,7 @@ import '../settings/settings_screen.dart';
 import '../session/session_settings_page.dart';
 import '../../services/agents_repository_factory.dart';
 import 'chat_message.dart';
+import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
 
@@ -335,6 +336,27 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _openNavigationPage() async {
+    final action = await Navigator.push<ChatNavigationAction>(
+      context,
+      MaterialPageRoute<ChatNavigationAction>(
+        builder: (_) => const ChatNavigationPage(),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case ChatNavigationAction.manageAgents:
+        await _openAgentsScreen();
+        break;
+      case ChatNavigationAction.sessionSettings:
+        _openSessionSettings();
+        break;
+      case ChatNavigationAction.appSettings:
+        await _openSettingsScreen();
+        break;
+    }
+  }
+
   void _openSessionSettings() {
     Navigator.push(
       context,
@@ -362,55 +384,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (!mounted) return;
     setState(() {});
-  }
-
-  Widget _buildDrawer() {
-    return Drawer(
-      child: SafeArea(
-        child: ListView(
-          children: [
-            const ListTile(
-              title: Text('Bricks'),
-              subtitle: Text('Navigation'),
-            ),
-            const Divider(),
-            const ListTile(
-              leading: Icon(Icons.chat_bubble_outline),
-              title: Text('Current Chat'),
-            ),
-            const ListTile(
-              leading: Icon(Icons.history),
-              title: Text('Sessions'),
-              subtitle: Text('Coming soon'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.account_tree_outlined),
-              title: const Text('Manage Agents'),
-              onTap: () {
-                Navigator.pop(context);
-                _openAgentsScreen();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.people_outline),
-              title: const Text('Session Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                _openSessionSettings();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                _openSettingsScreen();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   PreferredSizeWidget _buildActiveAgentsIndicator() {
@@ -458,8 +431,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final activeAgentName = _activeAgent?.name;
     return Scaffold(
-      drawer: _buildDrawer(),
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Open navigation',
+          onPressed: _openNavigationPage,
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
