@@ -210,16 +210,25 @@ class LlmConfigService {
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
       apiKey: '',
       defaultModel: defaultModel,
-      isDefault: _parseIsDefaultNumber(config['is_default']),
+      isDefault: _parseIsDefaultValue(config['is_default']),
     );
   }
 
-  static bool _parseIsDefaultNumber(dynamic value) {
+  static bool _parseIsDefaultValue(dynamic value) {
     if (value is num) {
       if (value == 1) return true;
       if (value == 0) return false;
       debugPrint(
         'Unexpected is_default numeric value: $value (treating as false)',
+      );
+      return false;
+    }
+    if (value is String) {
+      final normalized = value.trim();
+      if (normalized == '1') return true;
+      if (normalized == '0') return false;
+      debugPrint(
+        'Unexpected is_default string value: $value (treating as false)',
       );
       return false;
     }
