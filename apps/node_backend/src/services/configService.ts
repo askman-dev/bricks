@@ -227,7 +227,7 @@ export async function updateApiConfig(
     values.push(configId, userId);
 
     const result = await client.query(
-      `UPDATE api_configs SET ${updateFields.join(', ')}, updated_at = NOW()
+      `UPDATE api_configs SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
        WHERE id = $${paramCount++} AND user_id = $${paramCount++}
        RETURNING *`,
       values
