@@ -168,7 +168,7 @@ jobs:
               core.error(`GitHub API error (status=${status}): ${apiMessage}`);
               core.error(`x-accepted-github-permissions: ${acceptedPermissions}`);
               core.setFailed(
-                `Failed to evaluate or trigger Copilot comment. Ensure workflow permissions include pull-requests:read and issues:write (or pull-requests:write for comment creation). API status=${status}.`,
+                `Failed to evaluate or trigger Copilot comment. Ensure workflow permissions include pull-requests:read and issues:write for issue comment creation. API status=${status}.`,
               );
             }
 
