@@ -26,6 +26,11 @@ DRY_RUN="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Missing value for --mode. Expected one of: outdated, unresolved, all." >&2
+        usage
+        exit 1
+      fi
       MODE="${2:-}"
       shift 2
       ;;
@@ -62,6 +67,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required" >&2
+  exit 1
+fi
+
 OWNER="${REPO%%/*}"
 REPO_NAME="${REPO#*/}"
 
@@ -69,11 +79,23 @@ graphql_call() {
   local query="$1"
   local variables="$2"
 
-  curl -sS https://api.github.com/graphql \
+  local response
+  if ! response="$(curl -fsS https://api.github.com/graphql \
     -H "Authorization: bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -H "User-Agent: codex-skill-github-pr-review-thread-resolver" \
-    --data-binary "$(jq -nc --arg query "$query" --argjson variables "$variables" '{query:$query,variables:$variables}')"
+    --data-binary "$(jq -nc --arg query "$query" --argjson variables "$variables" '{query:$query,variables:$variables}')")"; then
+    echo "Error: GraphQL request to GitHub API failed." >&2
+    return 1
+  fi
+
+  if ! jq -e . >/dev/null 2>&1 <<<"$response"; then
+    echo "Error: Received non-JSON response from GitHub GraphQL API." >&2
+    echo "$response" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$response"
 }
 
 QUERY_THREADS='query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {

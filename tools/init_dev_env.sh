@@ -68,28 +68,44 @@ install_package() {
   local pkg="$1"
   local manager
   manager="$(detect_pkg_manager)"
+  local -a privilege_prefix=()
 
   if [[ -z "$manager" ]]; then
     return 1
   fi
 
+  # Homebrew should run as the invoking user, not via sudo/doas.
+  if [[ "$manager" != "brew" ]]; then
+    if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+      if command_exists sudo; then
+        privilege_prefix=(sudo)
+      elif command_exists doas; then
+        privilege_prefix=(doas)
+      else
+        print_error "Automatic installation of '$pkg' requires root privileges."
+        print_error "Please rerun tools/init_dev_env.sh with sudo/doas or install '$pkg' manually."
+        return 1
+      fi
+    fi
+  fi
+
   print_step "Installing missing dependency '$pkg' using $manager..."
   case "$manager" in
     apt-get)
-      DEBIAN_FRONTEND=noninteractive apt-get update -y
-      DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg"
+      "${privilege_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get update -y
+      "${privilege_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg"
       ;;
     dnf)
-      dnf install -y "$pkg"
+      "${privilege_prefix[@]}" dnf install -y "$pkg"
       ;;
     yum)
-      yum install -y "$pkg"
+      "${privilege_prefix[@]}" yum install -y "$pkg"
       ;;
     apk)
-      apk add --no-cache "$pkg"
+      "${privilege_prefix[@]}" apk add --no-cache "$pkg"
       ;;
     pacman)
-      pacman -Sy --noconfirm "$pkg"
+      "${privilege_prefix[@]}" pacman -Syu --noconfirm "$pkg"
       ;;
     brew)
       brew install "$pkg"
