@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'llm_config_service.dart';
 
 class ModelSettingsScreen extends StatefulWidget {
-  const ModelSettingsScreen({super.key});
+  const ModelSettingsScreen({super.key, LlmConfigService? service})
+      : _service = service ?? const LlmConfigService();
+
+  final LlmConfigService _service;
 
   @override
   State<ModelSettingsScreen> createState() => _ModelSettingsScreenState();
@@ -11,7 +14,7 @@ class ModelSettingsScreen extends StatefulWidget {
 
 class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _service = const LlmConfigService();
+  late final LlmConfigService _service;
   final _baseUrlController = TextEditingController();
   final _apiKeyController = TextEditingController();
   final _defaultModelController = TextEditingController();
@@ -22,11 +25,13 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   LlmProvider _provider = LlmProvider.anthropic;
   bool _loading = true;
   bool _saving = false;
+  bool _deleting = false;
   bool _showApiKey = false;
 
   @override
   void initState() {
     super.initState();
+    _service = widget._service;
     _load();
   }
 
@@ -169,6 +174,69 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
     }
   }
 
+  Future<void> _deleteCurrentConfig() async {
+    if (_deleting || _saving) return;
+    final current = _configs[_activeConfigIndex];
+
+    if (current.id != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete configuration?'),
+          content: const Text('This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      if (!mounted) return;
+    }
+
+    setState(() => _deleting = true);
+    try {
+      if (current.id != null) {
+        await _service.deleteConfig(current.id!);
+      }
+      if (!mounted) return;
+
+      _configs.removeAt(_activeConfigIndex);
+      if (_configs.isEmpty) {
+        _configs.add(_blankConfig(slotId: 'config-1', isDefault: true));
+        _activeConfigIndex = 0;
+      } else {
+        _activeConfigIndex =
+            (_activeConfigIndex - 1).clamp(0, _configs.length - 1);
+        for (var i = 0; i < _configs.length; i++) {
+          _configs[i] =
+              _configs[i].copyWith(isDefault: i == _activeConfigIndex);
+        }
+      }
+      _hydrateForm(_configs[_activeConfigIndex]);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Model configuration deleted')),
+      );
+      setState(() {});
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete model configuration')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deleting = false);
+      }
+    }
+  }
+
   Widget _buildConfigSelector() {
     return Wrap(
       spacing: 8,
@@ -303,16 +371,36 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: _saving ? null : _save,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save_outlined),
-                    label: Text(_saving ? 'Saving...' : 'Save'),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: (_saving || _deleting)
+                            ? null
+                            : _deleteCurrentConfig,
+                        icon: _deleting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.delete_outline),
+                        label: Text(_deleting ? 'Deleting...' : 'Delete'),
+                      ),
+                      const Spacer(),
+                      FilledButton.icon(
+                        onPressed: (_saving || _deleting) ? null : _save,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.save_outlined),
+                        label: Text(_saving ? 'Saving...' : 'Save'),
+                      ),
+                    ],
                   ),
                 ],
               ),
