@@ -339,8 +339,16 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _openNavigationPage() async {
     final action = await Navigator.push<ChatNavigationAction>(
       context,
-      MaterialPageRoute<ChatNavigationAction>(
-        builder: (_) => const ChatNavigationPage(),
+      PageRouteBuilder<ChatNavigationAction>(
+        pageBuilder: (_, animation, secondaryAnimation) =>
+            const ChatNavigationPage(),
+        transitionsBuilder: (_, animation, secondaryAnimation, child) {
+          final slideAnimation = Tween<Offset>(
+            begin: const Offset(-1, 0),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(animation);
+          return SlideTransition(position: slideAnimation, child: child);
+        },
       ),
     );
     if (!mounted || action == null) return;
