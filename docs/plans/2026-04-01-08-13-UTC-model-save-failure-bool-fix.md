@@ -1,6 +1,12 @@
 # Background
 On the Model Settings screen, changing the default model name and pressing Save currently shows "Failed to save model settings". The mobile client sends `is_default` as numeric `1/0`, while the Node backend route and DB update path expect a boolean value.
 
+# API Conventions
+**Boolean fields at the API level use numeric `0/1`, not JSON `true/false`.**
+- Callers (mobile, other clients) MUST send boolean-semantics fields as integer `1` (true) or `0` (false).
+- The backend normalizes incoming JSON booleans and string representations (`"true"/"false"`) for backward compatibility, but the canonical wire format is numeric.
+- Any new boolean-like fields added to the API should follow the same `0/1` numeric convention.
+
 # Goals
 1. Make model settings save succeed when editing model names.
 2. Keep compatibility when reading `is_default` from either boolean or numeric payloads.
