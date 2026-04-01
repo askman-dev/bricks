@@ -172,6 +172,263 @@ void main() {
     });
   });
 
+  group('RealModelGateway backend routing', () {
+    test('routes through backend when apiBaseUrl and authToken are set',
+        () async {
+      final client = MockClient((request) async {
+        expect(request.url.toString(), equals('https://backend.example/api/llm/chat'));
+        expect(request.headers['authorization'], equals('Bearer tok'));
+        expect(request.headers['content-type'], equals('application/json'));
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['provider'], equals('anthropic'));
+        expect(body['model'], equals('claude-3-haiku'));
+        final messages = body['messages'] as List;
+        expect(messages, hasLength(1));
+        expect(messages[0]['role'], equals('user'));
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'backend reply'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      final result = await gw.generate(
+        settings: const AgentSettings(
+          provider: 'anthropic',
+          model: 'claude-3-haiku',
+          apiBaseUrl: 'https://backend.example',
+          authToken: 'tok',
+        ),
+        message: 'hello',
+      );
+      expect(result, equals('backend reply'));
+    });
+
+    test('maps gemini provider to google_ai_studio', () async {
+      final client = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['provider'], equals('google_ai_studio'));
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      await gw.generate(
+        settings: const AgentSettings(
+          provider: 'gemini',
+          model: 'gemini-pro',
+          apiBaseUrl: 'https://backend.example',
+          authToken: 'tok',
+        ),
+        message: 'hello',
+      );
+    });
+
+    test('forwards configId when present', () async {
+      final client = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['configId'], equals('cfg-123'));
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      await gw.generate(
+        settings: const AgentSettings(
+          provider: 'anthropic',
+          model: 'claude-3-haiku',
+          apiBaseUrl: 'https://backend.example',
+          authToken: 'tok',
+          configId: 'cfg-123',
+        ),
+        message: 'hello',
+      );
+    });
+
+    test('omits configId when null', () async {
+      final client = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body.containsKey('configId'), isFalse);
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      await gw.generate(
+        settings: const AgentSettings(
+          provider: 'anthropic',
+          model: 'claude-3-haiku',
+          apiBaseUrl: 'https://backend.example',
+          authToken: 'tok',
+        ),
+        message: 'hello',
+      );
+    });
+
+    test('includes system prompt as system message', () async {
+      final client = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        final messages = body['messages'] as List;
+        expect(messages, hasLength(2));
+        expect(messages[0]['role'], equals('system'));
+        expect(messages[0]['content'], equals('Be helpful'));
+        expect(messages[1]['role'], equals('user'));
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      await gw.generate(
+        settings: const AgentSettings(
+          provider: 'anthropic',
+          model: 'claude-3-haiku',
+          apiBaseUrl: 'https://backend.example',
+          authToken: 'tok',
+          systemPrompt: 'Be helpful',
+        ),
+        message: 'hello',
+      );
+    });
+
+    test('omits system message when systemPrompt is null', () async {
+      final client = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        final messages = body['messages'] as List;
+        expect(messages, hasLength(1));
+        expect(messages[0]['role'], equals('user'));
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      await gw.generate(
+        settings: const AgentSettings(
+          provider: 'anthropic',
+          model: 'claude-3-haiku',
+          apiBaseUrl: 'https://backend.example',
+          authToken: 'tok',
+        ),
+        message: 'hello',
+      );
+    });
+
+    test('throws on non-2xx backend response', () async {
+      final client = MockClient(
+          (request) async => http.Response('{"error":"unauthorized"}', 403));
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      await expectLater(
+        () => gw.generate(
+          settings: const AgentSettings(
+            provider: 'anthropic',
+            model: 'claude-3-haiku',
+            apiBaseUrl: 'https://backend.example',
+            authToken: 'tok',
+          ),
+          message: 'hello',
+        ),
+        throwsA(
+          isA<StateError>()
+              .having((e) => e.message, 'message', contains('403')),
+        ),
+      );
+    });
+
+    test('throws when backend response has no text output', () async {
+      final client = MockClient((request) async => http.Response(
+            jsonEncode({
+              'output': [
+                {'type': 'image', 'url': 'https://example.com/img.png'},
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ));
+
+      final gw = RealModelGateway(httpClient: client, environment: {});
+      await expectLater(
+        () => gw.generate(
+          settings: const AgentSettings(
+            provider: 'anthropic',
+            model: 'claude-3-haiku',
+            apiBaseUrl: 'https://backend.example',
+            authToken: 'tok',
+          ),
+          message: 'hello',
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('falls through to direct provider when apiBaseUrl is missing',
+        () async {
+      final gw = RealModelGateway(environment: {});
+      final result = await gw.generate(
+        settings: const AgentSettings(
+          provider: 'test',
+          model: 'fake',
+          authToken: 'tok',
+        ),
+        message: 'hello',
+      );
+      expect(result, equals('Received: hello'));
+    });
+
+    test('falls through to direct provider when authToken is missing',
+        () async {
+      final gw = RealModelGateway(environment: {});
+      final result = await gw.generate(
+        settings: const AgentSettings(
+          provider: 'test',
+          model: 'fake',
+          apiBaseUrl: 'https://backend.example',
+        ),
+        message: 'hello',
+      );
+      expect(result, equals('Received: hello'));
+    });
+  });
+
   group('RealModelGateway Gemini HTTP', () {
     test('parses successful Gemini response', () async {
       final client = MockClient((request) async {

@@ -87,6 +87,9 @@ class RealModelGateway {
       'provider': provider,
       'model': settings.model,
       'messages': [
+        if (settings.systemPrompt != null &&
+            settings.systemPrompt!.trim().isNotEmpty)
+          {'role': 'system', 'content': settings.systemPrompt!.trim()},
         {'role': 'user', 'content': message},
       ],
       if (settings.configId != null && settings.configId!.trim().isNotEmpty)
