@@ -15,11 +15,11 @@ The current chat flow in `agent_core` returns a local stub response (`(agent_cor
    - successful provider response mapping
    - unsupported provider handling
    - missing credentials handling
-5. Run project bootstrap and package tests (`./tools/init_dev_env.sh`, `melos run test --scope=agent_core`).
+5. Run project bootstrap and package tests (`./tools/init_dev_env.sh`, `melos exec --scope=agent_core -- dart test`).
 
 # Acceptance Criteria
 - Sending a message through `AgentSessionImpl` attempts a real LLM API call for supported providers instead of echoing the stub text.
 - On success, exactly one `MessageCompleteEvent` is emitted with model output text.
 - On configuration/provider failures, `AgentErrorEvent` is emitted with useful diagnostic text.
 - `RunCompleteEvent` is always emitted and session lifecycle semantics remain unchanged.
-- `melos run test --scope=agent_core` passes.
+- `melos exec --scope=agent_core -- dart test` passes.

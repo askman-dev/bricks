@@ -105,8 +105,13 @@ ensure_melos_shim() {
 
   local melos_path
   melos_path="$(command -v melos)"
-  if [[ -x "$melos_path" ]]; then
-    ln -snf "$melos_path" "$shim_dir/melos"
+  local target="$shim_dir/melos"
+  if [[ "$melos_path" == "$target" ]]; then
+    # melos already resolves to the shim; avoid relinking the path onto itself
+    append_to_path_if_dir "$shim_dir"
+    print_step "Melos shim already configured in: $shim_dir"
+  elif [[ -x "$melos_path" ]]; then
+    ln -snf "$melos_path" "$target"
     append_to_path_if_dir "$shim_dir"
     print_step "Created/updated Melos shim in: $shim_dir"
     print_step "If needed, add shims to your shell profile: export PATH=\"$shim_dir:\$PATH\""

@@ -8,9 +8,11 @@ import '../providers/real_model_gateway.dart';
 /// Owns the run loop: builds context, calls the provider, executes tools,
 /// and emits [AgentSessionEvent]s back to the caller.
 class AgentSessionImpl implements AgentSession {
+  static final RealModelGateway _sharedGateway = RealModelGateway();
+
   AgentSessionImpl({required this.settings, RealModelGateway? gateway})
       : sessionId = _generateId(),
-        _gateway = gateway ?? RealModelGateway(),
+        _gateway = gateway ?? _sharedGateway,
         _context = ContextManager(maxTokens: settings.maxContextTokens);
 
   @override
@@ -45,6 +47,19 @@ class AgentSessionImpl implements AgentSession {
     try {
       _context.addUserMessage(message);
 
+      // Enforce network permission for providers that make real HTTP calls.
+      final needsNetwork = settings.provider != RealModelGateway.testProvider;
+      if (needsNetwork && !settings.permissions.allowNetworkOutbound) {
+        _controller!.add(
+          const AgentErrorEvent(
+            message:
+                'Network outbound is not permitted for this session (allowNetworkOutbound=false).',
+            isFatal: true,
+          ),
+        );
+        return;
+      }
+
       // Capture cancellation state once before emitting any events, so all
       // emissions in this turn are consistent even if cancel() is called
       // concurrently on the event loop.
@@ -54,6 +69,7 @@ class AgentSessionImpl implements AgentSession {
           settings: settings,
           message: message,
         );
+        _context.addAssistantMessage(response);
         _controller!.add(TextDeltaEvent(response));
         _controller!.add(MessageCompleteEvent(response));
       }
