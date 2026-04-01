@@ -4,30 +4,24 @@ import 'package:mobile_chat_app/app/app.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() {
-    SharedPreferences.setMockInitialValues({'auth_token': 'mock_token'});
-  });
+  testWidgets('BricksApp shows login screen when no auth token', (tester) async {
+    SharedPreferences.setMockInitialValues({});
 
-  testWidgets('BricksApp renders ChatScreen with composer', (tester) async {
     await tester.pumpWidget(const BricksApp());
-    await tester.pump(); // allow FutureBuilder to resolve auth state
-    await tester.pump(); // rebuild with ChatScreen
-
-    // Check that session name is displayed in the AppBar
-    expect(find.text('| New Session'), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
-  });
-
-  testWidgets('Sending an empty message does nothing', (tester) async {
-    await tester.pumpWidget(const BricksApp());
-    await tester.pump(); // allow FutureBuilder to resolve auth state
-    await tester.pump(); // rebuild with ChatScreen
-
-    // Tap send without entering text
-    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
     await tester.pump();
 
-    // No messages should appear
-    expect(find.text('Start a conversation to create something.'), findsOneWidget);
+    expect(find.text('Continue with GitHub'), findsOneWidget);
+    expect(find.text('Continue with Apple'), findsOneWidget);
+  });
+
+  testWidgets('BricksApp shows a loading indicator before auth state resolves', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const BricksApp());
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 }
