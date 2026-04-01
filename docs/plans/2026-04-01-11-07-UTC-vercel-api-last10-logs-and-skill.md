@@ -22,7 +22,7 @@
 ## Phase 3: 沉淀 skill
 - 新增 `.codex/skills/vercel-api-log-context/SKILL.md`。
 - 写明前端报错场景下的日志排查流程、关键命令、上下文提取规范。
-- 运行 skill 校验工具检查 frontmatter 合法性。
+- 仅用 shell 工具（`bash/curl/jq/rg`）进行可执行性验证，不引入 Python 依赖。
 
 # Acceptance Criteria
 - 命令能返回 `askman-dev/bricks` 最新 deployment 的最后 10 条日志（按时间倒序）。

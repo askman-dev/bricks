@@ -5,6 +5,8 @@ description: Fetch and analyze Vercel deployment logs through API to debug front
 
 # Vercel API Log Context
 
+Use shell tooling only (`bash`, `curl`, `jq`, `rg`). Do not rely on Python helpers.
+
 ## 1) Validate access and identifiers
 1. Ensure `VERCEL_TOKEN` is available.
 2. Resolve `teamId` and `projectId` when missing.
