@@ -273,12 +273,15 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                         const InputDecoration(labelText: 'Default Model'),
                     onChanged: (value) {
                       final trimmed = value.trim();
+                      final currentSlotId = _configs[_activeConfigIndex].slotId;
                       _configs[_activeConfigIndex] =
                           _configs[_activeConfigIndex].copyWith(
                         defaultModel: trimmed,
-                        slotId: LlmConfigService.normalizedSlotIdForModel(
-                          trimmed,
-                        ),
+                        slotId: trimmed.isEmpty
+                            ? currentSlotId
+                            : LlmConfigService.normalizedSlotIdForModel(
+                                trimmed,
+                              ),
                       );
                       setState(() {});
                     },

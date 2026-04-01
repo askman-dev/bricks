@@ -134,9 +134,11 @@ class LlmConfigService {
       throw Exception('Not authenticated');
     }
 
-    final normalizedSlotId = normalizedSlotIdForModel(config.defaultModel);
+    final modelName = config.defaultModel.trim();
+    final resolvedSlotId =
+        modelName.isEmpty ? config.slotId : normalizedSlotIdForModel(modelName);
     final configPayload = <String, dynamic>{
-      'slot_id': normalizedSlotId,
+      'slot_id': resolvedSlotId,
       'endpoint': config.baseUrl,
       'model_preferences': {
         'default_model': config.defaultModel,
@@ -213,7 +215,14 @@ class LlmConfigService {
   }
 
   static bool _parseIsDefaultNumber(dynamic value) {
-    if (value is num) return value != 0;
+    if (value is num) {
+      if (value == 1) return true;
+      if (value == 0) return false;
+      debugPrint(
+        'Unexpected is_default numeric value: $value (treating as false)',
+      );
+      return false;
+    }
     // Narrow fallback in case backend adapter returns bool in some environments.
     if (value is bool) return value;
     return false;
