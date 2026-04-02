@@ -5,12 +5,14 @@ import 'package:mobile_chat_app/features/chat/chat_navigation_page.dart';
 Widget _buildPage({ValueChanged<ChatNavigationAction>? onActionSelected}) =>
     MaterialApp(
       home: Scaffold(
-        body: ChatNavigationPage(onActionSelected: onActionSelected),
+        body: ChatNavigationPage(
+          onActionSelected: onActionSelected ?? (_) {},
+        ),
       ),
     );
 
 void main() {
-  group('ChatNavigationPage – action callbacks', () {
+  group('ChatNavigationPage – drawer behavior', () {
     testWidgets('tapping Manage Agents fires manageAgents action',
         (tester) async {
       ChatNavigationAction? received;
@@ -57,73 +59,30 @@ void main() {
       expect(find.text('Sessions'), findsOneWidget);
     });
 
-    testWidgets(
-        'without callback, tapping action calls Navigator.pop with action',
-        (tester) async {
-      ChatNavigationAction? popped;
+    testWidgets('tapping back button closes an open drawer', (tester) async {
+      final scaffoldKey = GlobalKey<ScaffoldState>();
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Builder(
-            builder: (context) => TextButton(
-              onPressed: () async {
-                popped = await Navigator.push<ChatNavigationAction>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const Scaffold(
-                      body: ChatNavigationPage(),
-                    ),
-                  ),
-                );
-              },
-              child: const Text('go'),
+          home: Scaffold(
+            key: scaffoldKey,
+            drawer: Drawer(
+              child: ChatNavigationPage(onActionSelected: (_) {}),
             ),
+            body: const SizedBox.shrink(),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('go'));
+      scaffoldKey.currentState!.openDrawer();
       await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Manage Agents'));
-      await tester.pumpAndSettle();
-
-      expect(popped, ChatNavigationAction.manageAgents);
-    });
-
-    testWidgets('tapping back button pops the route', (tester) async {
-      bool didReturn = false;
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) => TextButton(
-              onPressed: () async {
-                await Navigator.push<void>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const Scaffold(
-                      body: ChatNavigationPage(),
-                    ),
-                  ),
-                );
-                didReturn = true;
-              },
-              child: const Text('go-back'),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('go-back'));
-      await tester.pumpAndSettle();
+      expect(scaffoldKey.currentState!.isDrawerOpen, isTrue);
 
       await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
       await tester.pumpAndSettle();
 
-      expect(didReturn, isTrue);
+      expect(scaffoldKey.currentState!.isDrawerOpen, isFalse);
     });
   });
 }
