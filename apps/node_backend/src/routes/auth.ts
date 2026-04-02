@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import express, { Request, Response } from 'express';
 import axios from 'axios';
 import { findOrCreateUserByOAuth } from '../services/userService.js';
@@ -120,6 +120,7 @@ function buildRedirectResponse(res: Response, token: string, redirectTo: string)
 interface OAuthStatePayload {
   nonce: string;
   returnTo: string;
+  sig?: string;
 }
 
 function decodeOAuthState(state: string): OAuthStatePayload | null {
@@ -127,12 +128,44 @@ function decodeOAuthState(state: string): OAuthStatePayload | null {
     const parsed = JSON.parse(
       Buffer.from(state, 'base64url').toString('utf8')
     ) as Partial<OAuthStatePayload>;
-    if (typeof parsed.nonce !== 'string' || typeof parsed.returnTo !== 'string') {
+    if (
+      typeof parsed.nonce !== 'string'
+      || typeof parsed.returnTo !== 'string'
+      || (parsed.sig !== undefined && typeof parsed.sig !== 'string')
+    ) {
       return null;
     }
-    return { nonce: parsed.nonce, returnTo: parsed.returnTo };
+    return { nonce: parsed.nonce, returnTo: parsed.returnTo, sig: parsed.sig };
   } catch {
     return null;
+  }
+}
+
+function getOAuthStateSigningSecret(): string | null {
+  return process.env.JWT_SECRET || GITHUB_CLIENT_SECRET || null;
+}
+
+function signOAuthState(nonce: string, returnTo: string, secret: string): string {
+  return createHmac('sha256', secret)
+    .update(`${nonce}:${returnTo}`)
+    .digest('base64url');
+}
+
+function isValidOAuthStateSignature(statePayload: OAuthStatePayload, secret: string): boolean {
+  if (!statePayload.sig) {
+    return false;
+  }
+
+  const expectedSig = signOAuthState(statePayload.nonce, statePayload.returnTo, secret);
+  const providedSig = statePayload.sig;
+
+  try {
+    return timingSafeEqual(
+      Buffer.from(providedSig, 'utf8'),
+      Buffer.from(expectedSig, 'utf8')
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -154,6 +187,7 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
   // Validate CSRF state: compare nonce in query state payload with HttpOnly cookie.
   const cookies = parseCookies(req.headers.cookie);
   const expectedState = cookies[OAUTH_STATE_COOKIE];
+  const oauthStateSigningSecret = getOAuthStateSigningSecret();
 
   // Support both the new base64url JSON format and the legacy plain hex nonce
   // format (used by flows initiated before this change was deployed) to avoid
@@ -168,22 +202,31 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
     }
   }
 
-  if (
-    !expectedState
-    || !statePayload
-    || statePayload.nonce !== expectedState
-  ) {
+  const hasStateCookie = typeof expectedState === 'string' && expectedState.length > 0;
+  const cookieStateValid = hasStateCookie
+    && !!statePayload
+    && statePayload.nonce === expectedState;
+  const signedStateValid = !hasStateCookie
+    && !!statePayload
+    && !!oauthStateSigningSecret
+    && isValidOAuthStateSignature(statePayload, oauthStateSigningSecret);
+
+  if (!cookieStateValid && !signedStateValid) {
     res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
     return;
   }
+  const validatedStatePayload = statePayload!;
 
   // Re-validate returnTo for defense in depth. The default (callback origin) is
   // implicitly trusted; user-supplied values must still pass isAllowedReturnTo.
   const defaultReturnTo = getDefaultReturnTo();
-  if (statePayload.returnTo !== defaultReturnTo && !isAllowedReturnTo(statePayload.returnTo, {
+  if (
+    validatedStatePayload.returnTo !== defaultReturnTo
+    && !isAllowedReturnTo(validatedStatePayload.returnTo, {
     callbackUrl: GITHUB_CALLBACK_URL,
     allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
-  })) {
+  })
+  ) {
     res.status(400).json({ error: 'Invalid OAuth return_to parameter' });
     return;
   }
@@ -262,7 +305,7 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
 
   // Generate JWT token and deliver it to the Flutter app via the redirect flow.
   const token = generateToken(user.id);
-  buildRedirectResponse(res, token, statePayload.returnTo);
+  buildRedirectResponse(res, token, validatedStatePayload.returnTo);
 }
 
 /**
@@ -285,6 +328,7 @@ router.get('/github', (req: Request, res: Response) => {
 
   // Generate a cryptographically random state nonce for CSRF protection.
   const nonce = randomBytes(32).toString('hex');
+  const oauthStateSigningSecret = getOAuthStateSigningSecret();
   const isDefaultReturnTo = typeof req.query.return_to !== 'string';
   const returnTo = isDefaultReturnTo ? getDefaultReturnTo() : req.query.return_to as string;
   // Only validate user-supplied return_to values; the default is derived
@@ -296,11 +340,16 @@ router.get('/github', (req: Request, res: Response) => {
     res.status(400).json({ error: 'Invalid return_to URL' });
     return;
   }
+  const signedState: OAuthStatePayload = {
+    nonce,
+    returnTo,
+  };
+  if (oauthStateSigningSecret) {
+    signedState.sig = signOAuthState(nonce, returnTo, oauthStateSigningSecret);
+  }
+
   const state = Buffer.from(
-    JSON.stringify({
-      nonce,
-      returnTo,
-    } satisfies OAuthStatePayload),
+    JSON.stringify(signedState satisfies OAuthStatePayload),
     'utf8'
   ).toString('base64url');
 
