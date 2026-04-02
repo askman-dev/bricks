@@ -1,0 +1,20 @@
+{
+  "name": "askman-bricks-copilot-review-resolver-hook",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for resolving outdated GitHub PR review threads after Copilot comments.",
+  "main": "copilot-review-thread-resolver-worker.mjs",
+  "scripts": {
+    "check": "node --check copilot-review-thread-resolver-worker.mjs",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.79.0"
+  },
+  "private": true
+}

@@ -1,0 +1,4 @@
+name = "askman-bricks-copilot-review-resolver-hook"
+main = "copilot-review-thread-resolver-worker.mjs"
+compatibility_date = "2026-04-02"
+workers_dev = true
