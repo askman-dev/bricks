@@ -3,9 +3,16 @@
  * copilot-swe-agent[bot] posts a PR comment.
  *
  * Copy this file into a Cloudflare Worker project and configure these secrets:
+ * - GITHUB_WEBHOOK_SECRET
+ *
+ * Choose one authentication mode:
+ *
+ * GitHub App mode:
  * - GITHUB_APP_ID
  * - GITHUB_APP_PRIVATE_KEY
- * - GITHUB_WEBHOOK_SECRET
+ *
+ * Personal token mode:
+ * - GITHUB_TOKEN (or GH_TOKEN)
  *
  * Optional variables:
  * - GITHUB_API_URL=https://api.github.com
@@ -177,11 +184,6 @@ async function handleWebhook(request, env) {
 }
 
 async function resolveOutdatedThreads(payload, env) {
-  const installationId = payload.installation?.id;
-  if (!installationId) {
-    throw new Error('Missing installation.id in webhook payload.');
-  }
-
   const owner = payload.repository?.owner?.login;
   const repo = payload.repository?.name;
   const pullNumber = payload.issue?.number;
@@ -189,7 +191,7 @@ async function resolveOutdatedThreads(payload, env) {
     throw new Error('Missing repository owner/name or pull request number in payload.');
   }
 
-  const githubToken = await createInstallationToken(installationId, env);
+  const githubToken = await getGitHubApiToken(payload, env);
   const threads = await fetchAllReviewThreads({
     owner,
     repo,
@@ -390,6 +392,22 @@ async function createInstallationToken(installationId, env) {
   }
 
   return payload.token;
+}
+
+async function getGitHubApiToken(payload, env) {
+  const directToken = env.GITHUB_TOKEN || env.GH_TOKEN;
+  if (directToken) {
+    return directToken;
+  }
+
+  const installationId = payload.installation?.id;
+  if (!installationId) {
+    throw new Error(
+      'Missing installation.id in webhook payload and no GITHUB_TOKEN/GH_TOKEN fallback is configured.',
+    );
+  }
+
+  return createInstallationToken(installationId, env);
 }
 
 async function createAppJwt(appId, privateKeyPem) {
@@ -612,8 +630,16 @@ function parseBoolean(value, defaultValue) {
 }
 
 function assertRequiredEnv(env) {
-  const required = ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET'];
+  const required = ['GITHUB_WEBHOOK_SECRET'];
   const missing = required.filter((key) => !env[key]);
+
+  const hasDirectToken = Boolean(env.GITHUB_TOKEN || env.GH_TOKEN);
+  const hasGitHubAppConfig = Boolean(env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY);
+
+  if (!hasDirectToken && !hasGitHubAppConfig) {
+    missing.push('GITHUB_TOKEN/GH_TOKEN or GITHUB_APP_ID+GITHUB_APP_PRIVATE_KEY');
+  }
+
   if (missing.length > 0) {
     throw new Error(`Missing required Worker env vars: ${missing.join(', ')}`);
   }

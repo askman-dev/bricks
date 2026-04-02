@@ -32,12 +32,21 @@ Move the resolver outside GitHub Actions and into a GitHub App webhook hosted on
 
 ## Worker secrets
 
-- `GITHUB_APP_ID`
-- `GITHUB_APP_PRIVATE_KEY`
+Required:
+
 - `GITHUB_WEBHOOK_SECRET`
+
+Choose one auth mode:
+
+- GitHub App mode:
+  - `GITHUB_APP_ID`
+  - `GITHUB_APP_PRIVATE_KEY`
+- Personal token mode:
+  - `GITHUB_TOKEN` (or `GH_TOKEN`)
 
 ## Notes
 
 - No filtering by comment body text; identity-only filtering keeps the trigger robust.
 - The resolve operation is idempotent because already-resolved or non-outdated threads are skipped.
 - The Worker file is intentionally dependency-free so it can be pasted directly into Cloudflare.
+- Personal token mode is the fastest path when GitHub App setup is too cumbersome; GitHub App mode remains the cleaner long-term option.
