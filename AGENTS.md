@@ -12,6 +12,10 @@
 ## API debugging workflow
 - When debugging API/interface errors, try the `vercel-api-log-context` skill first to collect Vercel deployment log context before proposing fixes.
 
+## GitHub webhook / Cloudflare worker
+- When working on Copilot PR automation that must avoid GitHub Actions approval gates, use the `github-webhook-cloudflare-worker` skill first.
+- The repository's external webhook worker source lives in `.github/cloudflare/` and is managed as a Wrangler project.
+
 ## GitHub Agentic Workflows (gh-aw)
 
 This repository uses [GitHub Agentic Workflows](https://github.github.com/gh-aw/) to run AI coding agents on a schedule or in response to repository events.
