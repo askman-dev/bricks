@@ -151,10 +151,18 @@ class _ComposerBarState extends State<ComposerBar>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(BricksRadius.lg),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                color: Theme.of(context).colorScheme.surface,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
                     controller: _controller,
                     enabled: !isSending && !widget.isStreaming,
                     maxLines: 5,
@@ -169,88 +177,96 @@ class _ComposerBarState extends State<ComposerBar>
                       prefixIcon: widget.activeAgent != null
                           ? const Icon(Icons.alternate_email_outlined)
                           : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(BricksRadius.lg),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: BricksSpacing.md,
-                        vertical: BricksSpacing.sm,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.fromLTRB(
+                        BricksSpacing.md,
+                        BricksSpacing.sm,
+                        BricksSpacing.md,
+                        BricksSpacing.xs,
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: BricksSpacing.xs),
-            Row(
-              children: [
-                PopupMenuButton<ComposerMenuAction>(
-                  tooltip: 'Composer actions',
-                  enabled: !widget.isStreaming,
-                  icon: const Icon(Icons.tune),
-                  onSelected: (action) {
-                    switch (action) {
-                      case ComposerMenuAction.newContext:
-                        // TODO: implement new context action.
-                        break;
-                      case ComposerMenuAction.model:
-                        widget.onOpenModelSelection?.call();
-                        break;
-                      case ComposerMenuAction.agents:
-                        // TODO: implement agents action.
-                        break;
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem<ComposerMenuAction>(
-                      value: ComposerMenuAction.newContext,
-                      child: Text('新上下文'),
-                    ),
-                    PopupMenuDivider(),
-                    PopupMenuItem<ComposerMenuAction>(
-                      value: ComposerMenuAction.model,
-                      child: Text('模型'),
-                    ),
-                    PopupMenuItem<ComposerMenuAction>(
-                      value: ComposerMenuAction.agents,
-                      child: Text('Agents'),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                if (widget.isStreaming)
-                  RotationTransition(
-                    turns: _spinController,
-                    child: IconButton.filled(
-                      onPressed: widget.onStop,
-                      icon: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.onPrimary,
-                            width: 2,
-                          ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.only(right: BricksSpacing.xs),
+                    child: Row(
+                      children: [
+                        PopupMenuButton<ComposerMenuAction>(
+                          tooltip: 'Composer actions',
+                          enabled: !widget.isStreaming,
+                          icon: const Icon(Icons.tune),
+                          onSelected: (action) {
+                            switch (action) {
+                              case ComposerMenuAction.newContext:
+                                // TODO: implement new context action.
+                                break;
+                              case ComposerMenuAction.model:
+                                widget.onOpenModelSelection?.call();
+                                break;
+                              case ComposerMenuAction.agents:
+                                // TODO: implement agents action.
+                                break;
+                            }
+                          },
+                          itemBuilder: (context) => const [
+                            PopupMenuItem<ComposerMenuAction>(
+                              value: ComposerMenuAction.newContext,
+                              child: Text('新上下文'),
+                            ),
+                            PopupMenuDivider(),
+                            PopupMenuItem<ComposerMenuAction>(
+                              value: ComposerMenuAction.model,
+                              child: Text('模型'),
+                            ),
+                            PopupMenuItem<ComposerMenuAction>(
+                              value: ComposerMenuAction.agents,
+                              child: Text('Agents'),
+                            ),
+                          ],
                         ),
-                        child: const Icon(Icons.stop, size: 16),
-                      ),
-                      tooltip: 'Stop',
-                    ),
-                  )
-                else
-                  IconButton.filled(
-                    onPressed: isSending ? null : _submit,
-                    icon: isSending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                        const Spacer(),
+                        if (widget.isStreaming)
+                          RotationTransition(
+                            turns: _spinController,
+                            child: IconButton.filled(
+                              onPressed: widget.onStop,
+                              icon: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color:
+                                        Theme.of(context).colorScheme.onPrimary,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(Icons.stop, size: 16),
+                              ),
+                              tooltip: 'Stop',
+                            ),
                           )
-                        : const Icon(Icons.send),
-                    tooltip: 'Send',
+                        else
+                          IconButton.filled(
+                            onPressed: isSending ? null : _submit,
+                            icon: isSending
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.send),
+                            tooltip: 'Send',
+                          ),
+                      ],
+                    ),
                   ),
-              ],
+                ],
+              ),
             ),
             if (_showMentions && filtered.isNotEmpty)
               Container(
