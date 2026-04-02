@@ -161,9 +161,8 @@ function isAllowedReturnTo(rawReturnTo: string): boolean {
   }
 
   const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
-  const isNonProduction = process.env.NODE_ENV !== 'production';
   if (isLocalhost) {
-    if (!isNonProduction) {
+    if (process.env.NODE_ENV === 'production') {
       // Disallow localhost/loopback redirects in production to avoid open redirect to local services.
       return false;
     }
@@ -208,7 +207,7 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
   let statePayload: OAuthStatePayload | null = null;
   if (typeof state === 'string') {
     statePayload = decodeOAuthState(state);
-    if (!statePayload && state === expectedState) {
+    if (!statePayload && /^[0-9a-f]{64}$/i.test(state) && state === expectedState) {
       // Legacy flow: state is a plain hex nonce stored directly in the cookie.
       // Redirect to the default safe destination instead of returning 400.
       statePayload = { nonce: state, returnTo: getDefaultReturnTo() };
