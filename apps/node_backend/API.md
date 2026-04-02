@@ -8,9 +8,15 @@
 
 ### 1. Initiate OAuth
 ```
-GET /api/auth/github
+GET /api/auth/github?return_to=<https_url>
 ```
 Redirects to GitHub for authorization.
+
+`return_to` must be an allowed HTTPS URL. Preview deployments are accepted when
+the host matches `bricks-<alnum>-askman-dev.vercel.app`. Additional origins can
+be allowlisted via the `OAUTH_ALLOWED_RETURN_ORIGINS` environment variable. If
+`return_to` is omitted, the backend falls back to the callback URL origin which
+is implicitly trusted and requires no extra configuration.
 
 ### 2. Handle Callback
 ```
@@ -33,7 +39,7 @@ Authorization: Bearer <token>
 ## Endpoints
 
 ### Authentication
-- `GET /api/auth/github` - Start GitHub OAuth
+- `GET /api/auth/github` - Start GitHub OAuth (optional `return_to` query)
 - `GET /api/auth/github/callback` - OAuth callback
 - `GET /api/auth/me` - Get current user (requires auth)
 - `DELETE /api/auth/me` - Delete account (requires auth)

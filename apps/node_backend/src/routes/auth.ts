@@ -36,6 +36,7 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 //   Local:      http://localhost:3000/api/auth/github/callback
 //   Production: https://your-domain.com/api/auth/github/callback
 const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
+const OAUTH_ALLOWED_RETURN_ORIGINS = process.env.OAUTH_ALLOWED_RETURN_ORIGINS;
 
 /** Name of the HttpOnly cookie used to store the CSRF state nonce. */
 const OAUTH_STATE_COOKIE = 'oauth_state';
@@ -69,14 +70,15 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
  * The returned HTML page stores the JWT token in localStorage using the key
  * and encoding format expected by Flutter Web's shared_preferences plugin
  * (key: `flutter.auth_token`, value: JSON.stringify(token)), then redirects
- * the browser to the app root (`/`) so that Flutter's startup router can
+ * the browser to `redirectTo` so that Flutter's startup router can
  * pick it up via AuthService.isLoggedIn().
  *
  * If localStorage is unavailable (e.g. blocked in private mode) the page
  * shows a clear recovery message instead of silently failing.
  */
-function buildRedirectResponse(res: Response, token: string): void {
+function buildRedirectResponse(res: Response, token: string, redirectTo: string): void {
   const escapedToken = JSON.stringify(token);
+  const escapedRedirectTo = JSON.stringify(redirectTo);
   const nonce = randomBytes(16).toString('base64');
   // Tight CSP: only the nonced inline script is allowed; everything else is
   // locked down.  form-action is restricted to 'none' and frame-ancestors
@@ -107,21 +109,124 @@ function buildRedirectResponse(res: Response, token: string): void {
           document.body.replaceChildren(msg);
           return;
         }
-        window.location.replace('/');
+        window.location.replace(${escapedRedirectTo});
       })();
     </script>
   </body>
 </html>`);
 }
 
+interface OAuthStatePayload {
+  nonce: string;
+  returnTo: string;
+}
+
+function decodeOAuthState(state: string): OAuthStatePayload | null {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(state, 'base64url').toString('utf8')
+    ) as Partial<OAuthStatePayload>;
+    if (typeof parsed.nonce !== 'string' || typeof parsed.returnTo !== 'string') {
+      return null;
+    }
+    return { nonce: parsed.nonce, returnTo: parsed.returnTo };
+  } catch {
+    return null;
+  }
+}
+
+function getAllowedReturnOrigins(): Set<string> {
+  const configuredOrigins = (OAUTH_ALLOWED_RETURN_ORIGINS ?? '')
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean);
+  const normalizedOrigins = new Set<string>();
+  for (const value of configuredOrigins) {
+    try {
+      const url = new URL(value);
+      normalizedOrigins.add(url.origin);
+    } catch {
+      // Ignore invalid URL entries in OAUTH_ALLOWED_RETURN_ORIGINS
+    }
+  }
+  return normalizedOrigins;
+}
+
+function isAllowedReturnTo(rawReturnTo: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawReturnTo);
+  } catch {
+    return false;
+  }
+
+  const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  if (isLocalhost) {
+    if (process.env.NODE_ENV === 'production') {
+      // Disallow localhost/loopback redirects in production to avoid open redirect to local services.
+      return false;
+    }
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return false;
+  }
+
+  // Required preview pattern:
+  //   https://bricks-<alnum>-askman-dev.vercel.app
+  if (/^bricks-[A-Za-z0-9]+-askman-dev\.vercel\.app$/u.test(parsed.hostname)) {
+    return true;
+  }
+
+  return getAllowedReturnOrigins().has(parsed.origin);
+}
+
+function getDefaultReturnTo(): string {
+  if (GITHUB_CALLBACK_URL) {
+    try {
+      const callbackUrl = new URL(GITHUB_CALLBACK_URL);
+      return `${callbackUrl.origin}/`;
+    } catch {
+      // Fall through to localhost below.
+    }
+  }
+  return 'http://localhost:3000/';
+}
+
 async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
   const { code, state } = req.query;
 
-  // Validate CSRF state: compare the query parameter with the HttpOnly cookie.
+  // Validate CSRF state: compare nonce in query state payload with HttpOnly cookie.
   const cookies = parseCookies(req.headers.cookie);
   const expectedState = cookies[OAUTH_STATE_COOKIE];
 
-  if (!expectedState || typeof state !== 'string' || state !== expectedState) {
+  // Support both the new base64url JSON format and the legacy plain hex nonce
+  // format (used by flows initiated before this change was deployed) to avoid
+  // breaking in-flight OAuth sessions during rollout.
+  let statePayload: OAuthStatePayload | null = null;
+  if (typeof state === 'string') {
+    statePayload = decodeOAuthState(state);
+    if (!statePayload && /^[0-9a-f]{64}$/i.test(state) && state === expectedState) {
+      // Legacy flow: state is a plain hex nonce stored directly in the cookie.
+      // Redirect to the default safe destination instead of returning 400.
+      statePayload = { nonce: state, returnTo: getDefaultReturnTo() };
+    }
+  }
+
+  if (
+    !expectedState
+    || !statePayload
+    || statePayload.nonce !== expectedState
+  ) {
+    res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
+    return;
+  }
+
+  // Re-validate returnTo for defense in depth. The default (callback origin) is
+  // implicitly trusted; user-supplied values must still pass isAllowedReturnTo.
+  const defaultReturnTo = getDefaultReturnTo();
+  if (statePayload.returnTo !== defaultReturnTo && !isAllowedReturnTo(statePayload.returnTo)) {
     res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
     return;
   }
@@ -200,7 +305,7 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
 
   // Generate JWT token and deliver it to the Flutter app via the redirect flow.
   const token = generateToken(user.id);
-  buildRedirectResponse(res, token);
+  buildRedirectResponse(res, token, statePayload.returnTo);
 }
 
 /**
@@ -222,12 +327,27 @@ router.get('/github', (req: Request, res: Response) => {
   }
 
   // Generate a cryptographically random state nonce for CSRF protection.
-  const state = randomBytes(32).toString('hex');
+  const nonce = randomBytes(32).toString('hex');
+  const isDefaultReturnTo = typeof req.query.return_to !== 'string';
+  const returnTo = isDefaultReturnTo ? getDefaultReturnTo() : req.query.return_to as string;
+  // Only validate user-supplied return_to values; the default is derived
+  // from our own callback origin and is therefore implicitly trusted.
+  if (!isDefaultReturnTo && !isAllowedReturnTo(returnTo)) {
+    res.status(400).json({ error: 'Invalid return_to URL' });
+    return;
+  }
+  const state = Buffer.from(
+    JSON.stringify({
+      nonce,
+      returnTo,
+    } satisfies OAuthStatePayload),
+    'utf8'
+  ).toString('base64url');
 
   // Store the nonce in a short-lived, HttpOnly, SameSite=Lax cookie.
   // Path is set to /api so it is sent back for all callback routes
   // (/api/auth/github/callback, /api/auth/callback, etc.).
-  res.cookie(OAUTH_STATE_COOKIE, state, {
+  res.cookie(OAUTH_STATE_COOKIE, nonce, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',

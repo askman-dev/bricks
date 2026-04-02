@@ -168,6 +168,12 @@ npm run lint
 
 Initiates GitHub OAuth flow. Redirects to GitHub for authentication.
 
+**Query Parameters:**
+- `return_to` (string, optional): Post-login browser destination.
+  - Must be HTTPS for non-local environments.
+  - Preview domains must match: `bricks-<alnum>-askman-dev.vercel.app`.
+  - If omitted, backend falls back to the callback URL origin (implicitly trusted — no extra configuration required).
+
 #### `GET /api/auth/github/callback`
 
 GitHub OAuth callback. Exchanges authorization code for JWT token.
