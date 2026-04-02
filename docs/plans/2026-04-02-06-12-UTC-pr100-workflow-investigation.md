@@ -23,6 +23,6 @@ PR #100 (`Allow callback-origin GitHub OAuth return_to and extract validator`) w
 
 # Acceptance Criteria
 - A list exists of workflows that ran before merge and workflows that did not run for the two follow-up SHAs.
-- The list explicitly confirms `PR Review Thread Auto Resolver` as not run for PR #100 follow-up commits.
+- The list explicitly states, with supporting workflow/run evidence, whether `PR Review Thread Auto Resolver` ran for PR #100 follow-up commits (and, if it did run, under which SHA and event).
 - The explanation ties missing runs to concrete trigger/event evidence (by SHA and event type).
 - Mitigation options are provided (e.g., broaden triggers, add manual fallback, or use `workflow_run` chaining).
