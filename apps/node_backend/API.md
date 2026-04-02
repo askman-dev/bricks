@@ -12,11 +12,12 @@ GET /api/auth/github?return_to=<https_url>
 ```
 Redirects to GitHub for authorization.
 
-`return_to` must be an allowed HTTPS URL. Preview deployments are accepted when
-the host matches `bricks-<alnum>-askman-dev.vercel.app`. Additional origins can
-be allowlisted via the `OAUTH_ALLOWED_RETURN_ORIGINS` environment variable. If
-`return_to` is omitted, the backend falls back to the callback URL origin which
-is implicitly trusted and requires no extra configuration.
+`return_to` must be an allowed HTTPS URL. URLs matching the configured
+`GITHUB_CALLBACK_URL` origin are always accepted. Preview deployments are
+accepted when the host matches `bricks-<alnum>-askman-dev.vercel.app`.
+Additional origins can be allowlisted via the
+`OAUTH_ALLOWED_RETURN_ORIGINS` environment variable. If `return_to` is omitted,
+the backend falls back to the callback URL origin.
 
 ### 2. Handle Callback
 ```
