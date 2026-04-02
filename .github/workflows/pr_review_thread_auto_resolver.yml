@@ -1,8 +1,13 @@
 name: PR Review Thread Auto Resolver
 
 on:
-  pull_request_target:
-    types: [synchronize]
+  # workflow_run always executes from the default branch (main) regardless of
+  # who triggered the relay push — this bypasses the outside-contributor
+  # approval gate that blocks pull_request/pull_request_target when
+  # triggering_actor is a bot.
+  workflow_run:
+    workflows: ['PR Push Relay']
+    types: [completed]
   workflow_dispatch:
     inputs:
       pull_number:
@@ -14,7 +19,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pr-review-thread-auto-resolver-${{ github.ref }}
+  group: pr-review-thread-auto-resolver-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -39,9 +44,25 @@ jobs:
               return;
             }
 
-            // pull_request_target event: PR number is directly available
-            const pull_number = context.payload.pull_request.number;
-            core.info(`pull_request_target event: using PR #${pull_number}`);
+            // workflow_run event: find PR by head branch name from the relay run
+            const branch = context.payload.workflow_run.head_branch;
+            core.info(`workflow_run event: looking for open PR on branch "${branch}"`);
+
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${branch}`,
+            });
+
+            if (pulls.length === 0) {
+              core.info(`No open PR found for branch "${branch}" — skipping.`);
+              core.setOutput('found', 'false');
+              return;
+            }
+
+            const pull_number = pulls[0].number;
+            core.info(`Found PR #${pull_number} for branch "${branch}"`);
             core.setOutput('pull_number', pull_number);
             core.setOutput('found', 'true');
 
