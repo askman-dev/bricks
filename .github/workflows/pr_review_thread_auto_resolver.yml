@@ -36,7 +36,7 @@ jobs:
     environment: copilot
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Find open PR for this branch
         id: find-pr
