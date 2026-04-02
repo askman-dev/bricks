@@ -7,9 +7,9 @@ Users hitting `/api/auth/github` with `return_to=https://bricks.askman.dev/` can
 - Add regression tests for return URL validation.
 
 # Implementation Plan (phased)
-1. Update `isAllowedReturnTo` in `apps/node_backend/src/routes/auth.ts` to allow same-origin redirects derived from `GITHUB_CALLBACK_URL`.
+1. Update `isAllowedReturnTo` in `apps/node_backend/src/routes/auth_return_to.ts` to allow same-origin redirects derived from `GITHUB_CALLBACK_URL`.
 2. Keep existing preview-domain and explicit allowlist checks intact.
-3. Add unit tests in `apps/node_backend/src/routes/auth.test.ts` for callback-origin allow, HTTP rejection on non-localhost, and explicit allowlist behavior.
+3. Add unit tests in `apps/node_backend/src/routes/auth_return_to.test.ts` for callback-origin allow, HTTP rejection on non-localhost, and explicit allowlist behavior.
 4. Run backend test/lint/type-check commands.
 
 # Acceptance Criteria

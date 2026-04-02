@@ -184,7 +184,7 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
     callbackUrl: GITHUB_CALLBACK_URL,
     allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
   })) {
-    res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
+    res.status(400).json({ error: 'Invalid OAuth return_to parameter' });
     return;
   }
 
