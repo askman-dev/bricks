@@ -1,13 +1,12 @@
 name: PR Review Thread Auto Resolver
 
 on:
-  # workflow_run always executes from the default branch (main) regardless of
-  # who triggered the relay push — this bypasses the outside-contributor
-  # approval gate that blocks pull_request/pull_request_target when
-  # triggering_actor is a bot.
-  workflow_run:
-    workflows: ['PR Push Relay']
-    types: [completed]
+  # issue_comment runs from the default branch (main), not from the PR branch,
+  # so it is not subject to the outside-contributor approval gate.
+  # Triggered whenever copilot-swe-agent[bot] posts a comment on a PR.
+  # The resolve operation is idempotent: already-resolved threads are skipped.
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       pull_number:
@@ -19,12 +18,21 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pr-review-thread-auto-resolver-${{ github.event.workflow_run.head_branch || github.ref }}
+  group: pr-review-thread-auto-resolver-${{ github.event.issue.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   resolve-threads:
     runs-on: ubuntu-latest
+    # Only run when triggered by copilot-swe-agent[bot] commenting on a PR.
+    # workflow_dispatch bypasses this check for manual runs.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.comment.user.login == 'Copilot' &&
+        github.event.comment.user.type == 'Bot' &&
+        github.event.issue.pull_request != null
+      )
     environment: copilot
     steps:
       - name: Checkout repository
@@ -44,25 +52,9 @@ jobs:
               return;
             }
 
-            // workflow_run event: find PR by head branch name from the relay run
-            const branch = context.payload.workflow_run.head_branch;
-            core.info(`workflow_run event: looking for open PR on branch "${branch}"`);
-
-            const { data: pulls } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              head: `${context.repo.owner}:${branch}`,
-            });
-
-            if (pulls.length === 0) {
-              core.info(`No open PR found for branch "${branch}" — skipping.`);
-              core.setOutput('found', 'false');
-              return;
-            }
-
-            const pull_number = pulls[0].number;
-            core.info(`Found PR #${pull_number} for branch "${branch}"`);
+            // issue_comment event: PR number is directly available as issue number
+            const pull_number = context.payload.issue.number;
+            core.info(`issue_comment event: using PR #${pull_number} (commenter: ${context.payload.comment.user.login})`);
             core.setOutput('pull_number', pull_number);
             core.setOutput('found', 'true');
 
@@ -112,12 +104,24 @@ jobs:
               .map((u) => u.trim())
               .filter(Boolean);
 
+            // Reference the triggering comment if this was an issue_comment event
+            const triggerCommentUrl = context.eventName === 'issue_comment'
+              ? context.payload.comment.html_url
+              : null;
+            const commenter = context.eventName === 'issue_comment'
+              ? context.payload.comment.user.login
+              : null;
+
             let body = [
               '✅ PR review thread auto resolver completed successfully.',
               '',
               `This automation resolved **${resolvedCount}** outdated review thread(s) using the resolver bot token.`,
               'The resolved status for the thread(s) listed below was set by automation, not manually by a human reviewer.',
             ].join('\n');
+
+            if (triggerCommentUrl && commenter) {
+              body += `\n\n> Triggered by: ${triggerCommentUrl}\n> Thank you, @${commenter}! 🙏`;
+            }
 
             if (urls.length > 0) {
               body += '\n\nResolved thread comment links:\n' + urls.map((u) => `- ${u}`).join('\n');
@@ -134,6 +138,6 @@ jobs:
         if: always()
         run: |
           echo "PR=${{ steps.find-pr.outputs.pull_number }}"
-          echo "BRANCH=${{ github.ref_name }}"
           echo "EVENT=${{ github.event_name }}"
+          echo "COMMENTER=${{ github.event.comment.user.login }}"
           echo "RESOLVED_COUNT=${{ steps.resolve-threads.outputs.resolved_count || '0' }}"
