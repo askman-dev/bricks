@@ -23,11 +23,9 @@ class ChatNavigationPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       children: [
-        const DrawerHeader(
-          child: Align(
-            alignment: Alignment.bottomLeft,
-            child: Text('Navigation'),
-          ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Text('Navigation'),
         ),
         const ListTile(
           leading: Icon(Icons.chat_bubble_outline),
