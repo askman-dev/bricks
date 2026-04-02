@@ -40,6 +40,14 @@ void main() {
       expect(received, ChatNavigationAction.appSettings);
     });
 
+    testWidgets('shows a back button beside Navigation title', (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
+      expect(find.text('Navigation'), findsOneWidget);
+    });
+
     testWidgets('static tiles (Current Chat, Sessions) are present',
         (tester) async {
       await tester.pumpWidget(_buildPage());
@@ -75,15 +83,47 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Navigate to the page.
       await tester.tap(find.text('go'));
       await tester.pumpAndSettle();
 
-      // Tap 'Manage Agents' — should pop with manageAgents.
       await tester.tap(find.text('Manage Agents'));
       await tester.pumpAndSettle();
 
       expect(popped, ChatNavigationAction.manageAgents);
+    });
+
+    testWidgets('tapping back button pops the route', (tester) async {
+      bool didReturn = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                await Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const Scaffold(
+                      body: ChatNavigationPage(),
+                    ),
+                  ),
+                );
+                didReturn = true;
+              },
+              child: const Text('go-back'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('go-back'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
+      await tester.pumpAndSettle();
+
+      expect(didReturn, isTrue);
     });
   });
 }
