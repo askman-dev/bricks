@@ -10,6 +10,10 @@ class ChatNavigationPage extends StatelessWidget {
 
   final ValueChanged<ChatNavigationAction>? onActionSelected;
 
+  void _closeNavigation(BuildContext context) {
+    Navigator.maybePop(context);
+  }
+
   void _selectAction(BuildContext context, ChatNavigationAction action) {
     final callback = onActionSelected;
     if (callback != null) {
@@ -23,9 +27,18 @@ class ChatNavigationPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Text('Navigation'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 6, 16, 8),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => _closeNavigation(context),
+                icon: const Icon(Icons.arrow_back_ios_new),
+                tooltip: 'Back',
+              ),
+              const Text('Navigation'),
+            ],
+          ),
         ),
         const ListTile(
           leading: Icon(Icons.chat_bubble_outline),
