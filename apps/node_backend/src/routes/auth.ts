@@ -70,7 +70,7 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
  * The returned HTML page stores the JWT token in localStorage using the key
  * and encoding format expected by Flutter Web's shared_preferences plugin
  * (key: `flutter.auth_token`, value: JSON.stringify(token)), then redirects
- * the browser to the app root (`/`) so that Flutter's startup router can
+ * the browser to `redirectTo` so that Flutter's startup router can
  * pick it up via AuthService.isLoggedIn().
  *
  * If localStorage is unavailable (e.g. blocked in private mode) the page
@@ -140,7 +140,16 @@ function getAllowedReturnOrigins(): Set<string> {
     .split(',')
     .map(v => v.trim())
     .filter(Boolean);
-  return new Set(configuredOrigins);
+  const normalizedOrigins = new Set<string>();
+  for (const value of configuredOrigins) {
+    try {
+      const url = new URL(value);
+      normalizedOrigins.add(url.origin);
+    } catch {
+      // Ignore invalid URL entries in OAUTH_ALLOWED_RETURN_ORIGINS
+    }
+  }
+  return normalizedOrigins;
 }
 
 function isAllowedReturnTo(rawReturnTo: string): boolean {
@@ -152,7 +161,12 @@ function isAllowedReturnTo(rawReturnTo: string): boolean {
   }
 
   const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  const isNonProduction = process.env.NODE_ENV !== 'production';
   if (isLocalhost) {
+    if (!isNonProduction) {
+      // Disallow localhost/loopback redirects in production to avoid open redirect to local services.
+      return false;
+    }
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
   }
 
@@ -187,14 +201,33 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
   // Validate CSRF state: compare nonce in query state payload with HttpOnly cookie.
   const cookies = parseCookies(req.headers.cookie);
   const expectedState = cookies[OAUTH_STATE_COOKIE];
-  const statePayload = typeof state === 'string' ? decodeOAuthState(state) : null;
+
+  // Support both the new base64url JSON format and the legacy plain hex nonce
+  // format (used by flows initiated before this change was deployed) to avoid
+  // breaking in-flight OAuth sessions during rollout.
+  let statePayload: OAuthStatePayload | null = null;
+  if (typeof state === 'string') {
+    statePayload = decodeOAuthState(state);
+    if (!statePayload && state === expectedState) {
+      // Legacy flow: state is a plain hex nonce stored directly in the cookie.
+      // Redirect to the default safe destination instead of returning 400.
+      statePayload = { nonce: state, returnTo: getDefaultReturnTo() };
+    }
+  }
 
   if (
     !expectedState
     || !statePayload
     || statePayload.nonce !== expectedState
-    || !isAllowedReturnTo(statePayload.returnTo)
   ) {
+    res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
+    return;
+  }
+
+  // Re-validate returnTo for defense in depth. The default (callback origin) is
+  // implicitly trusted; user-supplied values must still pass isAllowedReturnTo.
+  const defaultReturnTo = getDefaultReturnTo();
+  if (statePayload.returnTo !== defaultReturnTo && !isAllowedReturnTo(statePayload.returnTo)) {
     res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
     return;
   }
@@ -296,9 +329,11 @@ router.get('/github', (req: Request, res: Response) => {
 
   // Generate a cryptographically random state nonce for CSRF protection.
   const nonce = randomBytes(32).toString('hex');
-  const returnToRaw = typeof req.query.return_to === 'string' ? req.query.return_to : null;
-  const returnTo = returnToRaw ?? getDefaultReturnTo();
-  if (!isAllowedReturnTo(returnTo)) {
+  const isDefaultReturnTo = typeof req.query.return_to !== 'string';
+  const returnTo = isDefaultReturnTo ? getDefaultReturnTo() : req.query.return_to as string;
+  // Only validate user-supplied return_to values; the default is derived
+  // from our own callback origin and is therefore implicitly trusted.
+  if (!isDefaultReturnTo && !isAllowedReturnTo(returnTo)) {
     res.status(400).json({ error: 'Invalid return_to URL' });
     return;
   }
