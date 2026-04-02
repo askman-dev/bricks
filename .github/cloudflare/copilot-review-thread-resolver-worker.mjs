@@ -343,7 +343,7 @@ async function postSummaryComment({
   if (triggerCommentUrl && triggerCommenter) {
     lines.push('');
     lines.push(`> Triggered by: ${triggerCommentUrl}`);
-    lines.push(`> Thank you, @${triggerCommenter}! 🙏`);
+      lines.push('> Thank you! 🙏');
   }
 
   if (resolvedUrls.length > 0) {
