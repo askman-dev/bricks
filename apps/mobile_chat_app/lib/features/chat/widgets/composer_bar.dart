@@ -2,6 +2,9 @@ import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
+/// Actions available in the composer popup menu.
+enum ComposerMenuAction { newContext, model, agents }
+
 /// The input composer bar at the bottom of the chat screen.
 class ComposerBar extends StatefulWidget {
   const ComposerBar({
@@ -10,6 +13,7 @@ class ComposerBar extends StatefulWidget {
     this.activeAgent,
     this.onSend,
     this.onAgentSelected,
+    this.onOpenModelSelection,
     this.onStop,
     this.isStreaming = false,
   });
@@ -25,6 +29,9 @@ class ComposerBar extends StatefulWidget {
 
   /// Called when the user picks an agent from the @ menu.
   final void Function(AgentDefinition agent)? onAgentSelected;
+
+  /// Opens runtime model selection UI.
+  final VoidCallback? onOpenModelSelection;
 
   /// Called when the user stops streaming output.
   final VoidCallback? onStop;
@@ -124,13 +131,6 @@ class _ComposerBarState extends State<ComposerBar>
     _hideMentions();
   }
 
-  void _handleVoiceInput() {
-    // TODO(chat): Implement voice input (placeholder for future).
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice input coming soon')),
-    );
-  }
-
   @override
   void dispose() {
     _spinController.dispose();
@@ -153,13 +153,6 @@ class _ComposerBarState extends State<ComposerBar>
           children: [
             Row(
               children: [
-                // Voice input button.
-                IconButton(
-                  onPressed: widget.isStreaming ? null : _handleVoiceInput,
-                  icon: const Icon(Icons.mic_outlined),
-                  tooltip: 'Voice input',
-                ),
-                const SizedBox(width: BricksSpacing.xs),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -186,8 +179,45 @@ class _ComposerBarState extends State<ComposerBar>
                     ),
                   ),
                 ),
-                const SizedBox(width: BricksSpacing.sm),
-                // Send or Stop button.
+              ],
+            ),
+            const SizedBox(height: BricksSpacing.xs),
+            Row(
+              children: [
+                PopupMenuButton<ComposerMenuAction>(
+                  tooltip: 'Composer actions',
+                  enabled: !widget.isStreaming,
+                  icon: const Icon(Icons.tune),
+                  onSelected: (action) {
+                    switch (action) {
+                      case ComposerMenuAction.newContext:
+                        // TODO: implement new context action.
+                        break;
+                      case ComposerMenuAction.model:
+                        widget.onOpenModelSelection?.call();
+                        break;
+                      case ComposerMenuAction.agents:
+                        // TODO: implement agents action.
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem<ComposerMenuAction>(
+                      value: ComposerMenuAction.newContext,
+                      child: Text('新上下文'),
+                    ),
+                    PopupMenuDivider(),
+                    PopupMenuItem<ComposerMenuAction>(
+                      value: ComposerMenuAction.model,
+                      child: Text('模型'),
+                    ),
+                    PopupMenuItem<ComposerMenuAction>(
+                      value: ComposerMenuAction.agents,
+                      child: Text('Agents'),
+                    ),
+                  ],
+                ),
+                const Spacer(),
                 if (widget.isStreaming)
                   RotationTransition(
                     turns: _spinController,
