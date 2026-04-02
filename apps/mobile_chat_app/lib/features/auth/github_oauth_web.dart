@@ -7,14 +7,16 @@ import 'dart:html' as html;
 ///
 /// The backend callback page will store the JWT in localStorage (in the
 /// format expected by Flutter Web's shared_preferences plugin) and then
-/// redirect back to `/`.  The Flutter startup router reads the token from
+/// redirect back to the initiating page. The Flutter startup router reads the token from
 /// SharedPreferences and navigates to the chat screen automatically.
 ///
 /// This function triggers a full-page navigation. The returned future
 /// completes with `null` after initiating navigation so that callers
 /// awaiting it do not hang if the navigation is blocked or fails.
 Future<String?> performGitHubOAuth() async {
-  html.window.location.assign('/api/auth/github');
+  final returnTo = html.window.location.href;
+  final encodedReturnTo = Uri.encodeQueryComponent(returnTo);
+  html.window.location.assign('/api/auth/github?return_to=$encodedReturnTo');
   // Complete with null immediately after requesting navigation.
   return null;
 }
