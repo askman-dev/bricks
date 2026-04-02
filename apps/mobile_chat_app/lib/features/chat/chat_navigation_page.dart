@@ -34,7 +34,7 @@ class ChatNavigationPage extends StatelessWidget {
               IconButton(
                 onPressed: () => _closeNavigation(context),
                 icon: const Icon(Icons.arrow_back_ios_new),
-                tooltip: 'Back',
+                tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
               ),
               const Text('Navigation'),
             ],
