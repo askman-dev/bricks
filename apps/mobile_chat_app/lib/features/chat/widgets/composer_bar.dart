@@ -178,9 +178,6 @@ class _ComposerBarState extends State<ComposerBar>
                           ? const Icon(Icons.alternate_email_outlined)
                           : null,
                       border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
                       contentPadding: const EdgeInsets.fromLTRB(
                         BricksSpacing.md,
                         BricksSpacing.sm,
