@@ -4,23 +4,18 @@ import 'package:flutter/material.dart';
 enum ChatNavigationAction { manageAgents, appSettings }
 
 /// Navigation content for chat-related routes, intended for use in a
-/// [Drawer] or other side navigation container.
+/// [Drawer].
 class ChatNavigationPage extends StatelessWidget {
-  const ChatNavigationPage({super.key, this.onActionSelected});
+  const ChatNavigationPage({super.key, required this.onActionSelected});
 
-  final ValueChanged<ChatNavigationAction>? onActionSelected;
+  final ValueChanged<ChatNavigationAction> onActionSelected;
 
   void _closeNavigation(BuildContext context) {
-    Navigator.maybePop(context);
+    Scaffold.of(context).closeDrawer();
   }
 
   void _selectAction(BuildContext context, ChatNavigationAction action) {
-    final callback = onActionSelected;
-    if (callback != null) {
-      callback(action);
-      return;
-    }
-    Navigator.pop(context, action);
+    onActionSelected(action);
   }
 
   @override
