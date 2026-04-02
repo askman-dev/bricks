@@ -1,9 +1,10 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import express, { Request, Response } from 'express';
 import axios from 'axios';
 import { findOrCreateUserByOAuth } from '../services/userService.js';
 import { generateToken, authenticate, AuthRequest } from '../middleware/auth.js';
 import { isAllowedReturnTo } from './auth_return_to.js';
+import { storeOAuthState, consumeOAuthState } from '../services/oauthStateService.js';
 
 const router = express.Router();
 
@@ -117,13 +118,12 @@ function buildRedirectResponse(res: Response, token: string, redirectTo: string)
 </html>`);
 }
 
-interface OAuthStatePayload {
+export interface OAuthStatePayload {
   nonce: string;
   returnTo: string;
-  sig?: string;
 }
 
-function decodeOAuthState(state: string): OAuthStatePayload | null {
+export function decodeOAuthState(state: string): OAuthStatePayload | null {
   try {
     const parsed = JSON.parse(
       Buffer.from(state, 'base64url').toString('utf8')
@@ -131,42 +131,78 @@ function decodeOAuthState(state: string): OAuthStatePayload | null {
     if (
       typeof parsed.nonce !== 'string'
       || typeof parsed.returnTo !== 'string'
-      || (parsed.sig !== undefined && typeof parsed.sig !== 'string')
     ) {
       return null;
     }
-    return { nonce: parsed.nonce, returnTo: parsed.returnTo, sig: parsed.sig };
+    return { nonce: parsed.nonce, returnTo: parsed.returnTo };
   } catch {
     return null;
   }
 }
 
-function getOAuthStateSigningSecret(): string | null {
-  return process.env.JWT_SECRET || GITHUB_CLIENT_SECRET || null;
-}
+/** Injected lookup function type; allows unit tests to substitute a mock. */
+export type OAuthStateLookup = (nonce: string) => Promise<string | null>;
 
-function signOAuthState(nonce: string, returnTo: string, secret: string): string {
-  return createHmac('sha256', secret)
-    .update(`${nonce}:${returnTo}`)
-    .digest('base64url');
-}
+/**
+ * Validates the OAuth callback state parameter.
+ *
+ * Two acceptance paths, in priority order:
+ *   1. Cookie match  – a same-host flow where the HttpOnly `oauth_state` cookie
+ *      is present and its nonce matches the one in the state payload.
+ *   2. Server-side store – a cross-domain flow (e.g., preview → production) where
+ *      the cookie is absent; the nonce is consumed from the shared database record
+ *      created at flow initiation.  The `returnTo` URL is taken from the database
+ *      record (not the state parameter) to prevent tampering.
+ *
+ * The legacy plain-hex nonce format is supported for in-flight sessions that were
+ * started before the base64url JSON format was deployed.
+ *
+ * @param stateParam   Raw `state` query parameter from the callback URL.
+ * @param cookieNonce  Value of the `oauth_state` HttpOnly cookie, or undefined.
+ * @param lookupStoredState  Async function that consumes a nonce from the server-side
+ *                           store and returns the associated `returnTo` URL, or null.
+ */
+export async function validateOAuthCallbackState(
+  stateParam: string | undefined,
+  cookieNonce: string | undefined,
+  lookupStoredState: OAuthStateLookup,
+): Promise<{ valid: true; returnTo: string } | { valid: false }> {
+  let statePayload: OAuthStatePayload | null = null;
 
-function isValidOAuthStateSignature(statePayload: OAuthStatePayload, secret: string): boolean {
-  if (!statePayload.sig) {
-    return false;
+  if (typeof stateParam === 'string') {
+    statePayload = decodeOAuthState(stateParam);
+    // Legacy path: plain 64-hex-char nonce sent directly as the state value.
+    if (!statePayload && /^[0-9a-f]{64}$/i.test(stateParam) && stateParam === cookieNonce) {
+      statePayload = { nonce: stateParam, returnTo: getDefaultReturnTo() };
+    }
   }
 
-  const expectedSig = signOAuthState(statePayload.nonce, statePayload.returnTo, secret);
-  const providedSig = statePayload.sig;
+  const hasStateCookie = typeof cookieNonce === 'string' && cookieNonce.length > 0;
 
-  try {
-    return timingSafeEqual(
-      Buffer.from(providedSig, 'utf8'),
-      Buffer.from(expectedSig, 'utf8')
-    );
-  } catch {
-    return false;
+  if (hasStateCookie) {
+    // Cookie is present: nonce MUST match.  Do not fall through to the
+    // server-side store – a mismatch should be a hard rejection.
+    if (statePayload && statePayload.nonce === cookieNonce) {
+      return { valid: true, returnTo: statePayload.returnTo };
+    }
+    return { valid: false };
   }
+
+  // No cookie: attempt to consume the nonce from the server-side state store.
+  // This covers cross-domain flows where the cookie was set on the initiating
+  // host (e.g., a Vercel preview URL) but the callback lands on a different host.
+  if (!statePayload) {
+    return { valid: false };
+  }
+
+  const storedReturnTo = await lookupStoredState(statePayload.nonce);
+  if (storedReturnTo === null) {
+    return { valid: false };
+  }
+
+  // Use the returnTo from the DB record, not from the state parameter, to
+  // prevent open-redirect attacks via a crafted state payload.
+  return { valid: true, returnTo: storedReturnTo };
 }
 
 function getDefaultReturnTo(): string {
@@ -184,45 +220,30 @@ function getDefaultReturnTo(): string {
 async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
   const { code, state } = req.query;
 
-  // Validate CSRF state: compare nonce in query state payload with HttpOnly cookie.
+  // Validate CSRF state via cookie nonce match (same-host) or server-side
+  // nonce store (cross-domain).  See validateOAuthCallbackState for details.
   const cookies = parseCookies(req.headers.cookie);
-  const expectedState = cookies[OAUTH_STATE_COOKIE];
-  const oauthStateSigningSecret = getOAuthStateSigningSecret();
+  const cookieNonce = cookies[OAUTH_STATE_COOKIE];
 
-  // Support both the new base64url JSON format and the legacy plain hex nonce
-  // format (used by flows initiated before this change was deployed) to avoid
-  // breaking in-flight OAuth sessions during rollout.
-  let statePayload: OAuthStatePayload | null = null;
-  if (typeof state === 'string') {
-    statePayload = decodeOAuthState(state);
-    if (!statePayload && /^[0-9a-f]{64}$/i.test(state) && state === expectedState) {
-      // Legacy flow: state is a plain hex nonce stored directly in the cookie.
-      // Redirect to the default safe destination instead of returning 400.
-      statePayload = { nonce: state, returnTo: getDefaultReturnTo() };
-    }
-  }
+  const validationResult = await validateOAuthCallbackState(
+    typeof state === 'string' ? state : undefined,
+    cookieNonce,
+    consumeOAuthState,
+  );
 
-  const hasStateCookie = typeof expectedState === 'string' && expectedState.length > 0;
-  const cookieStateValid = hasStateCookie
-    && !!statePayload
-    && statePayload.nonce === expectedState;
-  const signedStateValid = !hasStateCookie
-    && !!statePayload
-    && !!oauthStateSigningSecret
-    && isValidOAuthStateSignature(statePayload, oauthStateSigningSecret);
-
-  if (!cookieStateValid && !signedStateValid) {
+  if (!validationResult.valid) {
     res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
     return;
   }
-  const validatedStatePayload = statePayload!;
+
+  const returnTo = validationResult.returnTo;
 
   // Re-validate returnTo for defense in depth. The default (callback origin) is
   // implicitly trusted; user-supplied values must still pass isAllowedReturnTo.
   const defaultReturnTo = getDefaultReturnTo();
   if (
-    validatedStatePayload.returnTo !== defaultReturnTo
-    && !isAllowedReturnTo(validatedStatePayload.returnTo, {
+    returnTo !== defaultReturnTo
+    && !isAllowedReturnTo(returnTo, {
     callbackUrl: GITHUB_CALLBACK_URL,
     allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
   })
@@ -305,17 +326,18 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
 
   // Generate JWT token and deliver it to the Flutter app via the redirect flow.
   const token = generateToken(user.id);
-  buildRedirectResponse(res, token, validatedStatePayload.returnTo);
+  buildRedirectResponse(res, token, returnTo);
 }
 
 /**
  * GET /auth/github
  * Redirects the current browser tab to the GitHub OAuth consent screen.
  * A random CSRF state nonce is generated, stored in a short-lived HttpOnly
- * cookie, and included in the GitHub authorize URL so the callback can
- * verify it and reject forged requests.
+ * cookie, and persisted in the server-side state store so that the callback
+ * can verify it whether or not the cookie is forwarded (e.g., cross-domain
+ * preview → production flows).
  */
-router.get('/github', (req: Request, res: Response) => {
+router.get('/github', async (req: Request, res: Response) => {
   if (!GITHUB_CLIENT_ID) {
     res.status(500).json({ error: 'GitHub OAuth not configured' });
     return;
@@ -326,48 +348,50 @@ router.get('/github', (req: Request, res: Response) => {
     return;
   }
 
-  // Generate a cryptographically random state nonce for CSRF protection.
-  const nonce = randomBytes(32).toString('hex');
-  const oauthStateSigningSecret = getOAuthStateSigningSecret();
-  const isDefaultReturnTo = typeof req.query.return_to !== 'string';
-  const returnTo = isDefaultReturnTo ? getDefaultReturnTo() : req.query.return_to as string;
-  // Only validate user-supplied return_to values; the default is derived
-  // from our own callback origin and is therefore implicitly trusted.
-  if (!isDefaultReturnTo && !isAllowedReturnTo(returnTo, {
-    callbackUrl: GITHUB_CALLBACK_URL,
-    allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
-  })) {
-    res.status(400).json({ error: 'Invalid return_to URL' });
-    return;
+  try {
+    // Generate a cryptographically random state nonce for CSRF protection.
+    const nonce = randomBytes(32).toString('hex');
+    const isDefaultReturnTo = typeof req.query.return_to !== 'string';
+    const returnTo = isDefaultReturnTo ? getDefaultReturnTo() : req.query.return_to as string;
+    // Only validate user-supplied return_to values; the default is derived
+    // from our own callback origin and is therefore implicitly trusted.
+    if (!isDefaultReturnTo && !isAllowedReturnTo(returnTo, {
+      callbackUrl: GITHUB_CALLBACK_URL,
+      allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
+    })) {
+      res.status(400).json({ error: 'Invalid return_to URL' });
+      return;
+    }
+
+    const statePayload: OAuthStatePayload = { nonce, returnTo };
+    const state = Buffer.from(
+      JSON.stringify(statePayload),
+      'utf8'
+    ).toString('base64url');
+
+    // Store the nonce server-side so cross-domain callbacks can validate it
+    // even when the HttpOnly cookie is not forwarded by the browser.
+    await storeOAuthState(nonce, returnTo);
+
+    // Store the nonce in a short-lived, HttpOnly, SameSite=Lax cookie.
+    // Path is set to /api so it is sent back for all callback routes
+    // (/api/auth/github/callback, /api/auth/callback, etc.).
+    res.cookie(OAUTH_STATE_COOKIE, nonce, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/api',
+      maxAge: 10 * 60 * 1000, // 10 minutes
+    });
+
+    const scope = 'read:user user:email';
+    const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${encodeURIComponent(GITHUB_CALLBACK_URL)}&state=${encodeURIComponent(state)}`;
+
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error('GitHub OAuth init error:', error);
+    res.status(500).json({ error: 'Authentication setup failed' });
   }
-  const signedState: OAuthStatePayload = {
-    nonce,
-    returnTo,
-  };
-  if (oauthStateSigningSecret) {
-    signedState.sig = signOAuthState(nonce, returnTo, oauthStateSigningSecret);
-  }
-
-  const state = Buffer.from(
-    JSON.stringify(signedState satisfies OAuthStatePayload),
-    'utf8'
-  ).toString('base64url');
-
-  // Store the nonce in a short-lived, HttpOnly, SameSite=Lax cookie.
-  // Path is set to /api so it is sent back for all callback routes
-  // (/api/auth/github/callback, /api/auth/callback, etc.).
-  res.cookie(OAUTH_STATE_COOKIE, nonce, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/api',
-    maxAge: 10 * 60 * 1000, // 10 minutes
-  });
-
-  const scope = 'read:user user:email';
-  const redirectUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&redirect_uri=${encodeURIComponent(GITHUB_CALLBACK_URL)}&state=${encodeURIComponent(state)}`;
-
-  res.redirect(redirectUrl);
 });
 
 /**
