@@ -1,7 +1,7 @@
 name: PR Review Thread Auto Resolver
 
 on:
-  pull_request:
+  pull_request_target:
     types: [synchronize]
   workflow_dispatch:
     inputs:
@@ -39,9 +39,9 @@ jobs:
               return;
             }
 
-            // pull_request event: PR number is directly available
+            // pull_request_target event: PR number is directly available
             const pull_number = context.payload.pull_request.number;
-            core.info(`pull_request event: using PR #${pull_number}`);
+            core.info(`pull_request_target event: using PR #${pull_number}`);
             core.setOutput('pull_number', pull_number);
             core.setOutput('found', 'true');
 
