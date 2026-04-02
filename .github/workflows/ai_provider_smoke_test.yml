@@ -13,6 +13,9 @@ on:
 jobs:
   smoke-test:
     runs-on: ubuntu-latest
+    env:
+      HAS_ANTHROPIC_KEY: ${{ secrets.TEST_ANTHROPIC_API_KEY != '' }}
+      HAS_GEMINI_KEY: ${{ secrets.TEST_GEMINI_API_KEY != '' }}
 
     steps:
       - name: Checkout repository
@@ -36,7 +39,7 @@ jobs:
         run: dart test --exclude-tags=integration
 
       - name: Run integration tests with real APIs
-        if: ${{ secrets.TEST_ANTHROPIC_API_KEY != '' || secrets.TEST_GEMINI_API_KEY != '' }}
+        if: ${{ env.HAS_ANTHROPIC_KEY == 'true' || env.HAS_GEMINI_KEY == 'true' }}
         working-directory: packages/bricks_ai_smoke_test
         env:
           TEST_ANTHROPIC_BASE_URL: ${{ vars.TEST_ANTHROPIC_BASE_URL }}
