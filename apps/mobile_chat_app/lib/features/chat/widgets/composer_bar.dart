@@ -186,7 +186,6 @@ class _ComposerBarState extends State<ComposerBar>
                       ),
                     ),
                   ),
-                  const Divider(height: 1),
                   Padding(
                     padding: const EdgeInsets.only(right: BricksSpacing.xs),
                     child: Row(
@@ -247,7 +246,7 @@ class _ComposerBarState extends State<ComposerBar>
                             ),
                           )
                         else
-                          IconButton.filled(
+                          IconButton(
                             onPressed: isSending ? null : _submit,
                             icon: isSending
                                 ? const SizedBox(
