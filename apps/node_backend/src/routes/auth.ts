@@ -3,6 +3,7 @@ import express, { Request, Response } from 'express';
 import axios from 'axios';
 import { findOrCreateUserByOAuth } from '../services/userService.js';
 import { generateToken, authenticate, AuthRequest } from '../middleware/auth.js';
+import { isAllowedReturnTo } from './auth_return_to.js';
 
 const router = express.Router();
 
@@ -135,53 +136,6 @@ function decodeOAuthState(state: string): OAuthStatePayload | null {
   }
 }
 
-function getAllowedReturnOrigins(): Set<string> {
-  const configuredOrigins = (OAUTH_ALLOWED_RETURN_ORIGINS ?? '')
-    .split(',')
-    .map(v => v.trim())
-    .filter(Boolean);
-  const normalizedOrigins = new Set<string>();
-  for (const value of configuredOrigins) {
-    try {
-      const url = new URL(value);
-      normalizedOrigins.add(url.origin);
-    } catch {
-      // Ignore invalid URL entries in OAUTH_ALLOWED_RETURN_ORIGINS
-    }
-  }
-  return normalizedOrigins;
-}
-
-function isAllowedReturnTo(rawReturnTo: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawReturnTo);
-  } catch {
-    return false;
-  }
-
-  const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
-  if (isLocalhost) {
-    if (process.env.NODE_ENV === 'production') {
-      // Disallow localhost/loopback redirects in production to avoid open redirect to local services.
-      return false;
-    }
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  }
-
-  if (parsed.protocol !== 'https:') {
-    return false;
-  }
-
-  // Required preview pattern:
-  //   https://bricks-<alnum>-askman-dev.vercel.app
-  if (/^bricks-[A-Za-z0-9]+-askman-dev\.vercel\.app$/u.test(parsed.hostname)) {
-    return true;
-  }
-
-  return getAllowedReturnOrigins().has(parsed.origin);
-}
-
 function getDefaultReturnTo(): string {
   if (GITHUB_CALLBACK_URL) {
     try {
@@ -226,8 +180,11 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
   // Re-validate returnTo for defense in depth. The default (callback origin) is
   // implicitly trusted; user-supplied values must still pass isAllowedReturnTo.
   const defaultReturnTo = getDefaultReturnTo();
-  if (statePayload.returnTo !== defaultReturnTo && !isAllowedReturnTo(statePayload.returnTo)) {
-    res.status(400).json({ error: 'Invalid or missing OAuth state parameter' });
+  if (statePayload.returnTo !== defaultReturnTo && !isAllowedReturnTo(statePayload.returnTo, {
+    callbackUrl: GITHUB_CALLBACK_URL,
+    allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
+  })) {
+    res.status(400).json({ error: 'Invalid OAuth return_to parameter' });
     return;
   }
 
@@ -332,7 +289,10 @@ router.get('/github', (req: Request, res: Response) => {
   const returnTo = isDefaultReturnTo ? getDefaultReturnTo() : req.query.return_to as string;
   // Only validate user-supplied return_to values; the default is derived
   // from our own callback origin and is therefore implicitly trusted.
-  if (!isDefaultReturnTo && !isAllowedReturnTo(returnTo)) {
+  if (!isDefaultReturnTo && !isAllowedReturnTo(returnTo, {
+    callbackUrl: GITHUB_CALLBACK_URL,
+    allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
+  })) {
     res.status(400).json({ error: 'Invalid return_to URL' });
     return;
   }
