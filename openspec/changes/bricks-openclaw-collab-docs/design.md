@@ -29,7 +29,7 @@ OpenClaw/Claude -> Channel Plugin outbound/inbound hook
 
 - Bricks 不直接耦合模型细节，只调用“插件桥接接口”（Plugin Bridge）。
 - 插件桥接接口负责把 Bricks 消息转换为 OpenClaw 侧可处理事件。
-- 失败重试采用幂等键：`task_id + attempt`。
+- 失败重试采用稳定的幂等键：`task_id`（或单独生成且在整个逻辑投递周期内保持不变的 `dispatch_id`）；`attempt` 仅作为日志、指标与链路追踪元数据，不参与幂等键计算。
 
 ### 1.3 OpenClaw 回复回传服务器
 
