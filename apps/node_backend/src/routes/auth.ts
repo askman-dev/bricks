@@ -148,16 +148,32 @@ export function buildPostLoginRedirectTarget(
     return redirectTo;
   }
 
-  const fragmentParams = new URLSearchParams(
-    target.hash.startsWith('#') ? target.hash.slice(1) : target.hash
-  );
+  const fragment = target.hash.startsWith('#') ? target.hash.slice(1) : target.hash;
+
+  if (fragment.startsWith('/')) {
+    // Hash-based route (e.g., Flutter Web HashUrlStrategy: #/chat).
+    // Append auth_token to the query portion of the route, not to the route path
+    // itself, so the Flutter app can parse it without corrupting the navigation route.
+    const queryIndex = fragment.indexOf('?');
+    const route = queryIndex >= 0 ? fragment.slice(0, queryIndex) : fragment;
+    const query = queryIndex >= 0 ? fragment.slice(queryIndex + 1) : '';
+    const fragmentParams = new URLSearchParams(query);
+    fragmentParams.set('auth_token', token);
+    target.hash = `${route}?${fragmentParams.toString()}`;
+    return target.toString();
+  }
+
+  const fragmentParams = new URLSearchParams(fragment);
   fragmentParams.set('auth_token', token);
   target.hash = fragmentParams.toString();
   return target.toString();
 }
 
 function getRequestOrigin(req: Request): string | undefined {
-  const host = req.get('host');
+  // Prefer the proxy-forwarded host so that same-origin detection is correct
+  // when running behind a reverse proxy (e.g., Vercel, nginx).
+  const forwardedHost = req.get('x-forwarded-host');
+  const host = (forwardedHost?.split(',')[0]?.trim()) || req.get('host');
   if (!host) return undefined;
   const forwardedProto = req.get('x-forwarded-proto');
   const proto = forwardedProto?.split(',')[0]?.trim() || req.protocol || 'https';

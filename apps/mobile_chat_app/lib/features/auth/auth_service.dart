@@ -63,16 +63,31 @@ class AuthService {
     return token != null && token.isNotEmpty;
   }
 
-  static Future<void> _ensureTokenHydratedFromUrlFragment() {
-    return _fragmentHydration ??= _hydrateFromUrlFragment();
+  static Future<void> _ensureTokenHydratedFromUrlFragment() async {
+    final hydration = _fragmentHydration ??= _hydrateFromUrlFragment();
+    try {
+      await hydration;
+    } catch (e) {
+      debugPrint('AuthService: fragment hydration error: $e');
+      // If hydration fails, clear the cached future so the next call retries.
+      if (identical(_fragmentHydration, hydration)) {
+        _fragmentHydration = null;
+      }
+    }
   }
 
   static Future<void> _hydrateFromUrlFragment() async {
-    final token = await consumeOAuthTokenFromFragment();
-    if (token == null || token.isEmpty) {
-      return;
+    try {
+      final token = await consumeOAuthTokenFromFragment();
+      if (token == null || token.isEmpty) {
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tokenKey, token);
+    } catch (e) {
+      // Ignore malformed or otherwise unusable URL fragments so auth checks
+      // can continue as a no-op instead of failing startup.
+      debugPrint('AuthService: failed to hydrate token from URL fragment: $e');
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
   }
 }
