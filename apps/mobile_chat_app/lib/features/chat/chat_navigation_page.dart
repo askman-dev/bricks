@@ -28,12 +28,14 @@ class ChatNavigationPage extends StatelessWidget {
             children: [
               SizedBox(
                 width: kToolbarHeight,
+                height: kToolbarHeight,
                 child: IconButton(
                   onPressed: () => _closeNavigation(context),
                   icon: const Icon(Icons.arrow_back),
                   tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
                 ),
               ),
+              const SizedBox(width: NavigationToolbar.kMiddleSpacing),
               Text(
                 'Navigation',
                 style: Theme.of(context).textTheme.titleLarge,
