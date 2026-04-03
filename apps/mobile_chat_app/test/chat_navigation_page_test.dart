@@ -46,7 +46,7 @@ void main() {
       await tester.pumpWidget(_buildPage());
       await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
       expect(find.text('Navigation'), findsOneWidget);
     });
 
@@ -79,7 +79,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(scaffoldKey.currentState!.isDrawerOpen, isTrue);
 
-      await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
+      await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
 
       expect(scaffoldKey.currentState!.isDrawerOpen, isFalse);
