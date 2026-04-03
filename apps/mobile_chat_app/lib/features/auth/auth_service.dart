@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'oauth_token_fragment.dart';
 
 /// Manages authentication token storage and retrieval.
 class AuthService {
@@ -12,6 +13,7 @@ class AuthService {
     'BRICKS_TEST_MODE',
     defaultValue: false,
   );
+  static Future<void>? _fragmentHydration;
 
   /// Returns true when running in a non-release build with test auth enabled.
   static bool isTestMode() {
@@ -28,6 +30,7 @@ class AuthService {
 
   /// Returns the stored authentication token, or null if absent.
   static Future<String?> getToken() async {
+    await _ensureTokenHydratedFromUrlFragment();
     final testToken = getInjectedTestToken();
     if (testToken != null) {
       return testToken;
@@ -54,8 +57,22 @@ class AuthService {
   /// users still land on the login screen until they explicitly tap the
   /// quick-login button (which persists the injected token).
   static Future<bool> isLoggedIn() async {
+    await _ensureTokenHydratedFromUrlFragment();
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_tokenKey);
     return token != null && token.isNotEmpty;
+  }
+
+  static Future<void> _ensureTokenHydratedFromUrlFragment() {
+    return _fragmentHydration ??= _hydrateFromUrlFragment();
+  }
+
+  static Future<void> _hydrateFromUrlFragment() async {
+    final token = await consumeOAuthTokenFromFragment();
+    if (token == null || token.isEmpty) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenKey, token);
   }
 }

@@ -14,7 +14,11 @@ vi.mock('../services/userService.js', () => ({
   deleteUser: vi.fn(),
 }));
 
-import { decodeOAuthState, validateOAuthCallbackState } from './auth.js';
+import {
+  buildPostLoginRedirectTarget,
+  decodeOAuthState,
+  validateOAuthCallbackState,
+} from './auth.js';
 
 describe('auth return_to validation', () => {
   it('allows same-origin return_to when it matches callback URL origin', () => {
@@ -193,5 +197,38 @@ describe('validateOAuthCallbackState', () => {
 
     expect(result).toEqual({ valid: false });
     expect(lookup).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildPostLoginRedirectTarget', () => {
+  it('returns original redirect for same-origin flow', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks.askman.dev/',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    expect(redirect).toBe('https://bricks.askman.dev/');
+  });
+
+  it('appends auth_token fragment for cross-origin flow', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks-aoqjuy2sr-askman-dev.vercel.app/',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    expect(redirect).toBe('https://bricks-aoqjuy2sr-askman-dev.vercel.app/#auth_token=jwt-token');
+  });
+
+  it('preserves existing fragment params when appending auth_token', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks-aoqjuy2sr-askman-dev.vercel.app/#foo=bar',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    expect(redirect).toContain('#');
+    const hash = redirect.split('#')[1] ?? '';
+    const params = new URLSearchParams(hash);
+    expect(params.get('foo')).toBe('bar');
+    expect(params.get('auth_token')).toBe('jwt-token');
   });
 });
