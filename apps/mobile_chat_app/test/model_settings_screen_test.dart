@@ -42,10 +42,9 @@ const _persistedConfig = LlmConfig(
   slotId: 'config-1',
   provider: LlmProvider.anthropic,
   baseUrl: 'https://api.anthropic.com',
-  apiKey: '',
+  apiKey: '****ABCD',
   defaultModel: 'claude-sonnet-4-5',
   isDefault: true,
-  hasStoredApiKey: true,
 );
 
 const _unsavedConfig = LlmConfig(

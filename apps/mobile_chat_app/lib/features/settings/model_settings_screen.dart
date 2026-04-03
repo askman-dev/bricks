@@ -319,10 +319,10 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     obscureText: !_showApiKey,
                     decoration: InputDecoration(
                       labelText: 'API Key',
-                      hintText: _configs[_activeConfigIndex].hasStoredApiKey
+                      hintText: _configs[_activeConfigIndex].apiKey.isNotEmpty
                           ? kApiKeyStoredHint
                           : null,
-                      hintStyle: _configs[_activeConfigIndex].hasStoredApiKey
+                      hintStyle: _configs[_activeConfigIndex].apiKey.isNotEmpty
                           ? TextStyle(
                               color: Theme.of(
                                 context,

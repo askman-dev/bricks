@@ -38,25 +38,16 @@ class LlmConfig {
     required this.defaultModel,
     this.models = const [],
     this.isDefault = false,
-    this.hasStoredApiKey = false,
   });
 
   final String? id;
   final String slotId;
   final LlmProvider provider;
   final String baseUrl;
-  /// The API key to save. Always empty when loaded from the server (the server
-  /// returns a masked placeholder; use [hasStoredApiKey] to know whether a key
-  /// is already stored). Non-empty only when the user has entered a new value.
   final String apiKey;
   final String defaultModel;
   final List<String> models;
   final bool isDefault;
-  /// True when the server indicated that an API key is already stored for this
-  /// config. The [apiKey] field is always empty in that case – the masked
-  /// server value is intentionally discarded to avoid accidentally overwriting
-  /// the real secret on subsequent saves.
-  final bool hasStoredApiKey;
 
   LlmConfig copyWith({
     String? id,
@@ -67,7 +58,6 @@ class LlmConfig {
     String? defaultModel,
     List<String>? models,
     bool? isDefault,
-    bool? hasStoredApiKey,
   }) {
     return LlmConfig(
       id: id ?? this.id,
@@ -78,7 +68,6 @@ class LlmConfig {
       defaultModel: defaultModel ?? this.defaultModel,
       models: models ?? this.models,
       isDefault: isDefault ?? this.isDefault,
-      hasStoredApiKey: hasStoredApiKey ?? this.hasStoredApiKey,
     );
   }
 }
@@ -262,10 +251,7 @@ class LlmConfigService {
           : normalizedSlotIdForModel(defaultModel),
       provider: provider,
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
-      // Keep apiKey empty: the server returns a masked placeholder which must
-      // not be written back. Use hasStoredApiKey as the presence indicator.
-      apiKey: '',
-      hasStoredApiKey: ((map['api_key'] as String?) ?? '').trim().isNotEmpty,
+      apiKey: ((map['api_key'] as String?) ?? '').trim(),
       defaultModel: defaultModel,
       models: models,
       isDefault: _parseIsDefaultValue(config['is_default']),
