@@ -315,6 +315,16 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     obscureText: !_showApiKey,
                     decoration: InputDecoration(
                       labelText: 'API Key',
+                      hintText: _configs[_activeConfigIndex].apiKey.isNotEmpty
+                          ? '(已设置，出于安全原因未显示)'
+                          : null,
+                      hintStyle: _configs[_activeConfigIndex].apiKey.isNotEmpty
+                          ? TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                            )
+                          : null,
                       helperText: _configs[_activeConfigIndex].id == null
                           ? null
                           : 'Leave blank to keep your existing key',

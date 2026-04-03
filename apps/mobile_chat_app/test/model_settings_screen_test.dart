@@ -42,7 +42,7 @@ const _persistedConfig = LlmConfig(
   slotId: 'config-1',
   provider: LlmProvider.anthropic,
   baseUrl: 'https://api.anthropic.com',
-  apiKey: '',
+  apiKey: '****ABCD',
   defaultModel: 'claude-sonnet-4-5',
   isDefault: true,
 );
@@ -75,11 +75,22 @@ Widget _buildScreen(LlmConfigService service) =>
 
 void main() {
   group('ModelSettingsScreen – delete flow', () {
-    testWidgets(
-        'delete button shows confirmation dialog for persisted config',
+    testWidgets('shows API key placeholder hint for stored key',
         (tester) async {
-      final service =
-          _FakeLlmConfigService(configs: [_persistedConfig]);
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('(已设置，出于安全原因未显示)'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('delete button shows confirmation dialog for persisted config',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
@@ -92,8 +103,7 @@ void main() {
 
     testWidgets('canceling confirmation dialog does not delete config',
         (tester) async {
-      final service =
-          _FakeLlmConfigService(configs: [_persistedConfig]);
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
@@ -110,11 +120,10 @@ void main() {
       expect(find.text('claude-sonnet-4-5'), findsWidgets);
     });
 
-    testWidgets(
-        'confirming dialog calls deleteConfig with the correct id',
+    testWidgets('confirming dialog calls deleteConfig with the correct id',
         (tester) async {
-      final service = _FakeLlmConfigService(
-          configs: [_persistedConfig, _secondConfig]);
+      final service =
+          _FakeLlmConfigService(configs: [_persistedConfig, _secondConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
@@ -140,8 +149,8 @@ void main() {
         'deleting unsaved config removes it locally without showing dialog',
         (tester) async {
       // First config has no id (unsaved); second is persisted.
-      final service = _FakeLlmConfigService(
-          configs: [_unsavedConfig, _secondConfig]);
+      final service =
+          _FakeLlmConfigService(configs: [_unsavedConfig, _secondConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
@@ -156,8 +165,7 @@ void main() {
       expect(service.deletedIds, isEmpty);
     });
 
-    testWidgets(
-        'deleting the last config auto-adds a blank config',
+    testWidgets('deleting the last config auto-adds a blank config',
         (tester) async {
       // Single unsaved config – deletion is immediate (no dialog).
       final service = _FakeLlmConfigService(configs: [_unsavedConfig]);
@@ -174,10 +182,10 @@ void main() {
       expect(find.widgetWithText(OutlinedButton, 'Delete'), findsOneWidget);
     });
 
-    testWidgets('delete and save buttons are both visible and initially enabled',
+    testWidgets(
+        'delete and save buttons are both visible and initially enabled',
         (tester) async {
-      final service =
-          _FakeLlmConfigService(configs: [_persistedConfig]);
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
