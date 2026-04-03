@@ -22,16 +22,24 @@ class ChatNavigationPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 6, 16, 8),
+        SizedBox(
+          height: kToolbarHeight,
           child: Row(
             children: [
-              IconButton(
-                onPressed: () => _closeNavigation(context),
-                icon: const Icon(Icons.arrow_back_ios_new),
-                tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+              SizedBox(
+                width: kToolbarHeight,
+                height: kToolbarHeight,
+                child: IconButton(
+                  onPressed: () => _closeNavigation(context),
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+                ),
               ),
-              const Text('Navigation'),
+              const SizedBox(width: NavigationToolbar.kMiddleSpacing),
+              Text(
+                'Navigation',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
             ],
           ),
         ),
