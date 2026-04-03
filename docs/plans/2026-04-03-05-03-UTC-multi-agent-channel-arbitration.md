@@ -7,9 +7,10 @@ We keep concept layers explicit and non-overlapping:
 - **Capability layer**: Skills are callable capabilities/prompts used by agents; Skills are **not** conversation participants.
 
 Each Bot can be associated with one or more Skills, and one default Skill profile can define the bot's baseline prompt/capability posture.
+By baseline, the two default bots are `ask` and `image_generation`.
 
 This plan stays intentionally narrow: arbitration policy only.
-It assumes Channel/Thread/Session identities and asynchronous task transport are defined by companion plans.
+It assumes Channel/Thread/Session identities and asynchronous task transport are defined by companion plans (including optional thread mode where sessions can be channel-scoped).
 
 ## Goals
 1. Define a clear arbitration model for selecting one bot per user turn within a channel context.
