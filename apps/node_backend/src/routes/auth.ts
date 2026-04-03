@@ -118,6 +118,68 @@ function buildRedirectResponse(res: Response, token: string, redirectTo: string)
 </html>`);
 }
 
+/**
+ * Returns a browser redirect target for post-login navigation.
+ *
+ * For same-origin callback flows, the token is delivered via callback-origin
+ * localStorage only.
+ *
+ * For cross-origin callback flows, append the token to URL fragment
+ * (`#auth_token=...`) so the destination origin can persist it locally.
+ * Fragments are not sent to the server and are consumed client-side.
+ */
+export function buildPostLoginRedirectTarget(
+  redirectTo: string,
+  token: string,
+  callbackOrigin?: string,
+): string {
+  if (!callbackOrigin) return redirectTo;
+
+  let target: URL;
+  let callback: URL;
+  try {
+    target = new URL(redirectTo);
+    callback = new URL(callbackOrigin);
+  } catch {
+    return redirectTo;
+  }
+
+  if (target.origin === callback.origin) {
+    return redirectTo;
+  }
+
+  const fragment = target.hash.startsWith('#') ? target.hash.slice(1) : target.hash;
+
+  if (fragment.startsWith('/')) {
+    // Hash-based route (e.g., Flutter Web HashUrlStrategy: #/chat).
+    // Append auth_token to the query portion of the route, not to the route path
+    // itself, so the Flutter app can parse it without corrupting the navigation route.
+    const queryIndex = fragment.indexOf('?');
+    const route = queryIndex >= 0 ? fragment.slice(0, queryIndex) : fragment;
+    const query = queryIndex >= 0 ? fragment.slice(queryIndex + 1) : '';
+    const fragmentParams = new URLSearchParams(query);
+    fragmentParams.set('auth_token', token);
+    target.hash = `${route}?${fragmentParams.toString()}`;
+    return target.toString();
+  }
+
+  const fragmentParams = new URLSearchParams(fragment);
+  fragmentParams.set('auth_token', token);
+  target.hash = fragmentParams.toString();
+  return target.toString();
+}
+
+function getRequestOrigin(req: Request): string | undefined {
+  // Prefer the proxy-forwarded host so that same-origin detection is correct
+  // when running behind a reverse proxy (e.g., Vercel, nginx).
+  const forwardedHost = req.get('x-forwarded-host');
+  const host = (forwardedHost?.split(',')[0]?.trim()) || req.get('host');
+  if (!host) return undefined;
+  const forwardedProto = req.get('x-forwarded-proto');
+  const proto = forwardedProto?.split(',')[0]?.trim() || req.protocol || 'https';
+  return `${proto}://${host}`;
+}
+
 export interface OAuthStatePayload {
   nonce: string;
   returnTo: string;
@@ -326,7 +388,9 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
 
   // Generate JWT token and deliver it to the Flutter app via the redirect flow.
   const token = generateToken(user.id);
-  buildRedirectResponse(res, token, returnTo);
+  const callbackOrigin = getRequestOrigin(req);
+  const redirectTarget = buildPostLoginRedirectTarget(returnTo, token, callbackOrigin);
+  buildRedirectResponse(res, token, redirectTarget);
 }
 
 /**
