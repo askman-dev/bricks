@@ -17,6 +17,15 @@ import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
 
+class _ChatChannel {
+  const _ChatChannel(
+      {required this.id, required this.name, this.isDefault = false});
+
+  final String id;
+  final String name;
+  final bool isDefault;
+}
+
 /// The main chat screen – the app's entry point.
 ///
 /// Hosts the [MessageList] and [ComposerBar], and coordinates
@@ -52,6 +61,15 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
+  final List<_ChatChannel> _channels = [
+    _ChatChannel(id: 'default', name: '默认频道', isDefault: true),
+  ];
+  String _activeChannelId = 'default';
+  final Map<String, List<String>> _channelSubSections = {
+    'default': ['main']
+  };
+  String _activeSubSection = 'main';
+  bool _syncingAfterReconnect = false;
 
   @override
   void initState() {
@@ -350,6 +368,63 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String _timestampName({String prefix = 'channel'}) {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '$prefix-${now.year}-${two(now.month)}-${two(now.day)}-${two(now.hour)}-${two(now.minute)}-${two(now.second)}';
+  }
+
+  String _newId(String prefix) {
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    return '$prefix-$ms';
+  }
+
+  void _createChannel() {
+    final id = _newId('channel');
+    final channel =
+        _ChatChannel(id: id, name: _timestampName(), isDefault: false);
+    setState(() {
+      _channels.add(channel);
+      _channelSubSections[id] = ['main'];
+      _activeChannelId = id;
+      _activeSubSection = 'main';
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
+  }
+
+  void _switchChannel(String channelId) {
+    if (_activeChannelId == channelId) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _activeChannelId = channelId;
+      final subSections = _channelSubSections[channelId] ?? const ['main'];
+      _activeSubSection =
+          subSections.contains('main') ? 'main' : subSections.first;
+    });
+    Navigator.of(context).pop();
+  }
+
+  List<String> get _activeSubSections {
+    return _channelSubSections[_activeChannelId] ?? const ['main'];
+  }
+
+  String get _sessionIdForScope =>
+      'session:${_activeChannelId}:${_activeSubSection}';
+
+  void _createSubSection() {
+    final name = _timestampName(prefix: 'sub');
+    setState(() {
+      final items =
+          _channelSubSections.putIfAbsent(_activeChannelId, () => ['main']);
+      items.add(name);
+      _activeSubSection = name;
+    });
+  }
+
   Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
     final key = agent?.name ?? '_default';
     final existing = _sessions[key];
@@ -384,14 +459,53 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.trim().isEmpty || _isSending) return;
 
     final agent = _activeAgent;
-    _appendMessage(ChatMessage(role: 'user', content: text));
+    final activeParticipants = _participantManager.participants.active;
+    final arbitrationMode = activeParticipants.length > 1;
+    final resolvedBotId = agent?.name ?? 'ask';
+    final taskId = _newId('task');
+    final traceId = _newId('trace');
+    _appendMessage(
+      ChatMessage(
+        role: 'user',
+        content: text,
+        taskId: taskId,
+        taskState: ChatTaskState.accepted,
+        channelId: _activeChannelId,
+        sessionId: _sessionIdForScope,
+        threadId: _activeSubSection == 'main' ? null : _activeSubSection,
+        resolvedBotId: resolvedBotId,
+        resolvedSkillId: resolvedBotId == 'image_generation'
+            ? 'image_generation.default'
+            : 'ask.default',
+        arbitrationMode: arbitrationMode,
+        decisionReason: arbitrationMode
+            ? 'Judge evaluated ${activeParticipants.length} candidate bots.'
+            : 'Direct dispatch (single active bot).',
+        traceId: arbitrationMode ? traceId : null,
+      ),
+    );
     final agentMessageIndex = _appendMessage(
       ChatMessage(
         role: 'assistant',
         content: '',
-        agentId: agent?.name,
-        agentName: agent?.name,
+        agentId: resolvedBotId,
+        agentName: resolvedBotId,
         isStreaming: true,
+        taskId: taskId,
+        taskState: ChatTaskState.accepted,
+        channelId: _activeChannelId,
+        sessionId: _sessionIdForScope,
+        threadId: _activeSubSection == 'main' ? null : _activeSubSection,
+        resolvedBotId: resolvedBotId,
+        resolvedSkillId: resolvedBotId == 'image_generation'
+            ? 'image_generation.default'
+            : 'ask.default',
+        arbitrationMode: arbitrationMode,
+        fallbackToDefaultBot: false,
+        decisionReason: arbitrationMode
+            ? 'Selected highest score.'
+            : 'Direct dispatch (single active bot).',
+        traceId: arbitrationMode ? traceId : null,
       ),
     );
 
@@ -411,26 +525,46 @@ class _ChatScreenState extends State<ChatScreen> {
               current.content + event.delta,
               isStreaming: true,
             );
+            if (current.taskState == ChatTaskState.accepted) {
+              setState(() {
+                _messages[agentMessageIndex] = _messages[agentMessageIndex]
+                    .copyWith(taskState: ChatTaskState.dispatched);
+              });
+            }
           } else if (event is MessageCompleteEvent) {
-            _updateMessageContent(
-              agentMessageIndex,
-              event.fullText,
-              isStreaming: false,
-            );
+            if (!mounted || agentMessageIndex >= _messages.length) return;
+            setState(() {
+              _messages[agentMessageIndex] =
+                  _messages[agentMessageIndex].copyWith(
+                content: event.fullText,
+                isStreaming: false,
+                taskState: ChatTaskState.completed,
+              );
+            });
           } else if (event is AgentErrorEvent) {
-            _updateMessageContent(
-              agentMessageIndex,
-              'Error: ${event.message}',
-              isStreaming: false,
-            );
+            if (!mounted || agentMessageIndex >= _messages.length) return;
+            setState(() {
+              _messages[agentMessageIndex] =
+                  _messages[agentMessageIndex].copyWith(
+                content: 'Error: ${event.message}',
+                isStreaming: false,
+                taskState: ChatTaskState.failed,
+                fallbackToDefaultBot: arbitrationMode,
+                decisionReason: 'Agent error fallback path triggered.',
+              );
+            });
           }
         },
         onError: (error) {
-          _updateMessageContent(
-            agentMessageIndex,
-            'Error: $error',
-            isStreaming: false,
-          );
+          if (!mounted || agentMessageIndex >= _messages.length) return;
+          setState(() {
+            _messages[agentMessageIndex] =
+                _messages[agentMessageIndex].copyWith(
+              content: 'Error: $error',
+              isStreaming: false,
+              taskState: ChatTaskState.failed,
+            );
+          });
           if (mounted) {
             setState(() {
               _isSending = false;
@@ -452,11 +586,15 @@ class _ChatScreenState extends State<ChatScreen> {
         cancelOnError: true,
       );
     }).catchError((error) {
-      _updateMessageContent(
-        agentMessageIndex,
-        'Error: $error',
-        isStreaming: false,
-      );
+      if (mounted && agentMessageIndex < _messages.length) {
+        setState(() {
+          _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+            content: 'Error: $error',
+            isStreaming: false,
+            taskState: ChatTaskState.failed,
+          );
+        });
+      }
       if (mounted) {
         setState(() {
           _isSending = false;
@@ -476,7 +614,10 @@ class _ChatScreenState extends State<ChatScreen> {
         // Mark any streaming messages as complete.
         for (var i = _messages.length - 1; i >= 0; i--) {
           if (_messages[i].isStreaming) {
-            _messages[i] = _messages[i].copyWith(isStreaming: false);
+            _messages[i] = _messages[i].copyWith(
+              isStreaming: false,
+              taskState: ChatTaskState.cancelled,
+            );
             break;
           }
         }
@@ -597,6 +738,47 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildContextBar() {
+    final activeParticipants = _participantManager.participants.active;
+    final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
+    final threadLabel = _activeSubSection == 'main' ? '主区' : _activeSubSection;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: BricksSpacing.md,
+        vertical: BricksSpacing.xs,
+      ),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Wrap(
+        spacing: BricksSpacing.xs,
+        runSpacing: BricksSpacing.xs,
+        children: [
+          Chip(label: Text('Channel: $_activeChannelId')),
+          Chip(label: Text('Thread: $threadLabel')),
+          Chip(label: Text('Session: $_sessionIdForScope')),
+          Chip(label: Text('Mode: $mode')),
+          if (_syncingAfterReconnect) const Chip(label: Text('Syncing…')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _simulateReconnectSync() async {
+    if (_messages.isEmpty) return;
+    setState(() => _syncingAfterReconnect = true);
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    if (!mounted) return;
+    setState(() {
+      _syncingAfterReconnect = false;
+      for (var i = _messages.length - 1; i >= 0; i--) {
+        if (_messages[i].role == 'assistant') {
+          _messages[i] = _messages[i].copyWith(isRecovered: true);
+          break;
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loadingAgents || _loadingLlmConfigs) {
@@ -610,16 +792,37 @@ class _ChatScreenState extends State<ChatScreen> {
       canPop: false,
       child: Scaffold(
         drawer: Drawer(
+          width: MediaQuery.of(context).size.width,
           child: SafeArea(
             child: ChatNavigationPage(
+              channels: _channels
+                  .map(
+                    (item) => ChatChannelItem(
+                      id: item.id,
+                      name: item.name,
+                      isDefault: item.isDefault,
+                    ),
+                  )
+                  .toList(),
+              selectedChannelId: _activeChannelId,
+              onChannelSelected: _switchChannel,
               onActionSelected: (action) {
-                Navigator.of(context).pop();
                 switch (action) {
                   case ChatNavigationAction.manageAgents:
+                    Navigator.of(context).pop();
                     _openAgentsScreen();
                     break;
                   case ChatNavigationAction.appSettings:
+                    Navigator.of(context).pop();
                     _openSettingsScreen();
+                    break;
+                  case ChatNavigationAction.sessions:
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Sessions coming soon')),
+                    );
+                    break;
+                  case ChatNavigationAction.createChannel:
+                    _createChannel();
                     break;
                 }
               },
@@ -645,10 +848,49 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
             ],
           ),
+          actions: [
+            PopupMenuButton<String>(
+              tooltip: 'Sub sections',
+              onSelected: (value) {
+                if (value == '__new__') {
+                  _createSubSection();
+                } else {
+                  setState(() => _activeSubSection = value);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem<String>(
+                  value: '__new__',
+                  child: Text('新建子区'),
+                ),
+                const PopupMenuItem<String>(value: 'main', child: Text('主区')),
+                ..._activeSubSections.where((item) => item != 'main').map(
+                      (item) =>
+                          PopupMenuItem<String>(value: item, child: Text(item)),
+                    ),
+              ],
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: BricksSpacing.md),
+                child: Row(
+                  children: [
+                    const Icon(Icons.splitscreen_outlined),
+                    const SizedBox(width: BricksSpacing.xs),
+                    Text(
+                        _activeSubSection == 'main' ? '主区' : _activeSubSection),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
+            ),
+          ],
           bottom: _buildActiveAgentsIndicator(),
         ),
         body: Column(
           children: [
+            _buildContextBar(),
+            if (_syncingAfterReconnect)
+              const LinearProgressIndicator(minHeight: 2),
             Expanded(child: MessageList(messages: _messages)),
             ComposerBar(
               activeAgent: _activeAgent,
@@ -658,6 +900,14 @@ class _ChatScreenState extends State<ChatScreen> {
               onSend: _isSending ? null : _sendMessage,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: BricksSpacing.sm),
+              child: TextButton.icon(
+                onPressed: _simulateReconnectSync,
+                icon: const Icon(Icons.sync),
+                label: const Text('模拟断线恢复同步'),
+              ),
             ),
           ],
         ),

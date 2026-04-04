@@ -13,6 +13,21 @@ class MessageList extends StatelessWidget {
     return DateFormat('HH:mm').format(timestamp);
   }
 
+  String _taskLabel(ChatTaskState state) {
+    switch (state) {
+      case ChatTaskState.accepted:
+        return 'accepted';
+      case ChatTaskState.dispatched:
+        return 'dispatched';
+      case ChatTaskState.completed:
+        return 'completed';
+      case ChatTaskState.failed:
+        return 'failed';
+      case ChatTaskState.cancelled:
+        return 'cancelled';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (messages.isEmpty) {
@@ -100,6 +115,44 @@ class MessageList extends StatelessWidget {
                             ),
                           ),
                         ),
+                      if (msg.taskState != null || msg.taskId != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                          child: Text(
+                            [
+                              if (msg.taskState != null)
+                                'task:${_taskLabel(msg.taskState!)}',
+                              if (msg.taskId != null) 'id:${msg.taskId}',
+                            ].join(' · '),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: isUser
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                      if (msg.arbitrationMode && msg.resolvedBotId != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                          child: Text(
+                            msg.fallbackToDefaultBot
+                                ? 'fallback→${msg.resolvedBotId}'
+                                : 'selected→${msg.resolvedBotId}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: isUser
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context).colorScheme.primary,
+                                ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -111,7 +164,11 @@ class MessageList extends StatelessWidget {
                     bottom: BricksSpacing.md,
                   ),
                   child: Text(
-                    _formatTime(msg.timestamp),
+                    [
+                      _formatTime(msg.timestamp),
+                      if (msg.threadId != null) 'thread:${msg.threadId}',
+                      if (msg.isRecovered) 'Recovered',
+                    ].join(' · '),
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Theme.of(context).colorScheme.outline,
                         ),

@@ -7,6 +7,10 @@ Widget _buildPage({ValueChanged<ChatNavigationAction>? onActionSelected}) =>
       home: Scaffold(
         body: ChatNavigationPage(
           onActionSelected: onActionSelected ?? (_) {},
+          channels: const [
+            ChatChannelItem(id: 'default', name: '默认频道', isDefault: true),
+          ],
+          selectedChannelId: 'default',
         ),
       ),
     );
@@ -50,13 +54,13 @@ void main() {
       expect(find.text('Navigation'), findsOneWidget);
     });
 
-    testWidgets('static tiles (Current Chat, Sessions) are present',
-        (tester) async {
+    testWidgets('static tiles and channel list are present', (tester) async {
       await tester.pumpWidget(_buildPage());
       await tester.pumpAndSettle();
 
       expect(find.text('Current Chat'), findsOneWidget);
-      expect(find.text('Sessions'), findsOneWidget);
+      expect(find.byTooltip('Sessions'), findsOneWidget);
+      expect(find.text('默认频道'), findsOneWidget);
     });
 
     testWidgets('tapping back button closes an open drawer', (tester) async {
@@ -67,7 +71,17 @@ void main() {
           home: Scaffold(
             key: scaffoldKey,
             drawer: Drawer(
-              child: ChatNavigationPage(onActionSelected: (_) {}),
+              child: ChatNavigationPage(
+                onActionSelected: (_) {},
+                channels: const [
+                  ChatChannelItem(
+                    id: 'default',
+                    name: '默认频道',
+                    isDefault: true,
+                  ),
+                ],
+                selectedChannelId: 'default',
+              ),
             ),
             body: const SizedBox.shrink(),
           ),
