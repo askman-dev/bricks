@@ -36,6 +36,7 @@ class ChatNavigationPage extends StatelessWidget {
   }
 
   void _selectAction(BuildContext context, ChatNavigationAction action) {
+    _closeNavigation(context);
     onActionSelected(action);
   }
 
@@ -131,7 +132,10 @@ class ChatNavigationPage extends StatelessWidget {
               subtitle:
                   channel.isDefault ? const Text('Default channel') : null,
               selected: isSelected,
-              onTap: () => onChannelSelected?.call(channel.id),
+              onTap: () {
+                _closeNavigation(context);
+                onChannelSelected?.call(channel.id);
+              },
             );
           }),
         const SizedBox(height: 24),

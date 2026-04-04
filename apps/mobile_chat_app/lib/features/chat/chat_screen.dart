@@ -371,7 +371,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String _timestampName({String prefix = 'channel'}) {
     final now = DateTime.now();
     String two(int value) => value.toString().padLeft(2, '0');
-    return '$prefix-${now.year}-${two(now.month)}-${two(now.day)}-${two(now.hour)}-${two(now.minute)}-${two(now.second)}';
+    String three(int value) => value.toString().padLeft(3, '0');
+    return '$prefix-${now.year}-${two(now.month)}-${two(now.day)}-${two(now.hour)}-${two(now.minute)}-${two(now.second)}-${three(now.millisecond)}';
   }
 
   String _newId(String prefix) {
@@ -809,11 +810,9 @@ class _ChatScreenState extends State<ChatScreen> {
               onActionSelected: (action) {
                 switch (action) {
                   case ChatNavigationAction.manageAgents:
-                    Navigator.of(context).pop();
                     _openAgentsScreen();
                     break;
                   case ChatNavigationAction.appSettings:
-                    Navigator.of(context).pop();
                     _openSettingsScreen();
                     break;
                   case ChatNavigationAction.sessions:
