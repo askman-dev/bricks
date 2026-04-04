@@ -12,6 +12,7 @@ import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../../services/agents_repository_factory.dart';
+import 'chat_bot_registry.dart';
 import 'chat_message.dart';
 import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
@@ -51,6 +52,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ParticipantManager _participantManager = ParticipantManager();
 
   final AgentClient _client = AgentCoreClient();
+  final ChatBotRegistry _botRegistry = ChatBotRegistry();
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   AgentsRepository? _agentsRepository;
@@ -462,7 +464,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
     final arbitrationMode = activeParticipants.length > 1;
-    final resolvedBotId = agent?.name ?? 'ask';
+    final dispatch = _botRegistry.resolve(requestedBotId: agent?.name);
+    final resolvedBotId = dispatch.bot.id;
+    final resolvedSkillId = dispatch.skillId;
     final taskId = _newId('task');
     final traceId = _newId('trace');
     _appendMessage(
@@ -475,13 +479,11 @@ class _ChatScreenState extends State<ChatScreen> {
         sessionId: _sessionIdForScope,
         threadId: _activeSubSection == 'main' ? null : _activeSubSection,
         resolvedBotId: resolvedBotId,
-        resolvedSkillId: resolvedBotId == 'image_generation'
-            ? 'image_generation.default'
-            : 'ask.default',
+        resolvedSkillId: resolvedSkillId,
         arbitrationMode: arbitrationMode,
         decisionReason: arbitrationMode
-            ? 'Judge evaluated ${activeParticipants.length} candidate bots.'
-            : 'Direct dispatch (single active bot).',
+            ? 'Judge evaluated ${activeParticipants.length} candidate bots. ${dispatch.reason}'
+            : dispatch.reason,
         traceId: arbitrationMode ? traceId : null,
       ),
     );
@@ -498,14 +500,12 @@ class _ChatScreenState extends State<ChatScreen> {
         sessionId: _sessionIdForScope,
         threadId: _activeSubSection == 'main' ? null : _activeSubSection,
         resolvedBotId: resolvedBotId,
-        resolvedSkillId: resolvedBotId == 'image_generation'
-            ? 'image_generation.default'
-            : 'ask.default',
+        resolvedSkillId: resolvedSkillId,
         arbitrationMode: arbitrationMode,
-        fallbackToDefaultBot: false,
+        fallbackToDefaultBot: dispatch.fallbackToDefaultBot,
         decisionReason: arbitrationMode
-            ? 'Selected highest score.'
-            : 'Direct dispatch (single active bot).',
+            ? 'Selected highest score. ${dispatch.reason}'
+            : dispatch.reason,
         traceId: arbitrationMode ? traceId : null,
       ),
     );
