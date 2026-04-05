@@ -476,9 +476,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
-    const kArbitrationEpsilon = 1e-9;
     final positiveCandidates = activeParticipants
-        .where((item) => item.probability > kArbitrationEpsilon)
+        .where((item) => item.probability > 1e-9)
         .toList();
     final arbitrationMode = positiveCandidates.length > 1;
     final arbitration = _arbitrationEngine.resolve(
