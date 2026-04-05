@@ -49,29 +49,44 @@ class ChatArbitrationEngine {
 
   final ChatBotRegistry registry;
 
+  static const double _tieEpsilon = 1e-9;
+
   ArbitrationDecision resolve({
     required List<ArbitrationCandidate> candidates,
     required String? requestedBotId,
   }) {
-    if (candidates.length <= 1) {
+    if (candidates.isEmpty) {
       final selected = registry.resolve(requestedBotId: requestedBotId);
       return ArbitrationDecision(
         selected: selected,
-        candidateScores: selected.fallbackToDefaultBot
-            ? [
-                BotCandidateScore(
-                  botId: selected.bot.id,
-                  score: 1,
-                  confidence: 1,
-                  reason: selected.reason,
-                ),
-              ]
-            : const [],
+        candidateScores: const [],
         tieDetected: false,
         tieBotIds: const [],
         selectedScore: 1,
         fallbackToDefaultBot: selected.fallbackToDefaultBot,
         reason: selected.reason,
+      );
+    }
+
+    if (candidates.length == 1) {
+      final sole = candidates.first;
+      final score = _clamp01(sole.baseWeight);
+      final selected = registry.resolve(requestedBotId: sole.botId);
+      return ArbitrationDecision(
+        selected: selected,
+        candidateScores: [
+          BotCandidateScore(
+            botId: sole.botId,
+            score: score,
+            confidence: _confidenceForWeight(sole.baseWeight),
+            reason: 'Single candidate.',
+          ),
+        ],
+        tieDetected: false,
+        tieBotIds: const [],
+        selectedScore: score,
+        fallbackToDefaultBot: selected.fallbackToDefaultBot,
+        reason: 'Single candidate ${sole.botId} selected.',
       );
     }
 
@@ -89,7 +104,7 @@ class ChatArbitrationEngine {
 
     final topScore = scores.first.score;
     final ties = scores
-        .where((item) => item.score == topScore)
+        .where((item) => (item.score - topScore).abs() < _tieEpsilon)
         .map((item) => item.botId)
         .toList();
 

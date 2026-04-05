@@ -476,9 +476,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
-    final arbitrationMode = activeParticipants.length > 1;
+    const kArbitrationEpsilon = 1e-9;
+    final positiveCandidates = activeParticipants
+        .where((item) => item.probability > kArbitrationEpsilon)
+        .toList();
+    final arbitrationMode = positiveCandidates.length > 1;
     final arbitration = _arbitrationEngine.resolve(
-      candidates: activeParticipants
+      candidates: positiveCandidates
           .map(
             (item) => ArbitrationCandidate(
               botId: item.agentId,
@@ -539,12 +543,11 @@ class _ChatScreenState extends State<ChatScreen> {
         agentName: resolvedBotId,
         isStreaming: true,
         taskId: taskId,
-        taskState: ChatTaskState.dispatched,
+        taskState: ChatTaskState.accepted,
         idempotencyKey: idempotencyKey,
         createdAt: envelope.createdAt,
         acknowledgedAt: ack.acceptedAt,
         checkpointCursor: ack.checkpointCursor,
-        channelId: envelope.channelId,
         sessionId: envelope.sessionId,
         threadId: envelope.threadId,
         resolvedBotId: resolvedBotId,
@@ -926,7 +929,12 @@ class _ChatScreenState extends State<ChatScreen> {
                     }
                   });
                 } else {
-                  setState(() => _activeSubSection = value);
+                  setState(() {
+                    _activeSubSection = value;
+                    if (value != 'main') {
+                      _threadModeEnabled = true;
+                    }
+                  });
                 }
               },
               itemBuilder: (context) => [

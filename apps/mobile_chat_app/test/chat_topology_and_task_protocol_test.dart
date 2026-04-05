@@ -42,4 +42,31 @@ void main() {
     expect(next.acknowledgedAt, isNotNull);
     expect(next.checkpointCursor, startsWith('cursor:default:task-1'));
   });
+
+  test('does not apply acknowledged state when ack task id mismatches message task id',
+      () {
+    final protocol = ChatTaskProtocol();
+    final envelope = ChatTaskEnvelope(
+      taskId: 'task-2',
+      idempotencyKey: 'idem-2',
+      createdAt: DateTime(2026, 4, 4),
+      channelId: 'default',
+      sessionId: 'session:default:main',
+    );
+    final ack = protocol.acknowledge(envelope);
+
+    final message = ChatMessage(
+      role: 'assistant',
+      content: '',
+      taskId: 'task-1',
+      taskState: ChatTaskState.accepted,
+    );
+
+    final next = protocol.applyAcceptedState(message, ack);
+
+    expect(next.taskId, 'task-1');
+    expect(next.taskState, ChatTaskState.accepted);
+    expect(next.acknowledgedAt, isNull);
+    expect(next.checkpointCursor, isNull);
+  });
 }

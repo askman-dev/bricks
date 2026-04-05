@@ -55,6 +55,9 @@ class ChatTaskProtocol {
   }
 
   ChatMessage applyAcceptedState(ChatMessage message, ChatTaskAck ack) {
+    if (message.taskId != ack.taskId) {
+      return message;
+    }
     return message.copyWith(
       taskState: ChatTaskState.dispatched,
       acknowledgedAt: ack.acceptedAt,
