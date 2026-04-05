@@ -14,6 +14,10 @@ class ChatMessage {
     this.isStreaming = false,
     this.taskId,
     this.taskState,
+    this.idempotencyKey,
+    this.createdAt,
+    this.acknowledgedAt,
+    this.checkpointCursor,
     this.channelId,
     this.sessionId,
     this.threadId,
@@ -23,47 +27,45 @@ class ChatMessage {
     this.fallbackToDefaultBot = false,
     this.decisionReason,
     this.traceId,
+    this.tieDetected = false,
+    this.tieBotIds = const [],
+    this.selectedScore,
+    this.candidateScoreSummary,
     this.isRecovered = false,
   }) : timestamp = timestamp ?? DateTime.now();
 
   final String role;
   final String content;
 
-  /// Identifier of the agent that produced this message.
-  ///
-  /// `null` for user messages or messages without agent attribution.
   final String? agentId;
-
-  /// Display name of the agent that produced this message.
-  ///
-  /// `null` for user messages or messages without agent attribution.
   final String? agentName;
-
-  /// When this message was created.
   final DateTime timestamp;
-
-  /// Whether this message is currently being streamed.
   final bool isStreaming;
 
-  /// Async task metadata for transport lifecycle visibility.
   final String? taskId;
   final ChatTaskState? taskState;
+  final String? idempotencyKey;
+  final DateTime? createdAt;
+  final DateTime? acknowledgedAt;
+  final String? checkpointCursor;
+
   final String? channelId;
   final String? sessionId;
   final String? threadId;
   final String? resolvedBotId;
   final String? resolvedSkillId;
 
-  /// Arbitration visibility metadata.
   final bool arbitrationMode;
   final bool fallbackToDefaultBot;
   final String? decisionReason;
   final String? traceId;
+  final bool tieDetected;
+  final List<String> tieBotIds;
+  final double? selectedScore;
+  final String? candidateScoreSummary;
 
-  /// Whether this message was recovered after reconnect sync.
   final bool isRecovered;
 
-  /// Creates a copy with the given fields replaced.
   ChatMessage copyWith({
     String? role,
     String? content,
@@ -73,6 +75,10 @@ class ChatMessage {
     bool? isStreaming,
     String? taskId,
     ChatTaskState? taskState,
+    String? idempotencyKey,
+    DateTime? createdAt,
+    DateTime? acknowledgedAt,
+    String? checkpointCursor,
     String? channelId,
     String? sessionId,
     String? threadId,
@@ -82,6 +88,10 @@ class ChatMessage {
     bool? fallbackToDefaultBot,
     String? decisionReason,
     String? traceId,
+    bool? tieDetected,
+    List<String>? tieBotIds,
+    double? selectedScore,
+    String? candidateScoreSummary,
     bool? isRecovered,
   }) {
     return ChatMessage(
@@ -93,6 +103,10 @@ class ChatMessage {
       isStreaming: isStreaming ?? this.isStreaming,
       taskId: taskId ?? this.taskId,
       taskState: taskState ?? this.taskState,
+      idempotencyKey: idempotencyKey ?? this.idempotencyKey,
+      createdAt: createdAt ?? this.createdAt,
+      acknowledgedAt: acknowledgedAt ?? this.acknowledgedAt,
+      checkpointCursor: checkpointCursor ?? this.checkpointCursor,
       channelId: channelId ?? this.channelId,
       sessionId: sessionId ?? this.sessionId,
       threadId: threadId ?? this.threadId,
@@ -102,6 +116,11 @@ class ChatMessage {
       fallbackToDefaultBot: fallbackToDefaultBot ?? this.fallbackToDefaultBot,
       decisionReason: decisionReason ?? this.decisionReason,
       traceId: traceId ?? this.traceId,
+      tieDetected: tieDetected ?? this.tieDetected,
+      tieBotIds: tieBotIds ?? this.tieBotIds,
+      selectedScore: selectedScore ?? this.selectedScore,
+      candidateScoreSummary:
+          candidateScoreSummary ?? this.candidateScoreSummary,
       isRecovered: isRecovered ?? this.isRecovered,
     );
   }
