@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/chat/chat_navigation_page.dart';
 
-Widget _buildPage({ValueChanged<ChatNavigationAction>? onActionSelected}) =>
+Widget _buildPage({
+  ValueChanged<ChatNavigationAction>? onActionSelected,
+  List<ChatAgentItem> agents = const [],
+}) =>
     MaterialApp(
       home: Scaffold(
         body: ChatNavigationPage(
           onActionSelected: onActionSelected ?? (_) {},
+          agents: agents,
           channels: const [
             ChatChannelItem(id: 'default', name: '默认频道', isDefault: true),
           ],
@@ -17,21 +21,6 @@ Widget _buildPage({ValueChanged<ChatNavigationAction>? onActionSelected}) =>
 
 void main() {
   group('ChatNavigationPage – drawer behavior', () {
-    testWidgets('tapping Manage Agents fires manageAgents action',
-        (tester) async {
-      ChatNavigationAction? received;
-
-      await tester.pumpWidget(_buildPage(
-        onActionSelected: (action) => received = action,
-      ));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Manage Agents'));
-      await tester.pumpAndSettle();
-
-      expect(received, ChatNavigationAction.manageAgents);
-    });
-
     testWidgets('tapping Settings icon fires appSettings action',
         (tester) async {
       ChatNavigationAction? received;
@@ -60,13 +49,69 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Current Chat'), findsOneWidget);
+      expect(find.text('Agents'), findsOneWidget);
+      expect(find.text('在设置中新建 Agents'), findsOneWidget);
       expect(find.text('频道'), findsOneWidget);
       expect(find.text('默认频道'), findsOneWidget);
       expect(find.byTooltip('Settings'), findsOneWidget);
       expect(find.text('新建频道'), findsOneWidget);
+      expect(find.text('Manage Agents'), findsNothing);
       expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
       expect(find.byTooltip('Sessions'), findsNothing);
       expect(find.text('Settings'), findsNothing);
+    });
+
+    testWidgets('shows existing agents when agents list is not empty',
+        (tester) async {
+      await tester.pumpWidget(
+        _buildPage(
+          agents: const [
+            ChatAgentItem(name: 'Planner'),
+            ChatAgentItem(name: 'Reviewer'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Planner'), findsOneWidget);
+      expect(find.text('Reviewer'), findsOneWidget);
+      expect(find.text('在设置中新建 Agents'), findsNothing);
+    });
+
+    testWidgets('tapping Agents title toggles section collapse',
+        (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      expect(find.text('在设置中新建 Agents'), findsOneWidget);
+
+      await tester.tap(find.text('Agents'));
+      await tester.pumpAndSettle();
+      expect(find.text('在设置中新建 Agents'), findsNothing);
+
+      await tester.tap(find.text('Agents'));
+      await tester.pumpAndSettle();
+      expect(find.text('在设置中新建 Agents'), findsOneWidget);
+    });
+
+    testWidgets('tapping 频道 title toggles section collapse', (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      expect(find.text('默认频道'), findsOneWidget);
+      await tester.tap(find.text('频道'));
+      await tester.pumpAndSettle();
+      expect(find.text('默认频道'), findsNothing);
+    });
+
+    testWidgets('tapping 配置 shows 未开发的功能 toast', (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('配置'));
+      await tester.pump();
+
+      expect(find.text('未开发的功能'), findsOneWidget);
     });
 
     testWidgets('tapping 新建频道 fires createChannel action', (tester) async {
@@ -93,6 +138,7 @@ void main() {
             drawer: Drawer(
               child: ChatNavigationPage(
                 onActionSelected: (_) {},
+                agents: const [],
                 channels: const [
                   ChatChannelItem(
                     id: 'default',

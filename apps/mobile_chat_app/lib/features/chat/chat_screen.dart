@@ -476,9 +476,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
-    final positiveCandidates = activeParticipants
-        .where((item) => item.probability > 1e-9)
-        .toList();
+    final positiveCandidates =
+        activeParticipants.where((item) => item.probability > 1e-9).toList();
     final arbitrationMode = positiveCandidates.length > 1;
     final arbitration = _arbitrationEngine.resolve(
       candidates: positiveCandidates
@@ -863,6 +862,9 @@ class _ChatScreenState extends State<ChatScreen> {
           width: MediaQuery.of(context).size.width,
           child: SafeArea(
             child: ChatNavigationPage(
+              agents: _agents
+                  .map((agent) => ChatAgentItem(name: agent.name))
+                  .toList(),
               channels: _channels
                   .map(
                     (item) => ChatChannelItem(
