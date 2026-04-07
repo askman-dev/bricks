@@ -12,20 +12,14 @@ import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../../services/agents_repository_factory.dart';
+import 'chat_arbitration.dart';
 import 'chat_bot_registry.dart';
+import 'chat_task_protocol.dart';
+import 'chat_topology.dart';
 import 'chat_message.dart';
 import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
-
-class _ChatChannel {
-  const _ChatChannel(
-      {required this.id, required this.name, this.isDefault = false});
-
-  final String id;
-  final String name;
-  final bool isDefault;
-}
 
 /// The main chat screen – the app's entry point.
 ///
@@ -53,6 +47,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   final AgentClient _client = AgentCoreClient();
   final ChatBotRegistry _botRegistry = ChatBotRegistry();
+  late final ChatArbitrationEngine _arbitrationEngine =
+      ChatArbitrationEngine(registry: _botRegistry);
+  final ChatTaskProtocol _taskProtocol = ChatTaskProtocol();
+  final ChatTopologyResolver _topologyResolver = const ChatTopologyResolver();
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   AgentsRepository? _agentsRepository;
@@ -63,15 +61,17 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
-  final List<_ChatChannel> _channels = [
-    _ChatChannel(id: 'default', name: '默认频道', isDefault: true),
+  final List<ChatChannel> _channels = [
+    ChatChannel(id: 'default', name: '默认频道', isDefault: true),
   ];
   String _activeChannelId = 'default';
   final Map<String, List<String>> _channelSubSections = {
     'default': ['main']
   };
   String _activeSubSection = 'main';
+  bool _threadModeEnabled = false;
   bool _syncingAfterReconnect = false;
+  String? _latestCheckpointCursor;
 
   @override
   void initState() {
@@ -385,7 +385,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _createChannel() {
     final id = _newId('channel');
     final channel =
-        _ChatChannel(id: id, name: _timestampName(), isDefault: false);
+        ChatChannel(id: id, name: _timestampName(), isDefault: false);
     setState(() {
       _channels.add(channel);
       _channelSubSections[id] = ['main'];
@@ -398,13 +398,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _switchChannel(String channelId) {
-    if (_activeChannelId == channelId) {
+    final resolvedChannelId = _topologyResolver.resolveChannelId(
+        channels: _channels, requestedChannelId: channelId);
+    if (_activeChannelId == resolvedChannelId) {
       Navigator.of(context).pop();
       return;
     }
     setState(() {
-      _activeChannelId = channelId;
-      final subSections = _channelSubSections[channelId] ?? const ['main'];
+      _activeChannelId = resolvedChannelId;
+      final subSections =
+          _channelSubSections[resolvedChannelId] ?? const ['main'];
       _activeSubSection =
           subSections.contains('main') ? 'main' : subSections.first;
     });
@@ -415,10 +418,20 @@ class _ChatScreenState extends State<ChatScreen> {
     return _channelSubSections[_activeChannelId] ?? const ['main'];
   }
 
-  String get _sessionIdForScope =>
-      'session:${_activeChannelId}:${_activeSubSection}';
+  ChatSessionScope get _activeScope => ChatSessionScope(
+        channelId: _activeChannelId,
+        threadId: _threadModeEnabled ? _activeSubSection : 'main',
+      );
+
+  String get _sessionIdForScope => _activeScope.sessionId;
 
   void _createSubSection() {
+    if (!_threadModeEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先开启 Thread 模式后再创建子区')),
+      );
+      return;
+    }
     final name = _timestampName(prefix: 'sub');
     setState(() {
       final items =
@@ -463,27 +476,61 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
-    final arbitrationMode = activeParticipants.length > 1;
-    final dispatch = _botRegistry.resolve(requestedBotId: agent?.name);
+    final positiveCandidates = activeParticipants
+        .where((item) => item.probability > 1e-9)
+        .toList();
+    final arbitrationMode = positiveCandidates.length > 1;
+    final arbitration = _arbitrationEngine.resolve(
+      candidates: positiveCandidates
+          .map(
+            (item) => ArbitrationCandidate(
+              botId: item.agentId,
+              baseWeight: item.probability,
+            ),
+          )
+          .toList(),
+      requestedBotId: agent?.name,
+    );
+    final dispatch = arbitration.selected;
     final resolvedBotId = dispatch.bot.id;
     final resolvedSkillId = dispatch.skillId;
     final taskId = _newId('task');
+    final idempotencyKey = _newId('idem');
     final traceId = _newId('trace');
+    final envelope = ChatTaskEnvelope(
+      taskId: taskId,
+      idempotencyKey: idempotencyKey,
+      createdAt: DateTime.now(),
+      channelId: _activeScope.channelId,
+      sessionId: _activeScope.sessionId,
+      threadId: _activeScope.threadId == 'main' ? null : _activeScope.threadId,
+    );
+    final ack = _taskProtocol.acknowledge(envelope);
+    _latestCheckpointCursor = ack.checkpointCursor;
+    final scoreSummary = arbitration.candidateScores
+        .map((item) => '${item.botId}:${item.score.toStringAsFixed(2)}')
+        .join(', ');
     _appendMessage(
       ChatMessage(
         role: 'user',
         content: text,
         taskId: taskId,
         taskState: ChatTaskState.accepted,
-        channelId: _activeChannelId,
-        sessionId: _sessionIdForScope,
-        threadId: _activeSubSection == 'main' ? null : _activeSubSection,
+        idempotencyKey: idempotencyKey,
+        createdAt: envelope.createdAt,
+        acknowledgedAt: ack.acceptedAt,
+        checkpointCursor: ack.checkpointCursor,
+        channelId: envelope.channelId,
+        sessionId: envelope.sessionId,
+        threadId: envelope.threadId,
         resolvedBotId: resolvedBotId,
         resolvedSkillId: resolvedSkillId,
         arbitrationMode: arbitrationMode,
-        decisionReason: arbitrationMode
-            ? 'Judge evaluated ${activeParticipants.length} candidate bots. ${dispatch.reason}'
-            : dispatch.reason,
+        tieDetected: arbitration.tieDetected,
+        tieBotIds: arbitration.tieBotIds,
+        selectedScore: arbitration.selectedScore,
+        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
+        decisionReason: arbitration.reason,
         traceId: arbitrationMode ? traceId : null,
       ),
     );
@@ -496,16 +543,21 @@ class _ChatScreenState extends State<ChatScreen> {
         isStreaming: true,
         taskId: taskId,
         taskState: ChatTaskState.accepted,
-        channelId: _activeChannelId,
-        sessionId: _sessionIdForScope,
-        threadId: _activeSubSection == 'main' ? null : _activeSubSection,
+        idempotencyKey: idempotencyKey,
+        createdAt: envelope.createdAt,
+        acknowledgedAt: ack.acceptedAt,
+        checkpointCursor: ack.checkpointCursor,
+        sessionId: envelope.sessionId,
+        threadId: envelope.threadId,
         resolvedBotId: resolvedBotId,
         resolvedSkillId: resolvedSkillId,
         arbitrationMode: arbitrationMode,
-        fallbackToDefaultBot: dispatch.fallbackToDefaultBot,
-        decisionReason: arbitrationMode
-            ? 'Selected highest score. ${dispatch.reason}'
-            : dispatch.reason,
+        fallbackToDefaultBot: arbitration.fallbackToDefaultBot,
+        tieDetected: arbitration.tieDetected,
+        tieBotIds: arbitration.tieBotIds,
+        selectedScore: arbitration.selectedScore,
+        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
+        decisionReason: arbitration.reason,
         traceId: arbitrationMode ? traceId : null,
       ),
     );
@@ -528,8 +580,10 @@ class _ChatScreenState extends State<ChatScreen> {
             );
             if (current.taskState == ChatTaskState.accepted) {
               setState(() {
-                _messages[agentMessageIndex] = _messages[agentMessageIndex]
-                    .copyWith(taskState: ChatTaskState.dispatched);
+                _messages[agentMessageIndex] = _taskProtocol.applyAcceptedState(
+                  _messages[agentMessageIndex],
+                  ack,
+                );
               });
             }
           } else if (event is MessageCompleteEvent) {
@@ -742,7 +796,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildContextBar() {
     final activeParticipants = _participantManager.participants.active;
     final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
-    final threadLabel = _activeSubSection == 'main' ? '主区' : _activeSubSection;
+    final threadLabel = _threadModeEnabled && _activeSubSection != 'main'
+        ? _activeSubSection
+        : '主区';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
@@ -757,8 +813,11 @@ class _ChatScreenState extends State<ChatScreen> {
           Chip(label: Text('Channel: $_activeChannelId')),
           Chip(label: Text('Thread: $threadLabel')),
           Chip(label: Text('Session: $_sessionIdForScope')),
+          Chip(label: Text('ThreadMode: ${_threadModeEnabled ? 'on' : 'off'}')),
           Chip(label: Text('Mode: $mode')),
           if (_syncingAfterReconnect) const Chip(label: Text('Syncing…')),
+          if (_latestCheckpointCursor != null)
+            Chip(label: Text('Cursor: $_latestCheckpointCursor')),
         ],
       ),
     );
@@ -769,11 +828,19 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _syncingAfterReconnect = true);
     await Future<void>.delayed(const Duration(milliseconds: 450));
     if (!mounted) return;
+    final checkpoint = _latestCheckpointCursor == null
+        ? null
+        : ChatSyncCheckpoint(
+            cursor: _latestCheckpointCursor!, syncedAt: DateTime.now());
     setState(() {
       _syncingAfterReconnect = false;
       for (var i = _messages.length - 1; i >= 0; i--) {
         if (_messages[i].role == 'assistant') {
-          _messages[i] = _messages[i].copyWith(isRecovered: true);
+          _messages[i] = _messages[i].copyWith(
+            isRecovered: true,
+            checkpointCursor:
+                checkpoint?.cursor ?? _messages[i].checkpointCursor,
+          );
           break;
         }
       }
@@ -853,11 +920,28 @@ class _ChatScreenState extends State<ChatScreen> {
               onSelected: (value) {
                 if (value == '__new__') {
                   _createSubSection();
+                } else if (value == '__toggle_thread_mode__') {
+                  setState(() {
+                    _threadModeEnabled = !_threadModeEnabled;
+                    if (!_threadModeEnabled) {
+                      _activeSubSection = 'main';
+                    }
+                  });
                 } else {
-                  setState(() => _activeSubSection = value);
+                  setState(() {
+                    _activeSubSection = value;
+                    if (value != 'main') {
+                      _threadModeEnabled = true;
+                    }
+                  });
                 }
               },
               itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  value: '__toggle_thread_mode__',
+                  child: Text(
+                      _threadModeEnabled ? '关闭 Thread 模式' : '开启 Thread 模式'),
+                ),
                 const PopupMenuItem<String>(
                   value: '__new__',
                   child: Text('新建子区'),
