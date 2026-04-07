@@ -124,9 +124,20 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
                       setState(() => _agentsExpanded = !_agentsExpanded),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Agents',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    child: Row(
+                      children: [
+                        Icon(
+                          _agentsExpanded
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Agents',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -161,9 +172,20 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
                       setState(() => _channelsExpanded = !_channelsExpanded),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      '频道',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    child: Row(
+                      children: [
+                        Icon(
+                          _channelsExpanded
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '频道',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ],
                     ),
                   ),
                 ),

@@ -83,11 +83,15 @@ void main() {
       await tester.pumpWidget(_buildPage());
       await tester.pumpAndSettle();
 
+      // Starts expanded: expand_more icon visible, content visible
+      expect(find.byIcon(Icons.expand_more), findsWidgets);
       expect(find.text('在设置中新建 Agents'), findsOneWidget);
 
       await tester.tap(find.text('Agents'));
       await tester.pumpAndSettle();
+      // After collapse: chevron_right icon for Agents, content hidden
       expect(find.text('在设置中新建 Agents'), findsNothing);
+      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
 
       await tester.tap(find.text('Agents'));
       await tester.pumpAndSettle();
@@ -102,6 +106,7 @@ void main() {
       await tester.tap(find.text('频道'));
       await tester.pumpAndSettle();
       expect(find.text('默认频道'), findsNothing);
+      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
 
     testWidgets(
