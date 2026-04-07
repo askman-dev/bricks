@@ -7,6 +7,8 @@ import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
+import 'chat_history_api_service.dart';
+
 import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
@@ -72,6 +74,9 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _threadModeEnabled = false;
   bool _syncingAfterReconnect = false;
   String? _latestCheckpointCursor;
+  int _lastSyncedSeq = 0;
+  final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
+  Timer? _persistDebounce;
 
   @override
   void initState() {
@@ -81,6 +86,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _persistDebounce?.cancel();
+    _chatHistoryApiService.dispose();
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
@@ -125,6 +132,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _loadingLlmConfigs = false;
         _authToken = authToken;
       });
+      await _loadMessagesForActiveScope();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -391,7 +399,11 @@ class _ChatScreenState extends State<ChatScreen> {
       _channelSubSections[id] = ['main'];
       _activeChannelId = id;
       _activeSubSection = 'main';
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
     });
+    _persistActiveScopeMessages();
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
@@ -411,6 +423,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeSubSection =
           subSections.contains('main') ? 'main' : subSections.first;
     });
+    unawaited(_loadMessagesForActiveScope());
     Navigator.of(context).pop();
   }
 
@@ -425,6 +438,65 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String get _sessionIdForScope => _activeScope.sessionId;
 
+  Future<void> _loadMessagesForActiveScope() async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _messages.clear();
+        _latestCheckpointCursor = null;
+        _lastSyncedSeq = 0;
+      });
+      return;
+    }
+
+    try {
+      final snapshot = await _chatHistoryApiService.load(
+        token: token,
+        sessionId: _sessionIdForScope,
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(snapshot.messages);
+        _latestCheckpointCursor = snapshot.latestCheckpointCursor;
+        _lastSyncedSeq = snapshot.lastSeqId;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.clear();
+        _latestCheckpointCursor = null;
+        _lastSyncedSeq = 0;
+      });
+    }
+  }
+
+  void _persistActiveScopeMessages() {
+    // Debounce to avoid request storms on streaming deltas.
+    _persistDebounce?.cancel();
+    _persistDebounce = Timer(const Duration(milliseconds: 500), () {
+      _doPersistActiveScopeMessages();
+    });
+  }
+
+  void _doPersistActiveScopeMessages() {
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+    unawaited(
+      _chatHistoryApiService
+          .upsertMessages(token: token, messages: _messages)
+          .then((lastSeq) {
+        if (!mounted || lastSeq <= 0) return;
+        // Only advance the cursor, never move it backwards.
+        setState(() {
+          if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
+        });
+      }).catchError((_) {}),
+    );
+  }
+
   void _createSubSection() {
     if (!_threadModeEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -438,7 +510,11 @@ class _ChatScreenState extends State<ChatScreen> {
           _channelSubSections.putIfAbsent(_activeChannelId, () => ['main']);
       items.add(name);
       _activeSubSection = name;
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
     });
+    _persistActiveScopeMessages();
   }
 
   Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
@@ -462,12 +538,21 @@ class _ChatScreenState extends State<ChatScreen> {
         isStreaming: isStreaming,
       );
     });
+    _persistActiveScopeMessages();
   }
 
   int _appendMessage(ChatMessage message) {
+    final normalized = message.copyWith(
+      messageId: message.messageId ?? _newId('msg'),
+      channelId: message.channelId ?? _activeScope.channelId,
+      sessionId: message.sessionId ?? _activeScope.sessionId,
+      threadId: message.threadId ??
+          (_activeScope.threadId == 'main' ? null : _activeScope.threadId),
+    );
     setState(() {
-      _messages.add(message);
+      _messages.add(normalized);
     });
+    _persistActiveScopeMessages();
     return _messages.length - 1;
   }
 
@@ -506,6 +591,23 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     final ack = _taskProtocol.acknowledge(envelope);
     _latestCheckpointCursor = ack.checkpointCursor;
+    _persistActiveScopeMessages();
+
+    final token = _authToken;
+    if (token != null && token.isNotEmpty) {
+      unawaited(
+        _chatHistoryApiService
+            .acceptTask(
+              token: token,
+              taskId: taskId,
+              idempotencyKey: idempotencyKey,
+              scope: _activeScope,
+              resolvedBotId: resolvedBotId,
+              resolvedSkillId: resolvedSkillId,
+            )
+            .catchError((_) {}),
+      );
+    }
     final scoreSummary = arbitration.candidateScores
         .map((item) => '${item.botId}:${item.score.toStringAsFixed(2)}')
         .join(', ');
@@ -595,6 +697,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 taskState: ChatTaskState.completed,
               );
             });
+            _persistActiveScopeMessages();
           } else if (event is AgentErrorEvent) {
             if (!mounted || agentMessageIndex >= _messages.length) return;
             setState(() {
@@ -607,6 +710,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 decisionReason: 'Agent error fallback path triggered.',
               );
             });
+            _persistActiveScopeMessages();
           }
         },
         onError: (error) {
@@ -619,6 +723,7 @@ class _ChatScreenState extends State<ChatScreen> {
               taskState: ChatTaskState.failed,
             );
           });
+          _persistActiveScopeMessages();
           if (mounted) {
             setState(() {
               _isSending = false;
@@ -648,6 +753,7 @@ class _ChatScreenState extends State<ChatScreen> {
             taskState: ChatTaskState.failed,
           );
         });
+        _persistActiveScopeMessages();
       }
       if (mounted) {
         setState(() {
@@ -676,6 +782,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       });
+      _persistActiveScopeMessages();
     }
   }
 
@@ -817,33 +924,40 @@ class _ChatScreenState extends State<ChatScreen> {
           if (_syncingAfterReconnect) const Chip(label: Text('Syncing…')),
           if (_latestCheckpointCursor != null)
             Chip(label: Text('Cursor: $_latestCheckpointCursor')),
+          Chip(label: Text('Seq: $_lastSyncedSeq')),
         ],
       ),
     );
   }
 
   Future<void> _simulateReconnectSync() async {
-    if (_messages.isEmpty) return;
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
     setState(() => _syncingAfterReconnect = true);
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-    if (!mounted) return;
-    final checkpoint = _latestCheckpointCursor == null
-        ? null
-        : ChatSyncCheckpoint(
-            cursor: _latestCheckpointCursor!, syncedAt: DateTime.now());
-    setState(() {
-      _syncingAfterReconnect = false;
-      for (var i = _messages.length - 1; i >= 0; i--) {
-        if (_messages[i].role == 'assistant') {
-          _messages[i] = _messages[i].copyWith(
-            isRecovered: true,
-            checkpointCursor:
-                checkpoint?.cursor ?? _messages[i].checkpointCursor,
-          );
-          break;
+    try {
+      final snapshot = await _chatHistoryApiService.sync(
+        token: token,
+        sessionId: _sessionIdForScope,
+        afterSeq: _lastSyncedSeq,
+      );
+      if (!mounted) return;
+      setState(() {
+        _syncingAfterReconnect = false;
+        for (final message in snapshot.messages) {
+          final index =
+              _messages.indexWhere((m) => m.messageId == message.messageId);
+          if (index >= 0) {
+            _messages[index] = message.copyWith(isRecovered: true);
+          } else {
+            _messages.add(message.copyWith(isRecovered: true));
+          }
         }
-      }
-    });
+        _lastSyncedSeq = snapshot.lastSeqId;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _syncingAfterReconnect = false);
+    }
   }
 
   @override
@@ -926,6 +1040,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       _activeSubSection = 'main';
                     }
                   });
+                  unawaited(_loadMessagesForActiveScope());
                 } else {
                   setState(() {
                     _activeSubSection = value;
@@ -933,6 +1048,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       _threadModeEnabled = true;
                     }
                   });
+                  unawaited(_loadMessagesForActiveScope());
                 }
               },
               itemBuilder: (context) => [
