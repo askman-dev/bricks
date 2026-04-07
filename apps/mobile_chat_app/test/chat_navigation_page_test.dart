@@ -104,14 +104,44 @@ void main() {
       expect(find.text('默认频道'), findsNothing);
     });
 
-    testWidgets('tapping 配置 shows 未开发的功能 toast', (tester) async {
-      await tester.pumpWidget(_buildPage());
+    testWidgets(
+        'tapping 配置 in an open drawer shows 未开发的功能 toast and closes drawer',
+        (tester) async {
+      final scaffoldKey = GlobalKey<ScaffoldState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            key: scaffoldKey,
+            drawer: Drawer(
+              child: ChatNavigationPage(
+                onActionSelected: (_) {},
+                agents: const [],
+                channels: const [
+                  ChatChannelItem(
+                    id: 'default',
+                    name: '默认频道',
+                    isDefault: true,
+                  ),
+                ],
+                selectedChannelId: 'default',
+              ),
+            ),
+            body: const SizedBox.shrink(),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
+      scaffoldKey.currentState!.openDrawer();
+      await tester.pumpAndSettle();
+      expect(scaffoldKey.currentState!.isDrawerOpen, isTrue);
+
       await tester.tap(find.text('配置'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.text('未开发的功能'), findsOneWidget);
+      expect(scaffoldKey.currentState!.isDrawerOpen, isFalse);
     });
 
     testWidgets('tapping 新建频道 fires createChannel action', (tester) async {

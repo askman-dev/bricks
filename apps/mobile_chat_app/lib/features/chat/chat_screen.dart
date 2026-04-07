@@ -878,9 +878,6 @@ class _ChatScreenState extends State<ChatScreen> {
               onChannelSelected: _switchChannel,
               onActionSelected: (action) {
                 switch (action) {
-                  case ChatNavigationAction.manageAgents:
-                    _openAgentsScreen();
-                    break;
                   case ChatNavigationAction.appSettings:
                     _openSettingsScreen();
                     break;

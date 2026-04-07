@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Actions that can be triggered from the chat navigation page.
-enum ChatNavigationAction { manageAgents, appSettings, sessions, createChannel }
+enum ChatNavigationAction { appSettings, sessions, createChannel }
 
 class ChatChannelItem {
   const ChatChannelItem({
@@ -57,9 +57,15 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
   }
 
   void _showNotImplementedToast() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('未开发的功能')),
-    );
+    final messenger = ScaffoldMessenger.of(context);
+    Scaffold.of(context).closeDrawer();
+    messenger.hideCurrentSnackBar();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('未开发的功能')),
+      );
+    });
   }
 
   @override
