@@ -70,7 +70,6 @@ class _ChatScreenState extends State<ChatScreen> {
   };
   String _activeSubSection = 'main';
   bool _threadModeEnabled = false;
-  bool _syncingAfterReconnect = false;
   String? _latestCheckpointCursor;
 
   @override
@@ -814,36 +813,11 @@ class _ChatScreenState extends State<ChatScreen> {
           Chip(label: Text('Session: $_sessionIdForScope')),
           Chip(label: Text('ThreadMode: ${_threadModeEnabled ? 'on' : 'off'}')),
           Chip(label: Text('Mode: $mode')),
-          if (_syncingAfterReconnect) const Chip(label: Text('Syncing…')),
           if (_latestCheckpointCursor != null)
             Chip(label: Text('Cursor: $_latestCheckpointCursor')),
         ],
       ),
     );
-  }
-
-  Future<void> _simulateReconnectSync() async {
-    if (_messages.isEmpty) return;
-    setState(() => _syncingAfterReconnect = true);
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-    if (!mounted) return;
-    final checkpoint = _latestCheckpointCursor == null
-        ? null
-        : ChatSyncCheckpoint(
-            cursor: _latestCheckpointCursor!, syncedAt: DateTime.now());
-    setState(() {
-      _syncingAfterReconnect = false;
-      for (var i = _messages.length - 1; i >= 0; i--) {
-        if (_messages[i].role == 'assistant') {
-          _messages[i] = _messages[i].copyWith(
-            isRecovered: true,
-            checkpointCursor:
-                checkpoint?.cursor ?? _messages[i].checkpointCursor,
-          );
-          break;
-        }
-      }
-    });
   }
 
   @override
@@ -971,8 +945,6 @@ class _ChatScreenState extends State<ChatScreen> {
         body: Column(
           children: [
             _buildContextBar(),
-            if (_syncingAfterReconnect)
-              const LinearProgressIndicator(minHeight: 2),
             Expanded(child: MessageList(messages: _messages)),
             ComposerBar(
               activeAgent: _activeAgent,
@@ -982,14 +954,6 @@ class _ChatScreenState extends State<ChatScreen> {
               onSend: _isSending ? null : _sendMessage,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: BricksSpacing.sm),
-              child: TextButton.icon(
-                onPressed: _simulateReconnectSync,
-                icon: const Icon(Icons.sync),
-                label: const Text('模拟断线恢复同步'),
-              ),
             ),
           ],
         ),
