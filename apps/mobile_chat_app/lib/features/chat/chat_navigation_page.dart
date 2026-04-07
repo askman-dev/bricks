@@ -75,12 +75,6 @@ class ChatNavigationPage extends StatelessWidget {
                 icon: const Icon(Icons.settings_outlined),
                 tooltip: 'Settings',
               ),
-              IconButton(
-                onPressed: () =>
-                    _selectAction(context, ChatNavigationAction.createChannel),
-                icon: const Icon(Icons.add_circle_outline),
-                tooltip: 'New Channel',
-              ),
             ],
           ),
         ),
@@ -98,9 +92,21 @@ class ChatNavigationPage extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Text(
-            '频道',
-            style: Theme.of(context).textTheme.titleSmall,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '频道',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () =>
+                    _selectAction(context, ChatNavigationAction.createChannel),
+                icon: const Icon(Icons.add_circle_outline, size: 18),
+                label: const Text('新建频道'),
+              ),
+            ],
           ),
         ),
         if (channels.isEmpty)
