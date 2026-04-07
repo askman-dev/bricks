@@ -138,6 +138,14 @@ CREATE INDEX idx_foo ON foo(id);
     expect(stmts[0]).toContain('TEXT');
   });
 
+  it('removes PostgreSQL ::type casts (e.g. jsonb defaults)', () => {
+    const sql = `CREATE TABLE t (messages JSONB NOT NULL DEFAULT '[]'::jsonb);`;
+    const stmts = adaptMigrationForSqlite(sql);
+    expect(stmts).toHaveLength(1);
+    expect(stmts[0]).not.toContain('::');
+    expect(stmts[0]).toContain(`DEFAULT '[]'`);
+  });
+
   it('rewrites ADD COLUMN IF NOT EXISTS to ADD COLUMN for Turso compatibility', () => {
     const sql = `ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255);`;
     const stmts = adaptMigrationForSqlite(sql);
@@ -286,5 +294,28 @@ CREATE TRIGGER update_users_updated_at
     expect(stmts[1]).toMatch(/CREATE INDEX idx_users_created_at/i);
     // No comments in output
     expect(stmts.every((s) => !s.includes('--'))).toBe(true);
+  });
+
+  it('correctly adapts 006_create_chat_sessions.sql-style defaults for Turso', () => {
+    const migration006 = `-- Migration: Create chat_sessions table
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id VARCHAR(255) NOT NULL,
+  messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, session_id)
+);
+`;
+
+    const stmts = adaptMigrationForSqlite(migration006);
+    expect(stmts).toHaveLength(1);
+    expect(stmts[0]).toMatch(/CREATE TABLE IF NOT EXISTS chat_sessions/i);
+    expect(stmts[0]).not.toContain('gen_random_uuid');
+    expect(stmts[0]).toContain('randomblob');
+    expect(stmts[0]).not.toContain('::');
+    expect(stmts[0]).toContain(`DEFAULT '[]'`);
+    expect(stmts[0]).toContain('CURRENT_TIMESTAMP');
   });
 });
