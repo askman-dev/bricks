@@ -260,3 +260,39 @@ export async function syncMessages(
   const lastSeqId = messages.length > 0 ? messages[messages.length - 1].writeSeq : afterSeq;
   return { messages, lastSeqId };
 }
+
+
+export async function listSessionMessagesForModel(
+  userId: string,
+  sessionId: string,
+  options: { limit?: number; maxChars?: number } = {},
+): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
+  const limit = Math.max(1, Math.min(options.limit ?? 40, 200));
+  const result = await pool.query<ChatMessageRow>(
+    `SELECT seq_id, write_seq, message_id, task_id, channel_id, session_id, thread_id,
+            role, content, task_state, checkpoint_cursor, metadata, created_at, updated_at
+       FROM chat_messages
+      WHERE user_id = $1
+        AND session_id = $2
+        AND role IN ('user', 'assistant')
+      ORDER BY write_seq DESC
+      LIMIT $3`,
+    [userId, sessionId, limit],
+  );
+
+  const reversed = [...result.rows].reverse();
+  const maxChars = Math.max(200, Math.min(options.maxChars ?? 8000, 64000));
+  const collected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  let used = 0;
+  for (const row of reversed) {
+    const content = row.content?.trim() ?? '';
+    if (!content) continue;
+    if (used + content.length > maxChars) continue;
+    used += content.length;
+    collected.push({
+      role: row.role as 'user' | 'assistant',
+      content,
+    });
+  }
+  return collected;
+}

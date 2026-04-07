@@ -96,4 +96,68 @@ void main() {
     expect(accepted.taskId, equals('task-1'));
     expect(lastSeq, equals(7));
   });
+
+  test('filters transient empty assistant placeholder before persistence',
+      () async {
+    final client = MockClient((request) async {
+      expect(request.url.path.endsWith('/messages/batch'), isTrue);
+      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+      final messages =
+          (decoded['messages'] as List).cast<Map<String, dynamic>>();
+      expect(messages, hasLength(1));
+      expect(messages.single['messageId'], equals('msg-user'));
+      return http.Response(jsonEncode({'lastSeqId': 8}), 200);
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final lastSeq = await service.upsertMessages(
+      token: 'token-1',
+      messages: [
+        ChatMessage(
+          messageId: 'msg-user',
+          role: 'user',
+          content: 'DDD',
+          channelId: 'default',
+          sessionId: 'session:default:main',
+        ),
+        ChatMessage(
+          messageId: 'msg-assistant',
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+          channelId: 'default',
+          sessionId: 'session:default:main',
+        ),
+      ],
+    );
+
+    expect(lastSeq, equals(8));
+  });
+
+  test('respond sends one backend-owned orchestration request', () async {
+    final client = MockClient((request) async {
+      expect(request.url.path.endsWith('/chat/respond'), isTrue);
+      expect(request.method, equals('POST'));
+      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(decoded['taskId'], equals('task-2'));
+      expect(decoded['userMessage'], equals('1+3'));
+      return http.Response(jsonEncode({'text': '4', 'lastSeqId': 12}), 200);
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final result = await service.respond(
+      token: 'token-1',
+      taskId: 'task-2',
+      idempotencyKey: 'idem-2',
+      scope: const ChatSessionScope(channelId: 'default', threadId: 'main'),
+      userMessageId: 'u-1',
+      assistantMessageId: 'a-1',
+      userMessage: '1+3',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
+    );
+
+    expect(result.text, equals('4'));
+    expect(result.lastSeqId, equals(12));
+  });
 }

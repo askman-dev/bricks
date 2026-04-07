@@ -45,10 +45,12 @@ class RealModelGateway {
   Future<String> generate({
     required AgentSettings settings,
     required String message,
+    List<Map<String, String>>? conversationMessages,
   }) async {
     final backendResult = await _generateViaBackendIfConfigured(
       settings: settings,
       message: message,
+      conversationMessages: conversationMessages,
     );
     if (backendResult != null) {
       return backendResult;
@@ -72,6 +74,7 @@ class RealModelGateway {
   Future<String?> _generateViaBackendIfConfigured({
     required AgentSettings settings,
     required String message,
+    List<Map<String, String>>? conversationMessages,
   }) async {
     final baseUrl = settings.apiBaseUrl?.trim() ?? '';
     final token = settings.authToken?.trim() ?? '';
@@ -95,6 +98,15 @@ class RealModelGateway {
     final uri = baseUri.replace(path: '$normalizedBasePath/api/llm/chat');
     final provider =
         settings.provider == 'gemini' ? 'google_ai_studio' : settings.provider;
+    final normalizedConversation =
+        (conversationMessages ?? const <Map<String, String>>[])
+            .where((item) => item['role'] != null && item['content'] != null)
+            .map((item) => {
+                  'role': item['role']!,
+                  'content': item['content']!,
+                })
+            .toList();
+
     final payload = <String, dynamic>{
       'provider': provider,
       'model': settings.model,
@@ -102,7 +114,10 @@ class RealModelGateway {
         if (settings.systemPrompt != null &&
             settings.systemPrompt!.trim().isNotEmpty)
           {'role': 'system', 'content': settings.systemPrompt!.trim()},
-        {'role': 'user', 'content': message},
+        if (normalizedConversation.isNotEmpty)
+          ...normalizedConversation
+        else
+          {'role': 'user', 'content': message},
       ],
       if (settings.configId != null && settings.configId!.trim().isNotEmpty)
         'configId': settings.configId!.trim(),

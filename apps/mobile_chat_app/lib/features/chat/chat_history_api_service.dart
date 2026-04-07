@@ -18,6 +18,16 @@ class ChatHistorySnapshot {
   final String? latestCheckpointCursor;
 }
 
+class ChatRespondResult {
+  const ChatRespondResult({
+    required this.text,
+    required this.lastSeqId,
+  });
+
+  final String text;
+  final int lastSeqId;
+}
+
 class ChatAcceptedTask {
   const ChatAcceptedTask({
     required this.taskId,
@@ -132,6 +142,57 @@ class ChatHistoryApiService {
     );
   }
 
+  Future<ChatRespondResult> respond({
+    required String token,
+    required String taskId,
+    required String idempotencyKey,
+    required ChatSessionScope scope,
+    required String userMessageId,
+    required String assistantMessageId,
+    required String userMessage,
+    String? resolvedBotId,
+    String? resolvedSkillId,
+    String? provider,
+    String? model,
+    String? configId,
+    DateTime? createdAt,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$_base/api/chat/respond'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'taskId': taskId,
+        'idempotencyKey': idempotencyKey,
+        'channelId': scope.channelId,
+        'sessionId': scope.sessionId,
+        'threadId': scope.threadId,
+        'userMessageId': userMessageId,
+        'assistantMessageId': assistantMessageId,
+        'userMessage': userMessage,
+        'resolvedBotId': resolvedBotId,
+        'resolvedSkillId': resolvedSkillId,
+        'provider': provider,
+        'model': model,
+        'configId': configId,
+        'createdAt': createdAt?.toIso8601String(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to respond chat task (${response.statusCode})');
+    }
+
+    final raw = jsonDecode(response.body);
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    return ChatRespondResult(
+      text: (map['text'] as String?) ?? '',
+      lastSeqId: (map['lastSeqId'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   Future<ChatAcceptedTask> acceptTask({
     required String token,
     required String taskId,
@@ -172,10 +233,24 @@ class ChatHistoryApiService {
     );
   }
 
+  List<ChatMessage> messagesForPersistence(List<ChatMessage> messages) {
+    // Do not persist transient empty assistant placeholders while a response is
+    // still streaming; otherwise refresh can show an empty bubble with no
+    // meaningful content.
+    return messages
+        .where((message) => !(message.role == 'assistant' &&
+            message.isStreaming &&
+            message.content.trim().isEmpty))
+        .toList(growable: false);
+  }
+
   Future<int> upsertMessages({
     required String token,
     required List<ChatMessage> messages,
   }) async {
+    final persistableMessages = messagesForPersistence(messages);
+    if (persistableMessages.isEmpty) return 0;
+
     final response = await _client.put(
       _batchMessagesUri,
       headers: {
@@ -183,7 +258,7 @@ class ChatHistoryApiService {
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
-        'messages': messages.map(_messageToServerMap).toList(),
+        'messages': persistableMessages.map(_messageToServerMap).toList(),
       }),
     );
     if (response.statusCode != 200) {

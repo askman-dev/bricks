@@ -2,11 +2,14 @@ import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   acceptTask,
+  listSessionMessagesForModel,
   syncMessages,
   upsertMessages,
   type AcceptTaskInput,
   type MessageUpsertInput,
 } from '../services/chatAsyncTransportService.js';
+import { generateWithUserConfig } from '../llm/llm_service.js';
+import type { LlmProvider } from '../llm/types.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -17,6 +20,120 @@ function parseSessionId(value: unknown): string | null {
   if (trimmed.length === 0 || trimmed.length > 255) return null;
   return trimmed;
 }
+
+function parseProvider(value: unknown): LlmProvider | undefined {
+  if (value === 'anthropic' || value === 'google_ai_studio') return value;
+  if (value === 'gemini') return 'google_ai_studio';
+  return undefined;
+}
+
+router.post('/respond', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const taskId = parseSessionId(body.taskId);
+    const idempotencyKey = parseSessionId(body.idempotencyKey);
+    const channelId = parseSessionId(body.channelId);
+    const sessionId = parseSessionId(body.sessionId);
+    const userMessageId = parseSessionId(body.userMessageId);
+    const assistantMessageId = parseSessionId(body.assistantMessageId);
+    const userMessage = typeof body.userMessage === 'string' ? body.userMessage.trim() : '';
+
+    if (!taskId || !idempotencyKey || !channelId || !sessionId || !userMessageId || !assistantMessageId || !userMessage) {
+      res.status(400).json({
+        error:
+          'Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, userMessage are required',
+      });
+      return;
+    }
+
+    const input: AcceptTaskInput = {
+      taskId,
+      idempotencyKey,
+      channelId,
+      sessionId,
+      threadId: parseSessionId(body.threadId),
+      resolvedBotId: parseSessionId(body.resolvedBotId),
+      resolvedSkillId: parseSessionId(body.resolvedSkillId),
+    };
+    await acceptTask(userId, input);
+
+    await upsertMessages(userId, [
+      {
+        messageId: userMessageId,
+        taskId,
+        channelId,
+        sessionId,
+        threadId: input.threadId,
+        role: 'user',
+        content: userMessage,
+        taskState: 'accepted',
+        checkpointCursor: null,
+        metadata: {
+          resolvedBotId: input.resolvedBotId,
+          resolvedSkillId: input.resolvedSkillId,
+          source: 'backend.respond',
+        },
+        createdAt: typeof body.createdAt === 'string' ? body.createdAt : null,
+      },
+    ]);
+
+    const modelMessages = await listSessionMessagesForModel(userId, sessionId, {
+      limit: 40,
+      maxChars: 10000,
+    });
+
+    const response = await generateWithUserConfig(
+      userId,
+      {
+        model: typeof body.model === 'string' ? body.model : undefined,
+        configId: typeof body.configId === 'string' ? body.configId : undefined,
+        messages: modelMessages,
+      },
+      parseProvider(body.provider),
+    );
+
+    const persisted = await upsertMessages(userId, [
+      {
+        messageId: assistantMessageId,
+        taskId,
+        channelId,
+        sessionId,
+        threadId: input.threadId,
+        role: 'assistant',
+        content: response.text,
+        taskState: 'completed',
+        checkpointCursor: null,
+        metadata: {
+          resolvedBotId: input.resolvedBotId,
+          resolvedSkillId: input.resolvedSkillId,
+          provider: response.provider,
+          model: response.model,
+          source: 'backend.respond',
+        },
+        createdAt: null,
+      },
+    ]);
+
+    res.json({
+      taskId,
+      sessionId,
+      assistantMessageId,
+      text: response.text,
+      provider: response.provider,
+      model: response.model,
+      lastSeqId: persisted.lastSeqId,
+    });
+  } catch (error) {
+    console.error('Chat respond error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 router.post('/tasks/accept', async (req: AuthRequest, res: Response) => {
   try {
