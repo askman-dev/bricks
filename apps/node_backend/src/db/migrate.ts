@@ -48,6 +48,7 @@ function stripSqlComments(sql: string): string {
  *   - gen_random_uuid()  → SQLite randomblob UUID expression
  *   - SERIAL             → INTEGER
  *   - JSONB              → TEXT
+ *   - PostgreSQL casts   (e.g. '[]'::jsonb) → cast removed
  *   - NOW()              → CURRENT_TIMESTAMP
  *
  * Note: statements are split on top-level semicolons.  This is safe for the
@@ -80,6 +81,7 @@ export function adaptMigrationForSqlite(sql: string): string[] {
     stmt = stmt.replace(/\bgen_random_uuid\(\)/g, SQLITE_UUID_EXPR);
     stmt = stmt.replace(/\bSERIAL\b/g, 'INTEGER');
     stmt = stmt.replace(/\bJSONB\b/gi, 'TEXT');
+    stmt = stmt.replace(/::\s*[a-zA-Z_][a-zA-Z0-9_]*/g, '');
     stmt = stmt.replace(/\bNOW\(\)/gi, 'CURRENT_TIMESTAMP');
 
     statements.push(stmt);
