@@ -77,6 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
   Timer? _persistDebounce;
+  int _respondGeneration = 0;
 
   @override
   void initState() {
@@ -88,7 +89,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _persistDebounce?.cancel();
     _doPersistActiveScopeMessages();
-    _chatHistoryApiService.dispose();
+    Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
@@ -677,6 +678,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    final generation = ++_respondGeneration;
     _chatHistoryApiService
         .respond(
       token: token,
@@ -695,6 +697,8 @@ class _ChatScreenState extends State<ChatScreen> {
     )
         .then((result) async {
       if (!mounted || agentMessageIndex >= _messages.length) return;
+      // Ignore stale completions if stop was pressed after this request started.
+      if (generation != _respondGeneration) return;
       setState(() {
         _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
           content: result.text,
@@ -705,7 +709,8 @@ class _ChatScreenState extends State<ChatScreen> {
           _lastSyncedSeq = result.lastSeqId;
         }
       });
-      _persistActiveScopeMessages(immediate: true);
+      // Backend already persisted both messages; skip redundant client-side
+      // upsert to avoid overwriting backend-only metadata (provider/model/source).
       if (mounted) {
         await _handleProactiveResponses(text);
         setState(() {
@@ -715,6 +720,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }).catchError((error) {
       if (!mounted || agentMessageIndex >= _messages.length) return;
+      if (generation != _respondGeneration) return;
       setState(() {
         _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
           content: 'Error: $error',
@@ -731,6 +737,9 @@ class _ChatScreenState extends State<ChatScreen> {
   void _stopStreaming() {
     _currentSubscription?.cancel();
     _currentSubscription = null;
+    // Invalidate any in-flight /chat/respond Future so its completion handler
+    // won't overwrite the cancelled state we set below.
+    _respondGeneration++;
     if (mounted) {
       setState(() {
         _isSending = false;

@@ -280,19 +280,22 @@ export async function listSessionMessagesForModel(
     [userId, sessionId, limit],
   );
 
-  const reversed = [...result.rows].reverse();
+  // result.rows is already newest-first (ORDER BY write_seq DESC).
+  // Collect messages greedily from newest to oldest so that the most recent
+  // turns are always included; stop as soon as adding the next message would
+  // exceed the budget.  Reverse at the end to restore chronological order.
   const maxChars = Math.max(200, Math.min(options.maxChars ?? 8000, 64000));
   const collected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   let used = 0;
-  for (const row of reversed) {
+  for (const row of result.rows) {
     const content = row.content?.trim() ?? '';
     if (!content) continue;
-    if (used + content.length > maxChars) continue;
+    if (used + content.length > maxChars) break;
     used += content.length;
     collected.push({
       role: row.role as 'user' | 'assistant',
       content,
     });
   }
-  return collected;
+  return collected.reverse();
 }

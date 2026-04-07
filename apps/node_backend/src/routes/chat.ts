@@ -61,14 +61,16 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
       resolvedBotId: parseSessionId(body.resolvedBotId),
       resolvedSkillId: parseSessionId(body.resolvedSkillId),
     };
-    await acceptTask(userId, input);
+    const acceptedTask = await acceptTask(userId, input);
+    const acceptedTaskId = acceptedTask.taskId;
+    const acceptedSessionId = acceptedTask.sessionId;
 
     await upsertMessages(userId, [
       {
         messageId: userMessageId,
-        taskId,
+        taskId: acceptedTaskId,
         channelId,
-        sessionId,
+        sessionId: acceptedSessionId,
         threadId: input.threadId,
         role: 'user',
         content: userMessage,
@@ -83,7 +85,7 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
       },
     ]);
 
-    const modelMessages = await listSessionMessagesForModel(userId, sessionId, {
+    const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
       limit: 40,
       maxChars: 10000,
     });
@@ -101,9 +103,9 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
     const persisted = await upsertMessages(userId, [
       {
         messageId: assistantMessageId,
-        taskId,
+        taskId: acceptedTaskId,
         channelId,
-        sessionId,
+        sessionId: acceptedSessionId,
         threadId: input.threadId,
         role: 'assistant',
         content: response.text,
@@ -121,8 +123,8 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
     ]);
 
     res.json({
-      taskId,
-      sessionId,
+      taskId: acceptedTaskId,
+      sessionId: acceptedSessionId,
       assistantMessageId,
       text: response.text,
       provider: response.provider,
