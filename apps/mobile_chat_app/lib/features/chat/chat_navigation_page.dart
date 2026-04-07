@@ -60,36 +60,20 @@ class ChatNavigationPage extends StatelessWidget {
                   tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
                 ),
               ),
-              const SizedBox(width: NavigationToolbar.kMiddleSpacing),
-              Text(
-                'Navigation',
-                style: Theme.of(context).textTheme.titleLarge,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Navigation',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
-            ],
-          ),
-        ),
-        const ListTile(
-          leading: Icon(Icons.chat_bubble_outline),
-          title: Text('Current Chat'),
-          subtitle: Text('You are here'),
-        ),
-        const Divider(),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: [
-              const Spacer(),
               IconButton(
                 onPressed: () =>
                     _selectAction(context, ChatNavigationAction.appSettings),
                 icon: const Icon(Icons.settings_outlined),
                 tooltip: 'Settings',
-              ),
-              IconButton(
-                onPressed: () =>
-                    _selectAction(context, ChatNavigationAction.sessions),
-                icon: const Icon(Icons.history),
-                tooltip: 'Sessions',
               ),
               IconButton(
                 onPressed: () =>
@@ -100,6 +84,11 @@ class ChatNavigationPage extends StatelessWidget {
             ],
           ),
         ),
+        const ListTile(
+          leading: Icon(Icons.chat_bubble_outline),
+          title: Text('Current Chat'),
+          subtitle: Text('You are here'),
+        ),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.account_tree_outlined),
@@ -109,11 +98,9 @@ class ChatNavigationPage extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: FilledButton.icon(
-            onPressed: () =>
-                _selectAction(context, ChatNavigationAction.createChannel),
-            icon: const Icon(Icons.add),
-            label: const Text('新建频道'),
+          child: Text(
+            '频道',
+            style: Theme.of(context).textTheme.titleSmall,
           ),
         ),
         if (channels.isEmpty)
@@ -139,11 +126,6 @@ class ChatNavigationPage extends StatelessWidget {
             );
           }),
         const SizedBox(height: 24),
-        ListTile(
-          leading: const Icon(Icons.settings_outlined),
-          title: const Text('Settings'),
-          onTap: () => _selectAction(context, ChatNavigationAction.appSettings),
-        ),
       ],
     );
   }

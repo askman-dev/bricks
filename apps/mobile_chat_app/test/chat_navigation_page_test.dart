@@ -32,7 +32,8 @@ void main() {
       expect(received, ChatNavigationAction.manageAgents);
     });
 
-    testWidgets('tapping Settings fires appSettings action', (tester) async {
+    testWidgets('tapping Settings icon fires appSettings action',
+        (tester) async {
       ChatNavigationAction? received;
 
       await tester.pumpWidget(_buildPage(
@@ -40,7 +41,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Settings'));
+      await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
 
       expect(received, ChatNavigationAction.appSettings);
@@ -59,8 +60,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Current Chat'), findsOneWidget);
-      expect(find.byTooltip('Sessions'), findsOneWidget);
+      expect(find.text('频道'), findsOneWidget);
       expect(find.text('默认频道'), findsOneWidget);
+      expect(find.byTooltip('Settings'), findsOneWidget);
+      expect(find.byTooltip('New Channel'), findsOneWidget);
+      expect(find.byTooltip('Sessions'), findsNothing);
+      expect(find.text('Settings'), findsNothing);
+      expect(find.text('新建频道'), findsNothing);
     });
 
     testWidgets('tapping back button closes an open drawer', (tester) async {
