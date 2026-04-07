@@ -63,10 +63,24 @@ void main() {
       expect(find.text('频道'), findsOneWidget);
       expect(find.text('默认频道'), findsOneWidget);
       expect(find.byTooltip('Settings'), findsOneWidget);
-      expect(find.byTooltip('New Channel'), findsOneWidget);
+      expect(find.text('新建频道'), findsOneWidget);
+      expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
       expect(find.byTooltip('Sessions'), findsNothing);
       expect(find.text('Settings'), findsNothing);
-      expect(find.text('新建频道'), findsNothing);
+    });
+
+    testWidgets('tapping 新建频道 fires createChannel action', (tester) async {
+      ChatNavigationAction? received;
+
+      await tester.pumpWidget(_buildPage(
+        onActionSelected: (action) => received = action,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('新建频道'));
+      await tester.pumpAndSettle();
+
+      expect(received, ChatNavigationAction.createChannel);
     });
 
     testWidgets('tapping back button closes an open drawer', (tester) async {
