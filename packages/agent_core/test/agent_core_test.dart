@@ -1,5 +1,7 @@
 import 'dart:math';
 import 'package:agent_core/agent_core.dart';
+import 'package:agent_core/src/session/agent_session_impl.dart';
+import 'package:agent_core/src/providers/real_model_gateway.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import 'package:test/test.dart';
 
@@ -69,6 +71,27 @@ void main() {
       expect(session.isRunning, isFalse);
       await expectLater(session.cancel(), completes);
       expect(session.isRunning, isFalse);
+    });
+
+    test('forwards full conversation context to gateway', () async {
+      final gateway = _RecordingGateway();
+      final localSession = AgentSessionImpl(
+        settings:
+            const AgentSettings(provider: 'test', model: 'claude-sonnet-4-5'),
+        gateway: gateway,
+      );
+
+      await localSession.sendMessage('1+3').toList();
+      await localSession.sendMessage('+5').toList();
+
+      expect(gateway.calls, hasLength(2));
+      expect(gateway.calls.last, hasLength(3));
+      expect(gateway.calls.last[0]['role'], equals('user'));
+      expect(gateway.calls.last[0]['content'], equals('1+3'));
+      expect(gateway.calls.last[1]['role'], equals('assistant'));
+      expect(gateway.calls.last[2]['content'], equals('+5'));
+
+      await localSession.dispose();
     });
   });
 
@@ -224,4 +247,20 @@ class _FixedRandom implements Random {
 
   @override
   bool nextBool() => false;
+}
+
+class _RecordingGateway extends RealModelGateway {
+  _RecordingGateway() : super(environment: const {});
+
+  final List<List<Map<String, String>>> calls = [];
+
+  @override
+  Future<String> generate({
+    required AgentSettings settings,
+    required String message,
+    List<Map<String, String>>? conversationMessages,
+  }) async {
+    calls.add(List<Map<String, String>>.from(conversationMessages ?? const []));
+    return 'ok';
+  }
 }

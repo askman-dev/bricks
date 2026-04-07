@@ -77,6 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
   Timer? _persistDebounce;
+  int _respondGeneration = 0;
 
   @override
   void initState() {
@@ -87,7 +88,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _persistDebounce?.cancel();
-    _chatHistoryApiService.dispose();
+    _doPersistActiveScopeMessages();
+    Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
@@ -473,9 +475,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _persistActiveScopeMessages() {
-    // Debounce to avoid request storms on streaming deltas.
+  void _persistActiveScopeMessages({bool immediate = false}) {
     _persistDebounce?.cancel();
+    if (immediate) {
+      _doPersistActiveScopeMessages();
+      return;
+    }
+    // Debounce to avoid request storms on streaming deltas.
     _persistDebounce = Timer(const Duration(milliseconds: 500), () {
       _doPersistActiveScopeMessages();
     });
@@ -552,7 +558,9 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.add(normalized);
     });
-    _persistActiveScopeMessages();
+    final shouldPersistImmediately =
+        normalized.role == 'user' || (!normalized.isStreaming);
+    _persistActiveScopeMessages(immediate: shouldPersistImmediately);
     return _messages.length - 1;
   }
 
@@ -593,21 +601,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _latestCheckpointCursor = ack.checkpointCursor;
     _persistActiveScopeMessages();
 
-    final token = _authToken;
-    if (token != null && token.isNotEmpty) {
-      unawaited(
-        _chatHistoryApiService
-            .acceptTask(
-              token: token,
-              taskId: taskId,
-              idempotencyKey: idempotencyKey,
-              scope: _activeScope,
-              resolvedBotId: resolvedBotId,
-              resolvedSkillId: resolvedSkillId,
-            )
-            .catchError((_) {}),
-      );
-    }
     final scoreSummary = arbitration.candidateScores
         .map((item) => '${item.botId}:${item.score.toStringAsFixed(2)}')
         .join(', ');
@@ -668,105 +661,85 @@ class _ChatScreenState extends State<ChatScreen> {
       _isStreaming = true;
     });
 
-    _sessionForAgent(agent).then((session) {
-      final stream = session.sendMessage(text);
-      _currentSubscription = stream.listen(
-        (event) {
-          if (event is TextDeltaEvent) {
-            final current = _messages[agentMessageIndex];
-            _updateMessageContent(
-              agentMessageIndex,
-              current.content + event.delta,
-              isStreaming: true,
-            );
-            if (current.taskState == ChatTaskState.accepted) {
-              setState(() {
-                _messages[agentMessageIndex] = _taskProtocol.applyAcceptedState(
-                  _messages[agentMessageIndex],
-                  ack,
-                );
-              });
-            }
-          } else if (event is MessageCompleteEvent) {
-            if (!mounted || agentMessageIndex >= _messages.length) return;
-            setState(() {
-              _messages[agentMessageIndex] =
-                  _messages[agentMessageIndex].copyWith(
-                content: event.fullText,
-                isStreaming: false,
-                taskState: ChatTaskState.completed,
-              );
-            });
-            _persistActiveScopeMessages();
-          } else if (event is AgentErrorEvent) {
-            if (!mounted || agentMessageIndex >= _messages.length) return;
-            setState(() {
-              _messages[agentMessageIndex] =
-                  _messages[agentMessageIndex].copyWith(
-                content: 'Error: ${event.message}',
-                isStreaming: false,
-                taskState: ChatTaskState.failed,
-                fallbackToDefaultBot: arbitrationMode,
-                decisionReason: 'Agent error fallback path triggered.',
-              );
-            });
-            _persistActiveScopeMessages();
-          }
-        },
-        onError: (error) {
-          if (!mounted || agentMessageIndex >= _messages.length) return;
-          setState(() {
-            _messages[agentMessageIndex] =
-                _messages[agentMessageIndex].copyWith(
-              content: 'Error: $error',
-              isStreaming: false,
-              taskState: ChatTaskState.failed,
-            );
-          });
-          _persistActiveScopeMessages();
-          if (mounted) {
-            setState(() {
-              _isSending = false;
-              _isStreaming = false;
-            });
-          }
-        },
-        onDone: () async {
-          if (mounted) {
-            await _handleProactiveResponses(text);
-          }
-          if (mounted) {
-            setState(() {
-              _isSending = false;
-              _isStreaming = false;
-            });
-          }
-        },
-        cancelOnError: true,
-      );
-    }).catchError((error) {
+    final token = _authToken;
+    final runtimeSettings = _settingsForAgent(agent);
+    if (token == null || token.isEmpty) {
       if (mounted && agentMessageIndex < _messages.length) {
         setState(() {
           _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
-            content: 'Error: $error',
+            content: 'Error: Missing auth token',
             isStreaming: false,
             taskState: ChatTaskState.failed,
           );
+          _isSending = false;
+          _isStreaming = false;
         });
-        _persistActiveScopeMessages();
       }
+      return;
+    }
+
+    final generation = ++_respondGeneration;
+    _chatHistoryApiService
+        .respond(
+      token: token,
+      taskId: taskId,
+      idempotencyKey: idempotencyKey,
+      scope: _activeScope,
+      userMessageId: _messages[agentMessageIndex - 1].messageId!,
+      assistantMessageId: _messages[agentMessageIndex].messageId!,
+      userMessage: text,
+      resolvedBotId: resolvedBotId,
+      resolvedSkillId: resolvedSkillId,
+      provider: runtimeSettings.provider,
+      model: runtimeSettings.model,
+      configId: runtimeSettings.configId,
+      createdAt: envelope.createdAt,
+    )
+        .then((result) async {
+      if (!mounted || agentMessageIndex >= _messages.length) return;
+      // Ignore stale completions if stop was pressed after this request started.
+      if (generation != _respondGeneration) return;
+      setState(() {
+        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+          content: result.text,
+          isStreaming: false,
+          taskState: ChatTaskState.completed,
+        );
+        if (result.lastSeqId > _lastSyncedSeq) {
+          _lastSyncedSeq = result.lastSeqId;
+        }
+      });
+      // Backend already persisted both messages; skip redundant client-side
+      // upsert to avoid overwriting backend-only metadata (provider/model/source).
       if (mounted) {
+        await _handleProactiveResponses(text);
         setState(() {
           _isSending = false;
           _isStreaming = false;
         });
       }
+    }).catchError((error) {
+      if (!mounted || agentMessageIndex >= _messages.length) return;
+      if (generation != _respondGeneration) return;
+      setState(() {
+        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+          content: 'Error: $error',
+          isStreaming: false,
+          taskState: ChatTaskState.failed,
+        );
+        _isSending = false;
+        _isStreaming = false;
+      });
+      _persistActiveScopeMessages(immediate: true);
     });
   }
 
   void _stopStreaming() {
     _currentSubscription?.cancel();
     _currentSubscription = null;
+    // Invalidate any in-flight /chat/respond Future so its completion handler
+    // won't overwrite the cancelled state we set below.
+    _respondGeneration++;
     if (mounted) {
       setState(() {
         _isSending = false;
@@ -782,7 +755,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       });
-      _persistActiveScopeMessages();
+      _persistActiveScopeMessages(immediate: true);
     }
   }
 
