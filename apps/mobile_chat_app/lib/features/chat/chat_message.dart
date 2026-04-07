@@ -8,6 +8,7 @@ class ChatMessage {
   ChatMessage({
     required this.role,
     required this.content,
+    this.messageId,
     this.agentId,
     this.agentName,
     DateTime? timestamp,
@@ -36,6 +37,7 @@ class ChatMessage {
 
   final String role;
   final String content;
+  final String? messageId;
 
   final String? agentId;
   final String? agentName;
@@ -69,6 +71,7 @@ class ChatMessage {
   ChatMessage copyWith({
     String? role,
     String? content,
+    String? messageId,
     String? agentId,
     String? agentName,
     DateTime? timestamp,
@@ -97,6 +100,7 @@ class ChatMessage {
     return ChatMessage(
       role: role ?? this.role,
       content: content ?? this.content,
+      messageId: messageId ?? this.messageId,
       agentId: agentId ?? this.agentId,
       agentName: agentName ?? this.agentName,
       timestamp: timestamp ?? this.timestamp,
@@ -122,6 +126,85 @@ class ChatMessage {
       candidateScoreSummary:
           candidateScoreSummary ?? this.candidateScoreSummary,
       isRecovered: isRecovered ?? this.isRecovered,
+    );
+  }
+
+  Map<String, Object?> toMap() {
+    return {
+      'role': role,
+      'content': content,
+      'messageId': messageId,
+      'agentId': agentId,
+      'agentName': agentName,
+      'timestamp': timestamp.toIso8601String(),
+      'isStreaming': isStreaming,
+      'taskId': taskId,
+      'taskState': taskState?.name,
+      'idempotencyKey': idempotencyKey,
+      'createdAt': createdAt?.toIso8601String(),
+      'acknowledgedAt': acknowledgedAt?.toIso8601String(),
+      'checkpointCursor': checkpointCursor,
+      'channelId': channelId,
+      'sessionId': sessionId,
+      'threadId': threadId,
+      'resolvedBotId': resolvedBotId,
+      'resolvedSkillId': resolvedSkillId,
+      'arbitrationMode': arbitrationMode,
+      'fallbackToDefaultBot': fallbackToDefaultBot,
+      'decisionReason': decisionReason,
+      'traceId': traceId,
+      'tieDetected': tieDetected,
+      'tieBotIds': tieBotIds,
+      'selectedScore': selectedScore,
+      'candidateScoreSummary': candidateScoreSummary,
+      'isRecovered': isRecovered,
+    };
+  }
+
+  factory ChatMessage.fromMap(Map<String, Object?> map) {
+    ChatTaskState? parseTaskState(Object? value) {
+      if (value is! String || value.isEmpty) return null;
+      for (final state in ChatTaskState.values) {
+        if (state.name == value) return state;
+      }
+      return null;
+    }
+
+    DateTime? parseDate(Object? value) {
+      if (value is! String || value.isEmpty) return null;
+      return DateTime.tryParse(value);
+    }
+
+    return ChatMessage(
+      role: (map['role'] as String?) ?? 'assistant',
+      content: (map['content'] as String?) ?? '',
+      messageId: map['messageId'] as String?,
+      agentId: map['agentId'] as String?,
+      agentName: map['agentName'] as String?,
+      timestamp: parseDate(map['timestamp']),
+      isStreaming: map['isStreaming'] as bool? ?? false,
+      taskId: map['taskId'] as String?,
+      taskState: parseTaskState(map['taskState']),
+      idempotencyKey: map['idempotencyKey'] as String?,
+      createdAt: parseDate(map['createdAt']),
+      acknowledgedAt: parseDate(map['acknowledgedAt']),
+      checkpointCursor: map['checkpointCursor'] as String?,
+      channelId: map['channelId'] as String?,
+      sessionId: map['sessionId'] as String?,
+      threadId: map['threadId'] as String?,
+      resolvedBotId: map['resolvedBotId'] as String?,
+      resolvedSkillId: map['resolvedSkillId'] as String?,
+      arbitrationMode: map['arbitrationMode'] as bool? ?? false,
+      fallbackToDefaultBot: map['fallbackToDefaultBot'] as bool? ?? false,
+      decisionReason: map['decisionReason'] as String?,
+      traceId: map['traceId'] as String?,
+      tieDetected: map['tieDetected'] as bool? ?? false,
+      tieBotIds: ((map['tieBotIds'] as List<Object?>?) ?? const [])
+          .whereType<String>()
+          .toList(),
+      selectedScore: (map['selectedScore'] as num?)?.toDouble(),
+      candidateScoreSummary: map['candidateScoreSummary'] as String?,
+      isRecovered: map['isRecovered'] as bool? ?? false,
     );
   }
 }
