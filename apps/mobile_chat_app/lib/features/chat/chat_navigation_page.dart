@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Actions that can be triggered from the chat navigation page.
-enum ChatNavigationAction { manageAgents, appSettings, sessions, createChannel }
+enum ChatNavigationAction { appSettings, sessions, createChannel }
 
 class ChatChannelItem {
   const ChatChannelItem({
@@ -15,21 +15,37 @@ class ChatChannelItem {
   final bool isDefault;
 }
 
+class ChatAgentItem {
+  const ChatAgentItem({required this.name});
+
+  final String name;
+}
+
 /// Navigation content for chat-related routes, intended for use in a
 /// [Drawer].
-class ChatNavigationPage extends StatelessWidget {
+class ChatNavigationPage extends StatefulWidget {
   const ChatNavigationPage({
     super.key,
     required this.onActionSelected,
+    required this.agents,
     required this.channels,
     required this.selectedChannelId,
     this.onChannelSelected,
   });
 
   final ValueChanged<ChatNavigationAction> onActionSelected;
+  final List<ChatAgentItem> agents;
   final List<ChatChannelItem> channels;
   final String selectedChannelId;
   final ValueChanged<String>? onChannelSelected;
+
+  @override
+  State<ChatNavigationPage> createState() => _ChatNavigationPageState();
+}
+
+class _ChatNavigationPageState extends State<ChatNavigationPage> {
+  bool _agentsExpanded = true;
+  bool _channelsExpanded = true;
 
   void _closeNavigation(BuildContext context) {
     Scaffold.of(context).closeDrawer();
@@ -37,13 +53,27 @@ class ChatNavigationPage extends StatelessWidget {
 
   void _selectAction(BuildContext context, ChatNavigationAction action) {
     _closeNavigation(context);
-    onActionSelected(action);
+    widget.onActionSelected(action);
+  }
+
+  void _showNotImplementedToast() {
+    final messenger = ScaffoldMessenger.of(context);
+    Scaffold.of(context).closeDrawer();
+    messenger.hideCurrentSnackBar();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('未开发的功能')),
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final selected = channels.any((item) => item.id == selectedChannelId)
-        ? selectedChannelId
+    final channels = widget.channels;
+    final agents = widget.agents;
+    final selected = channels.any((item) => item.id == widget.selectedChannelId)
+        ? widget.selectedChannelId
         : (channels.isNotEmpty ? channels.first.id : null);
     return ListView(
       children: [
@@ -84,20 +114,80 @@ class ChatNavigationPage extends StatelessWidget {
           subtitle: Text('You are here'),
         ),
         const Divider(),
-        ListTile(
-          leading: const Icon(Icons.account_tree_outlined),
-          title: const Text('Manage Agents'),
-          onTap: () =>
-              _selectAction(context, ChatNavigationAction.manageAgents),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  '频道',
-                  style: Theme.of(context).textTheme.titleSmall,
+                child: InkWell(
+                  onTap: () =>
+                      setState(() => _agentsExpanded = !_agentsExpanded),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _agentsExpanded
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Agents',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _showNotImplementedToast,
+                icon: const Icon(Icons.settings_outlined, size: 18),
+                label: const Text('配置'),
+              ),
+            ],
+          ),
+        ),
+        if (_agentsExpanded)
+          if (agents.isEmpty)
+            const ListTile(
+              title: Text('在设置中新建 Agents'),
+            )
+          else
+            ...agents.map(
+              (agent) => ListTile(
+                leading: const Icon(Icons.smart_toy_outlined),
+                title: Text(agent.name),
+              ),
+            ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () =>
+                      setState(() => _channelsExpanded = !_channelsExpanded),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _channelsExpanded
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '频道',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               TextButton.icon(
@@ -109,28 +199,29 @@ class ChatNavigationPage extends StatelessWidget {
             ],
           ),
         ),
-        if (channels.isEmpty)
-          const ListTile(
-            title: Text('No channels'),
-            subtitle: Text('Create your first channel'),
-          )
-        else
-          ...channels.map((channel) {
-            final isSelected = selected == channel.id;
-            return ListTile(
-              leading: Icon(
-                channel.isDefault ? Icons.home_filled : Icons.forum_outlined,
-              ),
-              title: Text(channel.name),
-              subtitle:
-                  channel.isDefault ? const Text('Default channel') : null,
-              selected: isSelected,
-              onTap: () {
-                _closeNavigation(context);
-                onChannelSelected?.call(channel.id);
-              },
-            );
-          }),
+        if (_channelsExpanded)
+          if (channels.isEmpty)
+            const ListTile(
+              title: Text('No channels'),
+              subtitle: Text('Create your first channel'),
+            )
+          else
+            ...channels.map((channel) {
+              final isSelected = selected == channel.id;
+              return ListTile(
+                leading: Icon(
+                  channel.isDefault ? Icons.home_filled : Icons.forum_outlined,
+                ),
+                title: Text(channel.name),
+                subtitle:
+                    channel.isDefault ? const Text('Default channel') : null,
+                selected: isSelected,
+                onTap: () {
+                  _closeNavigation(context);
+                  widget.onChannelSelected?.call(channel.id);
+                },
+              );
+            }),
         const SizedBox(height: 24),
       ],
     );
