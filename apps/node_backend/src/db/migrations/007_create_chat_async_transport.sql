@@ -14,9 +14,9 @@ CREATE TABLE IF NOT EXISTS chat_tasks (
   resolved_skill_id VARCHAR(255),
   idempotency_key VARCHAR(255) NOT NULL,
   state VARCHAR(32) NOT NULL DEFAULT 'accepted',
-  accepted_at TIMESTAMP DEFAULT NOW(),
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
+  accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id, task_id),
   UNIQUE(user_id, idempotency_key)
 );
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   task_state VARCHAR(32),
   checkpoint_cursor VARCHAR(255),
   metadata JSONB,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id, message_id)
 );
 
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS chat_sync_checkpoints (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   session_id VARCHAR(255) NOT NULL,
   last_seq_id INTEGER NOT NULL DEFAULT 0,
-  updated_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(user_id, session_id)
 );
 

@@ -99,6 +99,11 @@ router.put('/messages/batch', async (req: AuthRequest, res: Response) => {
       });
     }
 
+    if (payload.length === 0) {
+      res.status(400).json({ error: 'No valid messages in payload' });
+      return;
+    }
+
     const result = await upsertMessages(userId, payload);
     res.json(result);
   } catch (error) {
@@ -149,10 +154,13 @@ router.get('/history/:sessionId', async (req: AuthRequest, res: Response) => {
     }
 
     const synced = await syncMessages(userId, sessionId, 0);
+    const latestCheckpointCursor =
+      [...synced.messages].reverse().find((m) => m.checkpointCursor != null)
+        ?.checkpointCursor ?? null;
     res.json({
       sessionId,
       messages: synced.messages,
-      latestCheckpointCursor: synced.lastSeqId > 0 ? `seq:${synced.lastSeqId}` : null,
+      latestCheckpointCursor,
       lastSeqId: synced.lastSeqId,
     });
   } catch (error) {

@@ -75,8 +75,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _syncingAfterReconnect = false;
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
-  final ChatHistoryApiService _chatHistoryApiService =
-      const ChatHistoryApiService();
+  final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
+  Timer? _persistDebounce;
 
   @override
   void initState() {
@@ -86,6 +86,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _persistDebounce?.cancel();
+    _chatHistoryApiService.dispose();
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
@@ -472,6 +474,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _persistActiveScopeMessages() {
+    // Debounce to avoid request storms on streaming deltas.
+    _persistDebounce?.cancel();
+    _persistDebounce = Timer(const Duration(milliseconds: 500), () {
+      _doPersistActiveScopeMessages();
+    });
+  }
+
+  void _doPersistActiveScopeMessages() {
     final token = _authToken;
     if (token == null || token.isEmpty) return;
     unawaited(
@@ -479,7 +489,10 @@ class _ChatScreenState extends State<ChatScreen> {
           .upsertMessages(token: token, messages: _messages)
           .then((lastSeq) {
         if (!mounted || lastSeq <= 0) return;
-        setState(() => _lastSyncedSeq = lastSeq);
+        // Only advance the cursor, never move it backwards.
+        setState(() {
+          if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
+        });
       }).catchError((_) {}),
     );
   }

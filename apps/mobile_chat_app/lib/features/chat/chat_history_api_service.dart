@@ -33,12 +33,31 @@ class ChatAcceptedTask {
 }
 
 class ChatHistoryApiService {
-  const ChatHistoryApiService({http.Client? httpClient})
-      : _httpClient = httpClient;
+  ChatHistoryApiService({http.Client? httpClient})
+      : _httpClient = httpClient ?? http.Client(),
+        _ownsHttpClient = httpClient == null;
 
-  final http.Client? _httpClient;
+  final http.Client _httpClient;
+  final bool _ownsHttpClient;
 
-  http.Client get _client => _httpClient ?? http.Client();
+  http.Client get _client => _httpClient;
+
+  /// Fields from [ChatMessage.toMap] that carry server-relevant information.
+  /// UI-only state (isStreaming, arbitration flags, score details, etc.) is
+  /// intentionally excluded to keep request payloads and DB storage lean.
+  static const _serverMetadataKeys = [
+    'resolvedBotId',
+    'resolvedSkillId',
+    'agentId',
+    'agentName',
+    'traceId',
+  ];
+
+  void dispose() {
+    if (_ownsHttpClient) {
+      _httpClient.close();
+    }
+  }
 
   String get _base => LlmConfigService.resolveBaseUrl();
 
@@ -198,6 +217,11 @@ class ChatHistoryApiService {
 
   Map<String, Object?> _messageToServerMap(ChatMessage message) {
     final map = message.toMap();
+    final metadata = <String, Object?>{};
+    for (final key in _serverMetadataKeys) {
+      final value = map[key];
+      if (value != null) metadata[key] = value;
+    }
     return {
       'messageId': map['messageId'],
       'taskId': map['taskId'],
@@ -209,7 +233,7 @@ class ChatHistoryApiService {
       'taskState': map['taskState'],
       'checkpointCursor': map['checkpointCursor'],
       'createdAt': map['createdAt'],
-      'metadata': map,
+      if (metadata.isNotEmpty) 'metadata': metadata,
     };
   }
 }
