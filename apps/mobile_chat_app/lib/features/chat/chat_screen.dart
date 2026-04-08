@@ -72,6 +72,9 @@ class _ChatScreenState extends State<ChatScreen> {
   };
   final Map<String, DateTime> _subSectionLastMessageAt = {};
   String _activeSubSection = 'main';
+  /// Remembers the last-active sub-section id per channel so that switching
+  /// back to a previously visited channel restores the correct sub-section.
+  final Map<String, String> _lastActiveSubSectionByChannel = {};
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
@@ -417,9 +420,19 @@ class _ChatScreenState extends State<ChatScreen> {
       Navigator.of(context).pop();
       return;
     }
+    // Persist current sub-section so we can restore it if the user returns.
+    _lastActiveSubSectionByChannel[_activeChannelId] = _activeSubSection;
+    // Restore last-visited sub-section for the target channel, falling back to
+    // 'main' if the remembered section no longer exists in the section list.
+    final remembered = _lastActiveSubSectionByChannel[resolvedChannelId];
+    final sections = _channelSubSections[resolvedChannelId] ?? const [];
+    final restoredSubSection = (remembered != null &&
+            sections.any((s) => s.id == remembered))
+        ? remembered
+        : 'main';
     setState(() {
       _activeChannelId = resolvedChannelId;
-      _activeSubSection = 'main';
+      _activeSubSection = restoredSubSection;
     });
     unawaited(_loadMessagesForActiveScope());
     Navigator.of(context).pop();
@@ -467,12 +480,21 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    // Capture scope identity before the async gap so we can discard stale
+    // responses if the user navigates away while the request is in-flight.
+    final capturedChannelId = _activeChannelId;
+    final capturedSubSection = _activeSubSection;
+    final capturedSessionId = _sessionIdForScope;
+
     try {
       final snapshot = await _chatHistoryApiService.load(
         token: token,
-        sessionId: _sessionIdForScope,
+        sessionId: capturedSessionId,
       );
       if (!mounted) return;
+      // Discard stale response if the active scope changed during the await.
+      if (_activeChannelId != capturedChannelId ||
+          _activeSubSection != capturedSubSection) return;
       setState(() {
         _messages
           ..clear()
@@ -480,9 +502,14 @@ class _ChatScreenState extends State<ChatScreen> {
         _latestCheckpointCursor = snapshot.latestCheckpointCursor;
         _lastSyncedSeq = snapshot.lastSeqId;
       });
-      _updateSubSectionLastMessageAtFromMessages();
+      _updateSubSectionLastMessageAtFromMessages(
+        channelId: capturedChannelId,
+        subSection: capturedSubSection,
+      );
     } catch (_) {
       if (!mounted) return;
+      if (_activeChannelId != capturedChannelId ||
+          _activeSubSection != capturedSubSection) return;
       setState(() {
         _messages.clear();
         _latestCheckpointCursor = null;
@@ -494,7 +521,12 @@ class _ChatScreenState extends State<ChatScreen> {
   String _subSectionKey(String channelId, String sectionId) =>
       '$channelId::$sectionId';
 
-  void _updateSubSectionLastMessageAtFromMessages() {
+  void _updateSubSectionLastMessageAtFromMessages({
+    String? channelId,
+    String? subSection,
+  }) {
+    final resolvedChannelId = channelId ?? _activeChannelId;
+    final resolvedSubSection = subSection ?? _activeSubSection;
     final latest = _messages.fold<DateTime?>(null, (current, message) {
       final candidate = message.createdAt ?? message.timestamp;
       if (current == null) return candidate;
@@ -504,12 +536,15 @@ class _ChatScreenState extends State<ChatScreen> {
     if (latest == null) return;
     setState(() {
       _subSectionLastMessageAt[
-          _subSectionKey(_activeChannelId, _activeSubSection)] = latest;
+          _subSectionKey(resolvedChannelId, resolvedSubSection)] = latest;
     });
   }
 
+  /// Looks up a sub-section name by id without triggering a sort, keeping
+  /// build-path cost at O(n) instead of O(n log n).
   String? _subSectionNameById(String sectionId) {
-    for (final section in _activeSubSections) {
+    final items = _channelSubSections[_activeChannelId] ?? const [];
+    for (final section in items) {
       if (section.id == sectionId) return section.name;
     }
     return null;
@@ -937,7 +972,7 @@ class _ChatScreenState extends State<ChatScreen> {
         runSpacing: BricksSpacing.xs,
         children: [
           Chip(label: Text('Channel: $_activeChannelId')),
-          Chip(label: Text('Thread: $threadLabel')),
+          Chip(label: Text('子区: $threadLabel')),
           Chip(label: Text('Session: $_sessionIdForScope')),
           Chip(label: Text('Mode: $mode')),
           if (_latestCheckpointCursor != null)
