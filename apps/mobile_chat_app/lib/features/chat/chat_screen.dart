@@ -482,19 +482,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // Capture scope identity before the async gap so we can discard stale
     // responses if the user navigates away while the request is in-flight.
+    // capturedSessionId encodes both channelId and subSection, so a single
+    // comparison is enough to detect any scope change.
     final capturedChannelId = _activeChannelId;
     final capturedSubSection = _activeSubSection;
     final capturedSessionId = _sessionIdForScope;
+
+    bool _isScopeStale() => _sessionIdForScope != capturedSessionId;
 
     try {
       final snapshot = await _chatHistoryApiService.load(
         token: token,
         sessionId: capturedSessionId,
       );
-      if (!mounted) return;
-      // Discard stale response if the active scope changed during the await.
-      if (_activeChannelId != capturedChannelId ||
-          _activeSubSection != capturedSubSection) return;
+      if (!mounted || _isScopeStale()) return;
       setState(() {
         _messages
           ..clear()
@@ -507,9 +508,7 @@ class _ChatScreenState extends State<ChatScreen> {
         subSection: capturedSubSection,
       );
     } catch (_) {
-      if (!mounted) return;
-      if (_activeChannelId != capturedChannelId ||
-          _activeSubSection != capturedSubSection) return;
+      if (!mounted || _isScopeStale()) return;
       setState(() {
         _messages.clear();
         _latestCheckpointCursor = null;
