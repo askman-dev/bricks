@@ -1,6 +1,8 @@
 # Background
 
-对话页顶部目前展示一排 `Chip`（Channel / Thread / Session / ThreadMode / Mode / Syncing / Cursor / Seq）。这些信息主要用于调试会话作用域、同步状态和多代理仲裁状态，不属于核心聊天输入输出流程。目标是在真正删除前，先确认影响面与依赖逻辑，避免误伤同步与线程切换能力。
+对话页顶部目前展示一排 `Chip`（Channel / Thread / Session / ThreadMode / Mode / Cursor / Seq）。这些信息主要用于调试会话作用域、同步状态和多代理仲裁状态，不属于核心聊天输入输出流程。目标是在真正删除前，先确认影响面与依赖逻辑，避免误伤同步与线程切换能力。
+
+> **注意**：`Syncing` Chip 及其关联的内联线性进度条与"模拟断线恢复同步"按钮已在本 PR 中一并移除（同步指示器和调试触发入口均属于调试辅助 UI，不属于核心 context bar 展示信息）。当前剩余 Chip 如上所列。
 
 相关实现位于 `apps/mobile_chat_app/lib/features/chat/chat_screen.dart` 的 `_buildContextBar()`，并在 `build()` 的 `body` 中固定插入。同步与游标数据由 `ChatHistoryApiService` 与消息流处理逻辑提供。
 
@@ -33,7 +35,7 @@
   1. 主区发送消息并接收流式回复。
   2. 开启 Thread 模式并切换子区。
   3. 切换频道后确认 session scope 仍正确重载。
-  4. 触发断线恢复同步，确认 `afterSeq` 增量同步仍生效。
+  4. 通过真实断网/恢复网络（或应用切后台后恢复连接）触发 reconnect sync，确认 `afterSeq` 增量同步仍生效，缺失消息会补齐且不会重复。
 - 自动化补强（当前仓库无直接覆盖）：
   - 为 `chat_screen` 添加 widget test，至少验证 context bar 可配置隐藏后不影响消息列表与 composer 渲染。
 
