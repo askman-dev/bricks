@@ -80,10 +80,12 @@ products:
         name: 认证与回跳控制
         user_value: API 请求可被认证并处理回跳逻辑。
         entry_paths:
-          - route: /auth
+          - route: /api/auth/github
             route_hint: apps/node_backend/src/routes/auth.ts
-          - route: /auth-return-to
-            route_hint: apps/node_backend/src/routes/auth_return_to.ts
+          - route: /api/auth/github/callback
+            route_hint: apps/node_backend/src/routes/auth.ts
+          - route: /api/auth/me
+            route_hint: apps/node_backend/src/routes/auth.ts
         smoke_checks:
           - 未登录请求返回预期状态码。
           - 合法回跳参数通过校验。
@@ -92,9 +94,9 @@ products:
         name: Chat 与 LLM 调用
         user_value: 服务端可处理聊天请求并路由到模型提供商。
         entry_paths:
-          - route: /chat
+          - route: /api/chat
             route_hint: apps/node_backend/src/routes/chat.ts
-          - route: /llm
+          - route: /api/llm
             route_hint: apps/node_backend/src/routes/llm.ts
           - service: LlmService
             route_hint: apps/node_backend/src/llm/llm_service.ts

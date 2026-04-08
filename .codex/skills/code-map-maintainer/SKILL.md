@@ -40,8 +40,15 @@ description: Maintain repository code maps (feature_map.yaml and logic_map.yaml)
 3. 推荐测试员优先验证的 smoke checks。
 
 ## 5) 推荐校验命令
+
+**Python（需要 PyYAML）：**
 ```bash
 python3 -c "import yaml,sys; yaml.safe_load(open('docs/code_maps/feature_map.yaml')); yaml.safe_load(open('docs/code_maps/logic_map.yaml')); print('code maps yaml ok')"
 ```
 
-如环境缺少 `yaml` 模块，可使用仓库既有工具链替代，或在说明中标注限制。
+**Ruby（大多数系统内置，无需额外安装）：**
+```bash
+ruby -e "require 'yaml'; require 'date'; YAML.safe_load_file('docs/code_maps/feature_map.yaml', permitted_classes: [Date]); YAML.safe_load_file('docs/code_maps/logic_map.yaml', permitted_classes: [Date]); puts 'code maps yaml ok'"
+```
+
+如环境两种工具均不可用，可直接目视检查缩进与冒号格式，或在说明中标注限制。

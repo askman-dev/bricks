@@ -103,12 +103,57 @@ index:
       - 侧边栏入口迁移后页面不可达。
       - 页面间返回路径断裂造成死路由。
 
+  - feature_id: backend_auth
+    capability: 后端 GitHub OAuth 认证
+    code_index:
+      - apps/node_backend/src/routes/auth.ts
+      - apps/node_backend/src/routes/auth_return_to.ts
+      - apps/node_backend/src/middleware/auth.ts
+      - apps/node_backend/src/services/userService.ts
+      - apps/node_backend/src/services/oauthStateService.ts
+    doc_index:
+      - docs/architecture.md
+    test_index:
+      - apps/node_backend/src/routes/auth.test.ts
+    keywords:
+      - oauth
+      - github
+      - callback
+      - return_to
+      - jwt
+      - token
+    change_risks:
+      - OAuth state 校验逻辑变动可能导致回调失效。
+      - return_to 校验规则变动可能引入开放重定向漏洞。
+
+  - feature_id: backend_chat_llm
+    capability: 后端聊天与 LLM 路由
+    code_index:
+      - apps/node_backend/src/routes/chat.ts
+      - apps/node_backend/src/routes/llm.ts
+      - apps/node_backend/src/llm/llm_service.ts
+      - apps/node_backend/src/llm/providers/anthropic_adapter.ts
+      - apps/node_backend/src/llm/providers/google_ai_studio_adapter.ts
+    doc_index:
+      - docs/architecture.md
+    test_index: []
+    keywords:
+      - chat
+      - llm
+      - provider
+      - stream
+      - anthropic
+      - google
+    change_risks:
+      - provider 适配器接口变动导致 LLM 调用失败。
+      - 流式响应格式变化导致前端解析出错。
+
 maintenance_rules:
   update_required_when:
     - 新增、删除或重命名用户可见功能入口。
     - 关键逻辑文件、测试文件、文档索引发生变化。
     - AI Agent 修改后出现遗留逻辑或潜在回归风险。
   review_checklist:
-    - feature_map 与 logic_map 的 feature_id 必须一一对应。
-    - 每个 capability 至少包含 code_index 与 keywords。
+    - feature_map 与 logic_map 的 feature_id 粒度与归属必须一致；若一方按跨端能力聚合，另一方也必须使用相同命名或提供显式映射关系。
+    - 每个 capability 至少包含 code_index 与 keywords；若 code_index 同时覆盖 mobile/backend，多端归属必须与 feature_id 命名保持一致。
     - 每次变更需补充 change_risks，帮助后续回归测试。
