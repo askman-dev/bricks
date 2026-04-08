@@ -72,7 +72,6 @@ class _ChatScreenState extends State<ChatScreen> {
   };
   String _activeSubSection = 'main';
   bool _threadModeEnabled = false;
-  bool _syncingAfterReconnect = false;
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
@@ -894,43 +893,12 @@ class _ChatScreenState extends State<ChatScreen> {
           Chip(label: Text('Session: $_sessionIdForScope')),
           Chip(label: Text('ThreadMode: ${_threadModeEnabled ? 'on' : 'off'}')),
           Chip(label: Text('Mode: $mode')),
-          if (_syncingAfterReconnect) const Chip(label: Text('Syncing…')),
           if (_latestCheckpointCursor != null)
             Chip(label: Text('Cursor: $_latestCheckpointCursor')),
           Chip(label: Text('Seq: $_lastSyncedSeq')),
         ],
       ),
     );
-  }
-
-  Future<void> _simulateReconnectSync() async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
-    setState(() => _syncingAfterReconnect = true);
-    try {
-      final snapshot = await _chatHistoryApiService.sync(
-        token: token,
-        sessionId: _sessionIdForScope,
-        afterSeq: _lastSyncedSeq,
-      );
-      if (!mounted) return;
-      setState(() {
-        _syncingAfterReconnect = false;
-        for (final message in snapshot.messages) {
-          final index =
-              _messages.indexWhere((m) => m.messageId == message.messageId);
-          if (index >= 0) {
-            _messages[index] = message.copyWith(isRecovered: true);
-          } else {
-            _messages.add(message.copyWith(isRecovered: true));
-          }
-        }
-        _lastSyncedSeq = snapshot.lastSeqId;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _syncingAfterReconnect = false);
-    }
   }
 
   @override
@@ -1060,8 +1028,6 @@ class _ChatScreenState extends State<ChatScreen> {
         body: Column(
           children: [
             _buildContextBar(),
-            if (_syncingAfterReconnect)
-              const LinearProgressIndicator(minHeight: 2),
             Expanded(child: MessageList(messages: _messages)),
             ComposerBar(
               activeAgent: _activeAgent,
@@ -1071,14 +1037,6 @@ class _ChatScreenState extends State<ChatScreen> {
               onSend: _isSending ? null : _sendMessage,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: BricksSpacing.sm),
-              child: TextButton.icon(
-                onPressed: _simulateReconnectSync,
-                icon: const Icon(Icons.sync),
-                label: const Text('模拟断线恢复同步'),
-              ),
             ),
           ],
         ),
