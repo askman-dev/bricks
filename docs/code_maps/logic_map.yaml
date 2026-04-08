@@ -154,6 +154,7 @@ maintenance_rules:
     - 关键逻辑文件、测试文件、文档索引发生变化。
     - AI Agent 修改后出现遗留逻辑或潜在回归风险。
   review_checklist:
-    - feature_map 与 logic_map 的 feature_id 粒度与归属必须一致；若一方按跨端能力聚合，另一方也必须使用相同命名或提供显式映射关系。
-    - 每个 capability 至少包含 code_index 与 keywords；若 code_index 同时覆盖 mobile/backend，多端归属必须与 feature_id 命名保持一致。
-    - 每次变更需补充 change_risks，帮助后续回归测试。
+    - feature_id values in feature_map must match those in logic_map.
+    - When a feature spans multiple platforms (mobile/backend), the feature_id naming should clearly indicate the scope.
+    - Each capability must have at least code_index and keywords.
+    - Every change should include change_risks to assist future regression testing.
