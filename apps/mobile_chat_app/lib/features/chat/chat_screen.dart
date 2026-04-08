@@ -67,11 +67,11 @@ class _ChatScreenState extends State<ChatScreen> {
     ChatChannel(id: 'default', name: '默认频道', isDefault: true),
   ];
   String _activeChannelId = 'default';
-  final Map<String, List<String>> _channelSubSections = {
-    'default': ['main']
+  final Map<String, List<ChatSubSection>> _channelSubSections = {
+    'default': <ChatSubSection>[]
   };
+  final Map<String, DateTime> _subSectionLastMessageAt = {};
   String _activeSubSection = 'main';
-  bool _threadModeEnabled = false;
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
@@ -397,7 +397,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ChatChannel(id: id, name: _timestampName(), isDefault: false);
     setState(() {
       _channels.add(channel);
-      _channelSubSections[id] = ['main'];
+      _channelSubSections[id] = <ChatSubSection>[];
       _activeChannelId = id;
       _activeSubSection = 'main';
       _messages.clear();
@@ -419,22 +419,38 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() {
       _activeChannelId = resolvedChannelId;
-      final subSections =
-          _channelSubSections[resolvedChannelId] ?? const ['main'];
-      _activeSubSection =
-          subSections.contains('main') ? 'main' : subSections.first;
+      _activeSubSection = 'main';
     });
     unawaited(_loadMessagesForActiveScope());
     Navigator.of(context).pop();
   }
 
-  List<String> get _activeSubSections {
-    return _channelSubSections[_activeChannelId] ?? const ['main'];
+  List<ChatSubSection> get _activeSubSections {
+    final items = _channelSubSections[_activeChannelId] ?? const [];
+    final sorted = [...items];
+    sorted.sort((a, b) {
+      final ta =
+          _subSectionLastMessageAt[_subSectionKey(a.parentChannelId, a.id)];
+      final tb =
+          _subSectionLastMessageAt[_subSectionKey(b.parentChannelId, b.id)];
+      if (ta != null && tb != null) {
+        final byLastMessage = tb.compareTo(ta);
+        if (byLastMessage != 0) return byLastMessage;
+      } else if (tb != null) {
+        return 1;
+      } else if (ta != null) {
+        return -1;
+      }
+      final byCreatedAt = b.createdAt.compareTo(a.createdAt);
+      if (byCreatedAt != 0) return byCreatedAt;
+      return b.id.compareTo(a.id);
+    });
+    return sorted;
   }
 
   ChatSessionScope get _activeScope => ChatSessionScope(
         channelId: _activeChannelId,
-        threadId: _threadModeEnabled ? _activeSubSection : 'main',
+        threadId: _activeSubSection,
       );
 
   String get _sessionIdForScope => _activeScope.sessionId;
@@ -464,6 +480,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _latestCheckpointCursor = snapshot.latestCheckpointCursor;
         _lastSyncedSeq = snapshot.lastSeqId;
       });
+      _updateSubSectionLastMessageAtFromMessages();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -472,6 +489,30 @@ class _ChatScreenState extends State<ChatScreen> {
         _lastSyncedSeq = 0;
       });
     }
+  }
+
+  String _subSectionKey(String channelId, String sectionId) =>
+      '$channelId::$sectionId';
+
+  void _updateSubSectionLastMessageAtFromMessages() {
+    final latest = _messages.fold<DateTime?>(null, (current, message) {
+      final candidate = message.createdAt ?? message.timestamp;
+      if (current == null) return candidate;
+      if (candidate.isAfter(current)) return candidate;
+      return current;
+    });
+    if (latest == null) return;
+    setState(() {
+      _subSectionLastMessageAt[
+          _subSectionKey(_activeChannelId, _activeSubSection)] = latest;
+    });
+  }
+
+  String? _subSectionNameById(String sectionId) {
+    for (final section in _activeSubSections) {
+      if (section.id == sectionId) return section.name;
+    }
+    return null;
   }
 
   void _persistActiveScopeMessages({bool immediate = false}) {
@@ -503,18 +544,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _createSubSection() {
-    if (!_threadModeEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先开启 Thread 模式后再创建子区')),
-      );
-      return;
-    }
     final name = _timestampName(prefix: 'sub');
+    final id = _newId('sub');
+    final section = ChatSubSection(
+      id: id,
+      parentChannelId: _activeChannelId,
+      name: name,
+      createdAt: DateTime.now(),
+    );
     setState(() {
-      final items =
-          _channelSubSections.putIfAbsent(_activeChannelId, () => ['main']);
-      items.add(name);
-      _activeSubSection = name;
+      final items = _channelSubSections.putIfAbsent(
+          _activeChannelId, () => <ChatSubSection>[]);
+      items.add(section);
+      _activeSubSection = id;
       _messages.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
@@ -554,8 +596,13 @@ class _ChatScreenState extends State<ChatScreen> {
       threadId: message.threadId ??
           (_activeScope.threadId == 'main' ? null : _activeScope.threadId),
     );
+    final messageTime = normalized.createdAt ?? normalized.timestamp;
     setState(() {
       _messages.add(normalized);
+      _subSectionLastMessageAt[_subSectionKey(
+        _activeScope.channelId,
+        _activeScope.threadId,
+      )] = messageTime;
     });
     final shouldPersistImmediately =
         normalized.role == 'user' || (!normalized.isStreaming);
@@ -874,9 +921,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildContextBar() {
     final activeParticipants = _participantManager.participants.active;
     final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
-    final threadLabel = _threadModeEnabled && _activeSubSection != 'main'
-        ? _activeSubSection
-        : '主区';
+    final activeSubSectionName = _subSectionNameById(_activeSubSection);
+    final threadLabel = _activeSubSection == 'main'
+        ? '主区'
+        : (activeSubSectionName ?? _activeSubSection);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
@@ -891,7 +939,6 @@ class _ChatScreenState extends State<ChatScreen> {
           Chip(label: Text('Channel: $_activeChannelId')),
           Chip(label: Text('Thread: $threadLabel')),
           Chip(label: Text('Session: $_sessionIdForScope')),
-          Chip(label: Text('ThreadMode: ${_threadModeEnabled ? 'on' : 'off'}')),
           Chip(label: Text('Mode: $mode')),
           if (_latestCheckpointCursor != null)
             Chip(label: Text('Cursor: $_latestCheckpointCursor')),
@@ -974,39 +1021,30 @@ class _ChatScreenState extends State<ChatScreen> {
               onSelected: (value) {
                 if (value == '__new__') {
                   _createSubSection();
-                } else if (value == '__toggle_thread_mode__') {
-                  setState(() {
-                    _threadModeEnabled = !_threadModeEnabled;
-                    if (!_threadModeEnabled) {
-                      _activeSubSection = 'main';
-                    }
-                  });
                   unawaited(_loadMessagesForActiveScope());
                 } else {
                   setState(() {
                     _activeSubSection = value;
-                    if (value != 'main') {
-                      _threadModeEnabled = true;
-                    }
                   });
                   unawaited(_loadMessagesForActiveScope());
                 }
               },
               itemBuilder: (context) => [
-                PopupMenuItem<String>(
-                  value: '__toggle_thread_mode__',
-                  child: Text(
-                      _threadModeEnabled ? '关闭 Thread 模式' : '开启 Thread 模式'),
+                const PopupMenuItem<String>(
+                  value: 'main',
+                  child: Text('回到主区'),
                 ),
                 const PopupMenuItem<String>(
                   value: '__new__',
                   child: Text('新建子区'),
                 ),
-                const PopupMenuItem<String>(value: 'main', child: Text('主区')),
-                ..._activeSubSections.where((item) => item != 'main').map(
-                      (item) =>
-                          PopupMenuItem<String>(value: item, child: Text(item)),
-                    ),
+                const PopupMenuDivider(),
+                ..._activeSubSections.map(
+                  (item) => PopupMenuItem<String>(
+                    value: item.id,
+                    child: Text(item.name),
+                  ),
+                ),
               ],
               child: Padding(
                 padding:
@@ -1015,8 +1053,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     const Icon(Icons.splitscreen_outlined),
                     const SizedBox(width: BricksSpacing.xs),
-                    Text(
-                        _activeSubSection == 'main' ? '主区' : _activeSubSection),
+                    Text(_activeSubSection == 'main'
+                        ? '主区'
+                        : (_subSectionNameById(_activeSubSection) ??
+                            _activeSubSection)),
                     const Icon(Icons.arrow_drop_down),
                   ],
                 ),
