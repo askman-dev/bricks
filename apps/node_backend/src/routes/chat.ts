@@ -273,10 +273,13 @@ router.get('/history/:sessionId', async (req: AuthRequest, res: Response) => {
     }
 
     const limitRaw = req.query.limit;
-    const limit =
-      typeof limitRaw === 'string'
-        ? Math.max(1, Math.min(Number.parseInt(limitRaw, 10) || 100, 500))
-        : 100;
+    const limitValue = Array.isArray(limitRaw) ? limitRaw[0] : limitRaw;
+    const parsedLimit =
+      typeof limitValue === 'string' ? Number.parseInt(limitValue, 10) : Number.NaN;
+    const limit = Math.max(
+      1,
+      Math.min(Number.isNaN(parsedLimit) ? 100 : parsedLimit, 500),
+    );
 
     const synced = await syncMessages(userId, sessionId, 0, { limit });
     const latestCheckpointCursor =
