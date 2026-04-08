@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../auth/login_screen.dart';
 import 'model_settings_screen.dart';
@@ -49,6 +50,18 @@ class SettingsScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const ModelSettingsScreen(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.account_tree_outlined),
+            title: const Text('Manage Agents'),
+            subtitle: const Text('Create and edit agent definitions'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AgentsScreen(),
                 ),
               );
             },

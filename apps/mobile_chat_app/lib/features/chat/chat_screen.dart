@@ -7,11 +7,17 @@ import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
+import 'chat_history_api_service.dart';
+
 import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../../services/agents_repository_factory.dart';
+import 'chat_arbitration.dart';
+import 'chat_bot_registry.dart';
+import 'chat_task_protocol.dart';
+import 'chat_topology.dart';
 import 'chat_message.dart';
 import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
@@ -42,6 +48,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final ParticipantManager _participantManager = ParticipantManager();
 
   final AgentClient _client = AgentCoreClient();
+  final ChatBotRegistry _botRegistry = ChatBotRegistry();
+  late final ChatArbitrationEngine _arbitrationEngine =
+      ChatArbitrationEngine(registry: _botRegistry);
+  final ChatTaskProtocol _taskProtocol = ChatTaskProtocol();
+  final ChatTopologyResolver _topologyResolver = const ChatTopologyResolver();
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   AgentsRepository? _agentsRepository;
@@ -52,6 +63,20 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
+  final List<ChatChannel> _channels = [
+    ChatChannel(id: 'default', name: '默认频道', isDefault: true),
+  ];
+  String _activeChannelId = 'default';
+  final Map<String, List<String>> _channelSubSections = {
+    'default': ['main']
+  };
+  String _activeSubSection = 'main';
+  bool _threadModeEnabled = false;
+  String? _latestCheckpointCursor;
+  int _lastSyncedSeq = 0;
+  final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
+  Timer? _persistDebounce;
+  int _respondGeneration = 0;
 
   @override
   void initState() {
@@ -61,6 +86,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _persistDebounce?.cancel();
+    _doPersistActiveScopeMessages();
+    Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
@@ -105,6 +133,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _loadingLlmConfigs = false;
         _authToken = authToken;
       });
+      await _loadMessagesForActiveScope();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -350,6 +379,149 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String _timestampName({String prefix = 'channel'}) {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    String three(int value) => value.toString().padLeft(3, '0');
+    return '$prefix-${now.year}-${two(now.month)}-${two(now.day)}-${two(now.hour)}-${two(now.minute)}-${two(now.second)}-${three(now.millisecond)}';
+  }
+
+  String _newId(String prefix) {
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    return '$prefix-$ms';
+  }
+
+  void _createChannel() {
+    final id = _newId('channel');
+    final channel =
+        ChatChannel(id: id, name: _timestampName(), isDefault: false);
+    setState(() {
+      _channels.add(channel);
+      _channelSubSections[id] = ['main'];
+      _activeChannelId = id;
+      _activeSubSection = 'main';
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
+    });
+    _persistActiveScopeMessages();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
+  }
+
+  void _switchChannel(String channelId) {
+    final resolvedChannelId = _topologyResolver.resolveChannelId(
+        channels: _channels, requestedChannelId: channelId);
+    if (_activeChannelId == resolvedChannelId) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _activeChannelId = resolvedChannelId;
+      final subSections =
+          _channelSubSections[resolvedChannelId] ?? const ['main'];
+      _activeSubSection =
+          subSections.contains('main') ? 'main' : subSections.first;
+    });
+    unawaited(_loadMessagesForActiveScope());
+    Navigator.of(context).pop();
+  }
+
+  List<String> get _activeSubSections {
+    return _channelSubSections[_activeChannelId] ?? const ['main'];
+  }
+
+  ChatSessionScope get _activeScope => ChatSessionScope(
+        channelId: _activeChannelId,
+        threadId: _threadModeEnabled ? _activeSubSection : 'main',
+      );
+
+  String get _sessionIdForScope => _activeScope.sessionId;
+
+  Future<void> _loadMessagesForActiveScope() async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _messages.clear();
+        _latestCheckpointCursor = null;
+        _lastSyncedSeq = 0;
+      });
+      return;
+    }
+
+    try {
+      final snapshot = await _chatHistoryApiService.load(
+        token: token,
+        sessionId: _sessionIdForScope,
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(snapshot.messages);
+        _latestCheckpointCursor = snapshot.latestCheckpointCursor;
+        _lastSyncedSeq = snapshot.lastSeqId;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.clear();
+        _latestCheckpointCursor = null;
+        _lastSyncedSeq = 0;
+      });
+    }
+  }
+
+  void _persistActiveScopeMessages({bool immediate = false}) {
+    _persistDebounce?.cancel();
+    if (immediate) {
+      _doPersistActiveScopeMessages();
+      return;
+    }
+    // Debounce to avoid request storms on streaming deltas.
+    _persistDebounce = Timer(const Duration(milliseconds: 500), () {
+      _doPersistActiveScopeMessages();
+    });
+  }
+
+  void _doPersistActiveScopeMessages() {
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+    unawaited(
+      _chatHistoryApiService
+          .upsertMessages(token: token, messages: _messages)
+          .then((lastSeq) {
+        if (!mounted || lastSeq <= 0) return;
+        // Only advance the cursor, never move it backwards.
+        setState(() {
+          if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
+        });
+      }).catchError((_) {}),
+    );
+  }
+
+  void _createSubSection() {
+    if (!_threadModeEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先开启 Thread 模式后再创建子区')),
+      );
+      return;
+    }
+    final name = _timestampName(prefix: 'sub');
+    setState(() {
+      final items =
+          _channelSubSections.putIfAbsent(_activeChannelId, () => ['main']);
+      items.add(name);
+      _activeSubSection = name;
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
+    });
+    _persistActiveScopeMessages();
+  }
+
   Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
     final key = agent?.name ?? '_default';
     final existing = _sessions[key];
@@ -371,12 +543,23 @@ class _ChatScreenState extends State<ChatScreen> {
         isStreaming: isStreaming,
       );
     });
+    _persistActiveScopeMessages();
   }
 
   int _appendMessage(ChatMessage message) {
+    final normalized = message.copyWith(
+      messageId: message.messageId ?? _newId('msg'),
+      channelId: message.channelId ?? _activeScope.channelId,
+      sessionId: message.sessionId ?? _activeScope.sessionId,
+      threadId: message.threadId ??
+          (_activeScope.threadId == 'main' ? null : _activeScope.threadId),
+    );
     setState(() {
-      _messages.add(message);
+      _messages.add(normalized);
     });
+    final shouldPersistImmediately =
+        normalized.role == 'user' || (!normalized.isStreaming);
+    _persistActiveScopeMessages(immediate: shouldPersistImmediately);
     return _messages.length - 1;
   }
 
@@ -384,14 +567,91 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.trim().isEmpty || _isSending) return;
 
     final agent = _activeAgent;
-    _appendMessage(ChatMessage(role: 'user', content: text));
+    final activeParticipants = _participantManager.participants.active;
+    final positiveCandidates =
+        activeParticipants.where((item) => item.probability > 1e-9).toList();
+    final arbitrationMode = positiveCandidates.length > 1;
+    final arbitration = _arbitrationEngine.resolve(
+      candidates: positiveCandidates
+          .map(
+            (item) => ArbitrationCandidate(
+              botId: item.agentId,
+              baseWeight: item.probability,
+            ),
+          )
+          .toList(),
+      requestedBotId: agent?.name,
+    );
+    final dispatch = arbitration.selected;
+    final resolvedBotId = dispatch.bot.id;
+    final resolvedSkillId = dispatch.skillId;
+    final taskId = _newId('task');
+    final idempotencyKey = _newId('idem');
+    final traceId = _newId('trace');
+    final envelope = ChatTaskEnvelope(
+      taskId: taskId,
+      idempotencyKey: idempotencyKey,
+      createdAt: DateTime.now(),
+      channelId: _activeScope.channelId,
+      sessionId: _activeScope.sessionId,
+      threadId: _activeScope.threadId == 'main' ? null : _activeScope.threadId,
+    );
+    final ack = _taskProtocol.acknowledge(envelope);
+    _latestCheckpointCursor = ack.checkpointCursor;
+    _persistActiveScopeMessages();
+
+    final scoreSummary = arbitration.candidateScores
+        .map((item) => '${item.botId}:${item.score.toStringAsFixed(2)}')
+        .join(', ');
+    _appendMessage(
+      ChatMessage(
+        role: 'user',
+        content: text,
+        taskId: taskId,
+        taskState: ChatTaskState.accepted,
+        idempotencyKey: idempotencyKey,
+        createdAt: envelope.createdAt,
+        acknowledgedAt: ack.acceptedAt,
+        checkpointCursor: ack.checkpointCursor,
+        channelId: envelope.channelId,
+        sessionId: envelope.sessionId,
+        threadId: envelope.threadId,
+        resolvedBotId: resolvedBotId,
+        resolvedSkillId: resolvedSkillId,
+        arbitrationMode: arbitrationMode,
+        tieDetected: arbitration.tieDetected,
+        tieBotIds: arbitration.tieBotIds,
+        selectedScore: arbitration.selectedScore,
+        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
+        decisionReason: arbitration.reason,
+        traceId: arbitrationMode ? traceId : null,
+      ),
+    );
     final agentMessageIndex = _appendMessage(
       ChatMessage(
         role: 'assistant',
         content: '',
-        agentId: agent?.name,
-        agentName: agent?.name,
+        agentId: resolvedBotId,
+        agentName: resolvedBotId,
         isStreaming: true,
+        taskId: taskId,
+        taskState: ChatTaskState.accepted,
+        idempotencyKey: idempotencyKey,
+        createdAt: envelope.createdAt,
+        acknowledgedAt: ack.acceptedAt,
+        checkpointCursor: ack.checkpointCursor,
+        sessionId: envelope.sessionId,
+        threadId: envelope.threadId,
+        resolvedBotId: resolvedBotId,
+        resolvedSkillId: resolvedSkillId,
+        arbitrationMode: arbitrationMode,
+        fallbackToDefaultBot: arbitration.fallbackToDefaultBot,
+        tieDetected: arbitration.tieDetected,
+        tieBotIds: arbitration.tieBotIds,
+        selectedScore: arbitration.selectedScore,
+        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
+        decisionReason: arbitration.reason,
+        traceId: arbitrationMode ? traceId : null,
       ),
     );
 
@@ -400,75 +660,85 @@ class _ChatScreenState extends State<ChatScreen> {
       _isStreaming = true;
     });
 
-    _sessionForAgent(agent).then((session) {
-      final stream = session.sendMessage(text);
-      _currentSubscription = stream.listen(
-        (event) {
-          if (event is TextDeltaEvent) {
-            final current = _messages[agentMessageIndex];
-            _updateMessageContent(
-              agentMessageIndex,
-              current.content + event.delta,
-              isStreaming: true,
-            );
-          } else if (event is MessageCompleteEvent) {
-            _updateMessageContent(
-              agentMessageIndex,
-              event.fullText,
-              isStreaming: false,
-            );
-          } else if (event is AgentErrorEvent) {
-            _updateMessageContent(
-              agentMessageIndex,
-              'Error: ${event.message}',
-              isStreaming: false,
-            );
-          }
-        },
-        onError: (error) {
-          _updateMessageContent(
-            agentMessageIndex,
-            'Error: $error',
+    final token = _authToken;
+    final runtimeSettings = _settingsForAgent(agent);
+    if (token == null || token.isEmpty) {
+      if (mounted && agentMessageIndex < _messages.length) {
+        setState(() {
+          _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+            content: 'Error: Missing auth token',
             isStreaming: false,
+            taskState: ChatTaskState.failed,
           );
-          if (mounted) {
-            setState(() {
-              _isSending = false;
-              _isStreaming = false;
-            });
-          }
-        },
-        onDone: () async {
-          if (mounted) {
-            await _handleProactiveResponses(text);
-          }
-          if (mounted) {
-            setState(() {
-              _isSending = false;
-              _isStreaming = false;
-            });
-          }
-        },
-        cancelOnError: true,
-      );
-    }).catchError((error) {
-      _updateMessageContent(
-        agentMessageIndex,
-        'Error: $error',
-        isStreaming: false,
-      );
+          _isSending = false;
+          _isStreaming = false;
+        });
+      }
+      return;
+    }
+
+    final generation = ++_respondGeneration;
+    _chatHistoryApiService
+        .respond(
+      token: token,
+      taskId: taskId,
+      idempotencyKey: idempotencyKey,
+      scope: _activeScope,
+      userMessageId: _messages[agentMessageIndex - 1].messageId!,
+      assistantMessageId: _messages[agentMessageIndex].messageId!,
+      userMessage: text,
+      resolvedBotId: resolvedBotId,
+      resolvedSkillId: resolvedSkillId,
+      provider: runtimeSettings.provider,
+      model: runtimeSettings.model,
+      configId: runtimeSettings.configId,
+      createdAt: envelope.createdAt,
+    )
+        .then((result) async {
+      if (!mounted || agentMessageIndex >= _messages.length) return;
+      // Ignore stale completions if stop was pressed after this request started.
+      if (generation != _respondGeneration) return;
+      setState(() {
+        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+          content: result.text,
+          isStreaming: false,
+          taskState: ChatTaskState.completed,
+        );
+        if (result.lastSeqId > _lastSyncedSeq) {
+          _lastSyncedSeq = result.lastSeqId;
+        }
+      });
+      // Backend already persisted both messages; skip redundant client-side
+      // upsert to avoid overwriting backend-only metadata (provider/model/source).
       if (mounted) {
+        await _handleProactiveResponses(text);
         setState(() {
           _isSending = false;
           _isStreaming = false;
         });
       }
+    }).catchError((error) {
+      if (!mounted || agentMessageIndex >= _messages.length) return;
+      if (generation != _respondGeneration) return;
+      setState(() {
+        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+          content: 'Error: $error',
+          isStreaming: false,
+          taskState: ChatTaskState.failed,
+        );
+        _isSending = false;
+        _isStreaming = false;
+      });
+      _persistActiveScopeMessages(immediate: true);
     });
   }
 
   void _stopStreaming() {
     _currentSubscription?.cancel();
     _currentSubscription = null;
+    // Invalidate any in-flight /chat/respond Future so its completion handler
+    // won't overwrite the cancelled state we set below.
+    _respondGeneration++;
     if (mounted) {
       setState(() {
         _isSending = false;
@@ -476,11 +746,15 @@ class _ChatScreenState extends State<ChatScreen> {
         // Mark any streaming messages as complete.
         for (var i = _messages.length - 1; i >= 0; i--) {
           if (_messages[i].isStreaming) {
-            _messages[i] = _messages[i].copyWith(isStreaming: false);
+            _messages[i] = _messages[i].copyWith(
+              isStreaming: false,
+              taskState: ChatTaskState.cancelled,
+            );
             break;
           }
         }
       });
+      _persistActiveScopeMessages(immediate: true);
     }
   }
 
@@ -597,6 +871,36 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildContextBar() {
+    final activeParticipants = _participantManager.participants.active;
+    final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
+    final threadLabel = _threadModeEnabled && _activeSubSection != 'main'
+        ? _activeSubSection
+        : '主区';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: BricksSpacing.md,
+        vertical: BricksSpacing.xs,
+      ),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Wrap(
+        spacing: BricksSpacing.xs,
+        runSpacing: BricksSpacing.xs,
+        children: [
+          Chip(label: Text('Channel: $_activeChannelId')),
+          Chip(label: Text('Thread: $threadLabel')),
+          Chip(label: Text('Session: $_sessionIdForScope')),
+          Chip(label: Text('ThreadMode: ${_threadModeEnabled ? 'on' : 'off'}')),
+          Chip(label: Text('Mode: $mode')),
+          if (_latestCheckpointCursor != null)
+            Chip(label: Text('Cursor: $_latestCheckpointCursor')),
+          Chip(label: Text('Seq: $_lastSyncedSeq')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loadingAgents || _loadingLlmConfigs) {
@@ -610,16 +914,35 @@ class _ChatScreenState extends State<ChatScreen> {
       canPop: false,
       child: Scaffold(
         drawer: Drawer(
+          width: MediaQuery.of(context).size.width,
           child: SafeArea(
             child: ChatNavigationPage(
+              agents: _agents
+                  .map((agent) => ChatAgentItem(name: agent.name))
+                  .toList(),
+              channels: _channels
+                  .map(
+                    (item) => ChatChannelItem(
+                      id: item.id,
+                      name: item.name,
+                      isDefault: item.isDefault,
+                    ),
+                  )
+                  .toList(),
+              selectedChannelId: _activeChannelId,
+              onChannelSelected: _switchChannel,
               onActionSelected: (action) {
-                Navigator.of(context).pop();
                 switch (action) {
-                  case ChatNavigationAction.manageAgents:
-                    _openAgentsScreen();
-                    break;
                   case ChatNavigationAction.appSettings:
                     _openSettingsScreen();
+                    break;
+                  case ChatNavigationAction.sessions:
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Sessions coming soon')),
+                    );
+                    break;
+                  case ChatNavigationAction.createChannel:
+                    _createChannel();
                     break;
                 }
               },
@@ -645,10 +968,66 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
             ],
           ),
+          actions: [
+            PopupMenuButton<String>(
+              tooltip: 'Sub sections',
+              onSelected: (value) {
+                if (value == '__new__') {
+                  _createSubSection();
+                } else if (value == '__toggle_thread_mode__') {
+                  setState(() {
+                    _threadModeEnabled = !_threadModeEnabled;
+                    if (!_threadModeEnabled) {
+                      _activeSubSection = 'main';
+                    }
+                  });
+                  unawaited(_loadMessagesForActiveScope());
+                } else {
+                  setState(() {
+                    _activeSubSection = value;
+                    if (value != 'main') {
+                      _threadModeEnabled = true;
+                    }
+                  });
+                  unawaited(_loadMessagesForActiveScope());
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  value: '__toggle_thread_mode__',
+                  child: Text(
+                      _threadModeEnabled ? '关闭 Thread 模式' : '开启 Thread 模式'),
+                ),
+                const PopupMenuItem<String>(
+                  value: '__new__',
+                  child: Text('新建子区'),
+                ),
+                const PopupMenuItem<String>(value: 'main', child: Text('主区')),
+                ..._activeSubSections.where((item) => item != 'main').map(
+                      (item) =>
+                          PopupMenuItem<String>(value: item, child: Text(item)),
+                    ),
+              ],
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: BricksSpacing.md),
+                child: Row(
+                  children: [
+                    const Icon(Icons.splitscreen_outlined),
+                    const SizedBox(width: BricksSpacing.xs),
+                    Text(
+                        _activeSubSection == 'main' ? '主区' : _activeSubSection),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
+            ),
+          ],
           bottom: _buildActiveAgentsIndicator(),
         ),
         body: Column(
           children: [
+            _buildContextBar(),
             Expanded(child: MessageList(messages: _messages)),
             ComposerBar(
               activeAgent: _activeAgent,

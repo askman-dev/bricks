@@ -68,6 +68,7 @@ class AgentSessionImpl implements AgentSession {
         final response = await _gateway.generate(
           settings: settings,
           message: message,
+          conversationMessages: _context.messages,
         );
         _context.addAssistantMessage(response);
         _controller!.add(TextDeltaEvent(response));
