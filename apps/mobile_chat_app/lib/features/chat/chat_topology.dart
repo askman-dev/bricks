@@ -24,6 +24,20 @@ class ChatThread {
   final bool isMain;
 }
 
+class ChatSubSection {
+  const ChatSubSection({
+    required this.id,
+    required this.parentChannelId,
+    required this.name,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String parentChannelId;
+  final String name;
+  final DateTime createdAt;
+}
+
 class ChatSessionScope {
   const ChatSessionScope({
     required this.channelId,
