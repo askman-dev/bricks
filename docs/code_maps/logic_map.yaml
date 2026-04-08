@@ -1,0 +1,160 @@
+version: 1
+map_type: logic_map
+owner: bricks
+last_updated: 2026-04-08
+purpose: >
+  为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
+  用于影响面分析、回归测试设计与遗留逻辑清理。
+
+index:
+  - feature_id: auth_login
+    capability: GitHub OAuth 登录
+    code_index:
+      - apps/mobile_chat_app/lib/features/auth/login_screen.dart
+      - apps/mobile_chat_app/lib/features/auth/auth_service.dart
+      - apps/mobile_chat_app/lib/features/auth/github_oauth.dart
+      - apps/node_backend/src/routes/auth.ts
+    doc_index:
+      - docs/architecture.md
+      - BUILD.md
+    test_index:
+      - apps/mobile_chat_app/test/auth_service_test.dart
+      - apps/node_backend/src/routes/auth.test.ts
+    keywords:
+      - oauth
+      - github
+      - token
+      - auth
+      - callback
+    change_risks:
+      - Web 与移动端 token 回调分支行为不一致。
+      - 登录成功后导航状态未同步。
+
+  - feature_id: chat_session
+    capability: 多 Agent 聊天会话与仲裁
+    code_index:
+      - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_arbitration.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_task_protocol.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+      - apps/node_backend/src/routes/chat.ts
+      - apps/node_backend/src/llm/llm_service.ts
+    doc_index:
+      - docs/architecture.md
+      - openspec/changes/multi-agent-participation/design.md
+    test_index:
+      - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
+      - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
+      - apps/mobile_chat_app/test/chat_history_api_service_test.dart
+    keywords:
+      - chat
+      - arbitration
+      - topology
+      - channel
+      - session
+      - history
+    change_risks:
+      - 改动路由或拓扑后，消息分发链路中断。
+      - 会话持久化字段升级时出现向后兼容问题。
+
+  - feature_id: model_settings
+    capability: 模型配置读写
+    code_index:
+      - apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
+      - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+      - apps/node_backend/src/routes/config.ts
+      - config/models.yaml
+      - config/app.defaults.yaml
+    doc_index:
+      - docs/model_settings_plan.md
+      - docs/architecture.md
+    test_index:
+      - apps/mobile_chat_app/test/model_settings_screen_test.dart
+    keywords:
+      - model
+      - provider
+      - is_default
+      - config
+      - save
+    change_risks:
+      - 字段格式变化导致保存后读取失败。
+      - 后端默认模型与前端选择策略不一致。
+
+  - feature_id: workspace_resources
+    capability: Workspace / Projects / Skills / Resources 导航
+    code_index:
+      - apps/mobile_chat_app/lib/features/workspace/workspace_screen.dart
+      - apps/mobile_chat_app/lib/features/projects/projects_screen.dart
+      - apps/mobile_chat_app/lib/features/skills/skills_screen.dart
+      - apps/mobile_chat_app/lib/features/resources/resources_screen.dart
+    doc_index:
+      - docs/architecture.md
+    test_index:
+      - apps/mobile_chat_app/test/app_test.dart
+      - apps/mobile_chat_app/test/chat_navigation_page_test.dart
+    keywords:
+      - workspace
+      - projects
+      - skills
+      - resources
+      - navigation
+    change_risks:
+      - 侧边栏入口迁移后页面不可达。
+      - 页面间返回路径断裂造成死路由。
+
+  - feature_id: backend_auth
+    capability: 后端 GitHub OAuth 认证
+    code_index:
+      - apps/node_backend/src/routes/auth.ts
+      - apps/node_backend/src/routes/auth_return_to.ts
+      - apps/node_backend/src/middleware/auth.ts
+      - apps/node_backend/src/services/userService.ts
+      - apps/node_backend/src/services/oauthStateService.ts
+    doc_index:
+      - docs/architecture.md
+    test_index:
+      - apps/node_backend/src/routes/auth.test.ts
+    keywords:
+      - oauth
+      - github
+      - callback
+      - return_to
+      - jwt
+      - token
+    change_risks:
+      - OAuth state 校验逻辑变动可能导致回调失效。
+      - return_to 校验规则变动可能引入开放重定向漏洞。
+
+  - feature_id: backend_chat_llm
+    capability: 后端聊天与 LLM 路由
+    code_index:
+      - apps/node_backend/src/routes/chat.ts
+      - apps/node_backend/src/routes/llm.ts
+      - apps/node_backend/src/llm/llm_service.ts
+      - apps/node_backend/src/llm/providers/anthropic_adapter.ts
+      - apps/node_backend/src/llm/providers/google_ai_studio_adapter.ts
+    doc_index:
+      - docs/architecture.md
+    test_index: []
+    keywords:
+      - chat
+      - llm
+      - provider
+      - stream
+      - anthropic
+      - google
+    change_risks:
+      - provider 适配器接口变动导致 LLM 调用失败。
+      - 流式响应格式变化导致前端解析出错。
+
+maintenance_rules:
+  update_required_when:
+    - 新增、删除或重命名用户可见功能入口。
+    - 关键逻辑文件、测试文件、文档索引发生变化。
+    - AI Agent 修改后出现遗留逻辑或潜在回归风险。
+  review_checklist:
+    - feature_id values in feature_map must match those in logic_map.
+    - When a feature spans multiple platforms (mobile/backend), the feature_id naming should clearly indicate the scope.
+    - Each capability must have at least code_index and keywords.
+    - Every change should include change_risks to assist future regression testing.

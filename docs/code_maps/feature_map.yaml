@@ -1,0 +1,105 @@
+version: 1
+map_type: feature_map
+owner: bricks
+last_updated: 2026-04-08
+purpose: >
+  为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
+
+products:
+  - product_id: mobile_chat_app
+    name: Mobile Chat App
+    platform:
+      - flutter_mobile
+      - flutter_web
+    entry_points:
+      - path: apps/mobile_chat_app/lib/main.dart
+        route: App root
+    features:
+      - feature_id: auth_login
+        name: GitHub OAuth 登录
+        user_value: 用户可完成登录并进入应用。
+        entry_paths:
+          - screen: LoginScreen
+            route_hint: apps/mobile_chat_app/lib/features/auth/login_screen.dart
+          - service: GitHubOAuth/AuthService
+            route_hint: apps/mobile_chat_app/lib/features/auth/
+        smoke_checks:
+          - 打开登录页并发起 GitHub 登录。
+          - 完成 token 回调后进入主界面。
+
+      - feature_id: chat_session
+        name: 多 Agent 聊天会话
+        user_value: 用户可在会话中发送消息并观察 Agent 协同回复。
+        entry_paths:
+          - screen: ChatScreen
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - navigation: ChatNavigationPage
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
+        smoke_checks:
+          - 发送一条消息后可以看到消息列表更新。
+          - 切换 Agent 后仍可继续会话。
+
+      - feature_id: model_settings
+        name: 模型与提供商配置
+        user_value: 用户可选择可用模型并保存默认配置。
+        entry_paths:
+          - screen: ModelSettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
+          - service: LlmConfigService
+            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+        smoke_checks:
+          - 进入模型设置并保存配置。
+          - 重新进入页面后配置保持一致。
+
+      - feature_id: workspace_resources
+        name: Workspace / Projects / Skills / Resources 管理
+        user_value: 用户可浏览工作区相关资源。
+        entry_paths:
+          - screen: WorkspaceScreen
+            route_hint: apps/mobile_chat_app/lib/features/workspace/workspace_screen.dart
+          - screen: ProjectsScreen
+            route_hint: apps/mobile_chat_app/lib/features/projects/projects_screen.dart
+          - screen: SkillsScreen
+            route_hint: apps/mobile_chat_app/lib/features/skills/skills_screen.dart
+          - screen: ResourcesScreen
+            route_hint: apps/mobile_chat_app/lib/features/resources/resources_screen.dart
+        smoke_checks:
+          - 从侧边导航进入每个页面。
+          - 页面可正常渲染且无崩溃。
+
+  - product_id: node_backend
+    name: Node Backend API
+    platform:
+      - nodejs
+      - vercel
+    entry_points:
+      - path: apps/node_backend/src/index.ts
+        route: API root
+    features:
+      - feature_id: backend_auth
+        name: 认证与回跳控制
+        user_value: API 请求可被认证并处理回跳逻辑。
+        entry_paths:
+          - route: /api/auth/github
+            route_hint: apps/node_backend/src/routes/auth.ts
+          - route: /api/auth/github/callback
+            route_hint: apps/node_backend/src/routes/auth.ts
+          - route: /api/auth/me
+            route_hint: apps/node_backend/src/routes/auth.ts
+        smoke_checks:
+          - 未登录请求返回预期状态码。
+          - 合法回跳参数通过校验。
+
+      - feature_id: backend_chat_llm
+        name: Chat 与 LLM 调用
+        user_value: 服务端可处理聊天请求并路由到模型提供商。
+        entry_paths:
+          - route: /api/chat
+            route_hint: apps/node_backend/src/routes/chat.ts
+          - route: /api/llm
+            route_hint: apps/node_backend/src/routes/llm.ts
+          - service: LlmService
+            route_hint: apps/node_backend/src/llm/llm_service.ts
+        smoke_checks:
+          - 调用 chat 接口时返回结构化响应。
+          - provider 配置缺失时给出明确错误。
