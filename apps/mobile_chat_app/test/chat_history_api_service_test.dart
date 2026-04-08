@@ -13,6 +13,7 @@ void main() {
   test('loads history snapshot from backend response', () async {
     final client = MockClient((request) async {
       expect(request.method, equals('GET'));
+      expect(request.url.queryParameters['limit'], equals('100'));
       return http.Response(
         jsonEncode({
           'messages': [

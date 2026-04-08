@@ -4,10 +4,44 @@ import 'package:intl/intl.dart';
 import '../chat_message.dart';
 
 /// Displays the list of chat messages in timeline format.
-class MessageList extends StatelessWidget {
+class MessageList extends StatefulWidget {
   const MessageList({super.key, required this.messages});
 
   final List<ChatMessage> messages;
+
+  @override
+  State<MessageList> createState() => _MessageListState();
+}
+
+class _MessageListState extends State<MessageList> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollToBottom();
+  }
+
+  @override
+  void didUpdateWidget(covariant MessageList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.messages.length != widget.messages.length) {
+      _scrollToBottom();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    });
+  }
 
   String _formatTime(DateTime timestamp) {
     return DateFormat('HH:mm').format(timestamp);
@@ -30,6 +64,7 @@ class MessageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final messages = widget.messages;
     if (messages.isEmpty) {
       return const Center(
         child: SelectableText('Start a conversation to create something.'),
@@ -38,6 +73,7 @@ class MessageList extends StatelessWidget {
 
     return SelectionArea(
       child: ListView.builder(
+        controller: _scrollController,
         padding: const EdgeInsets.all(BricksSpacing.md),
         itemCount: messages.length,
         itemBuilder: (context, index) {
