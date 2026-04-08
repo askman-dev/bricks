@@ -71,8 +71,8 @@ class ChatHistoryApiService {
 
   String get _base => LlmConfigService.resolveBaseUrl();
 
-  Uri _historyUri(String sessionId) =>
-      Uri.parse('$_base/api/chat/history/${Uri.encodeComponent(sessionId)}');
+  Uri _historyUri(String sessionId, {required int limit}) => Uri.parse(
+      '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit');
 
   Uri _syncUri(String sessionId, {required int afterSeq}) => Uri.parse(
       '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq');
@@ -84,9 +84,10 @@ class ChatHistoryApiService {
   Future<ChatHistorySnapshot> load({
     required String token,
     required String sessionId,
+    int limit = 100,
   }) async {
     final response = await _client.get(
-      _historyUri(sessionId),
+      _historyUri(sessionId, limit: limit),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {

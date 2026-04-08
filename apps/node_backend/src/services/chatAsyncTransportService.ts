@@ -246,15 +246,31 @@ export async function syncMessages(
   userId: string,
   sessionId: string,
   afterSeq: number,
+  options: { limit?: number } = {},
 ): Promise<{ messages: ReturnType<typeof toMessageDto>[]; lastSeqId: number }> {
-  const result = await pool.query<ChatMessageRow>(
-    `SELECT seq_id, write_seq, message_id, task_id, channel_id, session_id, thread_id,
+  const limit = options.limit == null ? null : Math.max(1, Math.min(options.limit, 500));
+
+  const baseQuery = `SELECT seq_id, write_seq, message_id, task_id, channel_id, session_id, thread_id,
             role, content, task_state, checkpoint_cursor, metadata, created_at, updated_at
        FROM chat_messages
-      WHERE user_id = $1 AND session_id = $2 AND write_seq > $3
-      ORDER BY write_seq ASC`,
-    [userId, sessionId, afterSeq],
-  );
+      WHERE user_id = $1 AND session_id = $2 AND write_seq > $3`;
+
+  const result =
+    afterSeq === 0 && limit != null
+      ? await pool.query<ChatMessageRow>(
+          `SELECT * FROM (
+             ${baseQuery}
+             ORDER BY write_seq DESC
+             LIMIT $4
+           ) recent
+           ORDER BY write_seq ASC`,
+          [userId, sessionId, afterSeq, limit],
+        )
+      : await pool.query<ChatMessageRow>(
+          `${baseQuery}
+           ORDER BY write_seq ASC`,
+          [userId, sessionId, afterSeq],
+        );
 
   const messages = result.rows.map(toMessageDto);
   const lastSeqId = messages.length > 0 ? messages[messages.length - 1].writeSeq : afterSeq;
