@@ -418,7 +418,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final resolvedChannelId = _topologyResolver.resolveChannelId(
         channels: _channels, requestedChannelId: channelId);
     if (_activeChannelId == resolvedChannelId) {
-      Navigator.of(context).pop();
+      // Drawer closing is handled by ChatNavigationPage; avoid an extra pop
+      // here, which can dismiss the chat route itself.
       return;
     }
     // Persist current sub-section so we can restore it if the user returns.
@@ -436,7 +437,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeSubSection = restoredSubSection;
     });
     unawaited(_loadMessagesForActiveScope());
-    Navigator.of(context).pop();
   }
 
   List<ChatSubSection> get _activeSubSections {
