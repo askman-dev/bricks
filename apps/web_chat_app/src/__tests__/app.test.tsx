@@ -40,7 +40,7 @@ test('shows login entry when user is not authenticated', async () => {
   });
 });
 
-test('renders mobile chat shell after auth and routes to chat', async () => {
+test('renders mobile chat shell after auth on /chat', async () => {
   const fetchSpy = mockFetch([
     {
       ok: true,
@@ -51,7 +51,7 @@ test('renders mobile chat shell after auth and routes to chat', async () => {
     },
   ]);
   render(
-    <MemoryRouter initialEntries={['/workspace']}>
+    <MemoryRouter initialEntries={['/chat']}>
       <App />
     </MemoryRouter>,
   );

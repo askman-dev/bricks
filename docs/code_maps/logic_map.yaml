@@ -56,6 +56,7 @@ index:
       - apps/web_chat_app/src/App.tsx
       - apps/web_chat_app/src/pages/ChatPage.tsx
       - apps/web_chat_app/src/pages/SettingsPage.tsx
+      - apps/web_chat_app/src/pages/ModelSettingsPage.tsx
       - apps/web_chat_app/src/styles.css
     doc_index:
       - docs/architecture.md
@@ -67,9 +68,13 @@ index:
       - topbar
       - menu
       - settings
+      - drawer
       - overlay
+      - subsection
     change_risks:
+      - 抽屉菜单与 composer/section 菜单状态耦合时，可能出现误触发错误菜单。
       - 浮层定位与层级错误会导致菜单遮挡或不可点击。
+      - 主区数据读取失败会导致 channelId 退化为默认值并影响会话隔离。
       - 顶部导航按钮文案或可访问名称变更会破坏自动化测试选择器。
 
   - feature_id: backend_auth
