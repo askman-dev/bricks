@@ -18,7 +18,7 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
   logStep('2/7', `Open login page ${BASE_URL}`);
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
 
   logStep('3/7', 'Ensure GitHub login entry is visible');
   const loginLink = page.getByRole('link', { name: 'Login with GitHub' });
@@ -26,7 +26,7 @@ async function main() {
 
   logStep('4/7', 'Click login entry and follow backend auth redirect flow');
   await Promise.all([
-    page.waitForURL('**/chat', { timeout: 45_000 }),
+    page.waitForURL((url) => url.pathname === '/chat', { timeout: 45_000 }),
     loginLink.click(),
   ]);
 

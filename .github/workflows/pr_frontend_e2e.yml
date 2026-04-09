@@ -70,7 +70,7 @@ jobs:
       - name: Run login-to-chat E2E and take screenshot
         env:
           E2E_BASE_URL: http://127.0.0.1:4173
-        run: node .github/scripts/e2e_homepage_screenshot.js
+        run: node .github/scripts/e2e_login_chat.js
 
       - name: Upload service logs on failure
         if: failure()
@@ -98,4 +98,4 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: node .github/scripts/publish_pr_homepage_screenshot.js
+        run: node .github/scripts/publish_pr_chat_e2e_screenshot.js

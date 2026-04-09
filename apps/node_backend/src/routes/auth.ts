@@ -276,8 +276,8 @@ function getDefaultReturnTo(): string {
   return 'http://localhost:3000/';
 }
 
-function canUseE2EMockGithubOAuth(): boolean {
-  return E2E_MOCK_GITHUB_OAUTH && process.env.NODE_ENV !== 'production';
+export function canUseE2EMockGithubOAuth(): boolean {
+  return process.env.E2E_MOCK_GITHUB_OAUTH === 'true' && process.env.NODE_ENV !== 'production';
 }
 
 async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
