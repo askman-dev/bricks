@@ -54,8 +54,6 @@ export function App() {
     <main className="mobile-shell">
       <Routes>
         <Route path="/chat" element={<ChatPage />} />
-        <Route path="/workspace" element={<Navigate to="/chat" replace />} />
-        <Route path="/resources" element={<Navigate to="/chat" replace />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/model" element={<ModelSettingsPage />} />
         <Route path="*" element={<Navigate to="/chat" replace />} />

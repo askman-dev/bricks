@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, apiPut, apiDelete } from '../lib/api';
 
 type Provider = 'anthropic' | 'google_ai_studio';
@@ -37,14 +38,17 @@ const PROVIDER_DEFAULTS: Record<Provider, { baseUrl: string; model: string }> = 
 };
 
 function toSlotId(model: string): string {
-  return model
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || `slot-${Date.now()}`;
+  return (
+    model
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || `slot-${Date.now()}`
+  );
 }
 
 export function ModelSettingsPage() {
+  const navigate = useNavigate();
   const [configs, setConfigs] = useState<ApiConfig[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -92,9 +96,7 @@ export function ModelSettingsPage() {
     setProvider(p);
     setBaseUrl(config.config?.endpoint ?? PROVIDER_DEFAULTS[p].baseUrl);
     setApiKey('');
-    setDefaultModel(
-      config.config?.model_preferences?.default_model ?? PROVIDER_DEFAULTS[p].model,
-    );
+    setDefaultModel(config.config?.model_preferences?.default_model ?? PROVIDER_DEFAULTS[p].model);
   }
 
   function resetFormToDefaults(p: Provider) {
@@ -184,8 +186,16 @@ export function ModelSettingsPage() {
 
   if (loading) {
     return (
-      <section className="page-panel">
-        <p>Loading...</p>
+      <section className="settings-mobile-page">
+        <header className="settings-mobile-header model-settings-topbar">
+          <button type="button" className="icon-btn" aria-label="Back" onClick={() => navigate('/settings')}>
+            ←
+          </button>
+          <h1>Model Settings</h1>
+        </header>
+        <section className="page-panel">
+          <p>Loading...</p>
+        </section>
       </section>
     );
   }
@@ -193,110 +203,118 @@ export function ModelSettingsPage() {
   const hasExisting = configs.length > 0 && !!configs[activeIdx]?.id;
 
   return (
-    <section className="page-panel">
-      <h2>Model Settings</h2>
-      <p className="page-subtitle">Configure your LLM provider, API key, and default model.</p>
+    <section className="settings-mobile-page">
+      <header className="settings-mobile-header model-settings-topbar">
+        <button type="button" className="icon-btn" aria-label="Back" onClick={() => navigate('/settings')}>
+          ←
+        </button>
+        <h1>Model Settings</h1>
+      </header>
 
-      {configs.length > 1 && (
-        <div className="form-row">
-          <label htmlFor="config-select">Configuration</label>
-          <select
-            id="config-select"
-            value={activeIdx}
-            onChange={(e) => {
-              const idx = Number(e.target.value);
-              setActiveIdx(idx);
-              hydrateForm(configs[idx]);
-              setError(null);
-              setSuccess(null);
-            }}
-          >
-            {configs.map((c, i) => (
-              <option key={c.id || i} value={i}>
-                {c.config?.model_preferences?.default_model ?? `Config ${i + 1}`}
-                {c.is_default ? ' (default)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      <section className="page-panel">
+        <p className="page-subtitle">Configure your LLM provider, API key, and default model.</p>
 
-      <form className="settings-form" onSubmit={(e) => void handleSave(e)}>
-        <div className="form-row">
-          <label htmlFor="provider">Provider</label>
-          <select
-            id="provider"
-            value={provider}
-            onChange={(e) => handleProviderChange(e.target.value as Provider)}
-          >
-            <option value="anthropic">Anthropic</option>
-            <option value="google_ai_studio">Google AI Studio</option>
-          </select>
-        </div>
-
-        <div className="form-row">
-          <label htmlFor="base-url">Base URL</label>
-          <input
-            id="base-url"
-            type="url"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            required
-          />
-        </div>
-
-        <div className="form-row">
-          <label htmlFor="api-key">API Key</label>
-          <div className="input-group">
-            <input
-              id="api-key"
-              type={showKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={hasExisting ? '(unchanged – enter to update)' : 'Enter API key'}
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              className="toggle-btn"
-              onClick={() => setShowKey((v) => !v)}
-              aria-label={showKey ? 'Hide API key' : 'Show API key'}
+        {configs.length > 1 && (
+          <div className="form-row">
+            <label htmlFor="config-select">Configuration</label>
+            <select
+              id="config-select"
+              value={activeIdx}
+              onChange={(e) => {
+                const idx = Number(e.target.value);
+                setActiveIdx(idx);
+                hydrateForm(configs[idx]);
+                setError(null);
+                setSuccess(null);
+              }}
             >
-              {showKey ? 'Hide' : 'Show'}
-            </button>
+              {configs.map((c, i) => (
+                <option key={c.id || i} value={i}>
+                  {c.config?.model_preferences?.default_model ?? `Config ${i + 1}`}
+                  {c.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+        )}
 
-        <div className="form-row">
-          <label htmlFor="default-model">Default Model</label>
-          <input
-            id="default-model"
-            type="text"
-            value={defaultModel}
-            onChange={(e) => setDefaultModel(e.target.value)}
-            required
-          />
-        </div>
-
-        {error && <p className="form-feedback form-feedback--error">{error}</p>}
-        {success && <p className="form-feedback form-feedback--success">{success}</p>}
-
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          {hasExisting && (
-            <button
-              type="button"
-              className="danger-btn"
-              disabled={deleting}
-              onClick={() => void handleDelete()}
+        <form className="settings-form" onSubmit={(e) => void handleSave(e)}>
+          <div className="form-row">
+            <label htmlFor="provider">Provider</label>
+            <select
+              id="provider"
+              value={provider}
+              onChange={(e) => handleProviderChange(e.target.value as Provider)}
             >
-              {deleting ? 'Deleting…' : 'Delete'}
+              <option value="anthropic">Anthropic</option>
+              <option value="google_ai_studio">Google AI Studio</option>
+            </select>
+          </div>
+
+          <div className="form-row">
+            <label htmlFor="base-url">Base URL</label>
+            <input
+              id="base-url"
+              type="url"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="form-row">
+            <label htmlFor="api-key">API Key</label>
+            <div className="input-group">
+              <input
+                id="api-key"
+                type={showKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={hasExisting ? '(unchanged – enter to update)' : 'Enter API key'}
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="toggle-btn"
+                onClick={() => setShowKey((v) => !v)}
+                aria-label={showKey ? 'Hide API key' : 'Show API key'}
+              >
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <label htmlFor="default-model">Default Model</label>
+            <input
+              id="default-model"
+              type="text"
+              value={defaultModel}
+              onChange={(e) => setDefaultModel(e.target.value)}
+              required
+            />
+          </div>
+
+          {error && <p className="form-feedback form-feedback--error">{error}</p>}
+          {success && <p className="form-feedback form-feedback--success">{success}</p>}
+
+          <div className="form-actions">
+            <button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
             </button>
-          )}
-        </div>
-      </form>
+            {hasExisting && (
+              <button
+                type="button"
+                className="danger-btn"
+                disabled={deleting}
+                onClick={() => void handleDelete()}
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
+          </div>
+        </form>
+      </section>
     </section>
   );
 }
