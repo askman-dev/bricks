@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-08
+last_updated: 2026-04-09
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -38,6 +38,7 @@ products:
         smoke_checks:
           - 发送一条消息后可以看到消息列表更新。
           - 切换 Agent 后仍可继续会话。
+          - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
 
       - feature_id: model_settings
         name: 模型与提供商配置
