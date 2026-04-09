@@ -11,7 +11,7 @@ This directory contains developer tooling scripts for the Bricks monorepo.
   - Command existence checker (`command_exists`)
   - Command guards (`ensure_cmd`, `ensure_or_install_cmd`)
   - Legacy Flutter prerequisite validation (`check_prerequisites`) retained for compatibility
-  - Used by both `build.sh` and `init_dev_env.sh`
+  - Used by `init_dev_env.sh`
 
 - **`init_dev_env.sh`** – Initialize development environment
   - Canonical setup entrypoint for both local development and Codex/container runs
