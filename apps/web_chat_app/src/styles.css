@@ -34,10 +34,11 @@ body {
 }
 
 .chat-mobile-page {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
 .mobile-topbar {
@@ -87,10 +88,10 @@ body {
 .chat-message-card {
   margin: 0 16px;
   flex: 1;
+  min-height: 0;
   overflow: auto;
-  background: #d2d5de;
   border-radius: 14px;
-  padding: 16px;
+  padding: 12px 0;
   line-height: 1.45;
   display: flex;
   flex-direction: column;
@@ -125,11 +126,14 @@ body {
 }
 
 .composer-mobile {
-  margin: 12px 16px 12px;
+  margin: 10px 16px 12px;
   border: 2px solid #808592;
   border-radius: 22px;
   background: #e4e6ec;
   padding: 16px 16px 12px;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
 }
 
 .composer-mobile input {
@@ -184,22 +188,24 @@ body {
 }
 
 .drawer-header {
-  height: 92px;
-  padding: 0 14px;
+  height: 74px;
+  padding: 0 16px;
   border-bottom: 1px solid #cfd5df;
   display: grid;
-  grid-template-columns: 42px 1fr 42px;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
+  column-gap: 12px;
 }
 
 .drawer-header h2 {
   margin: 0;
-  font-size: 22px;
+  text-align: center;
+  font-size: 24px;
   font-weight: 500;
 }
 
 .drawer-back {
-  font-size: 34px;
+  font-size: 28px;
 }
 
 .drawer-settings-link {
@@ -345,6 +351,14 @@ body {
 .floating-menu button:first-child,
 .floating-menu a:first-child {
   border-top: 0;
+}
+
+.menu-group {
+  border-bottom: 1px solid #c1c6d1;
+}
+
+.menu-group button + button {
+  border-top: 1px solid #c1c6d1;
 }
 
 .floating-menu .muted-item {

@@ -117,7 +117,9 @@ export function ChatPage() {
   }
 
   const activeSectionName =
-    sections.find((section) => section.id === activeSectionId)?.config?.section_name ?? '主区';
+    activeSectionId === 'main'
+      ? '主区'
+      : sections.find((section) => section.id === activeSectionId)?.config?.section_name ?? '主区';
 
   function createDrawerChannel() {
     void createSubsection().finally(() => setDrawerOpen(false));
@@ -328,7 +330,7 @@ export function ChatPage() {
                             <strong>
                               {section.config?.section_name ?? section.config?.section_id ?? section.id}
                             </strong>
-                            <small>Default channel</small>
+                            <small>子区</small>
                           </span>
                         </button>
                       );
@@ -368,9 +370,23 @@ export function ChatPage() {
 
       {sectionMenuOpen && (
         <div className="floating-menu floating-menu--right" role="menu" aria-label="Section menu">
-          <button type="button" role="menuitem" onClick={() => void createSubsection()}>
-            新建子区
-          </button>
+          <div className="menu-group">
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={activeSectionId === 'main'}
+              className={activeSectionId === 'main' ? 'menu-item-selected' : undefined}
+              onClick={() => {
+                setActiveSectionId('main');
+                setSectionMenuOpen(false);
+              }}
+            >
+              主区
+            </button>
+            <button type="button" role="menuitem" onClick={() => void createSubsection()}>
+              新建子区
+            </button>
+          </div>
           {sections.length === 0 ? (
             <button type="button" role="menuitem" className="muted-item" disabled>
               暂无子区
