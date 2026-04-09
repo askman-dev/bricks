@@ -216,15 +216,24 @@ class _MessageListState extends State<MessageList> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _MessageExpandToggle(
-                        key: ValueKey<String>(
-                          'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                      if (isUser)
+                        _MessageExpandToggle(
+                          key: ValueKey<String>(
+                            'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                          ),
+                          text: msg.content,
+                          textColor: Theme.of(context).colorScheme.onPrimary,
+                        )
+                      else
+                        Text(
+                          msg.content,
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface,
+                                  ),
                         ),
-                        text: msg.content,
-                        textColor: isUser
-                            ? Theme.of(context).colorScheme.onPrimary
-                            : Theme.of(context).colorScheme.onSurface,
-                      ),
                       if (msg.isStreaming)
                         Padding(
                           padding: const EdgeInsets.only(top: BricksSpacing.xs),

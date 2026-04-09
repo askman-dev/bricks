@@ -131,17 +131,17 @@ void main() {
   });
 
   group('MessageList message truncation', () {
-    testWidgets('shows expand control only for overflowing messages',
+    testWidgets('shows expand control only for overflowing user messages',
         (tester) async {
       final short = ChatMessage(
         messageId: 'short',
-        role: 'assistant',
+        role: 'user',
         content: 'short message',
         timestamp: DateTime.utc(2026, 1, 1),
       );
       final long = ChatMessage(
         messageId: 'long',
-        role: 'assistant',
+        role: 'user',
         content: List.filled(40, 'long content').join(' '),
         timestamp: DateTime.utc(2026, 1, 1, 0, 1),
       );
@@ -150,6 +150,21 @@ void main() {
 
       expect(find.byIcon(Icons.expand_more), findsOneWidget);
       expect(find.byTooltip('Expand'), findsOneWidget);
+    });
+
+    testWidgets('never shows expand control for assistant messages',
+        (tester) async {
+      final longAssistant = ChatMessage(
+        messageId: 'long-a',
+        role: 'assistant',
+        content: List.filled(40, 'long assistant content').join(' '),
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      await tester.pumpWidget(_build([longAssistant]));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.expand_more), findsNothing);
+      expect(find.byTooltip('Expand'), findsNothing);
     });
   });
 
