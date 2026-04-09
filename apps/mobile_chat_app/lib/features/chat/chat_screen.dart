@@ -72,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
   };
   final Map<String, DateTime> _subSectionLastMessageAt = {};
   String _activeSubSection = 'main';
+
   /// Remembers the last-active sub-section id per channel so that switching
   /// back to a previously visited channel restores the correct sub-section.
   final Map<String, String> _lastActiveSubSectionByChannel = {};
@@ -426,10 +427,10 @@ class _ChatScreenState extends State<ChatScreen> {
     // 'main' if the remembered section no longer exists in the section list.
     final remembered = _lastActiveSubSectionByChannel[resolvedChannelId];
     final sections = _channelSubSections[resolvedChannelId] ?? const [];
-    final restoredSubSection = (remembered != null &&
-            sections.any((s) => s.id == remembered))
-        ? remembered
-        : 'main';
+    final restoredSubSection =
+        (remembered != null && sections.any((s) => s.id == remembered))
+            ? remembered
+            : 'main';
     setState(() {
       _activeChannelId = resolvedChannelId;
       _activeSubSection = restoredSubSection;
@@ -952,31 +953,44 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildContextBar() {
+  Future<void> _showDebugInfoDialog() async {
     final activeParticipants = _participantManager.participants.active;
     final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
     final activeSubSectionName = _subSectionNameById(_activeSubSection);
-    final threadLabel = _activeSubSection == 'main'
+    final subSectionLabel = _activeSubSection == 'main'
         ? '主区'
         : (activeSubSectionName ?? _activeSubSection);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: BricksSpacing.md,
-        vertical: BricksSpacing.xs,
-      ),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Wrap(
-        spacing: BricksSpacing.xs,
-        runSpacing: BricksSpacing.xs,
-        children: [
-          Chip(label: Text('Channel: $_activeChannelId')),
-          Chip(label: Text('子区: $threadLabel')),
-          Chip(label: Text('Session: $_sessionIdForScope')),
-          Chip(label: Text('Mode: $mode')),
-          if (_latestCheckpointCursor != null)
-            Chip(label: Text('Cursor: $_latestCheckpointCursor')),
-          Chip(label: Text('Seq: $_lastSyncedSeq')),
+    final rows = <({String label, String value})>[
+      (label: 'Channel', value: _activeChannelId),
+      (label: '子区', value: subSectionLabel),
+      (label: 'Session', value: _sessionIdForScope),
+      (label: 'Mode', value: mode),
+      if (_latestCheckpointCursor != null)
+        (label: 'Cursor', value: _latestCheckpointCursor!),
+      (label: 'Seq', value: '$_lastSyncedSeq'),
+    ];
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('信息'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final row in rows)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: BricksSpacing.xs),
+                  child: SelectableText('${row.label}: ${row.value}'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
@@ -1101,13 +1115,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         body: Column(
           children: [
-            _buildContextBar(),
             Expanded(child: MessageList(messages: _messages)),
             ComposerBar(
               activeAgent: _activeAgent,
               agents: _agents,
               onAgentSelected: _selectAgent,
               onOpenModelSelection: _openRuntimeModelConfigDialog,
+              onShowInfo: _showDebugInfoDialog,
               onSend: _isSending ? null : _sendMessage,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,

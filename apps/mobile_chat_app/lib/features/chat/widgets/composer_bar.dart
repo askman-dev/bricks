@@ -3,7 +3,7 @@ import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
 /// Actions available in the composer popup menu.
-enum ComposerMenuAction { newContext, model, agents }
+enum ComposerMenuAction { newContext, model, agents, info }
 
 /// The input composer bar at the bottom of the chat screen.
 class ComposerBar extends StatefulWidget {
@@ -14,6 +14,7 @@ class ComposerBar extends StatefulWidget {
     this.onSend,
     this.onAgentSelected,
     this.onOpenModelSelection,
+    this.onShowInfo,
     this.onStop,
     this.isStreaming = false,
   });
@@ -32,6 +33,9 @@ class ComposerBar extends StatefulWidget {
 
   /// Opens runtime model selection UI.
   final VoidCallback? onOpenModelSelection;
+
+  /// Opens debug info dialog.
+  final VoidCallback? onShowInfo;
 
   /// Called when the user stops streaming output.
   final VoidCallback? onStop;
@@ -205,6 +209,9 @@ class _ComposerBarState extends State<ComposerBar>
                               case ComposerMenuAction.agents:
                                 // TODO: implement agents action.
                                 break;
+                              case ComposerMenuAction.info:
+                                widget.onShowInfo?.call();
+                                break;
                             }
                           },
                           itemBuilder: (context) => const [
@@ -220,6 +227,10 @@ class _ComposerBarState extends State<ComposerBar>
                             PopupMenuItem<ComposerMenuAction>(
                               value: ComposerMenuAction.agents,
                               child: Text('Agents'),
+                            ),
+                            PopupMenuItem<ComposerMenuAction>(
+                              value: ComposerMenuAction.info,
+                              child: Text('信息'),
                             ),
                           ],
                         ),
