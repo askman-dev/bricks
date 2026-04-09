@@ -2,6 +2,8 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiGet, setAuthToken } from './lib/api';
 import { ChatPage } from './pages/ChatPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { ModelSettingsPage } from './pages/ModelSettingsPage';
 
 type UserProfile = { id: string; email: string | null; created_at: string; updated_at: string }; // snake_case matches backend API
 type AuthMeResponse = { user: UserProfile; oauth_connections: unknown[] };
@@ -64,18 +66,17 @@ export function App() {
         <nav>
           <NavLink to="/chat">Chat</NavLink>
           <NavLink to="/workspace">Workspace</NavLink>
-          <NavLink to="/projects">Projects</NavLink>
-          <NavLink to="/skills">Skills</NavLink>
           <NavLink to="/resources">Resources</NavLink>
+          <NavLink to="/settings">Settings</NavLink>
         </nav>
       </aside>
       <main className="content">
         <Routes>
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/workspace" element={<PlaceholderPage title="Workspace" />} />
-          <Route path="/projects" element={<PlaceholderPage title="Projects" />} />
-          <Route path="/skills" element={<PlaceholderPage title="Skills" />} />
           <Route path="/resources" element={<PlaceholderPage title="Resources" />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/model" element={<ModelSettingsPage />} />
           <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>
       </main>
