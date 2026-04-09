@@ -69,11 +69,9 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
 /**
  * Builds the OAuth callback response for the redirect (non-popup) flow.
  *
- * The returned HTML page stores the JWT token in localStorage using the key
- * and encoding format expected by Flutter Web's shared_preferences plugin
- * (key: `flutter.auth_token`, value: JSON.stringify(token)), then redirects
- * the browser to `redirectTo` so that Flutter's startup router can
- * pick it up via AuthService.isLoggedIn().
+ * The returned HTML page stores the JWT token in localStorage under the key
+ * `auth_token` as a plain string, then redirects the browser to `redirectTo`
+ * so that the React app can read it immediately after the redirect.
  *
  * If localStorage is unavailable (e.g. blocked in private mode) the page
  * shows a clear recovery message instead of silently failing.
@@ -98,12 +96,8 @@ function buildRedirectResponse(res: Response, token: string, redirectTo: string)
     <script nonce="${nonce}">
       (function () {
         var token = ${escapedToken};
-        // Flutter Web's shared_preferences plugin stores String values as
-        // JSON.stringify(value) under the key prefix 'flutter.'.
-        // Writing directly here lets the Flutter startup router read the
-        // token immediately after the redirect without any extra round-trip.
         try {
-          localStorage.setItem('flutter.auth_token', JSON.stringify(token));
+          localStorage.setItem('auth_token', token);
         } catch (e) {
           console.error('bricks: localStorage unavailable', e);
           var msg = document.createElement('p');

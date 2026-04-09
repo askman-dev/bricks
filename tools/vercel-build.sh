@@ -9,5 +9,4 @@ if [ "${INSTALL_ONLY}" = "--install-only" ]; then
   exit 0
 fi
 
-npm --prefix apps/web_chat_app ci
 npm --prefix apps/web_chat_app run build

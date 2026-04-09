@@ -1,9 +1,10 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { apiGet } from './lib/api';
+import { apiGet, setAuthToken } from './lib/api';
 import { ChatPage } from './pages/ChatPage';
 
-type UserProfile = { id: string; email: string };
+type UserProfile = { id: string; email: string | null; created_at: string; updated_at: string }; // snake_case matches backend API
+type AuthMeResponse = { user: UserProfile; oauth_connections: unknown[] };
 
 function LoginPage() {
   const returnTo = encodeURIComponent(window.location.origin + '/chat');
@@ -32,8 +33,23 @@ export function App() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    apiGet<UserProfile>('/api/auth/me')
-      .then(setUser)
+    // Extract auth_token from URL fragment for cross-origin OAuth flows
+    const hash = window.location.hash.slice(1);
+    const params = new URLSearchParams(hash);
+    const fragmentToken = params.get('auth_token');
+    if (fragmentToken) {
+      setAuthToken(fragmentToken);
+      params.delete('auth_token');
+      const newHash = params.toString();
+      window.history.replaceState(
+        null,
+        '',
+        newHash ? `#${newHash}` : window.location.pathname + window.location.search,
+      );
+    }
+
+    apiGet<AuthMeResponse>('/api/auth/me')
+      .then((data) => setUser(data.user))
       .catch(() => setUser(null))
       .finally(() => setChecked(true));
   }, []);

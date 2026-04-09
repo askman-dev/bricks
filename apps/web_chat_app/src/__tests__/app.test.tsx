@@ -3,9 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '../App';
 
+const TEST_TOKEN = 'test-jwt-token';
+
+/** Mock fetch with a fixed sequence of responses; captures call arguments. */
 function mockFetch(sequence: Array<{ ok: boolean; json: unknown }>) {
   let index = 0;
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
     const current = sequence[Math.min(index, sequence.length - 1)];
     index += 1;
     return {
@@ -15,11 +18,17 @@ function mockFetch(sequence: Array<{ ok: boolean; json: unknown }>) {
   });
 }
 
+beforeEach(() => {
+  localStorage.setItem('auth_token', TEST_TOKEN);
+});
+
 afterEach(() => {
+  localStorage.removeItem('auth_token');
   vi.restoreAllMocks();
 });
 
 test('shows login entry when user is not authenticated', async () => {
+  localStorage.removeItem('auth_token');
   mockFetch([{ ok: false, json: {} }]);
   render(
     <MemoryRouter>
@@ -32,7 +41,9 @@ test('shows login entry when user is not authenticated', async () => {
 });
 
 test('renders sidebar after auth and routes to chat', async () => {
-  mockFetch([{ ok: true, json: { id: 'u1', email: 'demo@example.com' } }]);
+  const fetchSpy = mockFetch([
+    { ok: true, json: { user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' }, oauth_connections: [] } },
+  ]);
   render(
     <MemoryRouter initialEntries={['/workspace']}>
       <App />
@@ -40,12 +51,18 @@ test('renders sidebar after auth and routes to chat', async () => {
   );
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Workspace' })).toBeInTheDocument());
   expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
+
+  // Verify Authorization header is sent with the stored JWT
+  const firstCall = fetchSpy.mock.calls[0];
+  const options = firstCall?.[1] as RequestInit | undefined;
+  const headers = options?.headers as Record<string, string> | undefined;
+  expect(headers?.['Authorization']).toBe(`Bearer ${TEST_TOKEN}`);
 });
 
 test('sends chat message and displays assistant reply', async () => {
   const user = userEvent.setup();
   mockFetch([
-    { ok: true, json: { id: 'u1', email: 'demo@example.com' } },
+    { ok: true, json: { user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' }, oauth_connections: [] } },
     { ok: true, json: { text: 'Hello from assistant' } },
   ]);
   render(
