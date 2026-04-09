@@ -89,7 +89,7 @@ test('sends chat message and displays assistant reply', async () => {
   });
 
   await user.type(screen.getByPlaceholderText('Ask Bricks to create something...'), 'Hi');
-  await user.click(screen.getByRole('button', { name: '➤' }));
+  await user.click(screen.getByRole('button', { name: 'Send message' }));
 
   await waitFor(() => {
     expect(screen.getByText(/Hello from assistant/)).toBeInTheDocument();

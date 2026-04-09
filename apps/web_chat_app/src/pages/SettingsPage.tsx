@@ -30,11 +30,11 @@ export function SettingsPage() {
           </NavLink>
         </li>
         <li>
-          <button type="button" className="settings-mobile-item">
+          <button type="button" className="settings-mobile-item" disabled>
             <span className="settings-mobile-icon">◫</span>
             <div>
               <strong>Manage Agents</strong>
-              <p>Create and edit agent definitions</p>
+              <p>Coming soon</p>
             </div>
           </button>
         </li>
