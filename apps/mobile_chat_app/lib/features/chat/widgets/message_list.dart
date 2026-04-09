@@ -15,6 +15,7 @@ class MessageList extends StatefulWidget {
 
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey> _itemKeys = <int, GlobalKey>{};
 
   // Persist the previous snapshot in state so comparisons work correctly even
   // when the same List instance is mutated in place (e.g. ChatScreen passes
@@ -26,7 +27,7 @@ class _MessageListState extends State<MessageList> {
   void initState() {
     super.initState();
     _saveSnapshot();
-    _scrollToBottom();
+    _scrollToFocusedUserMessage();
   }
 
   @override
@@ -36,17 +37,22 @@ class _MessageListState extends State<MessageList> {
     final newLength = messages.length;
     final newKey =
         messages.isEmpty ? null : _LastMessageKey.from(messages.last);
+    final wasStreamingTail = _prevLastKey?.isStreaming ?? false;
+    final isStreamingTail = newKey?.isStreaming ?? false;
+    final sameTailMessageId = _prevLastKey?.messageId != null &&
+        _prevLastKey?.messageId == newKey?.messageId;
+    final streamingProgressOnly = newLength == _prevLength &&
+        wasStreamingTail &&
+        isStreamingTail &&
+        sameTailMessageId;
     if (newLength != _prevLength || newKey != _prevLastKey) {
       _prevLength = newLength;
       _prevLastKey = newKey;
-      // During active streaming only snap to bottom when the user is already
-      // near it; otherwise always scroll so history loads land at the bottom.
-      final isStreamingUpdate =
-          messages.isNotEmpty && messages.last.isStreaming;
-      if (!isStreamingUpdate || _isNearBottom()) {
-        _scrollToBottom();
+      if (!streamingProgressOnly) {
+        _scrollToFocusedUserMessage();
       }
     }
+    _cleanupItemKeys();
   }
 
   void _saveSnapshot() {
@@ -56,22 +62,47 @@ class _MessageListState extends State<MessageList> {
         messages.isEmpty ? null : _LastMessageKey.from(messages.last);
   }
 
-  bool _isNearBottom() {
-    if (!_scrollController.hasClients) return true;
-    final position = _scrollController.position;
-    return position.maxScrollExtent - position.pixels <= 100.0;
-  }
-
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom() {
+  void _cleanupItemKeys() {
+    final maxIndex = widget.messages.length - 1;
+    _itemKeys.removeWhere((index, _) => index > maxIndex);
+  }
+
+  int _focusedMessageIndex() {
+    for (var i = widget.messages.length - 1; i >= 0; i--) {
+      if (widget.messages[i].role == 'user') return i;
+    }
+    return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
+  }
+
+  void _scrollToFocusedUserMessage() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      if (widget.messages.isEmpty) return;
+      final targetIndex = _focusedMessageIndex();
+      if (targetIndex < 0) return;
+
+      // First jump to bottom to ensure trailing children are laid out, then
+      // pin the focused message as the first visible item.
+      final position = _scrollController.position;
+      _scrollController.jumpTo(position.maxScrollExtent);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        final targetKey = _itemKeys[targetIndex];
+        final targetContext = targetKey?.currentContext;
+        if (targetContext == null) return;
+        Scrollable.ensureVisible(
+          targetContext,
+          duration: Duration.zero,
+          alignment: 0,
+        );
+      });
     });
   }
 
@@ -106,12 +137,19 @@ class _MessageListState extends State<MessageList> {
     return SelectionArea(
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.all(BricksSpacing.md),
+        padding: EdgeInsets.fromLTRB(
+          BricksSpacing.md,
+          BricksSpacing.md,
+          BricksSpacing.md,
+          BricksSpacing.md + MediaQuery.of(context).size.height * 0.35,
+        ),
         itemCount: messages.length,
         itemBuilder: (context, index) {
           final msg = messages[index];
           final isUser = msg.role == 'user';
+          final itemKey = _itemKeys.putIfAbsent(index, GlobalKey.new);
           return Align(
+            key: itemKey,
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Column(
               crossAxisAlignment:
@@ -142,14 +180,20 @@ class _MessageListState extends State<MessageList> {
                     ),
                   ),
                 Container(
+                  key: ValueKey<String>(
+                    'bubble-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                  ),
                   margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
                   padding: const EdgeInsets.symmetric(
                     horizontal: BricksSpacing.md,
                     vertical: BricksSpacing.sm,
                   ),
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.75,
-                  ),
+                  width: isUser ? null : double.infinity,
+                  constraints: isUser
+                      ? BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.75,
+                        )
+                      : null,
                   decoration: BoxDecoration(
                     color: isUser
                         ? Theme.of(context).colorScheme.primary
@@ -159,13 +203,14 @@ class _MessageListState extends State<MessageList> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        msg.content,
-                        style: TextStyle(
-                          color: isUser
-                              ? Theme.of(context).colorScheme.onPrimary
-                              : Theme.of(context).colorScheme.onSurface,
+                      _MessageExpandToggle(
+                        key: ValueKey<String>(
+                          'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
                         ),
+                        text: msg.content,
+                        textColor: isUser
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface,
                       ),
                       if (msg.isStreaming)
                         Padding(
@@ -247,6 +292,93 @@ class _MessageListState extends State<MessageList> {
           );
         },
       ),
+    );
+  }
+}
+
+class _MessageExpandToggle extends StatefulWidget {
+  const _MessageExpandToggle({
+    super.key,
+    required this.text,
+    required this.textColor,
+  });
+
+  final String text;
+  final Color textColor;
+
+  @override
+  State<_MessageExpandToggle> createState() => _MessageExpandToggleState();
+}
+
+class _MessageExpandToggleState extends State<_MessageExpandToggle> {
+  bool _expanded = false;
+  bool _overflowing = false;
+
+  @override
+  void didUpdateWidget(covariant _MessageExpandToggle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text && _expanded && !_overflowing) {
+      _expanded = false;
+    }
+  }
+
+  void _updateOverflow(bool next) {
+    if (_overflowing == next) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _overflowing = next);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: widget.textColor,
+        );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: widget.text, style: textStyle),
+          textDirection: Directionality.of(context),
+          maxLines: 3,
+          ellipsis: '…',
+        )..layout(maxWidth: constraints.maxWidth);
+        _updateOverflow(painter.didExceedMaxLines);
+
+        final content = Text(
+          widget.text,
+          style: textStyle,
+          maxLines: _expanded ? null : 3,
+          overflow: TextOverflow.ellipsis,
+        );
+        if (!_overflowing) return content;
+
+        return Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 24),
+              child: content,
+            ),
+            Positioned(
+              top: -8,
+              right: -10,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+                splashRadius: 16,
+                icon: Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
+                  color: widget.textColor,
+                ),
+                onPressed: () => setState(() => _expanded = !_expanded),
+                tooltip: _expanded ? 'Collapse' : 'Expand',
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
