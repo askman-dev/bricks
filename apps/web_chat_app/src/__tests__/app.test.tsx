@@ -95,3 +95,34 @@ test('sends chat message and displays assistant reply', async () => {
     expect(screen.getByText(/Hello from assistant/)).toBeInTheDocument();
   });
 });
+
+test('mobile drawer matches navigation groups with agents and channels', async () => {
+  const user = userEvent.setup();
+  mockFetch([
+    {
+      ok: true,
+      json: {
+        user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+        oauth_connections: [],
+      },
+    },
+    { ok: true, json: [] },
+  ]);
+  render(
+    <MemoryRouter initialEntries={['/chat']}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'Open navigation menu' })).toBeInTheDocument();
+  });
+
+  await user.click(screen.getByRole('button', { name: 'Open navigation menu' }));
+
+  expect(screen.getByRole('heading', { name: 'Navigation' })).toBeInTheDocument();
+  expect(screen.getByText('Current Chat')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Agents section' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Channels section' })).toBeInTheDocument();
+  expect(screen.getByText('默认频道')).toBeInTheDocument();
+});
