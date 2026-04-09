@@ -32,6 +32,39 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Ensure a command exists, otherwise print actionable error and exit.
+ensure_cmd() {
+    local cmd="$1"
+    local hint="${2:-Please install ${cmd} and ensure it is in PATH.}"
+
+    if ! command_exists "$cmd"; then
+        print_error "Missing required command: ${cmd}"
+        echo "$hint"
+        exit 1
+    fi
+}
+
+# Ensure a command exists, and try best-effort installation with npm when requested.
+ensure_or_install_cmd() {
+    local cmd="$1"
+    local npm_package="${2:-$1}"
+    local hint="${3:-Please install ${cmd} manually and rerun.}"
+
+    if command_exists "$cmd"; then
+        return 0
+    fi
+
+    print_warning "${cmd} not found. Attempting npm global install: ${npm_package}"
+    if npm install -g "$npm_package" >/dev/null 2>&1; then
+        print_success "Installed ${cmd} via npm."
+        return 0
+    fi
+
+    print_error "Failed to auto-install ${cmd}."
+    echo "$hint"
+    exit 1
+}
+
 # Check prerequisites (Flutter, Dart, Melos)
 check_prerequisites() {
     print_step "Checking prerequisites..."

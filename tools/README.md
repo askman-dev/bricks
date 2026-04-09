@@ -9,18 +9,17 @@ This directory contains developer tooling scripts for the Bricks monorepo.
 - **`common.sh`** – Shared library with reusable validation functions
   - Color output helpers (`print_step`, `print_success`, `print_error`, `print_warning`)
   - Command existence checker (`command_exists`)
-  - Prerequisites validation (`check_prerequisites`)
+  - Command guards (`ensure_cmd`, `ensure_or_install_cmd`)
+  - Legacy Flutter prerequisite validation (`check_prerequisites`) retained for compatibility
   - Used by both `build.sh` and `init_dev_env.sh`
 
 - **`init_dev_env.sh`** – Initialize development environment
   - Canonical setup entrypoint for both local development and Codex/container runs
-  - Checks prerequisites (Flutter, Dart, Melos)
-  - Installs Flutter automatically when missing (`$HOME/.local/flutter` by default)
-  - Installs Melos via `dart pub global activate melos` when missing
-  - Sets up Flutter web support
-  - Bootstraps monorepo dependencies with Melos
+  - Validates required CLI tools (`git`, `curl`, `jq`, `node`, `npm`)
+  - Installs backend dependencies with `npm ci`
+  - Installs React frontend dependencies with `npm ci`
   - Provides guidance for next steps
-  - Usage: `./tools/init_dev_env.sh [--no-bootstrap] [--no-doctor]`
+  - Usage: `./tools/init_dev_env.sh`
 
 ## Planned tools
 
