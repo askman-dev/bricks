@@ -25,9 +25,36 @@ class _MessageListState extends State<MessageList> {
   @override
   void didUpdateWidget(covariant MessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.messages.length != widget.messages.length) {
+    if (_shouldAutoScroll(oldWidget.messages, widget.messages)) {
       _scrollToBottom();
     }
+  }
+
+  bool _shouldAutoScroll(
+      List<ChatMessage> previous, List<ChatMessage> current) {
+    if (previous.length != current.length) {
+      return true;
+    }
+    return _lastMessageSignature(previous) != _lastMessageSignature(current);
+  }
+
+  String? _lastMessageSignature(List<ChatMessage> messages) {
+    if (messages.isEmpty) return null;
+    final last = messages.last;
+    return [
+      last.role,
+      last.content,
+      last.agentName ?? '',
+      last.timestamp.microsecondsSinceEpoch.toString(),
+      last.threadId ?? '',
+      last.taskId ?? '',
+      last.taskState?.name ?? '',
+      last.isStreaming ? '1' : '0',
+      last.isRecovered ? '1' : '0',
+      last.arbitrationMode ? '1' : '0',
+      last.resolvedBotId ?? '',
+      last.fallbackToDefaultBot ? '1' : '0',
+    ].join('|');
   }
 
   @override

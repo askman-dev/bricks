@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-08
+last_updated: 2026-04-09
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -37,6 +37,7 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
         smoke_checks:
           - 发送一条消息后可以看到消息列表更新。
+          - 打开已有历史的会话后默认定位到最新一条消息。
           - 切换 Agent 后仍可继续会话。
 
       - feature_id: model_settings

@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-04-08
+last_updated: 2026-04-09
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -38,6 +38,7 @@ index:
       - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
       - apps/mobile_chat_app/lib/features/chat/chat_task_protocol.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
       - apps/node_backend/src/routes/chat.ts
       - apps/node_backend/src/llm/llm_service.ts
     doc_index:
@@ -47,6 +48,7 @@ index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
+      - apps/mobile_chat_app/test/message_list_test.dart
     keywords:
       - chat
       - arbitration
@@ -54,9 +56,11 @@ index:
       - channel
       - session
       - history
+      - auto-scroll
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
+      - 消息列表滚动定位触发条件不足会导致用户看不到最新消息。
 
   - feature_id: model_settings
     capability: 模型配置读写
