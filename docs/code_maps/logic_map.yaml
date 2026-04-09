@@ -49,6 +49,7 @@ index:
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
       - apps/mobile_chat_app/test/message_list_test.dart
+      - apps/mobile_chat_app/test/composer_bar_test.dart
     keywords:
       - chat
       - arbitration
