@@ -39,6 +39,9 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 //   Production: https://your-domain.com/api/auth/github/callback
 const GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
 const OAUTH_ALLOWED_RETURN_ORIGINS = process.env.OAUTH_ALLOWED_RETURN_ORIGINS;
+const E2E_MOCK_GITHUB_OAUTH = process.env.E2E_MOCK_GITHUB_OAUTH === 'true';
+const E2E_MOCK_GITHUB_EMAIL = process.env.E2E_MOCK_GITHUB_EMAIL || 'e2e-user@bricks.local';
+const E2E_MOCK_GITHUB_USER_ID = process.env.E2E_MOCK_GITHUB_USER_ID || 'bricks-e2e-github-user';
 
 /** Name of the HttpOnly cookie used to store the CSRF state nonce. */
 const OAUTH_STATE_COOKIE = 'oauth_state';
@@ -273,6 +276,10 @@ function getDefaultReturnTo(): string {
   return 'http://localhost:3000/';
 }
 
+function canUseE2EMockGithubOAuth(): boolean {
+  return E2E_MOCK_GITHUB_OAUTH && process.env.NODE_ENV !== 'production';
+}
+
 async function handleGitHubCallback(req: Request, res: Response): Promise<void> {
   const { code, state } = req.query;
 
@@ -396,6 +403,40 @@ async function handleGitHubCallback(req: Request, res: Response): Promise<void> 
  * preview → production flows).
  */
 router.get('/github', async (req: Request, res: Response) => {
+  if (canUseE2EMockGithubOAuth()) {
+    try {
+      const isDefaultReturnTo = typeof req.query.return_to !== 'string';
+      const returnTo = isDefaultReturnTo ? getDefaultReturnTo() : req.query.return_to as string;
+
+      if (!isDefaultReturnTo && !isAllowedReturnTo(returnTo, {
+        callbackUrl: GITHUB_CALLBACK_URL,
+        allowedReturnOrigins: OAUTH_ALLOWED_RETURN_ORIGINS,
+      })) {
+        res.status(400).json({ error: 'Invalid return_to URL' });
+        return;
+      }
+
+      const user = await findOrCreateUserByOAuth(
+        'github',
+        E2E_MOCK_GITHUB_USER_ID,
+        'e2e-mock-access-token',
+        undefined,
+        undefined,
+        E2E_MOCK_GITHUB_EMAIL,
+      );
+
+      const token = generateToken(user.id);
+      const callbackOrigin = getRequestOrigin(req);
+      const redirectTarget = buildPostLoginRedirectTarget(returnTo, token, callbackOrigin);
+      buildRedirectResponse(res, token, redirectTarget);
+      return;
+    } catch (error) {
+      console.error('GitHub OAuth E2E mock login error:', error);
+      res.status(500).json({ error: 'Authentication setup failed' });
+      return;
+    }
+  }
+
   if (!GITHUB_CLIENT_ID) {
     res.status(500).json({ error: 'GitHub OAuth not configured' });
     return;

@@ -13,12 +13,15 @@ index:
       - apps/web_chat_app/src/App.tsx
       - apps/web_chat_app/src/lib/api.ts
       - apps/node_backend/src/routes/auth.ts
+      - .github/scripts/e2e_homepage_screenshot.js
+      - .github/workflows/pr_frontend_e2e.yml
     doc_index:
       - docs/architecture.md
       - BUILD.md
     test_index:
       - apps/web_chat_app/src/__tests__/app.test.tsx
       - apps/node_backend/src/routes/auth.test.ts
+      - .github/scripts/e2e_homepage_screenshot.js
     keywords:
       - oauth
       - github
@@ -28,6 +31,7 @@ index:
     change_risks:
       - OAuth 登录后前端状态刷新失败会导致用户停留在登录页。
       - Cookie/credentials 配置不一致会导致 /api/auth/me 鉴权失败。
+      - CI 的 E2E mock OAuth 环境变量配置错误会导致登录步骤卡在 GitHub 外跳页面。
 
   - feature_id: chat_session
     capability: React 聊天会话
@@ -87,6 +91,7 @@ index:
       - apps/node_backend/src/middleware/auth.ts
       - apps/node_backend/src/services/userService.ts
       - apps/node_backend/src/services/oauthStateService.ts
+      - .github/workflows/pr_frontend_e2e.yml
     doc_index:
       - docs/architecture.md
     test_index:
@@ -101,6 +106,7 @@ index:
     change_risks:
       - OAuth state 校验逻辑变动可能导致回调失效。
       - return_to 校验规则变动可能引入开放重定向漏洞。
+      - 若测试环境 mock 登录逻辑未限制在非 production，可能带来认证绕过风险。
 
   - feature_id: backend_chat_llm
     capability: 后端聊天与 LLM 路由

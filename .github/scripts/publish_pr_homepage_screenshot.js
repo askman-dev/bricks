@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const SCREENSHOT_DIR = 'screenshots';
-const SCREENSHOT_FILE = 'home.png';
-const COMMENT_MARKER = '<!-- pr-homepage-screenshot-bot -->';
+const SCREENSHOT_FILE = 'chat-after-login.png';
+const COMMENT_MARKER = '<!-- pr-chat-e2e-screenshot-bot -->';
 const PREVIEW_BRANCH = 'pr-screenshot-previews';
 const PREVIEW_ROOT = '.github/pr-screenshots';
 const NOT_FOUND_MESSAGE = 'Not Found';
@@ -51,7 +51,7 @@ async function githubRequest(apiPath, options = {}) {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
       'Content-Type': 'application/json',
-      'User-Agent': 'bricks-pr-homepage-screenshot-bot',
+      'User-Agent': 'bricks-pr-chat-e2e-screenshot-bot',
       ...(options.headers || {}),
     },
   });
@@ -124,7 +124,7 @@ async function uploadPreviewImage(existingSha) {
       await githubRequest(`/repos/${owner}/${repo}/contents/${encodedPath(`${previewDir}/${SCREENSHOT_FILE}`)}`, {
         method: 'PUT',
         body: JSON.stringify({
-          message: `chore: update homepage screenshot preview for PR #${prNumber}`,
+          message: `chore: update chat e2e screenshot preview for PR #${prNumber}`,
           branch: PREVIEW_BRANCH,
           content,
           sha: currentSha,
@@ -175,21 +175,21 @@ function buildCommentBody() {
   const artifactUrl = `https://github.com/${owner}/${repo}/actions/runs/${runId}`;
 
   return [
-    '## 🧪 Frontend homepage E2E + screenshot',
+    '## 🧪 Frontend login-to-chat E2E + screenshot',
     '',
     '### Automated E2E flow',
-    '1. Build Flutter web app.',
-    '2. Start local static server for the build output.',
-    '3. Open homepage in Playwright Chromium.',
-    '4. Validate homepage render root exists.',
-    '5. Capture homepage screenshot and upload artifact.',
+    '1. Start Node backend API with E2E mock OAuth mode enabled.',
+    '2. Start React frontend dev server with `/api` proxy to backend.',
+    '3. Open login page in Playwright Chromium.',
+    '4. Click “Login with GitHub” and complete backend redirect flow.',
+    '5. Verify `/chat` page loads and capture screenshot.',
     '',
     `Branch: \`${prHeadRef}\``,
     `Commit: \`${sha.slice(0, 7)}\``,
     `Time: ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC`,
     '',
-    '### Homepage screenshot',
-    `<img src="${previewImageUrl()}" alt="Homepage screenshot" width="720" />`,
+    '### Chat page screenshot (after login)',
+    `<img src="${previewImageUrl()}" alt="Chat page screenshot after login" width="720" />`,
     '',
     `👉 [Download workflow artifacts](${artifactUrl})`,
     '',
