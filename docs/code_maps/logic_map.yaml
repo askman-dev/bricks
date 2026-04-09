@@ -10,104 +10,64 @@ index:
   - feature_id: auth_login
     capability: GitHub OAuth 登录
     code_index:
-      - apps/mobile_chat_app/lib/features/auth/login_screen.dart
-      - apps/mobile_chat_app/lib/features/auth/auth_service.dart
-      - apps/mobile_chat_app/lib/features/auth/github_oauth.dart
+      - apps/web_chat_app/src/App.tsx
+      - apps/web_chat_app/src/lib/api.ts
       - apps/node_backend/src/routes/auth.ts
     doc_index:
       - docs/architecture.md
       - BUILD.md
     test_index:
-      - apps/mobile_chat_app/test/auth_service_test.dart
+      - apps/web_chat_app/src/__tests__/app.test.tsx
       - apps/node_backend/src/routes/auth.test.ts
     keywords:
       - oauth
       - github
-      - token
       - auth
-      - callback
+      - login
+      - react
     change_risks:
-      - Web 与移动端 token 回调分支行为不一致。
-      - 登录成功后导航状态未同步。
+      - OAuth 登录后前端状态刷新失败会导致用户停留在登录页。
+      - Cookie/credentials 配置不一致会导致 /api/auth/me 鉴权失败。
 
   - feature_id: chat_session
-    capability: 多 Agent 聊天会话与仲裁
+    capability: React 聊天会话
     code_index:
-      - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
-      - apps/mobile_chat_app/lib/features/chat/chat_arbitration.dart
-      - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
-      - apps/mobile_chat_app/lib/features/chat/chat_task_protocol.dart
-      - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
-      - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+      - apps/web_chat_app/src/pages/ChatPage.tsx
+      - apps/web_chat_app/src/lib/api.ts
       - apps/node_backend/src/routes/chat.ts
       - apps/node_backend/src/llm/llm_service.ts
     doc_index:
       - docs/architecture.md
-      - openspec/changes/multi-agent-participation/design.md
     test_index:
-      - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
-      - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
-      - apps/mobile_chat_app/test/chat_history_api_service_test.dart
-      - apps/mobile_chat_app/test/message_list_test.dart
-      - apps/mobile_chat_app/test/composer_bar_test.dart
+      - apps/web_chat_app/src/__tests__/app.test.tsx
     keywords:
       - chat
-      - arbitration
-      - topology
-      - channel
       - session
-      - history
-      - auto-scroll
+      - react
+      - respond
+      - message
     change_risks:
-      - 改动路由或拓扑后，消息分发链路中断。
-      - 会话持久化字段升级时出现向后兼容问题。
-      - 消息列表滚动锚点从“底部”改为“用户消息”后，若触发条件错误会导致上下文定位错位。
-      - 长文本折叠状态与流式更新叠加时，可能出现按钮闪烁或展开状态丢失。
-
-  - feature_id: model_settings
-    capability: 模型配置读写
-    code_index:
-      - apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
-      - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
-      - apps/node_backend/src/routes/config.ts
-      - config/models.yaml
-      - config/app.defaults.yaml
-    doc_index:
-      - docs/model_settings_plan.md
-      - docs/architecture.md
-    test_index:
-      - apps/mobile_chat_app/test/model_settings_screen_test.dart
-    keywords:
-      - model
-      - provider
-      - is_default
-      - config
-      - save
-    change_risks:
-      - 字段格式变化导致保存后读取失败。
-      - 后端默认模型与前端选择策略不一致。
+      - 请求体字段缺失将触发后端 400 并导致发送失败。
+      - 前端会话 ID 策略变动可能影响后端历史聚合。
 
   - feature_id: workspace_resources
-    capability: Workspace / Projects / Skills / Resources 导航
+    capability: 侧边栏导航
     code_index:
-      - apps/mobile_chat_app/lib/features/workspace/workspace_screen.dart
-      - apps/mobile_chat_app/lib/features/projects/projects_screen.dart
-      - apps/mobile_chat_app/lib/features/skills/skills_screen.dart
-      - apps/mobile_chat_app/lib/features/resources/resources_screen.dart
+      - apps/web_chat_app/src/App.tsx
     doc_index:
       - docs/architecture.md
     test_index:
-      - apps/mobile_chat_app/test/app_test.dart
-      - apps/mobile_chat_app/test/chat_navigation_page_test.dart
+      - apps/web_chat_app/src/__tests__/app.test.tsx
     keywords:
+      - sidebar
+      - navigation
       - workspace
       - projects
       - skills
       - resources
-      - navigation
     change_risks:
-      - 侧边栏入口迁移后页面不可达。
-      - 页面间返回路径断裂造成死路由。
+      - 路由配置错误会导致页面不可达或白屏。
+      - 入口名称变更可能破坏测试脚本选择器。
 
   - feature_id: backend_auth
     capability: 后端 GitHub OAuth 认证
@@ -161,6 +121,6 @@ maintenance_rules:
     - AI Agent 修改后出现遗留逻辑或潜在回归风险。
   review_checklist:
     - feature_id values in feature_map must match those in logic_map.
-    - When a feature spans multiple platforms (mobile/backend), the feature_id naming should clearly indicate the scope.
+    - When a feature spans multiple platforms (web/backend), the feature_id naming should clearly indicate the scope.
     - Each capability must have at least code_index and keywords.
     - Every change should include change_risks to assist future regression testing.

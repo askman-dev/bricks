@@ -6,69 +6,47 @@ purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
 products:
-  - product_id: mobile_chat_app
-    name: Mobile Chat App
+  - product_id: web_chat_app
+    name: Web Chat App
     platform:
-      - flutter_mobile
-      - flutter_web
+      - react_web
     entry_points:
-      - path: apps/mobile_chat_app/lib/main.dart
+      - path: apps/web_chat_app/src/main.tsx
         route: App root
     features:
       - feature_id: auth_login
         name: GitHub OAuth 登录
         user_value: 用户可完成登录并进入应用。
         entry_paths:
-          - screen: LoginScreen
-            route_hint: apps/mobile_chat_app/lib/features/auth/login_screen.dart
-          - service: GitHubOAuth/AuthService
-            route_hint: apps/mobile_chat_app/lib/features/auth/
+          - screen: LoginPage
+            route_hint: apps/web_chat_app/src/App.tsx
+          - route: /api/auth/github
+            route_hint: apps/node_backend/src/routes/auth.ts
         smoke_checks:
           - 打开登录页并发起 GitHub 登录。
-          - 完成 token 回调后进入主界面。
+          - 登录后调用 /api/auth/me 成功并进入主界面。
 
       - feature_id: chat_session
-        name: 多 Agent 聊天会话
-        user_value: 用户可在会话中发送消息并观察 Agent 协同回复。
+        name: 对话会话
+        user_value: 用户可发送消息并看到助手回复。
         entry_paths:
-          - screen: ChatScreen
-            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
-          - navigation: ChatNavigationPage
-            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
+          - screen: ChatPage
+            route_hint: apps/web_chat_app/src/pages/ChatPage.tsx
+          - route: /api/chat/respond
+            route_hint: apps/node_backend/src/routes/chat.ts
         smoke_checks:
-          - 发送一条消息后可以看到消息列表更新。
-          - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
-          - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。
-          - 切换 Agent 后仍可继续会话。
-          - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
-
-      - feature_id: model_settings
-        name: 模型与提供商配置
-        user_value: 用户可选择可用模型并保存默认配置。
-        entry_paths:
-          - screen: ModelSettingsScreen
-            route_hint: apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
-          - service: LlmConfigService
-            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
-        smoke_checks:
-          - 进入模型设置并保存配置。
-          - 重新进入页面后配置保持一致。
+          - 在 Chat 页面发送一条消息后可看到 user 与 assistant 消息。
+          - API 失败时出现可见错误反馈消息。
 
       - feature_id: workspace_resources
-        name: Workspace / Projects / Skills / Resources 管理
-        user_value: 用户可浏览工作区相关资源。
+        name: 侧边栏导航
+        user_value: 用户可通过侧边栏在 chat/workspace/projects/skills/resources 间切换。
         entry_paths:
-          - screen: WorkspaceScreen
-            route_hint: apps/mobile_chat_app/lib/features/workspace/workspace_screen.dart
-          - screen: ProjectsScreen
-            route_hint: apps/mobile_chat_app/lib/features/projects/projects_screen.dart
-          - screen: SkillsScreen
-            route_hint: apps/mobile_chat_app/lib/features/skills/skills_screen.dart
-          - screen: ResourcesScreen
-            route_hint: apps/mobile_chat_app/lib/features/resources/resources_screen.dart
+          - shell: SidebarNav
+            route_hint: apps/web_chat_app/src/App.tsx
         smoke_checks:
-          - 从侧边导航进入每个页面。
-          - 页面可正常渲染且无崩溃。
+          - 侧边栏可见 Chat/Workspace/Projects/Skills/Resources 入口。
+          - 点击入口后页面切换且不崩溃。
 
   - product_id: node_backend
     name: Node Backend API
@@ -97,7 +75,7 @@ products:
         name: Chat 与 LLM 调用
         user_value: 服务端可处理聊天请求并路由到模型提供商。
         entry_paths:
-          - route: /api/chat
+          - route: /api/chat/respond
             route_hint: apps/node_backend/src/routes/chat.ts
           - route: /api/llm
             route_hint: apps/node_backend/src/routes/llm.ts
