@@ -357,8 +357,16 @@ body {
   border-bottom: 1px solid #c1c6d1;
 }
 
+.menu-group button:first-child {
+  border-top: 0;
+}
+
 .menu-group button + button {
   border-top: 1px solid #c1c6d1;
+}
+
+.floating-menu .menu-group + * {
+  border-top: 0;
 }
 
 .floating-menu .muted-item {

@@ -116,10 +116,11 @@ export function ChatPage() {
     }
   }
 
+  const activeSection = sections.find((section) => section.id === activeSectionId);
   const activeSectionName =
     activeSectionId === 'main'
       ? '主区'
-      : sections.find((section) => section.id === activeSectionId)?.config?.section_name ?? '主区';
+      : activeSection?.config?.section_name ?? activeSection?.config?.section_id ?? activeSection?.id ?? '主区';
 
   function createDrawerChannel() {
     void createSubsection().finally(() => setDrawerOpen(false));
@@ -370,7 +371,7 @@ export function ChatPage() {
 
       {sectionMenuOpen && (
         <div className="floating-menu floating-menu--right" role="menu" aria-label="Section menu">
-          <div className="menu-group">
+          <div className="menu-group" role="none">
             <button
               type="button"
               role="menuitemradio"
