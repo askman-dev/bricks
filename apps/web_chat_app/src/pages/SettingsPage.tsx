@@ -1,7 +1,9 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { clearAuthToken } from '../lib/api';
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+
   function handleSignOut() {
     if (!confirm('Are you sure you want to sign out?')) return;
     clearAuthToken();
@@ -9,12 +11,18 @@ export function SettingsPage() {
   }
 
   return (
-    <section className="page-panel settings-page">
-      <h2>Settings</h2>
-      <ul className="settings-list">
+    <section className="settings-mobile-page">
+      <header className="settings-mobile-header">
+        <button type="button" className="icon-btn" aria-label="Back" onClick={() => navigate('/chat')}>
+          ←
+        </button>
+        <h1>Settings</h1>
+      </header>
+
+      <ul className="settings-mobile-list">
         <li>
-          <NavLink to="/settings/model" className="settings-link">
-            <span className="settings-icon">⚙️</span>
+          <NavLink to="/settings/model" className="settings-mobile-item">
+            <span className="settings-mobile-icon">☷</span>
             <div>
               <strong>Model Settings</strong>
               <p>Provider, Base URL, API Key</p>
@@ -22,11 +30,19 @@ export function SettingsPage() {
           </NavLink>
         </li>
         <li>
-          <button className="settings-link settings-link--danger" onClick={handleSignOut}>
-            <span className="settings-icon">🚪</span>
+          <button type="button" className="settings-mobile-item" disabled>
+            <span className="settings-mobile-icon">◫</span>
+            <div>
+              <strong>Manage Agents</strong>
+              <p>Coming soon</p>
+            </div>
+          </button>
+        </li>
+        <li>
+          <button className="settings-mobile-item" type="button" onClick={handleSignOut}>
+            <span className="settings-mobile-icon">⇥</span>
             <div>
               <strong>Sign Out</strong>
-              <p>Clear credentials and return to login</p>
             </div>
           </button>
         </li>

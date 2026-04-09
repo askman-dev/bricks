@@ -38,15 +38,18 @@ products:
           - 在 Chat 页面发送一条消息后可看到 user 与 assistant 消息。
           - API 失败时出现可见错误反馈消息。
 
-      - feature_id: workspace_resources
-        name: 侧边栏导航
-        user_value: 用户可通过侧边栏在 chat/workspace/projects/skills/resources 间切换。
+      - feature_id: mobile_navigation_shell
+        name: 移动端导航壳层
+        user_value: 用户可通过顶部按钮打开主菜单、区段菜单并进入设置页。
         entry_paths:
-          - shell: SidebarNav
-            route_hint: apps/web_chat_app/src/App.tsx
+          - shell: MobileTopbar
+            route_hint: apps/web_chat_app/src/pages/ChatPage.tsx
+          - route: /settings
+            route_hint: apps/web_chat_app/src/pages/SettingsPage.tsx
         smoke_checks:
-          - 侧边栏可见 Chat/Workspace/Projects/Skills/Resources 入口。
-          - 点击入口后页面切换且不崩溃。
+          - 顶部栏展示 Bricks 标题、左侧菜单按钮与右侧主区按钮。
+          - 点击左侧菜单出现浮层项，新上下文/模型/Agents/信息可见。
+          - 设置页展示 Model Settings / Manage Agents / Sign Out 条目。
 
   - product_id: node_backend
     name: Node Backend API

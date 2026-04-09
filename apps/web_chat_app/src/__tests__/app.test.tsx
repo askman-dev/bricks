@@ -40,29 +40,42 @@ test('shows login entry when user is not authenticated', async () => {
   });
 });
 
-test('renders sidebar after auth and routes to chat', async () => {
+test('renders mobile chat shell after auth and routes to chat', async () => {
   const fetchSpy = mockFetch([
-    { ok: true, json: { user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' }, oauth_connections: [] } },
+    {
+      ok: true,
+      json: {
+        user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+        oauth_connections: [],
+      },
+    },
   ]);
   render(
     <MemoryRouter initialEntries={['/workspace']}>
       <App />
     </MemoryRouter>,
   );
-  await waitFor(() => expect(screen.getByRole('heading', { name: 'Workspace' })).toBeInTheDocument());
-  expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
+
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Bricks' })).toBeInTheDocument());
+  expect(screen.getByRole('button', { name: 'Open navigation menu' })).toBeInTheDocument();
 
   // Verify Authorization header is sent with the stored JWT
   const firstCall = fetchSpy.mock.calls[0];
   const options = firstCall?.[1] as RequestInit | undefined;
   const headers = options?.headers as Record<string, string> | undefined;
-  expect(headers?.['Authorization']).toBe(`Bearer ${TEST_TOKEN}`);
+  expect(headers?.Authorization).toBe(`Bearer ${TEST_TOKEN}`);
 });
 
 test('sends chat message and displays assistant reply', async () => {
   const user = userEvent.setup();
   mockFetch([
-    { ok: true, json: { user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' }, oauth_connections: [] } },
+    {
+      ok: true,
+      json: {
+        user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+        oauth_connections: [],
+      },
+    },
     { ok: true, json: { text: 'Hello from assistant' } },
   ]);
   render(
@@ -71,9 +84,12 @@ test('sends chat message and displays assistant reply', async () => {
     </MemoryRouter>,
   );
 
-  await waitFor(() => expect(screen.getByText('Conversation')).toBeInTheDocument());
-  await user.type(screen.getByPlaceholderText('Type your message'), 'Hi');
-  await user.click(screen.getByRole('button', { name: 'Send' }));
+  await waitFor(() => {
+    expect(screen.getByPlaceholderText('Ask Bricks to create something...')).toBeInTheDocument();
+  });
+
+  await user.type(screen.getByPlaceholderText('Ask Bricks to create something...'), 'Hi');
+  await user.click(screen.getByRole('button', { name: 'Send message' }));
 
   await waitFor(() => {
     expect(screen.getByText(/Hello from assistant/)).toBeInTheDocument();
