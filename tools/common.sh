@@ -49,19 +49,24 @@ ensure_or_install_cmd() {
     local cmd="$1"
     local npm_package="${2:-$1}"
     local hint="${3:-Please install ${cmd} manually and rerun.}"
+    local install_output
 
     if command_exists "$cmd"; then
         return 0
     fi
 
     print_warning "${cmd} not found. Attempting npm global install: ${npm_package}"
-    if npm install -g "$npm_package" >/dev/null 2>&1; then
+    if install_output=$(npm install -g "$npm_package" 2>&1); then
         print_success "Installed ${cmd} via npm."
         return 0
     fi
 
     print_error "Failed to auto-install ${cmd}."
     echo "$hint"
+    if [ -n "$install_output" ]; then
+        echo "npm install output:" >&2
+        echo "$install_output" >&2
+    fi
     exit 1
 }
 
