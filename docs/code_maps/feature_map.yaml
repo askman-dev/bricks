@@ -49,7 +49,8 @@ products:
             route_hint: apps/web_chat_app/src/pages/SettingsPage.tsx
         smoke_checks:
           - 顶部栏展示 Bricks 标题、左侧菜单按钮与右侧主区按钮。
-          - 点击左上按钮打开侧边栏抽屉，显示 New context / Model / Settings。
+          - 点击左上按钮打开侧边栏抽屉，显示 Navigation 头部、Current Chat、Agents 与频道分组。
+          - Agents 分组可展开显示“在设置中新建 Agents”占位提示，频道分组可展示默认频道与“新建频道”操作。
           - 输入框左下角按钮打开独立 composer 菜单且定位在底部左侧。
           - 设置页展示 Model Settings / Manage Agents / Sign Out 条目。
 

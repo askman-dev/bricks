@@ -67,6 +67,8 @@ index:
       - mobile
       - topbar
       - menu
+      - agents
+      - channels
       - settings
       - drawer
       - overlay

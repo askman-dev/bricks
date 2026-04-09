@@ -36,6 +36,8 @@ export function ChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
+  const [agentsExpanded, setAgentsExpanded] = useState(true);
+  const [channelsExpanded, setChannelsExpanded] = useState(true);
   const [sections, setSections] = useState<ChatSectionConfig[]>([]);
   const [activeSectionId, setActiveSectionId] = useState('main');
 
@@ -116,6 +118,10 @@ export function ChatPage() {
 
   const activeSectionName =
     sections.find((section) => section.id === activeSectionId)?.config?.section_name ?? '主区';
+
+  function createDrawerChannel() {
+    void createSubsection().finally(() => setDrawerOpen(false));
+  }
 
   return (
     <section className="chat-mobile-page">
@@ -201,37 +207,136 @@ export function ChatPage() {
             onClick={() => setDrawerOpen(false)}
           />
           <aside className="sidebar-drawer" aria-label="Navigation drawer">
+            <header className="drawer-header">
+              <button
+                type="button"
+                className="icon-btn drawer-back"
+                aria-label="Close navigation menu"
+                onClick={() => setDrawerOpen(false)}
+              >
+                ←
+              </button>
+              <h2>Navigation</h2>
+              <Link
+                to="/settings"
+                className="icon-btn drawer-settings-link"
+                aria-label="Open settings"
+                onClick={() => setDrawerOpen(false)}
+              >
+                ⚙
+              </Link>
+            </header>
+
             <button
               type="button"
-              className="icon-btn drawer-close"
-              aria-label="Close drawer"
-              onClick={() => setDrawerOpen(false)}
-            >
-              ✕
-            </button>
-            <button
-              type="button"
-              className="drawer-item"
+              className="drawer-current-chat"
               onClick={() => {
                 setMessages([]);
                 setDrawerOpen(false);
               }}
             >
-              New context
+              <span className="drawer-current-icon" aria-hidden="true">
+                💬
+              </span>
+              <span>
+                <strong>Current Chat</strong>
+                <small>You are here</small>
+              </span>
             </button>
-            <button
-              type="button"
-              className="drawer-item"
-              onClick={() => {
-                navigate('/settings/model');
-                setDrawerOpen(false);
-              }}
-            >
-              Model
-            </button>
-            <Link to="/settings" className="drawer-item" onClick={() => setDrawerOpen(false)}>
-              Settings
-            </Link>
+
+            <section className="drawer-group">
+              <div className="drawer-group-header">
+                <button
+                  type="button"
+                  className="drawer-group-toggle"
+                  aria-label="Agents section"
+                  aria-expanded={agentsExpanded}
+                  onClick={() => setAgentsExpanded((prev) => !prev)}
+                >
+                  <span>{agentsExpanded ? '⌄' : '›'} Agents</span>
+                </button>
+                <button
+                  type="button"
+                  className="drawer-group-action"
+                  onClick={() => {
+                    alert('未开发的功能');
+                  }}
+                >
+                  ⚙ 配置
+                </button>
+              </div>
+              {agentsExpanded && (
+                <p className="drawer-empty-hint" role="status">
+                  在设置中新建 Agents
+                </p>
+              )}
+            </section>
+
+            <section className="drawer-group">
+              <div className="drawer-group-header">
+                <button
+                  type="button"
+                  className="drawer-group-toggle"
+                  aria-label="Channels section"
+                  aria-expanded={channelsExpanded}
+                  onClick={() => setChannelsExpanded((prev) => !prev)}
+                >
+                  <span>{channelsExpanded ? '⌄' : '›'} 频道</span>
+                </button>
+                <button
+                  type="button"
+                  className="drawer-group-action"
+                  onClick={() => {
+                    createDrawerChannel();
+                  }}
+                >
+                  ⊕ 新建频道
+                </button>
+              </div>
+              {channelsExpanded && (
+                <div className="drawer-channel-list">
+                  {sections.length === 0 ? (
+                    <button
+                      type="button"
+                      className={`drawer-channel-item ${activeSectionId === 'main' ? 'selected' : ''}`}
+                      onClick={() => {
+                        setActiveSectionId('main');
+                        setDrawerOpen(false);
+                      }}
+                    >
+                      <span className="drawer-channel-icon">⌂</span>
+                      <span>
+                        <strong>默认频道</strong>
+                        <small>Default channel</small>
+                      </span>
+                    </button>
+                  ) : (
+                    sections.map((section) => {
+                      const selected = section.id === activeSectionId;
+                      return (
+                        <button
+                          key={section.id}
+                          type="button"
+                          className={`drawer-channel-item ${selected ? 'selected' : ''}`}
+                          onClick={() => {
+                            setActiveSectionId(section.id);
+                            setDrawerOpen(false);
+                          }}
+                        >
+                          <span className="drawer-channel-icon">⌂</span>
+                          <span>
+                            <strong>
+                              {section.config?.section_name ?? section.config?.section_id ?? section.id}
+                            </strong>
+                            <small>Default channel</small>
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </section>
           </aside>
         </>
       )}
