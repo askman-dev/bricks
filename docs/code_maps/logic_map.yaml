@@ -50,24 +50,27 @@ index:
       - 请求体字段缺失将触发后端 400 并导致发送失败。
       - 前端会话 ID 策略变动可能影响后端历史聚合。
 
-  - feature_id: workspace_resources
-    capability: 侧边栏导航
+  - feature_id: mobile_navigation_shell
+    capability: 移动端导航与设置入口
     code_index:
       - apps/web_chat_app/src/App.tsx
+      - apps/web_chat_app/src/pages/ChatPage.tsx
+      - apps/web_chat_app/src/pages/SettingsPage.tsx
+      - apps/web_chat_app/src/styles.css
     doc_index:
       - docs/architecture.md
+      - docs/reviews/2026-04-09-main-worktree-functional-gap-analysis.md
     test_index:
       - apps/web_chat_app/src/__tests__/app.test.tsx
     keywords:
-      - sidebar
-      - navigation
-      - workspace
-      - projects
-      - skills
-      - resources
+      - mobile
+      - topbar
+      - menu
+      - settings
+      - overlay
     change_risks:
-      - 路由配置错误会导致页面不可达或白屏。
-      - 入口名称变更可能破坏测试脚本选择器。
+      - 浮层定位与层级错误会导致菜单遮挡或不可点击。
+      - 顶部导航按钮文案或可访问名称变更会破坏自动化测试选择器。
 
   - feature_id: backend_auth
     capability: 后端 GitHub OAuth 认证

@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiGet, setAuthToken } from './lib/api';
 import { ChatPage } from './pages/ChatPage';
@@ -18,15 +18,6 @@ function LoginPage() {
         Login with GitHub
       </a>
     </main>
-  );
-}
-
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <section className="page-panel">
-      <h2>{title}</h2>
-      <p>{title} is available from the React sidebar navigation.</p>
-    </section>
   );
 }
 
@@ -60,26 +51,15 @@ export function App() {
   if (!user) return <LoginPage />;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <h3>Bricks</h3>
-        <nav>
-          <NavLink to="/chat">Chat</NavLink>
-          <NavLink to="/workspace">Workspace</NavLink>
-          <NavLink to="/resources">Resources</NavLink>
-          <NavLink to="/settings">Settings</NavLink>
-        </nav>
-      </aside>
-      <main className="content">
-        <Routes>
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/workspace" element={<PlaceholderPage title="Workspace" />} />
-          <Route path="/resources" element={<PlaceholderPage title="Resources" />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/settings/model" element={<ModelSettingsPage />} />
-          <Route path="*" element={<Navigate to="/chat" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <main className="mobile-shell">
+      <Routes>
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/workspace" element={<Navigate to="/chat" replace />} />
+        <Route path="/resources" element={<Navigate to="/chat" replace />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/model" element={<ModelSettingsPage />} />
+        <Route path="*" element={<Navigate to="/chat" replace />} />
+      </Routes>
+    </main>
   );
 }
