@@ -16,18 +16,50 @@ class MessageList extends StatefulWidget {
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
 
+  // Persist the previous snapshot in state so comparisons work correctly even
+  // when the same List instance is mutated in place (e.g. ChatScreen passes
+  // _messages directly and mutates it via ..clear()..addAll / add / [i]=).
+  int _prevLength = 0;
+  _LastMessageKey? _prevLastKey;
+
   @override
   void initState() {
     super.initState();
+    _saveSnapshot();
     _scrollToBottom();
   }
 
   @override
   void didUpdateWidget(covariant MessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.messages.length != widget.messages.length) {
-      _scrollToBottom();
+    final messages = widget.messages;
+    final newLength = messages.length;
+    final newKey =
+        messages.isEmpty ? null : _LastMessageKey.from(messages.last);
+    if (newLength != _prevLength || newKey != _prevLastKey) {
+      _prevLength = newLength;
+      _prevLastKey = newKey;
+      // During active streaming only snap to bottom when the user is already
+      // near it; otherwise always scroll so history loads land at the bottom.
+      final isStreamingUpdate =
+          messages.isNotEmpty && messages.last.isStreaming;
+      if (!isStreamingUpdate || _isNearBottom()) {
+        _scrollToBottom();
+      }
     }
+  }
+
+  void _saveSnapshot() {
+    final messages = widget.messages;
+    _prevLength = messages.length;
+    _prevLastKey =
+        messages.isEmpty ? null : _LastMessageKey.from(messages.last);
+  }
+
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    return position.maxScrollExtent - position.pixels <= 100.0;
   }
 
   @override
@@ -217,4 +249,91 @@ class _MessageListState extends State<MessageList> {
       ),
     );
   }
+}
+
+/// Immutable snapshot of the fields that identify a specific last message.
+///
+/// Using proper field equality (instead of a delimiter-joined string) avoids
+/// false matches when field values happen to contain the delimiter character.
+class _LastMessageKey {
+  const _LastMessageKey({
+    required this.messageId,
+    required this.role,
+    required this.content,
+    required this.timestampMicros,
+    required this.isStreaming,
+    required this.taskId,
+    required this.taskState,
+    required this.threadId,
+    required this.resolvedBotId,
+    required this.arbitrationMode,
+    required this.fallbackToDefaultBot,
+    required this.agentName,
+    required this.isRecovered,
+  });
+
+  factory _LastMessageKey.from(ChatMessage msg) => _LastMessageKey(
+        messageId: msg.messageId,
+        role: msg.role,
+        content: msg.content,
+        timestampMicros: msg.timestamp.microsecondsSinceEpoch,
+        isStreaming: msg.isStreaming,
+        taskId: msg.taskId,
+        taskState: msg.taskState,
+        threadId: msg.threadId,
+        resolvedBotId: msg.resolvedBotId,
+        arbitrationMode: msg.arbitrationMode,
+        fallbackToDefaultBot: msg.fallbackToDefaultBot,
+        agentName: msg.agentName,
+        isRecovered: msg.isRecovered,
+      );
+
+  final String? messageId;
+  final String role;
+  final String content;
+  final int timestampMicros;
+  final bool isStreaming;
+  final String? taskId;
+  final ChatTaskState? taskState;
+  final String? threadId;
+  final String? resolvedBotId;
+  final bool arbitrationMode;
+  final bool fallbackToDefaultBot;
+  final String? agentName;
+  final bool isRecovered;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _LastMessageKey &&
+          messageId == other.messageId &&
+          role == other.role &&
+          content == other.content &&
+          timestampMicros == other.timestampMicros &&
+          isStreaming == other.isStreaming &&
+          taskId == other.taskId &&
+          taskState == other.taskState &&
+          threadId == other.threadId &&
+          resolvedBotId == other.resolvedBotId &&
+          arbitrationMode == other.arbitrationMode &&
+          fallbackToDefaultBot == other.fallbackToDefaultBot &&
+          agentName == other.agentName &&
+          isRecovered == other.isRecovered;
+
+  @override
+  int get hashCode => Object.hashAll([
+        messageId,
+        role,
+        content,
+        timestampMicros,
+        isStreaming,
+        taskId,
+        taskState,
+        threadId,
+        resolvedBotId,
+        arbitrationMode,
+        fallbackToDefaultBot,
+        agentName,
+        isRecovered,
+      ]);
 }

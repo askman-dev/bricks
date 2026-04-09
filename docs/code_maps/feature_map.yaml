@@ -37,6 +37,7 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
         smoke_checks:
           - 发送一条消息后可以看到消息列表更新。
+          - 打开已有历史的会话后默认定位到最新一条消息。
           - 切换 Agent 后仍可继续会话。
           - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
 
