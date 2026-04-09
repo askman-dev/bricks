@@ -965,7 +965,8 @@ class _ChatScreenState extends State<ChatScreen> {
       (label: '子区', value: subSectionLabel),
       (label: 'Session', value: _sessionIdForScope),
       (label: 'Mode', value: mode),
-      (label: 'Cursor', value: _latestCheckpointCursor ?? 'null'),
+      if (_latestCheckpointCursor != null)
+        (label: 'Cursor', value: _latestCheckpointCursor!),
       (label: 'Seq', value: '$_lastSyncedSeq'),
     ];
     await showDialog<void>(
