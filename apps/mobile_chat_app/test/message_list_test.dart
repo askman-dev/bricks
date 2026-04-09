@@ -87,6 +87,49 @@ void main() {
     });
   });
 
+  group('MessageList streaming without messageId', () {
+    testWidgets(
+        'does not re-scroll when streaming assistant message has null messageId',
+        (tester) async {
+      final userMsg = ChatMessage(
+        messageId: 'u1',
+        role: 'user',
+        content: 'hello',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      final streamingMsg = ChatMessage(
+        // No messageId — simulates an in-flight assistant turn
+        role: 'assistant',
+        content: 'partial',
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+        isStreaming: true,
+      );
+      await tester.pumpWidget(_build([userMsg, streamingMsg]));
+      // Pump a few frames to let the post-frame callbacks (scroll + layout) run.
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final positionBefore = scrollable.position.pixels;
+
+      // Simulate a streaming delta: same tail identity (same timestamp+role),
+      // still streaming, content grows — should NOT trigger a re-scroll.
+      final updatedMsg = ChatMessage(
+        role: 'assistant',
+        content: 'partial answer text',
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+        isStreaming: true,
+      );
+      await tester.pumpWidget(_build([userMsg, updatedMsg]));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(scrollable.position.pixels, positionBefore);
+    });
+  });
+
   group('MessageList message truncation', () {
     testWidgets('shows expand control only for overflowing messages',
         (tester) async {
