@@ -169,11 +169,17 @@ export function ChatPage() {
           ))
         )}
         {loading && (
-          <div className="chat-bubble chat-bubble--assistant chat-bubble--typing" aria-live="polite">
-            <span className="typing-indicator" aria-label="AI is replying">
-              <span />
-              <span />
-              <span />
+          <div
+            className="chat-bubble chat-bubble--assistant chat-bubble--typing"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span className="sr-only">AI is replying…</span>
+            <span className="typing-indicator" aria-hidden="true">
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
             </span>
           </div>
         )}

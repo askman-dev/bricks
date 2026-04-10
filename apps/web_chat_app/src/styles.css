@@ -104,6 +104,8 @@ body {
   font-size: clamp(15px, 4vw, 20px);
   line-height: 1.5;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   box-sizing: border-box;
   max-width: 100%;
 }
@@ -199,6 +201,25 @@ body {
     transform: translateY(-3px);
     opacity: 1;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-indicator span {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .drawer-overlay {

@@ -130,21 +130,29 @@ test('mobile drawer matches navigation groups with agents and channels', async (
 test('shows typing indicator while waiting for assistant reply', async () => {
   const user = userEvent.setup();
   let resolveReply: ((value: Response) => void) | undefined;
-  let callIndex = 0;
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-    callIndex += 1;
-    if (callIndex === 1) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+
+    if (url.includes('/api/chat/respond')) {
+      return await new Promise<Response>((resolve) => {
+        resolveReply = resolve;
+      });
+    }
+
+    if (url.includes('/api/config?category=')) {
       return {
         ok: true,
-        json: async () => ({
-          user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
-          oauth_connections: [],
-        }),
+        json: async () => [],
       } as Response;
     }
-    return await new Promise<Response>((resolve) => {
-      resolveReply = resolve;
-    });
+
+    return {
+      ok: true,
+      json: async () => ({
+        user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+        oauth_connections: [],
+      }),
+    } as Response;
   });
 
   render(
@@ -160,7 +168,9 @@ test('shows typing indicator while waiting for assistant reply', async () => {
   await user.type(screen.getByPlaceholderText('Ask Bricks to create something...'), 'Hi');
   await user.click(screen.getByRole('button', { name: 'Send message' }));
 
-  expect(screen.getByLabelText('AI is replying')).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
 
   resolveReply?.({
     ok: true,
@@ -170,5 +180,5 @@ test('shows typing indicator while waiting for assistant reply', async () => {
   await waitFor(() => {
     expect(screen.getByText('Delayed reply')).toBeInTheDocument();
   });
-  expect(screen.queryByLabelText('AI is replying')).not.toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
