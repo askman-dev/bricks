@@ -42,6 +42,7 @@ index:
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
       - packages/design_system/lib/src/bricks_theme.dart
       - apps/node_backend/src/routes/chat.ts
+      - apps/node_backend/src/services/chatAsyncTransportService.ts
       - apps/node_backend/src/llm/llm_service.ts
     doc_index:
       - docs/architecture.md
@@ -52,6 +53,7 @@ index:
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/composer_bar_test.dart
+      - apps/node_backend/src/services/chatAsyncTransportService.test.ts
     keywords:
       - chat
       - arbitration

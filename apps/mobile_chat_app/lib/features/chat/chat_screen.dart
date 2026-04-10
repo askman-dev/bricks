@@ -110,6 +110,17 @@ class _ChatScreenState extends State<ChatScreen> {
       final llmConfigs = await llmConfigsFuture;
       final authToken = await tokenFuture;
       final definitions = await _readAgentDefinitions(repo);
+      List<ChatPersistedScope> persistedScopes = const [];
+      if (authToken != null && authToken.isNotEmpty) {
+        try {
+          persistedScopes =
+              await _chatHistoryApiService.loadScopes(token: authToken);
+        } catch (e) {
+          // Scope hydration is best-effort; a backend failure (e.g. 404 during
+          // rollout or transient error) must not block the rest of chat setup.
+          debugPrint('loadScopes failed, continuing without scope hydration: $e');
+        }
+      }
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
         orElse: () => llmConfigs.isNotEmpty
@@ -125,6 +136,17 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       _agentsRepository = repo;
       _syncParticipants(definitions);
+      final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
+      final restoredSubSections =
+          _hydrateSubSectionsFromScopes(persistedScopes);
+      final restoredLastSubSectionByChannel =
+          _hydrateLastActiveSubSectionByChannel(persistedScopes);
+      final resolvedActiveChannel = _topologyResolver.resolveChannelId(
+        channels: restoredChannels,
+        requestedChannelId: _activeChannelId,
+      );
+      final restoredActiveSubSection =
+          restoredLastSubSectionByChannel[resolvedActiveChannel] ?? 'main';
       setState(() {
         _agents = definitions;
         _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
@@ -136,6 +158,17 @@ class _ChatScreenState extends State<ChatScreen> {
             llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
         _loadingLlmConfigs = false;
         _authToken = authToken;
+        _channels
+          ..clear()
+          ..addAll(restoredChannels);
+        _channelSubSections
+          ..clear()
+          ..addAll(restoredSubSections);
+        _lastActiveSubSectionByChannel
+          ..clear()
+          ..addAll(restoredLastSubSectionByChannel);
+        _activeChannelId = resolvedActiveChannel;
+        _activeSubSection = restoredActiveSubSection;
       });
       await _loadMessagesForActiveScope();
     } catch (error) {
@@ -393,6 +426,81 @@ class _ChatScreenState extends State<ChatScreen> {
   String _newId(String prefix) {
     final ms = DateTime.now().millisecondsSinceEpoch;
     return '$prefix-$ms';
+  }
+
+  String _fallbackScopeName(String id, {required String prefix}) {
+    final parsedEpoch = int.tryParse(
+      id.replaceFirst(RegExp(r'^[a-zA-Z_-]+-'), ''),
+    );
+    if (parsedEpoch != null && parsedEpoch > 0) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(parsedEpoch);
+      String two(int value) => value.toString().padLeft(2, '0');
+      return '$prefix-${dt.year}-${two(dt.month)}-${two(dt.day)}-${two(dt.hour)}-${two(dt.minute)}';
+    }
+    return id;
+  }
+
+  List<ChatChannel> _hydrateChannelsFromScopes(
+      List<ChatPersistedScope> scopes) {
+    final channelsById = <String, ChatChannel>{
+      'default':
+          const ChatChannel(id: 'default', name: '默认频道', isDefault: true),
+    };
+    for (final scope in scopes) {
+      if (scope.channelId == 'default') continue;
+      channelsById.putIfAbsent(
+        scope.channelId,
+        () => ChatChannel(
+          id: scope.channelId,
+          name: _fallbackScopeName(scope.channelId, prefix: 'channel'),
+          isDefault: false,
+        ),
+      );
+    }
+    return channelsById.values.toList(growable: false);
+  }
+
+  Map<String, List<ChatSubSection>> _hydrateSubSectionsFromScopes(
+    List<ChatPersistedScope> scopes,
+  ) {
+    final subSections = <String, List<ChatSubSection>>{
+      'default': <ChatSubSection>[],
+    };
+    for (final scope in scopes) {
+      final channelSections =
+          subSections.putIfAbsent(scope.channelId, () => <ChatSubSection>[]);
+      if (scope.threadId == 'main' ||
+          channelSections.any((item) => item.id == scope.threadId)) {
+        continue;
+      }
+      channelSections.add(
+        ChatSubSection(
+          id: scope.threadId,
+          parentChannelId: scope.channelId,
+          name: _fallbackScopeName(scope.threadId, prefix: 'sub'),
+          createdAt: scope.lastActivityAt ?? DateTime.now(),
+        ),
+      );
+    }
+    return subSections;
+  }
+
+  Map<String, String> _hydrateLastActiveSubSectionByChannel(
+    List<ChatPersistedScope> scopes,
+  ) {
+    final byChannel = <String, ChatPersistedScope>{};
+    for (final scope in scopes) {
+      final current = byChannel[scope.channelId];
+      final currentAt = current?.lastActivityAt;
+      final nextAt = scope.lastActivityAt;
+      final shouldReplace = current == null ||
+          (nextAt != null && (currentAt == null || nextAt.isAfter(currentAt)));
+      if (shouldReplace) byChannel[scope.channelId] = scope;
+    }
+
+    return byChannel.map((channelId, scope) {
+      return MapEntry(channelId, scope.threadId);
+    });
   }
 
   void _createChannel() {
