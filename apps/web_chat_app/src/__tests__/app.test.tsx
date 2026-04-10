@@ -131,7 +131,14 @@ test('shows typing indicator while waiting for assistant reply', async () => {
   const user = userEvent.setup();
   let resolveReply: ((value: Response) => void) | undefined;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    let url: string;
+    if (typeof input === 'string') {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.toString();
+    } else {
+      url = (input as Request).url;
+    }
 
     if (url.includes('/api/chat/respond')) {
       return await new Promise<Response>((resolve) => {
