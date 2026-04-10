@@ -1,74 +1,61 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-09
+last_updated: 2026-04-10
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
 products:
-  - product_id: mobile_chat_app
-    name: Mobile Chat App
+  - product_id: web_chat_app
+    name: Web Chat App
     platform:
-      - flutter_mobile
-      - flutter_web
+      - react_web
     entry_points:
-      - path: apps/mobile_chat_app/lib/main.dart
+      - path: apps/web_chat_app/src/main.tsx
         route: App root
     features:
       - feature_id: auth_login
         name: GitHub OAuth 登录
         user_value: 用户可完成登录并进入应用。
         entry_paths:
-          - screen: LoginScreen
-            route_hint: apps/mobile_chat_app/lib/features/auth/login_screen.dart
-          - service: GitHubOAuth/AuthService
-            route_hint: apps/mobile_chat_app/lib/features/auth/
+          - screen: LoginPage
+            route_hint: apps/web_chat_app/src/App.tsx
+          - route: /api/auth/github
+            route_hint: apps/node_backend/src/routes/auth.ts
         smoke_checks:
           - 打开登录页并发起 GitHub 登录。
-          - 完成 token 回调后进入主界面。
+          - 登录后调用 /api/auth/me 成功并进入主界面。
+          - PR Frontend E2E 在 CI 中点击“Login with GitHub”并验证跳转到 /chat 页面。
 
       - feature_id: chat_session
-        name: 多 Agent 聊天会话
-        user_value: 用户可在会话中发送消息并观察 Agent 协同回复。
+        name: 对话会话
+        user_value: 用户可发送消息并看到助手回复。
         entry_paths:
-          - screen: ChatScreen
-            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
-          - navigation: ChatNavigationPage
-            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
+          - screen: ChatPage
+            route_hint: apps/web_chat_app/src/pages/ChatPage.tsx
+          - route: /api/chat/respond
+            route_hint: apps/node_backend/src/routes/chat.ts
         smoke_checks:
-          - 发送一条消息后可以看到消息列表更新。
-          - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
-          - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。
-          - 切换 Agent 后仍可继续会话。
-          - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
+          - 在 Chat 页面发送一条消息后可看到 user 与 assistant 分样式气泡，assistant 气泡宽度受消息区约束且不触发横向滚动。
+          - 用户发送消息后、assistant 响应返回前，消息区可见三点加载动画提示“AI 正在回复”。
+          - API 失败时出现可见错误反馈消息。
+          - 顶部主区菜单可读取后端 section 配置并切换 channelId，消息区顶部不显示额外 ask 元信息行。
 
-      - feature_id: model_settings
-        name: 模型与提供商配置
-        user_value: 用户可选择可用模型并保存默认配置。
+      - feature_id: mobile_navigation_shell
+        name: 移动端导航壳层
+        user_value: 用户可通过顶部按钮打开侧边栏、区段菜单并进入设置页。
         entry_paths:
-          - screen: ModelSettingsScreen
-            route_hint: apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
-          - service: LlmConfigService
-            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+          - shell: MobileTopbar
+            route_hint: apps/web_chat_app/src/pages/ChatPage.tsx
+          - route: /settings
+            route_hint: apps/web_chat_app/src/pages/SettingsPage.tsx
         smoke_checks:
-          - 进入模型设置并保存配置。
-          - 重新进入页面后配置保持一致。
-
-      - feature_id: workspace_resources
-        name: Workspace / Projects / Skills / Resources 管理
-        user_value: 用户可浏览工作区相关资源。
-        entry_paths:
-          - screen: WorkspaceScreen
-            route_hint: apps/mobile_chat_app/lib/features/workspace/workspace_screen.dart
-          - screen: ProjectsScreen
-            route_hint: apps/mobile_chat_app/lib/features/projects/projects_screen.dart
-          - screen: SkillsScreen
-            route_hint: apps/mobile_chat_app/lib/features/skills/skills_screen.dart
-          - screen: ResourcesScreen
-            route_hint: apps/mobile_chat_app/lib/features/resources/resources_screen.dart
-        smoke_checks:
-          - 从侧边导航进入每个页面。
-          - 页面可正常渲染且无崩溃。
+          - 顶部栏展示 Bricks 标题、左侧菜单按钮与右侧主区按钮。
+          - 点击左上按钮打开侧边栏抽屉，显示 Navigation 头部、Current Chat、Agents 与频道分组。
+          - Agents 分组可展开显示“在设置中新建 Agents”占位提示，频道分组可展示默认频道与“新建频道”操作。
+          - 输入框左下角按钮打开独立 composer 菜单且定位在底部左侧。
+          - iOS/移动端视口下输入框容器贴合底部安全区，不被浏览器底部区域遮挡。
+          - 设置页展示 Model Settings / Manage Agents / Sign Out 条目。
 
   - product_id: node_backend
     name: Node Backend API
@@ -92,12 +79,13 @@ products:
         smoke_checks:
           - 未登录请求返回预期状态码。
           - 合法回跳参数通过校验。
+          - E2E mock OAuth 启用时，/api/auth/github 可完成受控登录并复用标准 token+redirect 逻辑（仅非 production）。
 
       - feature_id: backend_chat_llm
         name: Chat 与 LLM 调用
         user_value: 服务端可处理聊天请求并路由到模型提供商。
         entry_paths:
-          - route: /api/chat
+          - route: /api/chat/respond
             route_hint: apps/node_backend/src/routes/chat.ts
           - route: /api/llm
             route_hint: apps/node_backend/src/routes/llm.ts

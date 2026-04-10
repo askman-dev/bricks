@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isAllowedReturnTo } from './auth_return_to.js';
 
 // Mock DB-dependent modules so importing auth.ts does not trigger
@@ -16,6 +16,7 @@ vi.mock('../services/userService.js', () => ({
 
 import {
   buildPostLoginRedirectTarget,
+  canUseE2EMockGithubOAuth,
   decodeOAuthState,
   validateOAuthCallbackState,
 } from './auth.js';
@@ -258,5 +259,41 @@ describe('buildPostLoginRedirectTarget', () => {
     const params = new URLSearchParams(queryPart);
     expect(params.get('tab')).toBe('1');
     expect(params.get('auth_token')).toBe('jwt-token');
+  });
+});
+
+describe('canUseE2EMockGithubOAuth', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns false when E2E_MOCK_GITHUB_OAUTH is not set', () => {
+    vi.stubEnv('E2E_MOCK_GITHUB_OAUTH', '');
+    vi.stubEnv('NODE_ENV', 'test');
+    expect(canUseE2EMockGithubOAuth()).toBe(false);
+  });
+
+  it('returns false when E2E_MOCK_GITHUB_OAUTH=true but NODE_ENV=production', () => {
+    vi.stubEnv('E2E_MOCK_GITHUB_OAUTH', 'true');
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(canUseE2EMockGithubOAuth()).toBe(false);
+  });
+
+  it('returns true when E2E_MOCK_GITHUB_OAUTH=true and NODE_ENV=test', () => {
+    vi.stubEnv('E2E_MOCK_GITHUB_OAUTH', 'true');
+    vi.stubEnv('NODE_ENV', 'test');
+    expect(canUseE2EMockGithubOAuth()).toBe(true);
+  });
+
+  it('returns true when E2E_MOCK_GITHUB_OAUTH=true and NODE_ENV is development', () => {
+    vi.stubEnv('E2E_MOCK_GITHUB_OAUTH', 'true');
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(canUseE2EMockGithubOAuth()).toBe(true);
+  });
+
+  it('returns false when E2E_MOCK_GITHUB_OAUTH=false', () => {
+    vi.stubEnv('E2E_MOCK_GITHUB_OAUTH', 'false');
+    vi.stubEnv('NODE_ENV', 'test');
+    expect(canUseE2EMockGithubOAuth()).toBe(false);
   });
 });
