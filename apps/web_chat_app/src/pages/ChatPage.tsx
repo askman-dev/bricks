@@ -155,7 +155,6 @@ export function ChatPage() {
         </button>
       </header>
 
-      <div className="chat-meta">🧰 ask</div>
       <article className="chat-message-card" aria-label="message-list">
         {messages.length === 0 ? (
           <p className="chat-empty">No messages yet.</p>
@@ -168,6 +167,21 @@ export function ChatPage() {
               {message.content}
             </div>
           ))
+        )}
+        {loading && (
+          <div
+            className="chat-bubble chat-bubble--assistant chat-bubble--typing"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span className="sr-only">AI is replying…</span>
+            <span className="typing-indicator" aria-hidden="true">
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+            </span>
+          </div>
         )}
       </article>
 

@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-09
+last_updated: 2026-04-10
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -36,9 +36,10 @@ products:
           - route: /api/chat/respond
             route_hint: apps/node_backend/src/routes/chat.ts
         smoke_checks:
-          - 在 Chat 页面发送一条消息后可看到 user 与 assistant 分样式气泡，assistant 气泡占满消息区宽度。
+          - 在 Chat 页面发送一条消息后可看到 user 与 assistant 分样式气泡，assistant 气泡宽度受消息区约束且不触发横向滚动。
+          - 用户发送消息后、assistant 响应返回前，消息区可见三点加载动画提示“AI 正在回复”。
           - API 失败时出现可见错误反馈消息。
-          - 顶部主区菜单可读取后端 section 配置并切换 channelId。
+          - 顶部主区菜单可读取后端 section 配置并切换 channelId，消息区顶部不显示额外 ask 元信息行。
 
       - feature_id: mobile_navigation_shell
         name: 移动端导航壳层
@@ -53,6 +54,7 @@ products:
           - 点击左上按钮打开侧边栏抽屉，显示 Navigation 头部、Current Chat、Agents 与频道分组。
           - Agents 分组可展开显示“在设置中新建 Agents”占位提示，频道分组可展示默认频道与“新建频道”操作。
           - 输入框左下角按钮打开独立 composer 菜单且定位在底部左侧。
+          - iOS/移动端视口下输入框容器贴合底部安全区，不被浏览器底部区域遮挡。
           - 设置页展示 Model Settings / Manage Agents / Sign Out 条目。
 
   - product_id: node_backend

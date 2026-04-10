@@ -126,3 +126,66 @@ test('mobile drawer matches navigation groups with agents and channels', async (
   expect(screen.getByRole('button', { name: 'Channels section' })).toBeInTheDocument();
   expect(screen.getByText('默认频道')).toBeInTheDocument();
 });
+
+test('shows typing indicator while waiting for assistant reply', async () => {
+  const user = userEvent.setup();
+  let resolveReply: ((value: Response) => void) | undefined;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    let url: string;
+    if (typeof input === 'string') {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.toString();
+    } else {
+      url = (input as Request).url;
+    }
+
+    if (url.includes('/api/chat/respond')) {
+      return await new Promise<Response>((resolve) => {
+        resolveReply = resolve;
+      });
+    }
+
+    if (url.includes('/api/config?category=')) {
+      return {
+        ok: true,
+        json: async () => [],
+      } as Response;
+    }
+
+    return {
+      ok: true,
+      json: async () => ({
+        user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+        oauth_connections: [],
+      }),
+    } as Response;
+  });
+
+  render(
+    <MemoryRouter initialEntries={['/chat']}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByPlaceholderText('Ask Bricks to create something...')).toBeInTheDocument();
+  });
+
+  await user.type(screen.getByPlaceholderText('Ask Bricks to create something...'), 'Hi');
+  await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+  await waitFor(() => {
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  resolveReply?.({
+    ok: true,
+    json: async () => ({ text: 'Delayed reply' }),
+  } as Response);
+
+  await waitFor(() => {
+    expect(screen.getByText('Delayed reply')).toBeInTheDocument();
+  });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
