@@ -126,7 +126,6 @@ export function ChatPage() {
     activeSectionId === 'main'
       ? '主区'
       : activeSection?.config?.section_name ??
-        activeSection?.config?.section_id ??
         (activeSection ? getSectionIdentity(activeSection) : activeSectionId);
 
   function createDrawerChannel() {
