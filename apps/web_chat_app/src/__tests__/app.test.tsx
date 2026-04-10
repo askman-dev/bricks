@@ -126,3 +126,34 @@ test('mobile drawer matches navigation groups with agents and channels', async (
   expect(screen.getByRole('button', { name: 'Channels section' })).toBeInTheDocument();
   expect(screen.getByText('默认频道')).toBeInTheDocument();
 });
+
+test('section/composer menus close on outside click', async () => {
+  const user = userEvent.setup();
+  mockFetch([
+    {
+      ok: true,
+      json: {
+        user: { id: 'u1', email: 'demo@example.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+        oauth_connections: [],
+      },
+    },
+    { ok: true, json: [] },
+  ]);
+  render(
+    <MemoryRouter initialEntries={['/chat']}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Composer options' })).toBeInTheDocument());
+
+  await user.click(screen.getByRole('button', { name: 'Composer options' }));
+  expect(screen.getByRole('menu', { name: 'Composer menu' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Close composer menu' }));
+  expect(screen.queryByRole('menu', { name: 'Composer menu' })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /主区/ }));
+  expect(screen.getByRole('menu', { name: 'Section menu' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Close section menu' }));
+  expect(screen.queryByRole('menu', { name: 'Section menu' })).not.toBeInTheDocument();
+});

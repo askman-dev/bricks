@@ -41,6 +41,10 @@ export function ChatPage() {
   const [sections, setSections] = useState<ChatSectionConfig[]>([]);
   const [activeSectionId, setActiveSectionId] = useState('main');
 
+  function getSectionIdentity(section: ChatSectionConfig): string {
+    return section.config?.section_id ?? section.id;
+  }
+
   useEffect(() => {
     void loadSections();
   }, []);
@@ -51,7 +55,7 @@ export function ChatPage() {
       const sorted = [...data].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
       setSections(sorted);
       if (sorted.length > 0 && activeSectionId === 'main') {
-        setActiveSectionId(sorted[0].id);
+        setActiveSectionId(getSectionIdentity(sorted[0]));
       }
     } catch {
       setSections([]);
@@ -75,7 +79,7 @@ export function ChatPage() {
         },
       });
       setSections((prev) => [created, ...prev]);
-      setActiveSectionId(created.id);
+      setActiveSectionId(getSectionIdentity(created));
       setSectionMenuOpen(false);
     } catch {
       alert('Failed to create subsection. Please retry.');
@@ -116,11 +120,11 @@ export function ChatPage() {
     }
   }
 
-  const activeSection = sections.find((section) => section.id === activeSectionId);
+  const activeSection = sections.find((section) => getSectionIdentity(section) === activeSectionId);
   const activeSectionName =
     activeSectionId === 'main'
       ? '主区'
-      : activeSection?.config?.section_name ?? activeSection?.config?.section_id ?? activeSection?.id ?? '主区';
+      : activeSection?.config?.section_name ?? activeSection?.config?.section_id ?? '主区';
 
   function createDrawerChannel() {
     void createSubsection().finally(() => setDrawerOpen(false));
@@ -315,14 +319,15 @@ export function ChatPage() {
                     </button>
                   ) : (
                     sections.map((section) => {
-                      const selected = section.id === activeSectionId;
+                      const sectionIdentity = getSectionIdentity(section);
+                      const selected = sectionIdentity === activeSectionId;
                       return (
                         <button
                           key={section.id}
                           type="button"
                           className={`drawer-channel-item ${selected ? 'selected' : ''}`}
                           onClick={() => {
-                            setActiveSectionId(section.id);
+                            setActiveSectionId(sectionIdentity);
                             setDrawerOpen(false);
                           }}
                         >
@@ -345,74 +350,91 @@ export function ChatPage() {
       )}
 
       {composerMenuOpen && (
-        <div className="floating-menu floating-menu--composer" role="menu" aria-label="Composer menu">
+        <>
           <button
             type="button"
-            role="menuitem"
-            onClick={() => {
-              setMessages([]);
-              setComposerMenuOpen(false);
-            }}
-          >
-            Clear messages
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              navigate('/settings/model');
-              setComposerMenuOpen(false);
-            }}
-          >
-            Model
-          </button>
-        </div>
+            className="floating-menu-overlay"
+            aria-label="Close composer menu"
+            onClick={() => setComposerMenuOpen(false)}
+          />
+          <div className="floating-menu floating-menu--composer" role="menu" aria-label="Composer menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMessages([]);
+                setComposerMenuOpen(false);
+              }}
+            >
+              Clear messages
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                navigate('/settings/model');
+                setComposerMenuOpen(false);
+              }}
+            >
+              Model
+            </button>
+          </div>
+        </>
       )}
 
       {sectionMenuOpen && (
-        <div className="floating-menu floating-menu--right" role="menu" aria-label="Section menu">
-          <div className="menu-group" role="none">
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={activeSectionId === 'main'}
-              className={activeSectionId === 'main' ? 'menu-item-selected' : undefined}
-              onClick={() => {
-                setActiveSectionId('main');
-                setSectionMenuOpen(false);
-              }}
-            >
-              主区
-            </button>
-            <button type="button" role="menuitem" onClick={() => void createSubsection()}>
-              新建子区
-            </button>
+        <>
+          <button
+            type="button"
+            className="floating-menu-overlay"
+            aria-label="Close section menu"
+            onClick={() => setSectionMenuOpen(false)}
+          />
+          <div className="floating-menu floating-menu--right" role="menu" aria-label="Section menu">
+            <div className="menu-group" role="none">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={activeSectionId === 'main'}
+                className={activeSectionId === 'main' ? 'menu-item-selected' : undefined}
+                onClick={() => {
+                  setActiveSectionId('main');
+                  setSectionMenuOpen(false);
+                }}
+              >
+                主区
+              </button>
+              <button type="button" role="menuitem" onClick={() => void createSubsection()}>
+                新建子区
+              </button>
+            </div>
+            {sections.length === 0 ? (
+              <button type="button" role="menuitem" className="muted-item" disabled>
+                暂无子区
+              </button>
+            ) : (
+              sections.map((section) => {
+                const sectionIdentity = getSectionIdentity(section);
+                const selected = sectionIdentity === activeSectionId;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    className={selected ? 'menu-item-selected' : undefined}
+                    onClick={() => {
+                      setActiveSectionId(sectionIdentity);
+                      setSectionMenuOpen(false);
+                    }}
+                  >
+                    {section.config?.section_name ?? section.config?.section_id ?? section.id}
+                  </button>
+                );
+              })
+            )}
           </div>
-          {sections.length === 0 ? (
-            <button type="button" role="menuitem" className="muted-item" disabled>
-              暂无子区
-            </button>
-          ) : (
-            sections.map((section) => {
-              const selected = section.id === activeSectionId;
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  className={selected ? 'menu-item-selected' : undefined}
-                  onClick={() => {
-                    setActiveSectionId(section.id);
-                    setSectionMenuOpen(false);
-                  }}
-                >
-                  {section.config?.section_name ?? section.config?.section_id ?? section.id}
-                </button>
-              );
-            })
-          )}
-        </div>
+        </>
       )}
     </section>
   );

@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-09
+last_updated: 2026-04-10
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -52,7 +52,9 @@ products:
           - 顶部栏展示 Bricks 标题、左侧菜单按钮与右侧主区按钮。
           - 点击左上按钮打开侧边栏抽屉，显示 Navigation 头部、Current Chat、Agents 与频道分组。
           - Agents 分组可展开显示“在设置中新建 Agents”占位提示，频道分组可展示默认频道与“新建频道”操作。
-          - 输入框左下角按钮打开独立 composer 菜单且定位在底部左侧。
+          - 输入框左下角按钮打开独立 composer 菜单，弹层应贴近触发按钮上方。
+          - 打开右上主区菜单与输入框 composer 菜单后，点击空白区域可关闭菜单。
+          - 顶部 Bricks 标题应为左对齐，并与展开侧边栏后的文字布局一致。
           - 设置页展示 Model Settings / Manage Agents / Sign Out 条目。
 
   - product_id: node_backend
