@@ -505,7 +505,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _createChannel() {
-    final existingNames = _channels.map((item) => item.name).toSet();
+    final existingNames =
+        _channels.map((item) => item.name.trim().toLowerCase()).toSet();
     _promptChannelName(
       title: '新建频道',
       confirmLabel: '创建',
@@ -542,7 +543,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final existingChannel = channel;
     final existingNames = _channels
         .where((item) => item.id != channelId)
-        .map((item) => item.name)
+        .map((item) => item.name.trim().toLowerCase())
         .toSet();
     _promptChannelName(
       title: '频道改名',
@@ -572,11 +573,15 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     if (channel == null || channel.isDefault) return;
+    final wasActive = _activeChannelId == channelId;
     setState(() {
       _channels.removeWhere((item) => item.id == channelId);
       _channelSubSections.remove(channelId);
       _lastActiveSubSectionByChannel.remove(channelId);
-      if (_activeChannelId == channelId) {
+      _subSectionLastMessageAt.removeWhere(
+        (key, value) => key.startsWith('$channelId::'),
+      );
+      if (wasActive) {
         _activeChannelId = _topologyResolver.resolveChannelId(
           channels: _channels,
           requestedChannelId: null,
@@ -584,7 +589,9 @@ class _ChatScreenState extends State<ChatScreen> {
         _activeSubSection = 'main';
       }
     });
-    unawaited(_loadMessagesForActiveScope());
+    if (wasActive) {
+      unawaited(_loadMessagesForActiveScope());
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已归档频道：${channel.name}')),
     );
@@ -618,7 +625,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 setDialogState(() => errorText = '频道名不能为空');
                 return;
               }
-              if (existingNames.contains(trimmed)) {
+              if (existingNames.contains(trimmed.toLowerCase())) {
                 setDialogState(() => errorText = '频道名已存在');
                 return;
               }
@@ -637,7 +644,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   setDialogState(() => errorText = '频道名不能为空');
                   return;
                 }
-                if (existingNames.contains(trimmed)) {
+                if (existingNames.contains(trimmed.toLowerCase())) {
                   setDialogState(() => errorText = '频道名已存在');
                   return;
                 }
