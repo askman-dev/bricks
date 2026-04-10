@@ -25,6 +25,7 @@ products:
         smoke_checks:
           - 打开登录页并发起 GitHub 登录。
           - 登录后调用 /api/auth/me 成功并进入主界面。
+          - PR Frontend E2E 在 CI 中点击“Login with GitHub”并验证跳转到 /chat 页面。
 
       - feature_id: chat_session
         name: 对话会话
@@ -76,6 +77,7 @@ products:
         smoke_checks:
           - 未登录请求返回预期状态码。
           - 合法回跳参数通过校验。
+          - E2E mock OAuth 启用时，/api/auth/github 可完成受控登录并复用标准 token+redirect 逻辑（仅非 production）。
 
       - feature_id: backend_chat_llm
         name: Chat 与 LLM 调用
