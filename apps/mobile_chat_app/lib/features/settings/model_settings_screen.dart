@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'llm_config_service.dart';
 
+/// Displayed as a placeholder hint when the active config has a stored API key
+/// that is intentionally not shown for security reasons.
+const kApiKeyStoredHint = '(已设置，出于安全原因未显示)';
+
 class ModelSettingsScreen extends StatefulWidget {
   const ModelSettingsScreen({super.key, LlmConfigService? service})
       : _service = service ?? const LlmConfigService();
@@ -315,6 +319,16 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     obscureText: !_showApiKey,
                     decoration: InputDecoration(
                       labelText: 'API Key',
+                      hintText: _configs[_activeConfigIndex].apiKey.isNotEmpty
+                          ? kApiKeyStoredHint
+                          : null,
+                      hintStyle: _configs[_activeConfigIndex].apiKey.isNotEmpty
+                          ? TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.color,
+                            )
+                          : null,
                       helperText: _configs[_activeConfigIndex].id == null
                           ? null
                           : 'Leave blank to keep your existing key',
