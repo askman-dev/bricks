@@ -42,7 +42,8 @@ export function ChatPage() {
   const [activeSectionId, setActiveSectionId] = useState('main');
 
   function getSectionIdentity(section: ChatSectionConfig): string {
-    return section.config?.section_id ?? section.id;
+    const configuredSectionId = section.config?.section_id?.trim();
+    return configuredSectionId ? configuredSectionId : section.id;
   }
 
   useEffect(() => {
@@ -54,8 +55,8 @@ export function ChatPage() {
       const data = await apiGet<ChatSectionConfig[]>(`/api/config?category=${SECTION_CATEGORY}`);
       const sorted = [...data].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
       setSections(sorted);
-      if (sorted.length > 0 && activeSectionId === 'main') {
-        setActiveSectionId(getSectionIdentity(sorted[0]));
+      if (sorted.length > 0) {
+        setActiveSectionId((prev) => (prev === 'main' ? getSectionIdentity(sorted[0]) : prev));
       }
     } catch {
       setSections([]);
@@ -124,7 +125,9 @@ export function ChatPage() {
   const activeSectionName =
     activeSectionId === 'main'
       ? '主区'
-      : activeSection?.config?.section_name ?? activeSection?.config?.section_id ?? '主区';
+      : activeSection?.config?.section_name ??
+        activeSection?.config?.section_id ??
+        (activeSection ? getSectionIdentity(activeSection) : activeSectionId);
 
   function createDrawerChannel() {
     void createSubsection().finally(() => setDrawerOpen(false));
