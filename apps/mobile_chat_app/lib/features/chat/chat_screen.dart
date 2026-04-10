@@ -1065,6 +1065,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           actions: [
             PopupMenuButton<String>(
+              popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
               tooltip: 'Sub sections',
               onSelected: (value) {
                 if (value == '__new__') {

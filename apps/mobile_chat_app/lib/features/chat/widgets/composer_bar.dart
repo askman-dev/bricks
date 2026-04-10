@@ -195,6 +195,8 @@ class _ComposerBarState extends State<ComposerBar>
                     child: Row(
                       children: [
                         PopupMenuButton<ComposerMenuAction>(
+                          popUpAnimationStyle:
+                              BricksTheme.menuPopupAnimationStyle,
                           tooltip: 'Composer actions',
                           enabled: !widget.isStreaming,
                           icon: const Icon(Icons.tune),
