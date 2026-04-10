@@ -55,6 +55,20 @@ interface ChatTaskRow {
   accepted_at: string;
 }
 
+interface ChatScopeRow {
+  channel_id: string;
+  thread_id: string | null;
+  session_id: string;
+  last_activity_at: string;
+}
+
+export interface ChatPersistedScope {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  lastActivityAt: string;
+}
+
 function parseMetadata(raw: unknown): Record<string, unknown> | null {
   if (raw == null) return null;
   if (typeof raw === 'string' && raw.trim().length > 0) {
@@ -314,4 +328,41 @@ export async function listSessionMessagesForModel(
     });
   }
   return collected.reverse();
+}
+
+export async function listUserScopes(userId: string): Promise<ChatPersistedScope[]> {
+  const result = await pool.query<ChatScopeRow>(
+    `SELECT
+        scope.channel_id,
+        scope.thread_id,
+        scope.session_id,
+        MAX(scope.last_activity_at) AS last_activity_at
+      FROM (
+        SELECT
+          channel_id,
+          thread_id,
+          session_id,
+          created_at AS last_activity_at
+        FROM chat_messages
+        WHERE user_id = $1
+        UNION ALL
+        SELECT
+          channel_id,
+          thread_id,
+          session_id,
+          accepted_at AS last_activity_at
+        FROM chat_tasks
+        WHERE user_id = $1
+      ) scope
+      GROUP BY scope.channel_id, scope.thread_id, scope.session_id
+      ORDER BY last_activity_at DESC`,
+    [userId],
+  );
+
+  return result.rows.map((row) => ({
+    channelId: row.channel_id,
+    threadId: row.thread_id ?? 'main',
+    sessionId: row.session_id,
+    lastActivityAt: row.last_activity_at,
+  }));
 }

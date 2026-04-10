@@ -161,4 +161,38 @@ void main() {
     expect(result.text, equals('4'));
     expect(result.lastSeqId, equals(12));
   });
+
+  test('loads persisted scopes for channel/sidebar hydration', () async {
+    final client = MockClient((request) async {
+      expect(request.url.path.endsWith('/chat/scopes'), isTrue);
+      expect(request.method, equals('GET'));
+      return http.Response(
+        jsonEncode({
+          'scopes': [
+            {
+              'channelId': 'channel-1',
+              'threadId': 'sub-1',
+              'sessionId': 'session:channel-1:sub-1',
+              'lastActivityAt': '2026-04-09T10:00:00.000Z',
+            },
+            {
+              'channelId': 'default',
+              'threadId': 'main',
+              'sessionId': 'session:default:main',
+              'lastActivityAt': '2026-04-08T10:00:00.000Z',
+            },
+          ],
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final scopes = await service.loadScopes(token: 'token-1');
+
+    expect(scopes, hasLength(2));
+    expect(scopes.first.channelId, equals('channel-1'));
+    expect(scopes.first.threadId, equals('sub-1'));
+    expect(scopes.first.sessionId, equals('session:channel-1:sub-1'));
+  });
 }

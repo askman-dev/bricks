@@ -28,6 +28,20 @@ class ChatRespondResult {
   final int lastSeqId;
 }
 
+class ChatPersistedScope {
+  const ChatPersistedScope({
+    required this.channelId,
+    required this.threadId,
+    required this.sessionId,
+    required this.lastActivityAt,
+  });
+
+  final String channelId;
+  final String threadId;
+  final String sessionId;
+  final DateTime? lastActivityAt;
+}
+
 class ChatAcceptedTask {
   const ChatAcceptedTask({
     required this.taskId,
@@ -80,6 +94,35 @@ class ChatHistoryApiService {
   Uri get _acceptTaskUri => Uri.parse('$_base/api/chat/tasks/accept');
 
   Uri get _batchMessagesUri => Uri.parse('$_base/api/chat/messages/batch');
+  Uri get _scopesUri => Uri.parse('$_base/api/chat/scopes');
+
+  Future<List<ChatPersistedScope>> loadScopes({
+    required String token,
+  }) async {
+    final response = await _client.get(
+      _scopesUri,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load chat scopes (${response.statusCode})');
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map) return const [];
+    final map = Map<String, dynamic>.from(raw);
+    return ((map['scopes'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map((item) => ChatPersistedScope(
+              channelId: (item['channelId'] as String?) ?? 'default',
+              threadId: (item['threadId'] as String?) ?? 'main',
+              sessionId: (item['sessionId'] as String?) ?? '',
+              lastActivityAt: item['lastActivityAt'] is String
+                  ? DateTime.tryParse(item['lastActivityAt'] as String)
+                  : null,
+            ))
+        .where((scope) => scope.sessionId.isNotEmpty)
+        .toList(growable: false);
+  }
 
   Future<ChatHistorySnapshot> load({
     required String token,

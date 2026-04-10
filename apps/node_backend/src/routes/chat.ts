@@ -2,6 +2,7 @@ import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   acceptTask,
+  listUserScopes,
   listSessionMessagesForModel,
   syncMessages,
   upsertMessages,
@@ -293,6 +294,22 @@ router.get('/history/:sessionId', async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('Get chat history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/scopes', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const scopes = await listUserScopes(userId);
+    res.json({ scopes });
+  } catch (error) {
+    console.error('List chat scopes error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

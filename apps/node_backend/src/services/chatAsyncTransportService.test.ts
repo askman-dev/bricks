@@ -14,6 +14,7 @@ vi.mock('../db/index.js', () => ({
 
 import {
   acceptTask,
+  listUserScopes,
   syncMessages,
   upsertMessages,
 } from './chatAsyncTransportService.js';
@@ -177,5 +178,41 @@ describe('chatAsyncTransportService', () => {
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].messageId).toBe('m-1');
     expect(result.messages[0].writeSeq).toBe(7);
+  });
+
+  it('listUserScopes returns distinct scopes ordered by latest activity', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          channel_id: 'channel-2',
+          thread_id: 'main',
+          session_id: 'session:channel-2:main',
+          last_activity_at: '2026-04-09T10:00:00.000Z',
+        },
+        {
+          channel_id: 'default',
+          thread_id: null,
+          session_id: 'session:default:main',
+          last_activity_at: '2026-04-08T10:00:00.000Z',
+        },
+      ],
+      rowCount: 2,
+    });
+
+    const scopes = await listUserScopes('u-1');
+    expect(scopes).toEqual([
+      {
+        channelId: 'channel-2',
+        threadId: 'main',
+        sessionId: 'session:channel-2:main',
+        lastActivityAt: '2026-04-09T10:00:00.000Z',
+      },
+      {
+        channelId: 'default',
+        threadId: 'main',
+        sessionId: 'session:default:main',
+        lastActivityAt: '2026-04-08T10:00:00.000Z',
+      },
+    ]);
   });
 });
