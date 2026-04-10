@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-09
+last_updated: 2026-04-10
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -41,6 +41,7 @@ products:
           - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。
           - 切换 Agent 后仍可继续会话。
           - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
+          - 打开右上角分区菜单与输入框配置菜单时，弹出动画应快速并呈现缩放+淡入效果。
 
       - feature_id: model_settings
         name: 模型与提供商配置
