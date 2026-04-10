@@ -54,7 +54,7 @@ body {
 
 .mobile-topbar h1 {
   margin: 0;
-  text-align: center;
+  text-align: left;
   font-size: 56px;
   font-size: clamp(24px, 6.5vw, 56px);
   font-weight: 500;
@@ -322,9 +322,17 @@ body {
   z-index: 20;
 }
 
+.floating-menu-overlay {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  z-index: 19;
+}
+
 .floating-menu--composer {
   left: 16px;
-  bottom: 112px;
+  bottom: 86px;
   width: 220px;
 }
 
