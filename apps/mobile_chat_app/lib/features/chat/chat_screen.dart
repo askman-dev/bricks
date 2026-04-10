@@ -110,9 +110,16 @@ class _ChatScreenState extends State<ChatScreen> {
       final llmConfigs = await llmConfigsFuture;
       final authToken = await tokenFuture;
       final definitions = await _readAgentDefinitions(repo);
-      final persistedScopes = (authToken != null && authToken.isNotEmpty)
-          ? await _chatHistoryApiService.loadScopes(token: authToken)
-          : const <ChatPersistedScope>[];
+      List<ChatPersistedScope> persistedScopes = const [];
+      if (authToken != null && authToken.isNotEmpty) {
+        try {
+          persistedScopes =
+              await _chatHistoryApiService.loadScopes(token: authToken);
+        } catch (_) {
+          // Scope hydration is best-effort; a backend failure (e.g. 404 during
+          // rollout or transient error) must not block the rest of chat setup.
+        }
+      }
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
         orElse: () => llmConfigs.isNotEmpty

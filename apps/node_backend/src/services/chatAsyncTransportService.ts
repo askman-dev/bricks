@@ -340,7 +340,7 @@ export async function listUserScopes(userId: string): Promise<ChatPersistedScope
       FROM (
         SELECT
           channel_id,
-          thread_id,
+          COALESCE(thread_id, 'main') AS thread_id,
           session_id,
           created_at AS last_activity_at
         FROM chat_messages
@@ -348,7 +348,7 @@ export async function listUserScopes(userId: string): Promise<ChatPersistedScope
         UNION ALL
         SELECT
           channel_id,
-          thread_id,
+          COALESCE(thread_id, 'main') AS thread_id,
           session_id,
           accepted_at AS last_activity_at
         FROM chat_tasks
