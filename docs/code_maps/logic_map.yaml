@@ -51,6 +51,7 @@ index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
+      - apps/mobile_chat_app/test/chat_navigation_page_test.dart
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/composer_bar_test.dart
       - apps/node_backend/src/services/chatAsyncTransportService.test.ts
@@ -59,6 +60,8 @@ index:
       - arbitration
       - topology
       - channel
+      - rename
+      - archive
       - session
       - history
       - auto-scroll
@@ -70,6 +73,7 @@ index:
       - 消息列表滚动锚点从“底部”改为“用户消息”后，若触发条件错误会导致上下文定位错位。
       - 长文本折叠状态与流式更新叠加时，可能出现按钮闪烁或展开状态丢失。
       - 菜单动画时长或曲线调整不当可能导致菜单响应突兀或视觉跳变。
+      - 频道重命名与新建时若未统一大小写/空白策略，可能出现“看似重复”名称并影响切换。
 
   - feature_id: model_settings
     capability: 模型配置读写

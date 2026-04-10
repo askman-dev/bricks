@@ -118,7 +118,8 @@ class _ChatScreenState extends State<ChatScreen> {
         } catch (e) {
           // Scope hydration is best-effort; a backend failure (e.g. 404 during
           // rollout or transient error) must not block the rest of chat setup.
-          debugPrint('loadScopes failed, continuing without scope hydration: $e');
+          debugPrint(
+              'loadScopes failed, continuing without scope hydration: $e');
         }
       }
       final defaultConfig = llmConfigs.firstWhere(
@@ -416,16 +417,16 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String _newId(String prefix) {
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    return '$prefix-$ms';
+  }
+
   String _timestampName({String prefix = 'channel'}) {
     final now = DateTime.now();
     String two(int value) => value.toString().padLeft(2, '0');
     String three(int value) => value.toString().padLeft(3, '0');
     return '$prefix-${now.year}-${two(now.month)}-${two(now.day)}-${two(now.hour)}-${two(now.minute)}-${two(now.second)}-${three(now.millisecond)}';
-  }
-
-  String _newId(String prefix) {
-    final ms = DateTime.now().millisecondsSinceEpoch;
-    return '$prefix-$ms';
   }
 
   String _fallbackScopeName(String id, {required String prefix}) {
@@ -504,22 +505,160 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _createChannel() {
-    final id = _newId('channel');
-    final channel =
-        ChatChannel(id: id, name: _timestampName(), isDefault: false);
+    final existingNames =
+        _channels.map((item) => item.name.trim().toLowerCase()).toSet();
+    _promptChannelName(
+      title: '新建频道',
+      confirmLabel: '创建',
+      existingNames: existingNames,
+      onConfirmed: (name) {
+        final id = _newId('channel');
+        final channel = ChatChannel(id: id, name: name, isDefault: false);
+        setState(() {
+          _channels.add(channel);
+          _channelSubSections[id] = <ChatSubSection>[];
+          _activeChannelId = id;
+          _activeSubSection = 'main';
+          _messages.clear();
+          _latestCheckpointCursor = null;
+          _lastSyncedSeq = 0;
+        });
+        _persistActiveScopeMessages();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
+      },
+    );
+  }
+
+  void _renameChannel(String channelId) {
+    ChatChannel? channel;
+    for (final item in _channels) {
+      if (item.id == channelId) {
+        channel = item;
+        break;
+      }
+    }
+    if (channel == null || channel.isDefault) return;
+    final existingChannel = channel;
+    final existingNames = _channels
+        .where((item) => item.id != channelId)
+        .map((item) => item.name.trim().toLowerCase())
+        .toSet();
+    _promptChannelName(
+      title: '频道改名',
+      confirmLabel: '保存',
+      initialValue: existingChannel.name,
+      existingNames: existingNames,
+      onConfirmed: (name) {
+        setState(() {
+          final index = _channels.indexWhere((item) => item.id == channelId);
+          if (index < 0) return;
+          _channels[index] = ChatChannel(
+            id: existingChannel.id,
+            name: name,
+            isDefault: existingChannel.isDefault,
+          );
+        });
+      },
+    );
+  }
+
+  void _archiveChannel(String channelId) {
+    ChatChannel? channel;
+    for (final item in _channels) {
+      if (item.id == channelId) {
+        channel = item;
+        break;
+      }
+    }
+    if (channel == null || channel.isDefault) return;
+    final wasActive = _activeChannelId == channelId;
     setState(() {
-      _channels.add(channel);
-      _channelSubSections[id] = <ChatSubSection>[];
-      _activeChannelId = id;
-      _activeSubSection = 'main';
-      _messages.clear();
-      _latestCheckpointCursor = null;
-      _lastSyncedSeq = 0;
+      _channels.removeWhere((item) => item.id == channelId);
+      _channelSubSections.remove(channelId);
+      _lastActiveSubSectionByChannel.remove(channelId);
+      _subSectionLastMessageAt.removeWhere(
+        (key, value) => key.startsWith('$channelId::'),
+      );
+      if (wasActive) {
+        _activeChannelId = _topologyResolver.resolveChannelId(
+          channels: _channels,
+          requestedChannelId: null,
+        );
+        _activeSubSection = 'main';
+      }
     });
-    _persistActiveScopeMessages();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
+    if (wasActive) {
+      unawaited(_loadMessagesForActiveScope());
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已归档频道：${channel.name}')),
+    );
+  }
+
+  Future<void> _promptChannelName({
+    required String title,
+    required String confirmLabel,
+    required Set<String> existingNames,
+    required ValueChanged<String> onConfirmed,
+    String initialValue = '',
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    String? errorText;
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: '频道名',
+              hintText: '请输入频道名',
+              errorText: errorText,
+            ),
+            onSubmitted: (_) {
+              final trimmed = controller.text.trim();
+              if (trimmed.isEmpty) {
+                setDialogState(() => errorText = '频道名不能为空');
+                return;
+              }
+              if (existingNames.contains(trimmed.toLowerCase())) {
+                setDialogState(() => errorText = '频道名已存在');
+                return;
+              }
+              Navigator.of(dialogContext).pop(trimmed);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final trimmed = controller.text.trim();
+                if (trimmed.isEmpty) {
+                  setDialogState(() => errorText = '频道名不能为空');
+                  return;
+                }
+                if (existingNames.contains(trimmed.toLowerCase())) {
+                  setDialogState(() => errorText = '频道名已存在');
+                  return;
+                }
+                Navigator.of(dialogContext).pop(trimmed);
+              },
+              child: Text(confirmLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (!mounted || name == null) return;
+    onConfirmed(name);
   }
 
   void _switchChannel(String channelId) {
@@ -1113,6 +1252,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final activeAgentName = _activeAgent?.name;
+    String activeChannelName = '频道';
+    for (final item in _channels) {
+      if (item.id == _activeChannelId) {
+        activeChannelName = item.name;
+        break;
+      }
+    }
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -1134,6 +1280,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   .toList(),
               selectedChannelId: _activeChannelId,
               onChannelSelected: _switchChannel,
+              onChannelRename: _renameChannel,
+              onChannelArchive: _archiveChannel,
               onActionSelected: (action) {
                 switch (action) {
                   case ChatNavigationAction.appSettings:
@@ -1163,7 +1311,7 @@ class _ChatScreenState extends State<ChatScreen> {
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Bricks'),
+              Text(activeChannelName),
               if (activeAgentName != null)
                 Text(
                   'Responding as @$activeAgentName',

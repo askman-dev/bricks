@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 /// Actions that can be triggered from the chat navigation page.
 enum ChatNavigationAction { appSettings, sessions, createChannel }
 
+enum ChatChannelMenuAction { rename, archive }
+
 class ChatChannelItem {
   const ChatChannelItem({
     required this.id,
@@ -31,6 +33,8 @@ class ChatNavigationPage extends StatefulWidget {
     required this.channels,
     required this.selectedChannelId,
     this.onChannelSelected,
+    this.onChannelRename,
+    this.onChannelArchive,
   });
 
   final ValueChanged<ChatNavigationAction> onActionSelected;
@@ -38,6 +42,8 @@ class ChatNavigationPage extends StatefulWidget {
   final List<ChatChannelItem> channels;
   final String selectedChannelId;
   final ValueChanged<String>? onChannelSelected;
+  final ValueChanged<String>? onChannelRename;
+  final ValueChanged<String>? onChannelArchive;
 
   @override
   State<ChatNavigationPage> createState() => _ChatNavigationPageState();
@@ -66,6 +72,40 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
         const SnackBar(content: Text('未开发的功能')),
       );
     });
+  }
+
+  Future<void> _showChannelMenu(ChatChannelItem channel) async {
+    final action = await showModalBottomSheet<ChatChannelMenuAction>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('改名'),
+              onTap: () =>
+                  Navigator.of(context).pop(ChatChannelMenuAction.rename),
+            ),
+            ListTile(
+              leading: const Icon(Icons.archive_outlined),
+              title: const Text('归档'),
+              onTap: () =>
+                  Navigator.of(context).pop(ChatChannelMenuAction.archive),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case ChatChannelMenuAction.rename:
+        widget.onChannelRename?.call(channel.id);
+        break;
+      case ChatChannelMenuAction.archive:
+        widget.onChannelArchive?.call(channel.id);
+        break;
+    }
   }
 
   @override
@@ -220,6 +260,11 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
                   _closeNavigation(context);
                   widget.onChannelSelected?.call(channel.id);
                 },
+                onLongPress: channel.isDefault
+                    ? null
+                    : () {
+                        _showChannelMenu(channel);
+                      },
               );
             }),
         const SizedBox(height: 24),

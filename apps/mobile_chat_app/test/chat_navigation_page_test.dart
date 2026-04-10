@@ -4,6 +4,8 @@ import 'package:mobile_chat_app/features/chat/chat_navigation_page.dart';
 
 Widget _buildPage({
   ValueChanged<ChatNavigationAction>? onActionSelected,
+  ValueChanged<String>? onChannelRename,
+  ValueChanged<String>? onChannelArchive,
   List<ChatAgentItem> agents = const [],
 }) =>
     MaterialApp(
@@ -13,8 +15,11 @@ Widget _buildPage({
           agents: agents,
           channels: const [
             ChatChannelItem(id: 'default', name: '默认频道', isDefault: true),
+            ChatChannelItem(id: 'project', name: '项目频道'),
           ],
           selectedChannelId: 'default',
+          onChannelRename: onChannelRename,
+          onChannelArchive: onChannelArchive,
         ),
       ),
     );
@@ -53,6 +58,7 @@ void main() {
       expect(find.text('在设置中新建 Agents'), findsOneWidget);
       expect(find.text('频道'), findsOneWidget);
       expect(find.text('默认频道'), findsOneWidget);
+      expect(find.text('项目频道'), findsOneWidget);
       expect(find.byTooltip('Settings'), findsOneWidget);
       expect(find.text('新建频道'), findsOneWidget);
       expect(find.text('Manage Agents'), findsNothing);
@@ -103,9 +109,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('默认频道'), findsOneWidget);
+      expect(find.text('项目频道'), findsOneWidget);
       await tester.tap(find.text('频道'));
       await tester.pumpAndSettle();
       expect(find.text('默认频道'), findsNothing);
+      expect(find.text('项目频道'), findsNothing);
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
 
@@ -161,6 +169,34 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(received, ChatNavigationAction.createChannel);
+    });
+
+    testWidgets('long press channel can trigger rename', (tester) async {
+      String? renamedId;
+      await tester
+          .pumpWidget(_buildPage(onChannelRename: (id) => renamedId = id));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('项目频道'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('改名'));
+      await tester.pumpAndSettle();
+
+      expect(renamedId, 'project');
+    });
+
+    testWidgets('long press channel can trigger archive', (tester) async {
+      String? archivedId;
+      await tester
+          .pumpWidget(_buildPage(onChannelArchive: (id) => archivedId = id));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('项目频道'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('归档'));
+      await tester.pumpAndSettle();
+
+      expect(archivedId, 'project');
     });
 
     testWidgets('tapping back button closes an open drawer', (tester) async {
