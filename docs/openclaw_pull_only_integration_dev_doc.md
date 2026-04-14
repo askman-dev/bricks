@@ -226,6 +226,15 @@ Request:
 }
 ```
 
+Invalid request example (must be rejected with `400 BAD REQUEST`):
+```json
+{
+  "pluginId": "plugin_local_main",
+  "ackedEventIds": ["evt_001"],
+  "cursor": "cur_000124"
+}
+```
+
 Response:
 ```json
 { "ok": true }
@@ -301,6 +310,14 @@ Completed patch:
   "replace": "发现一个明显问题：异常分支没有释放资源，可能导致连接泄漏。",
   "status": "completed"
 }
+```
+
+Invalid patch examples (`400 BAD REQUEST`):
+```json
+{ "revision": 4, "append": "a", "replace": "b", "status": "streaming" }
+```
+```json
+{ "revision": 4, "status": "streaming" }
 ```
 
 Status codes:
