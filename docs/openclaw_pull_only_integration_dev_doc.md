@@ -207,7 +207,7 @@ Success response:
 ### 7.2 `POST /api/v1/platform/events/ack`
 - ACK only after plugin dedup state persisted and event enqueued into OpenClaw Core input queue.
 - Plugin identity is canonical from required header `X-Bricks-Plugin-Id`.
-- Request body must not include `pluginId`; if provided, backend should reject with `400 BAD REQUEST`.
+- Request body must not include `pluginId`; if provided, backend must reject with `400 BAD REQUEST`.
 - `cursor` is the `nextCursor` received from the latest successful `GET /events` response whose events are being acknowledged.
 - ACK is idempotent: re-sending already-acked `eventId`s must still return success.
 - Unknown `eventId`s should be ignored (no hard failure) and reported in metrics/audit logs.
@@ -319,6 +319,7 @@ Invalid patch examples (`400 BAD REQUEST`):
 ```json
 { "revision": 4, "status": "streaming" }
 ```
+Valid examples are shown above in "Streaming patch" and "Completed patch".
 
 Status codes:
 - `200 OK`: patch applied
