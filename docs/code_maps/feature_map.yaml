@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-10
+last_updated: 2026-04-14
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -46,7 +46,7 @@ products:
 
       - feature_id: model_settings
         name: 模型与提供商配置
-        user_value: 用户可选择可用模型并保存默认配置。
+        user_value: 用户可选择可用模型并保存默认配置，并可快速复制 API URL 与 API Key。
         entry_paths:
           - screen: ModelSettingsScreen
             route_hint: apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
@@ -55,6 +55,8 @@ products:
         smoke_checks:
           - 进入模型设置并保存配置。
           - 重新进入页面后配置保持一致。
+          - 点击 Base URL 右侧复制按钮后可复制 API URL。
+          - 点击 API Key 右侧复制按钮时，非空 key 可被复制，空值会提示不可复制。
 
       - feature_id: workspace_resources
         name: Workspace / Projects / Skills / Resources 管理
