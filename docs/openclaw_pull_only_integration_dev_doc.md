@@ -212,6 +212,7 @@ Success response:
 - ACK is idempotent: re-sending already-acked `eventId`s must still return success.
 - Unknown `eventId`s should be ignored (no hard failure) and reported in metrics/audit logs.
 - Request body fields are `ackedEventIds` and `cursor` only.
+- Required request header: `X-Bricks-Plugin-Id: <plugin_id>`.
 
 Request:
 ```json
