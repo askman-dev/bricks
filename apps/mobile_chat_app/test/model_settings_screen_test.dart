@@ -267,5 +267,24 @@ void main() {
       expect(clipboardCalls, isEmpty);
       expect(find.text('API Key is empty'), findsOneWidget);
     });
+
+    testWidgets('copy api key action copies non-empty key to clipboard',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'API Key'), ' test-api-key ');
+      await tester.tap(find.byTooltip('Copy API Key'));
+      await tester.pumpAndSettle();
+
+      expect(clipboardCalls, hasLength(1));
+      expect(
+        clipboardCalls.single.arguments,
+        containsPair('text', 'test-api-key'),
+      );
+      expect(find.text('API Key copied'), findsOneWidget);
+    });
   });
 }

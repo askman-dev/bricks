@@ -148,11 +148,35 @@ Base URL: `{BRICKS_BASE_URL}` (example: `https://bricks.askman.dev`)
 
 ## 7. Contract details
 
+### 7.0 Canonical error response
+All non-2xx responses should use the same body shape:
+
+```json
+{
+  "error": {
+    "code": "INVALID_CURSOR",
+    "message": "cursor is malformed",
+    "retryable": false
+  },
+  "requestId": "req_01JZ..."
+}
+```
+
+`code` must be stable and machine-readable. `message` is human-readable. `retryable` indicates whether automatic retry is recommended.
+
 ### 7.1 `GET /api/v1/platform/events`
 - Purpose: pull pending events.
 - Query: `cursor`, `limit`
 - Delivery: at-least-once
 - Ordering: stable per cursor window, not global exactly-once
+
+Status codes:
+- `200 OK`: events returned (possibly empty list)
+- `400 BAD REQUEST`: invalid `cursor` or `limit`
+- `401 UNAUTHORIZED`: missing/invalid API key
+- `403 FORBIDDEN`: key lacks `events:read`
+- `429 TOO MANY REQUESTS`: rate limited
+- `5xx`: transient platform failure
 
 Success response:
 ```json
@@ -182,11 +206,15 @@ Success response:
 
 ### 7.2 `POST /api/v1/platform/events/ack`
 - ACK only after plugin dedup state persisted and event enqueued into OpenClaw Core input queue.
+- Plugin identity is canonical from required header `X-Bricks-Plugin-Id`.
+- Request body must not include `pluginId`; if provided, backend should reject with `400 BAD REQUEST`.
+- `cursor` is the `nextCursor` received from the latest successful `GET /events` response whose events are being acknowledged.
+- ACK is idempotent: re-sending already-acked `eventId`s must still return success.
+- Unknown `eventId`s should be ignored (no hard failure) and reported in metrics/audit logs.
 
 Request:
 ```json
 {
-  "pluginId": "plugin_local_main",
   "ackedEventIds": ["evt_001", "evt_002"],
   "cursor": "cur_000124"
 }
@@ -196,6 +224,14 @@ Response:
 ```json
 { "ok": true }
 ```
+
+Status codes:
+- `200 OK`: ACK applied (including idempotent re-ACKs)
+- `400 BAD REQUEST`: malformed body, invalid cursor semantics, or forbidden `pluginId` body field
+- `401 UNAUTHORIZED`: missing/invalid API key
+- `403 FORBIDDEN`: key lacks `events:ack`
+- `429 TOO MANY REQUESTS`: rate limited
+- `5xx`: transient platform failure
 
 ### 7.3 `POST /api/v1/platform/messages`
 - Idempotent create by `clientToken`.
@@ -227,9 +263,23 @@ Response:
 }
 ```
 
+Status codes:
+- `200 OK`/`201 CREATED`: message created
+- `200 OK`: idempotent replay by existing `clientToken`
+- `400 BAD REQUEST`: malformed payload
+- `401 UNAUTHORIZED`: missing/invalid API key
+- `403 FORBIDDEN`: key lacks `messages:write`
+- `409 CONFLICT`: `clientToken` reused with non-equivalent payload
+- `422 UNPROCESSABLE ENTITY`: semantic validation failure
+- `429 TOO MANY REQUESTS`: rate limited
+- `5xx`: transient platform failure
+
 ### 7.4 `PATCH /api/v1/platform/messages/{messageId}`
 - `revision` must increase monotonically.
 - Reject stale updates (`<= current revision`) with `409 CONFLICT`.
+- Exactly one of `append` or `replace` is required.
+- If both are provided, return `400 BAD REQUEST`.
+- If neither is provided, return `400 BAD REQUEST`.
 
 Streaming patch:
 ```json
@@ -249,8 +299,28 @@ Completed patch:
 }
 ```
 
+Status codes:
+- `200 OK`: patch applied
+- `400 BAD REQUEST`: invalid patch shape (including append/replace rule violations)
+- `401 UNAUTHORIZED`: missing/invalid API key
+- `403 FORBIDDEN`: key lacks `messages:write`
+- `404 NOT FOUND`: message does not exist
+- `409 CONFLICT`: stale or non-monotonic revision
+- `422 UNPROCESSABLE ENTITY`: semantic validation failure
+- `429 TOO MANY REQUESTS`: rate limited
+- `5xx`: transient platform failure
+
 ### 7.5 `GET /api/v1/platform/conversations/resolve`
 - Converts Bricks topology object into session-grammar input for plugin mapping.
+
+Status codes:
+- `200 OK`: topology resolved
+- `400 BAD REQUEST`: malformed query
+- `401 UNAUTHORIZED`: missing/invalid API key
+- `403 FORBIDDEN`: key lacks `conversations:read`
+- `404 NOT FOUND`: conversation not found/inaccessible
+- `429 TOO MANY REQUESTS`: rate limited
+- `5xx`: transient platform failure
 
 ### 7.6 Optional metadata/access APIs
 - `GET /conversations/{conversationId}` for metadata
@@ -362,4 +432,3 @@ Before production rollout:
 - [ ] Revision conflict (`409`) metrics exported
 - [ ] Structured audit logs include plugin ID, key ID, workspace ID
 - [ ] End-to-end replay test validates at-least-once + dedup resilience
-
