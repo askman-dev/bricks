@@ -211,6 +211,7 @@ Success response:
 - `cursor` is the `nextCursor` received from the latest successful `GET /events` response whose events are being acknowledged.
 - ACK is idempotent: re-sending already-acked `eventId`s must still return success.
 - Unknown `eventId`s should be ignored (no hard failure) and reported in metrics/audit logs.
+- Request body fields are `ackedEventIds` and `cursor` only.
 
 Request:
 ```json
