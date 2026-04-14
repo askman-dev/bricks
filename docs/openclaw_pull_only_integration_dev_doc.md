@@ -212,7 +212,11 @@ Success response:
 - ACK is idempotent: re-sending already-acked `eventId`s must still return success.
 - Unknown `eventId`s should be ignored (no hard failure) and reported in metrics/audit logs.
 - Request body fields are `ackedEventIds` and `cursor` only.
-- Required request header: `X-Bricks-Plugin-Id: <plugin_id>`.
+
+Required header:
+```http
+X-Bricks-Plugin-Id: <plugin_id>
+```
 
 Request:
 ```json
@@ -279,9 +283,7 @@ Status codes:
 ### 7.4 `PATCH /api/v1/platform/messages/{messageId}`
 - `revision` must increase monotonically.
 - Reject stale updates (`<= current revision`) with `409 CONFLICT`.
-- Exactly one of `append` or `replace` is required.
-- If both are provided, return `400 BAD REQUEST`.
-- If neither is provided, return `400 BAD REQUEST`.
+- Exactly one of `append` or `replace` must be provided; requests with both or neither are rejected with `400 BAD REQUEST`.
 
 Streaming patch:
 ```json
