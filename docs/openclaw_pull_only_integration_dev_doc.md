@@ -408,6 +408,11 @@ Use `revision` sequencing.
 
 ## 12. Data model recommendations
 
+### 12.0 Alignment with current Bricks implementation
+- Current backend async chat transport already uses a **single** `chat_messages` table keyed by message identity and role; this matches the "unified message storage" direction in this document.
+- Current backend does **not** yet expose the OpenClaw pull-only `platform_events`/outbox APIs described above; this document defines the target contract for that integration work.
+- During implementation, evolve the existing unified message model (do not split by source) and add delivery-event/outbox persistence as a separate concern.
+
 ### 12.1 Bricks tables
 - `conversations`
 - `messages` (single source-of-truth table for `user` / `agent` / `system` roles, including fields such as `status`, `revision`, `client_token`; do not split by message producer)
