@@ -410,8 +410,8 @@ Use `revision` sequencing.
 
 ### 12.1 Bricks tables
 - `conversations`
-- `messages`
-- `platform_events`
+- `messages` (single source-of-truth table for `user` / `agent` / `system` roles, including fields such as `status`, `revision`, `client_token`; do not split by message producer)
+- `platform_events` (or outbox-equivalent table) for plugin pull, ACK, retry, and cursor/idempotency handling
 - `conversation_bindings`
 - `api_keys`
 
