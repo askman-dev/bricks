@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PlatformClient, PlatformHttpError } from './platformClient.js';
-import { FileStateStore } from './stateStore.js';
+import { DEFAULT_MAX_PROCESSED_EVENTS, FileStateStore } from './stateStore.js';
 import type {
   CreateMessageRequest,
   PlatformEvent,
@@ -54,6 +54,9 @@ export class NodeOpenClawPluginRunner {
       await this.handleEvent(event);
       this.state.processedEventIds.push(event.eventId);
     }
+
+    // Keep in-memory array bounded to prevent unbounded growth during long runs
+    this.state.processedEventIds = this.state.processedEventIds.slice(-DEFAULT_MAX_PROCESSED_EVENTS);
 
     if (receivedEventIds.length > 0) {
       this.state.pendingAck = {

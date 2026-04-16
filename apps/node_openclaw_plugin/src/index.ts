@@ -42,4 +42,7 @@ async function main(): Promise<void> {
   await runner.runForever();
 }
 
-void main();
+main().catch((error) => {
+  console.error('Failed to start node_openclaw_plugin:', error);
+  process.exitCode = 1;
+});

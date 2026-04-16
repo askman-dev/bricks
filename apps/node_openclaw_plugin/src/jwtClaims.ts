@@ -44,7 +44,7 @@ export function parseAndValidatePlatformTokenClaims(token: string, pluginId: str
     throw new Error('BRICKS_PLATFORM_TOKEN must include userId claim');
   }
 
-  if (exp && exp <= Math.floor(Date.now() / 1000)) {
+  if (exp !== undefined && exp <= Math.floor(Date.now() / 1000)) {
     throw new Error('BRICKS_PLATFORM_TOKEN has expired');
   }
 

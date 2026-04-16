@@ -25,9 +25,8 @@ export interface GetEventsResponse {
 
 export interface ResolveConversationResponse {
   conversationId: string;
-  channelId?: string;
+  channelId: string;
   threadId?: string;
-  sessionId?: string;
   rawId?: string;
 }
 
