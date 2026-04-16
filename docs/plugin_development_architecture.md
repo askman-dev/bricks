@@ -59,6 +59,10 @@ apps/mobile_chat_app/test/
 1. **静态 Key 模式**
    - `Authorization: Bearer <BRICKS_PLATFORM_API_KEY>`
    - 适合内网/固定服务对接
+   - ⚠️ **安全限制**：静态 Key 模式不携带用户身份（`platformUserId` 为空），导致：
+     - `/events` 和 `/conversations/resolve` 查询不做用户过滤
+     - `/messages` 写入依赖 body 中的 `userId` 字段（可任意传入）
+   - **仅适合单租户/开发/内部部署场景，不得用于多用户生产环境**
 
 2. **JWT 模式（推荐）**
    - 通过 `issuePlatformAccessToken()` 签发 `typ=platform_plugin` 的 token
@@ -124,17 +128,24 @@ Scope 控制：
 
 ## 5. 插件开发使用方法（Step-by-step）
 
-## Step 1：准备环境变量（后端）
+### Step 1：准备环境变量（后端）
 
-至少需要：
+**必须设置（至少其中一项）：**
 
-- `JWT_SECRET`（JWT 模式必需）
-- `BRICKS_PLATFORM_API_KEY`（静态 Key 模式可选）
-- `BRICKS_PLATFORM_API_SCOPES`（默认 scope 列表）
-- `BRICKS_PLATFORM_DEFAULT_PLUGIN_ID`（默认插件 ID）
-- `BRICKS_PLATFORM_BASE_URL`（返回给客户端的推荐访问地址）
+| 变量 | 是否必需 | 说明 |
+|---|---|---|
+| `JWT_SECRET` | JWT 模式必需 | 用于签发和验证 platform JWT token |
+| `BRICKS_PLATFORM_API_KEY` | 静态 Key 模式必需 | 静态共享密钥；JWT 模式下可不设置 |
 
-## Step 2：获取插件 Token
+**可选变量：**
+
+| 变量 | 默认/回退 | 说明 |
+|---|---|---|
+| `BRICKS_PLATFORM_API_SCOPES` | 无默认（服务内写死） | 逗号分隔的默认 scope 列表 |
+| `BRICKS_PLATFORM_DEFAULT_PLUGIN_ID` | 无默认 | 不传 `pluginId` 参数时使用的默认值 |
+| `BRICKS_PLATFORM_BASE_URL` | 回退到 `API_BASE_URL`，再回退为空字符串 | 返回给客户端的推荐访问地址；如果两个变量都未设置，`baseUrl` 字段将返回空字符串，移动端同样会本地回退处理 |
+
+### Step 2：获取插件 Token
 
 ### 方式 A：通过 App 设置页获取（推荐给人工调试）
 
@@ -164,7 +175,7 @@ Authorization: Bearer <user_jwt>
 }
 ```
 
-## Step 3：插件侧调用平台 API
+### Step 3：插件侧调用平台 API
 
 所有请求必须携带：
 
