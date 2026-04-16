@@ -12,18 +12,10 @@ class _FakeLlmConfigService extends LlmConfigService {
   _FakeLlmConfigService({
     List<LlmConfig>? configs,
     this.deleteThrows = false,
-    this.platformTokenBundle = const PlatformTokenBundle(
-      token: 'platform-token-123',
-      pluginId: 'plugin_local_main',
-      baseUrl: 'https://bricks.askman.dev',
-      scopes: ['events:read', 'events:ack'],
-      expiresIn: '30d',
-    ),
   }) : _initialConfigs = configs ?? const [];
 
   final List<LlmConfig> _initialConfigs;
   final bool deleteThrows;
-  final PlatformTokenBundle platformTokenBundle;
 
   final List<String> deletedIds = [];
 
@@ -40,12 +32,6 @@ class _FakeLlmConfigService extends LlmConfigService {
     if (deleteThrows) throw Exception('delete failed');
     deletedIds.add(id);
   }
-
-  @override
-  Future<PlatformTokenBundle> fetchPlatformToken({
-    String pluginId = 'plugin_local_main',
-  }) async =>
-      platformTokenBundle;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,39 +328,6 @@ void main() {
         containsPair('text', 'test-api-key'),
       );
       expect(find.text('API Key copied'), findsOneWidget);
-    });
-
-    testWidgets('can fetch and copy xiaolongxia token', (tester) async {
-      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
-      await tester.pumpWidget(_buildScreen(service));
-      await tester.pumpAndSettle();
-
-      await _scrollUntilVisible(
-          tester, find.text('Get Xiaolongxia Token').first);
-      await tester.tap(find.text('Get Xiaolongxia Token').first);
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Plugin ID:'), findsOneWidget);
-      expect(find.textContaining('Base URL:'), findsOneWidget);
-      expect(find.widgetWithText(TextFormField, 'Xiaolongxia Token'),
-          findsOneWidget);
-
-      final copyTokenFinder = find.descendant(
-        of: find.widgetWithText(TextFormField, 'Xiaolongxia Token'),
-        matching: find.byIcon(Icons.copy_outlined),
-      );
-      await _scrollUntilVisible(tester, copyTokenFinder);
-      await tester.ensureVisible(copyTokenFinder);
-      await tester.pumpAndSettle();
-      await tester.tap(copyTokenFinder);
-      await tester.pumpAndSettle();
-
-      expect(clipboardCalls, hasLength(1));
-      expect(
-        clipboardCalls.single.arguments,
-        containsPair('text', 'platform-token-123'),
-      );
-      expect(find.textContaining('copied'), findsOneWidget);
     });
   });
 }

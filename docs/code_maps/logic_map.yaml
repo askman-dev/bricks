@@ -94,12 +94,29 @@ index:
       - copy
       - api key
       - api url
-      - xiaolongxia token
-      - openclaw token
     change_risks:
       - 字段格式变化导致保存后读取失败。
       - 后端默认模型与前端选择策略不一致。
-      - token 颁发与平台鉴权策略不一致会导致远端插件无法连接。
+
+  - feature_id: openclaw_token_settings
+    capability: 设置页 Openclaw Token 生成与复制
+    code_index:
+      - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
+      - apps/mobile_chat_app/lib/features/settings/openclaw_token_settings_screen.dart
+      - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+      - apps/node_backend/src/routes/config.ts
+    doc_index:
+      - docs/openclaw_pull_only_integration_dev_doc.md
+    test_index:
+      - apps/mobile_chat_app/test/openclaw_token_settings_screen_test.dart
+    keywords:
+      - settings
+      - openclaw token
+      - platform token
+      - copy
+    change_risks:
+      - 设置入口位置变化后，用户可能无法在预期页面找到 token 生成功能。
+      - token 展示与复制反馈文案不一致时，可能导致配置操作误判。
 
   - feature_id: workspace_resources
     capability: Workspace / Projects / Skills / Resources 导航
