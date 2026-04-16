@@ -131,3 +131,28 @@ products:
           - provider 配置缺失时给出明确错误。
           - 使用 API Key + X-Bricks-Plugin-Id 可访问 `/api/v1/platform/events` 并获取 `nextCursor`。
           - `/api/v1/platform/events/ack` 禁止 body 中传 `pluginId`，合法 ACK 可重复调用并返回成功。
+
+  - product_id: node_openclaw_plugin
+    name: Node OpenClaw Plugin
+    platform:
+      - nodejs
+    entry_points:
+      - path: apps/node_openclaw_plugin/src/index.ts
+        route: plugin runtime main
+    features:
+      - feature_id: node_openclaw_pull_loop
+        name: OpenClaw Pull-only 插件运行时
+        user_value: 远端插件可轮询 Bricks 平台事件并执行 ACK 与消息回写闭环。
+        entry_paths:
+          - runtime: NodeOpenClawPluginRunner
+            route_hint: apps/node_openclaw_plugin/src/pluginRunner.ts
+          - client: PlatformClient
+            route_hint: apps/node_openclaw_plugin/src/platformClient.ts
+          - state: FileStateStore
+            route_hint: apps/node_openclaw_plugin/src/stateStore.ts
+        smoke_checks:
+          - 设置 BRICKS_BASE_URL / BRICKS_PLATFORM_TOKEN / BRICKS_PLUGIN_ID 后可启动插件轮询。
+          - 非 JWT token 或 claims 不完整时插件启动应失败（JWT-only）。
+          - 插件可调用 `/api/v1/platform/events` 拉取事件并以 `X-Bricks-Plugin-Id` 发送请求。
+          - 插件 ACK body 仅包含 `cursor` 与 `ackedEventIds` 且可推进本地 cursor。
+          - 收到 `message.created` 事件后可执行 create + patch 消息回写。

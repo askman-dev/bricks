@@ -31,6 +31,15 @@ apps/node_backend/src/
   services/
     platformIntegrationService.ts             # 平台协议与 chat_messages 的读写映射
 
+apps/node_openclaw_plugin/
+  src/
+    index.ts                                 # 插件运行时入口（JWT claims 校验 + loop 启动）
+    jwtClaims.ts                             # JWT-only claims 解析/校验
+    platformClient.ts                        # 平台 API 客户端
+    pluginRunner.ts                          # pull-only 主循环（pull/dedup/ack/writeback）
+    stateStore.ts                            # 本地状态持久化（cursor/processed/pendingAck）
+  README.md                                  # 本地运行与 JWT-only 约束说明
+
 apps/mobile_chat_app/lib/features/settings/
   llm_config_service.dart                     # 拉取 platform token
   model_settings_screen.dart                  # UI：生成/展示/复制 token
@@ -75,6 +84,8 @@ Scope 控制：
 - `events:ack`
 - `messages:write`
 - `conversations:read`
+
+> 对 `apps/node_openclaw_plugin` 参考实现：当前已收敛为 **JWT-only** 启动策略，不保留静态 key 运行路径。
 
 ### 3.3 协议路由层（`platform.ts`）
 
@@ -251,4 +262,3 @@ GET /api/v1/platform/conversations/resolve?conversationId=conv_001
 - **400 MISSING_PLUGIN_ID**：缺少 `X-Bricks-Plugin-Id` 请求头  
 - **403 FORBIDDEN**：scope 不足或 token 的 pluginId 与请求头不一致  
 - **INVALID_CURSOR**：游标格式不符合 `cur_<number>`
-
