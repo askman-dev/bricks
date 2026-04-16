@@ -71,7 +71,7 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.vpn_key_outlined),
             title: const Text('Openclaw Token'),
             subtitle:
-                const Text('Generate plugin token for OpenClaw integration'),
+                const Text('Generate plugin token for Openclaw integration'),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
