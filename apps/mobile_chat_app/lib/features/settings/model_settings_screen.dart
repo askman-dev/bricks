@@ -503,6 +503,7 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
+                      key: ValueKey(_platformTokenBundle!.token),
                       initialValue: _platformTokenBundle!.token,
                       readOnly: true,
                       decoration: InputDecoration(

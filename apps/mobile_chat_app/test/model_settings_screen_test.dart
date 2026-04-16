@@ -358,6 +358,23 @@ void main() {
       expect(find.textContaining('Base URL:'), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'Xiaolongxia Token'),
           findsOneWidget);
+
+      final copyTokenFinder = find.descendant(
+        of: find.widgetWithText(TextFormField, 'Xiaolongxia Token'),
+        matching: find.byIcon(Icons.copy_outlined),
+      );
+      await _scrollUntilVisible(tester, copyTokenFinder);
+      await tester.ensureVisible(copyTokenFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(copyTokenFinder);
+      await tester.pumpAndSettle();
+
+      expect(clipboardCalls, hasLength(1));
+      expect(
+        clipboardCalls.single.arguments,
+        containsPair('text', 'platform-token-123'),
+      );
+      expect(find.textContaining('copied'), findsOneWidget);
     });
   });
 }

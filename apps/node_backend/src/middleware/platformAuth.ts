@@ -108,8 +108,12 @@ export function authenticatePlatformApiKey(
       }
       scopedUserId = payload.userId;
       tokenScopes = Array.isArray(payload.scopes) ? payload.scopes : undefined;
-    } catch {
-      sendAuthError(res, 401, 'UNAUTHORIZED', 'invalid api key');
+    } catch (error) {
+      if (error instanceof Error && error.message === 'JWT_SECRET environment variable is not set') {
+        sendAuthError(res, 500, 'CONFIGURATION_ERROR', 'server authentication is not configured');
+        return;
+      }
+      sendAuthError(res, 401, 'UNAUTHORIZED', 'invalid bearer token');
       return;
     }
   }
@@ -126,7 +130,7 @@ export function requirePlatformScope(scope: string) {
   return (req: PlatformAuthRequest, res: Response, next: NextFunction): void => {
     const scopes = req.platformScopes;
     if (!scopes || !scopes.has(scope)) {
-      sendAuthError(res, 403, 'FORBIDDEN', `key lacks ${scope}`);
+      sendAuthError(res, 403, 'FORBIDDEN', `token lacks ${scope}`);
       return;
     }
     next();

@@ -79,18 +79,22 @@ export async function listPlatformEvents(params: {
   cursor?: string;
   limit?: number;
   workspaceId?: string;
+  userId?: string;
 }): Promise<{ nextCursor: string; events: PlatformEvent[] }> {
   const limit = Math.min(200, Math.max(1, params.limit ?? 50));
   const afterSeq = cursorToSeq(params.cursor);
   const workspaceId = params.workspaceId ?? process.env.BRICKS_PLATFORM_WORKSPACE_ID ?? 'ws_local';
 
+  const baseSelect = `SELECT write_seq, message_id, user_id, channel_id, session_id, thread_id, role, content, created_at
+       FROM chat_messages`;
+  const queryParams: unknown[] = [afterSeq, limit];
+  const userFilter = params.userId ? ` AND user_id = $${queryParams.push(params.userId)}` : '';
   const result = await pool.query<ChatMessageEventRow>(
-    `SELECT write_seq, message_id, user_id, channel_id, session_id, thread_id, role, content, created_at
-       FROM chat_messages
-      WHERE write_seq > $1
+    `${baseSelect}
+      WHERE write_seq > $1${userFilter}
       ORDER BY write_seq ASC
       LIMIT $2`,
-    [afterSeq, limit],
+    queryParams,
   );
 
   const events = result.rows.map((row) => ({
@@ -118,12 +122,22 @@ export async function listPlatformEvents(params: {
   };
 }
 
-export async function ackPlatformEvents(_params: {
+export async function ackPlatformEvents(params: {
   pluginId: string;
   cursor: string;
   ackedEventIds: string[];
 }): Promise<{ ok: true }> {
-  // ACK is idempotent by contract. Current MVP does not persist ack state yet.
+  // Validate inputs even though ACK persistence is intentionally deferred in the MVP.
+  // This keeps the endpoint idempotent while surfacing client-side protocol bugs.
+  cursorToSeq(params.cursor);
+  if (!Array.isArray(params.ackedEventIds)) {
+    throw new Error('INVALID_ACKED_EVENT_IDS');
+  }
+  for (const eventId of params.ackedEventIds) {
+    if (typeof eventId !== 'string' || eventId.trim().length === 0) {
+      throw new Error('INVALID_ACKED_EVENT_IDS');
+    }
+  }
   return { ok: true };
 }
 
@@ -143,7 +157,7 @@ export async function createPlatformMessage(input: {
   text: string;
   clientToken?: string;
   metadata?: Record<string, unknown>;
-}): Promise<{ messageId: string; conversationId: string }> {
+}): Promise<{ messageId: string; conversationId: string; revision: number }> {
   const messageId = generateMessageId(input.clientToken);
 
   await upsertMessages(input.userId, [
@@ -165,6 +179,7 @@ export async function createPlatformMessage(input: {
   return {
     messageId,
     conversationId: input.conversationId,
+    revision: 1,
   };
 }
 
@@ -230,9 +245,16 @@ export async function patchPlatformMessage(input: {
   };
 }
 
+/** Returns a SQL filter clause and appends the userId to queryParams when provided. */
+function appendUserIdFilter(userId: string | undefined, queryParams: unknown[]): string {
+  if (!userId) return '';
+  return ` AND user_id = $${queryParams.push(userId)}`;
+}
+
 export async function resolveConversation(params: {
   conversationId?: string;
   rawId?: string;
+  userId?: string;
 }): Promise<
   | {
       conversationId: string;
@@ -243,6 +265,9 @@ export async function resolveConversation(params: {
   | null
 > {
   if (params.conversationId && params.conversationId.trim().length > 0) {
+    const queryParams: unknown[] = [params.conversationId.trim()];
+    const userFilter = appendUserIdFilter(params.userId, queryParams);
+
     const byConversation = await pool.query<{
       session_id: string;
       channel_id: string;
@@ -250,10 +275,10 @@ export async function resolveConversation(params: {
     }>(
       `SELECT session_id, channel_id, thread_id
          FROM chat_messages
-        WHERE session_id = $1
+        WHERE session_id = $1${userFilter}
         ORDER BY write_seq DESC
         LIMIT 1`,
-      [params.conversationId.trim()],
+      queryParams,
     );
 
     const row = byConversation.rows[0];
@@ -277,6 +302,9 @@ export async function resolveConversation(params: {
   const channelId = parsed[1];
   const threadId = parsed[2] ?? null;
 
+  const rawQueryParams: unknown[] = [channelId, threadId];
+  const rawUserFilter = appendUserIdFilter(params.userId, rawQueryParams);
+
   const byRawId = await pool.query<{
     session_id: string;
     channel_id: string;
@@ -285,10 +313,10 @@ export async function resolveConversation(params: {
     `SELECT session_id, channel_id, thread_id
        FROM chat_messages
       WHERE channel_id = $1
-        AND (($2 IS NULL AND thread_id IS NULL) OR thread_id = $2)
+        AND (($2 IS NULL AND thread_id IS NULL) OR thread_id = $2)${rawUserFilter}
       ORDER BY write_seq DESC
       LIMIT 1`,
-    [channelId, threadId],
+    rawQueryParams,
   );
 
   const row = byRawId.rows[0];

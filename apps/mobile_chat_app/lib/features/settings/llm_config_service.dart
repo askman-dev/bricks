@@ -239,10 +239,14 @@ class LlmConfigService {
             .toList()
         : const <String>[];
 
+    final rawBaseUrl = (map['baseUrl'] as String?)?.trim();
+
     return PlatformTokenBundle(
       token: (map['token'] as String?) ?? '',
       pluginId: (map['pluginId'] as String?) ?? pluginId,
-      baseUrl: (map['baseUrl'] as String?) ?? resolveBaseUrl(),
+      baseUrl: rawBaseUrl != null && rawBaseUrl.isNotEmpty
+          ? rawBaseUrl
+          : resolveBaseUrl(),
       scopes: scopes,
       expiresIn: (map['expiresIn'] as String?) ?? '',
     );

@@ -38,8 +38,28 @@ function readTrimmedString(input: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Resolves the effective userId for a platform request.
+ * When a JWT token is present, its userId is canonical and body userId must match or be absent.
+ * In static API key mode, body userId is used directly.
+ * Returns the resolved userId or null if unavailable, and an error descriptor if mismatch is detected.
+ */
+function resolveRequestUserId(
+  platformUserId: string | undefined,
+  bodyUserId: string | null,
+): { userId: string | null; mismatch: boolean } {
+  if (platformUserId) {
+    if (bodyUserId && bodyUserId !== platformUserId) {
+      return { userId: null, mismatch: true };
+    }
+    return { userId: platformUserId, mismatch: false };
+  }
+  return { userId: bodyUserId, mismatch: false };
+}
+
 router.get('/events', requirePlatformScope('events:read'), async (req: Request, res: Response) => {
   try {
+    const platformReq = req as PlatformAuthRequest;
     const cursor = readTrimmedString(req.query.cursor);
     const limitRaw = req.query.limit;
     const limit =
@@ -52,7 +72,11 @@ router.get('/events', requirePlatformScope('events:read'), async (req: Request, 
       return;
     }
 
-    const response = await listPlatformEvents({ cursor: cursor ?? undefined, limit });
+    const response = await listPlatformEvents({
+      cursor: cursor ?? undefined,
+      limit,
+      userId: platformReq.platformUserId,
+    });
     res.status(200).json(response);
   } catch (error) {
     if (error instanceof Error && error.message === 'INVALID_CURSOR') {
@@ -91,6 +115,10 @@ router.post(
       });
       res.status(200).json({ ok: true });
     } catch (error) {
+      if (error instanceof Error && error.message === 'INVALID_CURSOR') {
+        sendError(res, 400, 'INVALID_CURSOR', 'cursor is malformed');
+        return;
+      }
       console.error('platform ack error:', error);
       sendError(res, 500, 'INTERNAL_ERROR', 'internal server error', true);
     }
@@ -102,18 +130,28 @@ router.post(
   requirePlatformScope('messages:write'),
   async (req: PlatformAuthRequest, res: Response) => {
   try {
-    const userId = readTrimmedString(req.body?.userId) ?? req.platformUserId ?? null;
+    const { userId, mismatch } = resolveRequestUserId(
+      req.platformUserId,
+      readTrimmedString(req.body?.userId),
+    );
+    if (mismatch) {
+      sendError(res, 403, 'FORBIDDEN', 'userId in body does not match token');
+      return;
+    }
+
     const conversationId = readTrimmedString(req.body?.conversationId);
     const channelId = readTrimmedString(req.body?.channelId);
-    const text = readTrimmedString(req.body?.text);
-    const role = readTrimmedString(req.body?.role) ?? 'assistant';
+    // Support both `text` and `content` field names per OpenClaw contract
+    const text = readTrimmedString(req.body?.text) ?? readTrimmedString(req.body?.content);
+    // Support both `role` and `author` field names per OpenClaw contract
+    const role = readTrimmedString(req.body?.role) ?? readTrimmedString(req.body?.author) ?? 'assistant';
 
     if (!userId || !conversationId || !channelId || !text) {
       sendError(
         res,
         400,
         'INVALID_PAYLOAD',
-        'userId, conversationId, channelId, text are required',
+        'userId, conversationId, channelId, and text or content are required',
       );
       return;
     }
@@ -146,9 +184,17 @@ router.patch(
   async (req: PlatformAuthRequest, res: Response) => {
     try {
       const messageId = readTrimmedString(req.params.messageId);
-      const userId = readTrimmedString(req.body?.userId) ?? req.platformUserId ?? null;
+      const { userId, mismatch } = resolveRequestUserId(
+        req.platformUserId,
+        readTrimmedString(req.body?.userId),
+      );
+      if (mismatch) {
+        sendError(res, 403, 'FORBIDDEN', 'userId in body does not match token');
+        return;
+      }
+
       if (!messageId || !userId) {
-        sendError(res, 400, 'INVALID_PAYLOAD', 'messageId param and userId body are required');
+        sendError(res, 400, 'INVALID_PAYLOAD', 'messageId param and userId are required');
         return;
       }
 
@@ -182,6 +228,7 @@ router.get(
   requirePlatformScope('conversations:read'),
   async (req: Request, res: Response) => {
     try {
+      const platformReq = req as PlatformAuthRequest;
       const conversationId = readTrimmedString(req.query.conversationId);
       const rawId = readTrimmedString(req.query.rawId);
       if (!conversationId && !rawId) {
@@ -189,7 +236,11 @@ router.get(
         return;
       }
 
-      const resolved = await resolveConversation({ conversationId: conversationId ?? undefined, rawId: rawId ?? undefined });
+      const resolved = await resolveConversation({
+        conversationId: conversationId ?? undefined,
+        rawId: rawId ?? undefined,
+        userId: platformReq.platformUserId,
+      });
       if (!resolved) {
         sendError(res, 404, 'CONVERSATION_NOT_FOUND', 'conversation not found');
         return;
