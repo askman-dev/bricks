@@ -197,6 +197,38 @@ index:
       - 平台 API key 或 scope 变更导致远端插件鉴权失败。
       - cursor 语义变化导致插件重复消费或漏消费消息事件。
 
+
+  - feature_id: node_openclaw_pull_loop
+    capability: Node OpenClaw pull-only 事件消费与消息回写
+    code_index:
+      - apps/node_openclaw_plugin/src/index.ts
+      - apps/node_openclaw_plugin/src/jwtClaims.ts
+      - apps/node_openclaw_plugin/src/pluginRunner.ts
+      - apps/node_openclaw_plugin/src/platformClient.ts
+      - apps/node_openclaw_plugin/src/stateStore.ts
+      - apps/node_openclaw_plugin/src/types.ts
+    doc_index:
+      - docs/openclaw_pull_only_integration_dev_doc.md
+      - docs/plugin_development_architecture.md
+      - apps/node_openclaw_plugin/README.md
+    test_index:
+      - apps/node_openclaw_plugin/test/jwtClaims.test.ts
+      - apps/node_openclaw_plugin/test/stateStore.test.ts
+      - apps/node_openclaw_plugin/test/pluginRunner.test.ts
+    keywords:
+      - openclaw
+      - plugin
+      - pull-only
+      - events
+      - ack
+      - cursor
+      - messages
+      - jwt
+    change_risks:
+      - cursor 持久化失败会导致重复消费或漏消费。
+      - ACK 与本地去重顺序错误可能造成事件堆积或错误跳过。
+      - 上游接口字段变化可能导致回写消息失败。
+
 maintenance_rules:
   update_required_when:
     - 新增、删除或重命名用户可见功能入口。
