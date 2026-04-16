@@ -28,6 +28,8 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   bool _saving = false;
   bool _deleting = false;
   bool _showApiKey = false;
+  bool _loadingPlatformToken = false;
+  PlatformTokenBundle? _platformTokenBundle;
 
   @override
   void initState() {
@@ -243,18 +245,49 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
     required String emptyMessage,
     required String successMessage,
   }) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+
     final text = value.trim();
+    messenger.hideCurrentSnackBar();
     if (text.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(emptyMessage)));
+      messenger.showSnackBar(SnackBar(content: Text(emptyMessage)));
       return;
     }
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(successMessage)));
+
+    final refreshedMessenger = ScaffoldMessenger.maybeOf(context);
+    if (refreshedMessenger == null) return;
+    refreshedMessenger.hideCurrentSnackBar();
+    refreshedMessenger.showSnackBar(SnackBar(content: Text(successMessage)));
+  }
+
+  Future<void> _loadPlatformToken() async {
+    if (_loadingPlatformToken) return;
+    setState(() => _loadingPlatformToken = true);
+    try {
+      final bundle = await _service.fetchPlatformToken();
+      if (!mounted) return;
+      setState(() => _platformTokenBundle = bundle);
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.hideCurrentSnackBar();
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('小龙虾 Token 已生成，可复制到远端服务')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.hideCurrentSnackBar();
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('获取小龙虾 Token 失败')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loadingPlatformToken = false);
+      }
+    }
   }
 
   Widget _buildConfigSelector() {
@@ -423,6 +456,72 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                     'Config Slot: ${_activeSlotIdHint()}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  const SizedBox(height: 24),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'OpenClaw / 小龙虾 对接',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed:
+                            _loadingPlatformToken ? null : _loadPlatformToken,
+                        icon: _loadingPlatformToken
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.vpn_key_outlined),
+                        label: Text(
+                          _loadingPlatformToken
+                              ? 'Generating...'
+                              : 'Get Xiaolongxia Token',
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_platformTokenBundle != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Plugin ID: ${_platformTokenBundle!.pluginId}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Base URL: ${_platformTokenBundle!.baseUrl}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Scopes: ${_platformTokenBundle!.scopes.join(', ')}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      key: ValueKey(_platformTokenBundle!.token),
+                      initialValue: _platformTokenBundle!.token,
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: 'Xiaolongxia Token',
+                        suffixIcon: IconButton(
+                          tooltip: 'Copy Xiaolongxia Token',
+                          icon: const Icon(Icons.copy_outlined),
+                          onPressed: () {
+                            _copyToClipboard(
+                              value: _platformTokenBundle!.token,
+                              emptyMessage: 'Xiaolongxia Token is empty',
+                              successMessage: 'Xiaolongxia Token copied',
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   Row(
                     children: [

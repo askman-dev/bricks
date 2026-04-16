@@ -7,6 +7,7 @@ import {
   updateApiConfig,
   deleteApiConfig,
 } from '../services/configService.js';
+import { issuePlatformAccessToken } from '../middleware/platformAuth.js';
 
 const router = express.Router();
 const ALLOWED_PROVIDERS = new Set(['anthropic', 'google_ai_studio']);
@@ -129,6 +130,49 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     res.json(configs.map(sanitizeConfigForResponse));
   } catch (error) {
     console.error('Get configs error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /config/platform-token
+ * Issue a scoped pull-only platform token for remote OpenClaw/小龙虾 adapters.
+ */
+router.get('/platform-token', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const pluginId =
+      (typeof req.query.pluginId === 'string' ? req.query.pluginId : null) ??
+      process.env.BRICKS_PLATFORM_DEFAULT_PLUGIN_ID ??
+      'plugin_local_main';
+    const scopes = (process.env.BRICKS_PLATFORM_API_SCOPES ??
+            'events:read,events:ack,messages:write,conversations:read')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+    const token = issuePlatformAccessToken({
+      userId,
+      pluginId,
+      scopes,
+      expiresIn: '30d',
+    });
+
+    res.json({
+      token,
+      pluginId,
+      scopes,
+      baseUrl: process.env.BRICKS_PLATFORM_BASE_URL?.trim() || process.env.API_BASE_URL?.trim() || '',
+      expiresIn: '30d',
+    });
+  } catch (error) {
+    console.error('Get platform token error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
