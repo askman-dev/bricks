@@ -12,10 +12,18 @@ class _FakeLlmConfigService extends LlmConfigService {
   _FakeLlmConfigService({
     List<LlmConfig>? configs,
     this.deleteThrows = false,
+    this.platformTokenBundle = const PlatformTokenBundle(
+      token: 'platform-token-123',
+      pluginId: 'plugin_local_main',
+      baseUrl: 'https://bricks.askman.dev',
+      scopes: ['events:read', 'events:ack'],
+      expiresIn: '30d',
+    ),
   }) : _initialConfigs = configs ?? const [];
 
   final List<LlmConfig> _initialConfigs;
   final bool deleteThrows;
+  final PlatformTokenBundle platformTokenBundle;
 
   final List<String> deletedIds = [];
 
@@ -32,6 +40,12 @@ class _FakeLlmConfigService extends LlmConfigService {
     if (deleteThrows) throw Exception('delete failed');
     deletedIds.add(id);
   }
+
+  @override
+  Future<PlatformTokenBundle> fetchPlatformToken({
+    String pluginId = 'plugin_local_main',
+  }) async =>
+      platformTokenBundle;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +84,18 @@ const _secondConfig = LlmConfig(
 Widget _buildScreen(LlmConfigService service) =>
     MaterialApp(home: ModelSettingsScreen(service: service));
 
+Future<void> _scrollUntilVisible(
+  WidgetTester tester,
+  Finder target, {
+  double delta = 300,
+}) async {
+  await tester.scrollUntilVisible(
+    target,
+    delta,
+    scrollable: find.byType(Scrollable).first,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -85,7 +111,8 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       expect(find.text('Delete configuration?'), findsOneWidget);
@@ -98,7 +125,8 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // Dismiss via Cancel.
@@ -118,7 +146,8 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // Tap the Delete button inside the AlertDialog (FilledButton).
@@ -146,7 +175,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Active config is the first (unsaved) one.
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // No confirmation dialog should appear.
@@ -163,13 +193,14 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // The form should still be present (blank config was auto-added).
       expect(find.byType(Form), findsOneWidget);
       // A Delete button should still be visible.
-      expect(find.widgetWithText(OutlinedButton, 'Delete'), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     });
 
     testWidgets(
@@ -180,11 +211,19 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.save_outlined));
       final deleteBtn = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, 'Delete'),
+        find.ancestor(
+          of: find.byIcon(Icons.delete_outline),
+          matching: find.byType(OutlinedButton),
+        ),
       );
       final saveBtn = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Save'),
+        find.ancestor(
+          of: find.byIcon(Icons.save_outlined),
+          matching: find.byType(FilledButton),
+        ),
       );
 
       expect(deleteBtn.onPressed, isNotNull);
@@ -201,7 +240,8 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       await tester.tap(
@@ -255,6 +295,23 @@ void main() {
       expect(find.text('API URL copied'), findsOneWidget);
     });
 
+    testWidgets('copy api url action shows empty snackbar when field is blank',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Base URL'),
+        '   ',
+      );
+      await tester.tap(find.byTooltip('Copy API URL'));
+      await tester.pumpAndSettle();
+
+      expect(clipboardCalls, isEmpty);
+      expect(find.text('API URL is empty'), findsOneWidget);
+    });
+
     testWidgets('copy api key action shows empty snackbar when field is blank',
         (tester) async {
       final service = _FakeLlmConfigService(configs: [_persistedConfig]);
@@ -285,6 +342,22 @@ void main() {
         containsPair('text', 'test-api-key'),
       );
       expect(find.text('API Key copied'), findsOneWidget);
+    });
+
+    testWidgets('can fetch and copy xiaolongxia token', (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      await _scrollUntilVisible(
+          tester, find.text('Get Xiaolongxia Token').first);
+      await tester.tap(find.text('Get Xiaolongxia Token').first);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Plugin ID:'), findsOneWidget);
+      expect(find.textContaining('Base URL:'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, 'Xiaolongxia Token'),
+          findsOneWidget);
     });
   });
 }

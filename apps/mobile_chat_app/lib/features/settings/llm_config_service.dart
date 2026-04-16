@@ -205,6 +205,49 @@ class LlmConfigService {
     }
   }
 
+  Future<PlatformTokenBundle> fetchPlatformToken({
+    String pluginId = 'plugin_local_main',
+  }) async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.get(
+      _buildUri('/api/config/platform-token', {'pluginId': pluginId}),
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to fetch platform token (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception('Invalid platform token payload');
+    }
+    final map = Map<String, dynamic>.from(decoded);
+    final scopesRaw = map['scopes'];
+    final scopes = scopesRaw is List
+        ? scopesRaw
+            .whereType<String>()
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList()
+        : const <String>[];
+
+    return PlatformTokenBundle(
+      token: (map['token'] as String?) ?? '',
+      pluginId: (map['pluginId'] as String?) ?? pluginId,
+      baseUrl: (map['baseUrl'] as String?) ?? resolveBaseUrl(),
+      scopes: scopes,
+      expiresIn: (map['expiresIn'] as String?) ?? '',
+    );
+  }
+
   LlmConfig _fromApiConfig(Map<String, dynamic> config) {
     final rawConfig = config['config'];
     final map = rawConfig is Map
@@ -312,4 +355,20 @@ class LlmConfigService {
         return 'https://api.anthropic.com';
     }
   }
+}
+
+class PlatformTokenBundle {
+  const PlatformTokenBundle({
+    required this.token,
+    required this.pluginId,
+    required this.baseUrl,
+    required this.scopes,
+    required this.expiresIn,
+  });
+
+  final String token;
+  final String pluginId;
+  final String baseUrl;
+  final List<String> scopes;
+  final String expiresIn;
 }
