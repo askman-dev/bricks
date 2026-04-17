@@ -16,13 +16,13 @@ describe('extractIncomingText', () => {
 });
 
 describe('shouldProcessEvent', () => {
-  it('skips assistant/system events and same-user events', () => {
+  it('skips assistant/system events', () => {
     expect(
       shouldProcessEvent(
         {
           eventId: 'evt_1',
           eventType: 'message.created',
-          payload: { sender: { userId: 'u_1', displayName: 'user' } },
+          payload: { sender: { userId: 'u_1', displayName: 'assistant' } },
         },
         'u_1',
       ),
@@ -40,13 +40,13 @@ describe('shouldProcessEvent', () => {
     ).toBe(false);
   });
 
-  it('keeps user-created events from other users', () => {
+  it('keeps user-created events even when sender userId equals token userId', () => {
     expect(
       shouldProcessEvent(
         {
           eventId: 'evt_3',
           eventType: 'message.created',
-          payload: { sender: { userId: 'u_2', displayName: 'user' } },
+          payload: { sender: { userId: 'u_1', displayName: 'user' } },
         },
         'u_1',
       ),

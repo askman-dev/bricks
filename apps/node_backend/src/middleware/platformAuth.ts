@@ -40,14 +40,18 @@ function getJwtSecret(): string {
 
 export function issuePlatformAccessToken(params: {
   userId: string;
-  pluginId?: string;
+  pluginId: string;
   scopes?: string[];
   expiresIn?: string;
 }): string {
+  const pluginId = params.pluginId.trim();
+  if (!pluginId) {
+    throw new Error('pluginId is required');
+  }
   const payload: PlatformJwtPayload = {
     typ: 'platform_plugin',
     userId: params.userId,
-    pluginId: params.pluginId,
+    pluginId,
     scopes: params.scopes,
   };
   return jwt.sign(payload, getJwtSecret(), {
@@ -98,11 +102,16 @@ export function authenticatePlatformApiKey(
   } else {
     try {
       const payload = jwt.verify(token, getJwtSecret()) as PlatformJwtPayload;
-      if (payload.typ !== 'platform_plugin' || !payload.userId) {
+      if (
+        payload.typ !== 'platform_plugin' ||
+        !payload.userId ||
+        !payload.pluginId ||
+        payload.pluginId.trim().length === 0
+      ) {
         sendAuthError(res, 401, 'UNAUTHORIZED', 'invalid platform token payload');
         return;
       }
-      if (payload.pluginId && payload.pluginId !== pluginIdHeader) {
+      if (payload.pluginId !== pluginIdHeader) {
         sendAuthError(res, 403, 'FORBIDDEN', 'token pluginId does not match header');
         return;
       }

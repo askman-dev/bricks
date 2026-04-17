@@ -172,6 +172,7 @@ index:
       - apps/node_backend/src/routes/config.ts
       - apps/node_backend/src/middleware/platformAuth.ts
       - apps/node_backend/src/services/platformIntegrationService.ts
+      - apps/node_openclaw_plugin/src/pluginRunner.ts
       - apps/node_backend/src/llm/llm_service.ts
       - apps/node_backend/src/llm/providers/anthropic_adapter.ts
       - apps/node_backend/src/llm/providers/google_ai_studio_adapter.ts
@@ -180,6 +181,7 @@ index:
       - docs/openclaw_pull_only_integration_dev_doc.md
     test_index:
       - apps/node_backend/src/routes/platform.test.ts
+      - apps/node_openclaw_plugin/test/pluginRunner.test.ts
     keywords:
       - chat
       - llm
@@ -196,6 +198,7 @@ index:
       - 流式响应格式变化导致前端解析出错。
       - 平台 API key 或 scope 变更导致远端插件鉴权失败。
       - cursor 语义变化导致插件重复消费或漏消费消息事件。
+      - 平台 JWT 中 pluginId 约束变化可能导致插件隔离失效或合法请求被拒绝。
 
 
   - feature_id: node_openclaw_pull_loop

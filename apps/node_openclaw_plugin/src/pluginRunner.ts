@@ -176,6 +176,7 @@ export function extractIncomingText(payload?: PlatformEvent['payload']): string 
 }
 
 export function shouldProcessEvent(event: PlatformEvent, tokenUserId: string): boolean {
+  void tokenUserId;
   if (event.eventType !== 'message.created') {
     return true;
   }
@@ -183,9 +184,6 @@ export function shouldProcessEvent(event: PlatformEvent, tokenUserId: string): b
   const sender = event.payload?.sender;
   if (!sender) return true;
 
-  if (sender.userId && sender.userId === tokenUserId) {
-    return false;
-  }
   if (sender.displayName && ['assistant', 'system'].includes(sender.displayName.toLowerCase())) {
     return false;
   }

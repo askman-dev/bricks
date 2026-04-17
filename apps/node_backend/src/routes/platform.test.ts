@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
 import { issuePlatformAccessToken } from '../middleware/platformAuth.js';
@@ -135,6 +136,31 @@ describe('platform route auth and ack constraints', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { ok?: boolean };
     expect(body.ok).toBe(true);
+  });
+
+  it('rejects JWT platform token without pluginId claim', async () => {
+    const jwtToken = jwt.sign(
+      {
+        typ: 'platform_plugin',
+        userId: 'user-123',
+        scopes: ['events:ack'],
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: '1h' },
+    );
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({ ackedEventIds: ['evt_2'], cursor: 'cur_2' }),
+    });
+
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('UNAUTHORIZED');
   });
 
   it('JWT events listing passes userId to service', async () => {

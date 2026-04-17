@@ -80,22 +80,48 @@ For multi-user Bricks workspaces, plugin should default to granular DM scoping (
 
 ---
 
-## 5. Authentication model (API key only)
+## 5. Authentication model (JWT platform token + optional static key)
 
 ### 5.1 Principle
-Only plugin->Bricks requests exist in pull-only topology. Therefore, API key bearer auth is sufficient.
+Plugin->Bricks requests use bearer auth. Current implementation supports:
+1. Preferred mode: scoped JWT platform token (`typ=platform_plugin`) issued by `GET /api/config/platform-token`
+2. Compatibility mode: static environment API key (`BRICKS_PLATFORM_API_KEY`)
+
+Security boundary:
+- JWT mode is user-scoped and plugin-scoped (`userId` + `pluginId` claim)
+- `X-Bricks-Plugin-Id` header must match JWT `pluginId` claim exactly
+- Static key mode is shared and should be treated as less granular fallback for controlled environments
 
 ### 5.2 Required headers
 All plugin calls include:
 
 ```http
-Authorization: Bearer <BRICKS_API_KEY>
+Authorization: Bearer <PLATFORM_JWT_OR_STATIC_API_KEY>
 Content-Type: application/json
 X-Bricks-Plugin-Id: <plugin_id>
 X-Bricks-Client-Version: <plugin_version>
 ```
 
-### 5.3 API key storage model (Bricks)
+### 5.3 JWT token profile (current)
+`GET /api/config/platform-token` currently returns:
+
+```json
+{
+  "token": "<jwt>",
+  "pluginId": "plugin_local_main",
+  "scopes": ["events:read", "events:ack", "messages:write", "conversations:read"],
+  "baseUrl": "https://bricks.askman.dev",
+  "expiresIn": "30d"
+}
+```
+
+JWT payload requirements:
+- `typ` must be `platform_plugin`
+- `userId` is required
+- `pluginId` is required and must match request header `X-Bricks-Plugin-Id`
+- `scopes` controls route-level authorization
+
+### 5.4 Static API key storage model (fallback recommendation)
 Recommended minimum persisted fields:
 
 ```json
@@ -117,7 +143,7 @@ Security requirements:
 - Key scoped to workspace/tenant
 - Support revoke/rotate/audit trail
 
-### 5.4 Scope profile
+### 5.5 Scope profile
 MVP minimum:
 - `events:read`
 - `events:ack`
@@ -188,7 +214,7 @@ Success response:
       "eventType": "message.created",
       "workspaceId": "ws_123",
       "conversationId": "conv_1001",
-      "rawId": "discord:channel:123/thread:456",
+      "rawId": "channel:123/thread:456",
       "occurredAt": "2026-04-14T10:00:00Z",
       "payload": {
         "messageId": "msg_u_001",
@@ -249,24 +275,24 @@ Status codes:
 - `5xx`: transient platform failure
 
 ### 7.3 `POST /api/v1/platform/messages`
-- Idempotent create by `clientToken`.
+- Creates (or idempotently reuses) a platform message.
+- Required in static-key mode: `userId`, `conversationId`, `channelId`, and one of `text`/`content`.
+- In JWT mode, `userId` may be omitted and is resolved from token payload.
+- `role` defaults to `assistant` when omitted.
 
 Request:
 ```json
 {
-  "workspaceId": "ws_123",
+  "userId": "user_01",
   "conversationId": "conv_1001",
-  "author": {
-    "type": "agent",
-    "agentId": "agent_reviewer",
-    "displayName": "Reviewer"
-  },
+  "channelId": "channel_123",
+  "threadId": "thread_456",
+  "role": "assistant",
   "clientToken": "out_001",
-  "content": {
-    "format": "markdown",
-    "text": "我先看一下这段代码的结构。"
-  },
-  "status": "streaming"
+  "text": "我先看一下这段代码的结构。",
+  "metadata": {
+    "sourceEventId": "evt_001"
+  }
 }
 ```
 
@@ -274,63 +300,64 @@ Response:
 ```json
 {
   "messageId": "msg_a_9001",
+  "conversationId": "conv_1001",
   "revision": 1
 }
 ```
 
 Status codes:
 - `200 OK`/`201 CREATED`: message created
-- `200 OK`: idempotent replay by existing `clientToken`
-- `400 BAD REQUEST`: malformed payload
+- `200 OK`: idempotent replay by existing `clientToken`/message identity
+- `400 BAD REQUEST`: malformed payload or missing required fields
 - `401 UNAUTHORIZED`: missing/invalid API key
 - `403 FORBIDDEN`: key lacks `messages:write`
-- `409 CONFLICT`: `clientToken` reused with non-equivalent payload
-- `422 UNPROCESSABLE ENTITY`: semantic validation failure
 - `429 TOO MANY REQUESTS`: rate limited
 - `5xx`: transient platform failure
 
 ### 7.4 `PATCH /api/v1/platform/messages/{messageId}`
-- `revision` must increase monotonically.
-- Reject stale updates (`<= current revision`) with `409 CONFLICT`.
-- Exactly one of `append` or `replace` must be provided; requests with both or neither are rejected with `400 BAD REQUEST`.
+- Current MVP patch shape accepts partial updates for:
+  - `text` (full text replacement)
+  - `metadata` (shallow merge over existing metadata)
+- Request must contain at least one of `text` or `metadata`, otherwise `400 BAD REQUEST`.
+- `userId` resolution follows section 7.3 rules (JWT token user is canonical).
 
-Streaming patch:
+Patch text:
 ```json
 {
-  "revision": 2,
-  "append": "\n\n发现一个明显问题：异常分支没有释放资源。",
-  "status": "streaming"
+  "userId": "user_01",
+  "text": "发现一个明显问题：异常分支没有释放资源。"
 }
 ```
 
-Completed patch:
+Patch metadata only:
 ```json
 {
-  "revision": 3,
-  "replace": "发现一个明显问题：异常分支没有释放资源，可能导致连接泄漏。",
-  "status": "completed"
+  "userId": "user_01",
+  "metadata": {
+    "handledBy": "Reviewer",
+    "sourceEventId": "evt_001"
+  }
 }
 ```
 
 Invalid patch examples (`400 BAD REQUEST`):
 ```json
-{ "revision": 4, "append": "a", "replace": "b", "status": "streaming" }
+{ "userId": "user_01" }
 ```
 ```json
-{ "revision": 4, "status": "streaming" }
+{ "text": "hello" }
 ```
-Valid examples are shown above in "Streaming patch" and "Completed patch".
 
 Status codes:
 - `200 OK`: patch applied
-- `400 BAD REQUEST`: invalid patch shape (including append/replace rule violations)
+- `400 BAD REQUEST`: invalid payload (`messageId` param/userId missing, or both text and metadata missing)
 - `401 UNAUTHORIZED`: missing/invalid API key
 - `403 FORBIDDEN`: key lacks `messages:write`
 - `404 NOT FOUND`: message does not exist
-- `409 CONFLICT`: stale or non-monotonic revision
-- `422 UNPROCESSABLE ENTITY`: semantic validation failure
 - `429 TOO MANY REQUESTS`: rate limited
 - `5xx`: transient platform failure
+
+> Future version note: revision-based `append`/`replace` streaming patch semantics are a target contract, not the currently implemented MVP route behavior.
 
 ### 7.5 `GET /api/v1/platform/conversations/resolve`
 - Converts Bricks topology object into session-grammar input for plugin mapping.
@@ -396,7 +423,8 @@ Plugin must persist:
 Use `clientToken` idempotency key.
 
 ### 11.3 Streaming updates
-Use `revision` sequencing.
+Current MVP uses full-text replace updates (`text`) via `PATCH /messages/{id}`.
+Revision sequencing is a future contract target for incremental streaming patch semantics.
 
 ### 11.4 Retry policy
 - `GET /events` timeout: immediate reconnect
@@ -410,8 +438,9 @@ Use `revision` sequencing.
 
 ### 12.0 Alignment with current Bricks implementation
 - Current backend async chat transport already uses a **single** `chat_messages` table keyed by message identity and role; this matches the "unified message storage" direction in this document.
-- Current backend does **not** yet expose the OpenClaw pull-only `platform_events`/outbox APIs described above; this document defines the target contract for that integration work.
-- During implementation, evolve the existing unified message model (do not split by source) and add delivery-event/outbox persistence as a separate concern.
+- Current backend **already exposes** MVP pull-only platform APIs: `/api/v1/platform/events`, `/api/v1/platform/events/ack`, `/api/v1/platform/messages`, `/api/v1/platform/messages/:messageId`, `/api/v1/platform/conversations/resolve`.
+- Current `/events/ack` endpoint is intentionally idempotent but does not yet persist durable ACK/outbox state; delivery-event persistence remains future work.
+- Continue evolving the existing unified message model (do not split by source) while adding delivery-event/outbox persistence as a separate concern.
 
 ### 12.1 Bricks tables
 - `conversations`
