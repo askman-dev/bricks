@@ -213,18 +213,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _reloadAgents() async {
-    final repo = _agentsRepository ?? await createAgentsRepository();
-    final definitions = await _readAgentDefinitions(repo);
-    if (!mounted) return;
-    _syncParticipants(definitions);
-    setState(() {
-      _agentsRepository = repo;
-      _agents = definitions;
-      _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
-    });
-  }
-
   Future<List<AgentDefinition>> _readAgentDefinitions(
     AgentsRepository repository,
   ) async {
