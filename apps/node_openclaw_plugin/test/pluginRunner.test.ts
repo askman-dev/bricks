@@ -24,7 +24,6 @@ describe('shouldProcessEvent', () => {
           eventType: 'message.created',
           payload: { sender: { userId: 'u_1', displayName: 'assistant' } },
         },
-        'u_1',
       ),
     ).toBe(false);
 
@@ -35,7 +34,16 @@ describe('shouldProcessEvent', () => {
           eventType: 'message.created',
           payload: { sender: { userId: 'u_2', displayName: 'assistant' } },
         },
-        'u_1',
+      ),
+    ).toBe(false);
+
+    expect(
+      shouldProcessEvent(
+        {
+          eventId: 'evt_2b',
+          eventType: 'message.created',
+          payload: { sender: { userId: 'u_2', displayName: 'system' } },
+        },
       ),
     ).toBe(false);
   });
@@ -48,7 +56,6 @@ describe('shouldProcessEvent', () => {
           eventType: 'message.created',
           payload: { sender: { userId: 'u_1', displayName: 'user' } },
         },
-        'u_1',
       ),
     ).toBe(true);
   });

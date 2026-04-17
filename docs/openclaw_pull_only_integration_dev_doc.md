@@ -345,7 +345,7 @@ Invalid patch examples (`400 BAD REQUEST`):
 { "userId": "user_01" }
 ```
 ```json
-{ "text": "hello" }
+{ "userId": "user_01", "metadata": [] }
 ```
 
 Status codes:

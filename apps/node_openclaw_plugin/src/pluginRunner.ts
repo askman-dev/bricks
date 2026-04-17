@@ -107,7 +107,7 @@ export class NodeOpenClawPluginRunner {
       console.warn('[node_openclaw_plugin] skip event without conversation identity', event.eventId);
       return;
     }
-    if (!shouldProcessEvent(event, this.config.tokenUserId)) {
+    if (!shouldProcessEvent(event)) {
       return;
     }
 
@@ -175,8 +175,7 @@ export function extractIncomingText(payload?: PlatformEvent['payload']): string 
   return '[empty message]';
 }
 
-export function shouldProcessEvent(event: PlatformEvent, tokenUserId: string): boolean {
-  void tokenUserId;
+export function shouldProcessEvent(event: PlatformEvent): boolean {
   if (event.eventType !== 'message.created') {
     return true;
   }

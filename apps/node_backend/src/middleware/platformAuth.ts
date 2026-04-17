@@ -38,6 +38,10 @@ function getJwtSecret(): string {
   return secret;
 }
 
+/**
+ * Issues a scoped platform JWT for plugin pull-only APIs.
+ * `pluginId` is required and must match `X-Bricks-Plugin-Id` on authenticated requests.
+ */
 export function issuePlatformAccessToken(params: {
   userId: string;
   pluginId: string;
