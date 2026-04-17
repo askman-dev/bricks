@@ -9,7 +9,6 @@ import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
 
-import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
@@ -1428,17 +1427,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       _updateMessageContent(index, 'Error: $e', isStreaming: false);
-    }
-  }
-
-  Future<void> _openAgentsScreen() async {
-    final updated = await Navigator.push<AgentDefinition?>(
-      context,
-      MaterialPageRoute<AgentDefinition?>(builder: (_) => const AgentsScreen()),
-    );
-    await _reloadAgents();
-    if (updated != null) {
-      _selectAgent(updated);
     }
   }
 
