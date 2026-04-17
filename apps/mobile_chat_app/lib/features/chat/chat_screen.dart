@@ -9,7 +9,6 @@ import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
 
-import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
@@ -49,13 +48,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   final AgentClient _client = AgentCoreClient();
   final ChatBotRegistry _botRegistry = ChatBotRegistry();
-  late final ChatArbitrationEngine _arbitrationEngine =
-      ChatArbitrationEngine(registry: _botRegistry);
+  late final ChatArbitrationEngine _arbitrationEngine = ChatArbitrationEngine(
+    registry: _botRegistry,
+  );
   final ChatTaskProtocol _taskProtocol = ChatTaskProtocol();
   final ChatTopologyResolver _topologyResolver = const ChatTopologyResolver();
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
-  AgentsRepository? _agentsRepository;
   List<AgentDefinition> _agents = [];
   AgentDefinition? _activeAgent;
   final LlmConfigService _llmConfigService = const LlmConfigService();
@@ -68,7 +67,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ];
   String _activeChannelId = 'default';
   final Map<String, List<ChatSubSection>> _channelSubSections = {
-    'default': <ChatSubSection>[]
+    'default': <ChatSubSection>[],
   };
   final Map<String, DateTime> _subSectionLastMessageAt = {};
   String _activeSubSection = 'main';
@@ -80,6 +79,10 @@ class _ChatScreenState extends State<ChatScreen> {
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
   Timer? _persistDebounce;
+  Timer? _syncTimer;
+  bool _syncInFlight = false;
+  final Map<String, ChatRouter> _channelRouters = {};
+  final Map<String, ChatRouter> _threadRouters = {};
   int _respondGeneration = 0;
 
   @override
@@ -91,6 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _persistDebounce?.cancel();
+    _syncTimer?.cancel();
     _doPersistActiveScopeMessages();
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
@@ -111,14 +115,27 @@ class _ChatScreenState extends State<ChatScreen> {
       final authToken = await tokenFuture;
       final definitions = await _readAgentDefinitions(repo);
       List<ChatPersistedScope> persistedScopes = const [];
+      List<ChatScopeSetting> scopeSettings = const [];
       if (authToken != null && authToken.isNotEmpty) {
         try {
-          persistedScopes =
-              await _chatHistoryApiService.loadScopes(token: authToken);
+          persistedScopes = await _chatHistoryApiService.loadScopes(
+            token: authToken,
+          );
         } catch (e) {
           // Scope hydration is best-effort; a backend failure (e.g. 404 during
           // rollout or transient error) must not block the rest of chat setup.
-          debugPrint('loadScopes failed, continuing without scope hydration: $e');
+          debugPrint(
+            'loadScopes failed, continuing without scope hydration: $e',
+          );
+        }
+        try {
+          scopeSettings = await _chatHistoryApiService.loadScopeSettings(
+            token: authToken,
+          );
+        } catch (e) {
+          debugPrint(
+            'loadScopeSettings failed, continuing without router hydration: $e',
+          );
         }
       }
       final defaultConfig = llmConfigs.firstWhere(
@@ -134,13 +151,15 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
       );
       if (!mounted) return;
-      _agentsRepository = repo;
       _syncParticipants(definitions);
       final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
-      final restoredSubSections =
-          _hydrateSubSectionsFromScopes(persistedScopes);
+      final restoredSubSections = _hydrateSubSectionsFromScopes(
+        persistedScopes,
+      );
       final restoredLastSubSectionByChannel =
           _hydrateLastActiveSubSectionByChannel(persistedScopes);
+      final restoredChannelRouters = _hydrateChannelRouters(scopeSettings);
+      final restoredThreadRouters = _hydrateThreadRouters(scopeSettings);
       final resolvedActiveChannel = _topologyResolver.resolveChannelId(
         channels: restoredChannels,
         requestedChannelId: _activeChannelId,
@@ -152,10 +171,12 @@ class _ChatScreenState extends State<ChatScreen> {
         _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
         _loadingAgents = false;
         _llmConfigs = llmConfigs;
-        _sessionConfigSlotId ??=
-            llmConfigs.isNotEmpty ? defaultConfig.slotId : null;
-        _sessionModelOverride ??=
-            llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
+        _sessionConfigSlotId ??= llmConfigs.isNotEmpty
+            ? defaultConfig.slotId
+            : null;
+        _sessionModelOverride ??= llmConfigs.isNotEmpty
+            ? defaultConfig.defaultModel
+            : null;
         _loadingLlmConfigs = false;
         _authToken = authToken;
         _channels
@@ -167,6 +188,12 @@ class _ChatScreenState extends State<ChatScreen> {
         _lastActiveSubSectionByChannel
           ..clear()
           ..addAll(restoredLastSubSectionByChannel);
+        _channelRouters
+          ..clear()
+          ..addAll(restoredChannelRouters);
+        _threadRouters
+          ..clear()
+          ..addAll(restoredThreadRouters);
         _activeChannelId = resolvedActiveChannel;
         _activeSubSection = restoredActiveSubSection;
       });
@@ -182,18 +209,6 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text('Failed to load chat setup: $error')),
       );
     }
-  }
-
-  Future<void> _reloadAgents() async {
-    final repo = _agentsRepository ?? await createAgentsRepository();
-    final definitions = await _readAgentDefinitions(repo);
-    if (!mounted) return;
-    _syncParticipants(definitions);
-    setState(() {
-      _agentsRepository = repo;
-      _agents = definitions;
-      _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
-    });
   }
 
   Future<List<AgentDefinition>> _readAgentDefinitions(
@@ -231,9 +246,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _selectAgent(AgentDefinition agent) {
     setState(() => _activeAgent = agent);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Responding as @${agent.name}')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Responding as @${agent.name}')));
   }
 
   LlmConfig? get _activeLlmConfig {
@@ -247,7 +262,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   AgentSettings _settingsForAgent(AgentDefinition? agent) {
     final selectedConfig = _activeLlmConfig;
-    final selectedModel = _sessionModelOverride ??
+    final selectedModel =
+        _sessionModelOverride ??
         selectedConfig?.defaultModel ??
         _resolveModelId(agent?.model);
     return AgentSettings(
@@ -295,12 +311,14 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    var selectedSlot = _sessionConfigSlotId ??
+    var selectedSlot =
+        _sessionConfigSlotId ??
         _llmConfigs
             .firstWhere((c) => c.isDefault, orElse: () => _llmConfigs.first)
             .slotId;
-    var selectedConfig =
-        _llmConfigs.firstWhere((cfg) => cfg.slotId == selectedSlot);
+    var selectedConfig = _llmConfigs.firstWhere(
+      (cfg) => cfg.slotId == selectedSlot,
+    );
     var selectedModel = _sessionModelOverride ?? selectedConfig.defaultModel;
 
     final applied = await showDialog<bool>(
@@ -325,8 +343,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   DropdownButtonFormField<String>(
                     initialValue: selectedSlot,
-                    decoration:
-                        const InputDecoration(labelText: 'Configuration'),
+                    decoration: const InputDecoration(
+                      labelText: 'Configuration',
+                    ),
                     items: _llmConfigs
                         .map(
                           (cfg) => DropdownMenuItem<String>(
@@ -395,9 +414,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _isSending = false;
       _isStreaming = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Session now uses $selectedModel')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Session now uses $selectedModel')));
   }
 
   String _resolveModelId(String? model) {
@@ -441,10 +460,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   List<ChatChannel> _hydrateChannelsFromScopes(
-      List<ChatPersistedScope> scopes) {
+    List<ChatPersistedScope> scopes,
+  ) {
     final channelsById = <String, ChatChannel>{
-      'default':
-          const ChatChannel(id: 'default', name: '默认频道', isDefault: true),
+      'default': const ChatChannel(
+        id: 'default',
+        name: '默认频道',
+        isDefault: true,
+      ),
     };
     for (final scope in scopes) {
       if (scope.channelId == 'default') continue;
@@ -467,8 +490,10 @@ class _ChatScreenState extends State<ChatScreen> {
       'default': <ChatSubSection>[],
     };
     for (final scope in scopes) {
-      final channelSections =
-          subSections.putIfAbsent(scope.channelId, () => <ChatSubSection>[]);
+      final channelSections = subSections.putIfAbsent(
+        scope.channelId,
+        () => <ChatSubSection>[],
+      );
       if (scope.threadId == 'main' ||
           channelSections.any((item) => item.id == scope.threadId)) {
         continue;
@@ -493,7 +518,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final current = byChannel[scope.channelId];
       final currentAt = current?.lastActivityAt;
       final nextAt = scope.lastActivityAt;
-      final shouldReplace = current == null ||
+      final shouldReplace =
+          current == null ||
           (nextAt != null && (currentAt == null || nextAt.isAfter(currentAt)));
       if (shouldReplace) byChannel[scope.channelId] = scope;
     }
@@ -503,10 +529,39 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Map<String, ChatRouter> _hydrateChannelRouters(
+    List<ChatScopeSetting> settings,
+  ) {
+    final routers = <String, ChatRouter>{};
+    for (final setting in settings) {
+      if (setting.scopeType != ChatScopeType.channel) continue;
+      routers[setting.channelId] = setting.router;
+    }
+    return routers;
+  }
+
+  Map<String, ChatRouter> _hydrateThreadRouters(
+    List<ChatScopeSetting> settings,
+  ) {
+    final routers = <String, ChatRouter>{};
+    for (final setting in settings) {
+      if (setting.scopeType != ChatScopeType.thread ||
+          setting.threadId == null) {
+        continue;
+      }
+      routers[_subSectionKey(setting.channelId, setting.threadId!)] =
+          setting.router;
+    }
+    return routers;
+  }
+
   void _createChannel() {
     final id = _newId('channel');
-    final channel =
-        ChatChannel(id: id, name: _timestampName(), isDefault: false);
+    final channel = ChatChannel(
+      id: id,
+      name: _timestampName(),
+      isDefault: false,
+    );
     setState(() {
       _channels.add(channel);
       _channelSubSections[id] = <ChatSubSection>[];
@@ -517,6 +572,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _persistActiveScopeMessages();
+    _configureActiveScopeSync();
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
@@ -524,7 +580,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _switchChannel(String channelId) {
     final resolvedChannelId = _topologyResolver.resolveChannelId(
-        channels: _channels, requestedChannelId: channelId);
+      channels: _channels,
+      requestedChannelId: channelId,
+    );
     if (_activeChannelId == resolvedChannelId) {
       // Drawer closing is handled by ChatNavigationPage; avoid an extra pop
       // here, which can dismiss the chat route itself.
@@ -538,11 +596,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final sections = _channelSubSections[resolvedChannelId] ?? const [];
     final restoredSubSection =
         (remembered != null && sections.any((s) => s.id == remembered))
-            ? remembered
-            : 'main';
+        ? remembered
+        : 'main';
+    _syncTimer?.cancel();
+    _syncTimer = null;
     setState(() {
       _activeChannelId = resolvedChannelId;
       _activeSubSection = restoredSubSection;
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
     });
     unawaited(_loadMessagesForActiveScope());
   }
@@ -571,9 +634,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   ChatSessionScope get _activeScope => ChatSessionScope(
-        channelId: _activeChannelId,
-        threadId: _activeSubSection,
-      );
+    channelId: _activeChannelId,
+    threadId: _activeSubSection,
+  );
 
   String get _sessionIdForScope => _activeScope.sessionId;
 
@@ -586,6 +649,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
       });
+      _configureActiveScopeSync();
       return;
     }
 
@@ -596,6 +660,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final capturedChannelId = _activeChannelId;
     final capturedSubSection = _activeSubSection;
     final capturedSessionId = _sessionIdForScope;
+    _syncTimer?.cancel();
+    _syncTimer = null;
 
     bool _isScopeStale() => _sessionIdForScope != capturedSessionId;
 
@@ -616,6 +682,7 @@ class _ChatScreenState extends State<ChatScreen> {
         channelId: capturedChannelId,
         subSection: capturedSubSection,
       );
+      _configureActiveScopeSync();
     } catch (_) {
       if (!mounted || _isScopeStale()) return;
       setState(() {
@@ -623,11 +690,175 @@ class _ChatScreenState extends State<ChatScreen> {
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
       });
+      _configureActiveScopeSync();
     }
   }
 
   String _subSectionKey(String channelId, String sectionId) =>
       '$channelId::$sectionId';
+
+  ChatRouter? _explicitThreadRouter({String? channelId, String? threadId}) {
+    final resolvedChannelId = channelId ?? _activeChannelId;
+    final resolvedThreadId = threadId ?? _activeSubSection;
+    return _threadRouters[_subSectionKey(resolvedChannelId, resolvedThreadId)];
+  }
+
+  ChatRouter _effectiveRouterForScope({String? channelId, String? threadId}) {
+    final resolvedChannelId = channelId ?? _activeChannelId;
+    final resolvedThreadId = threadId ?? _activeSubSection;
+    return _explicitThreadRouter(
+          channelId: resolvedChannelId,
+          threadId: resolvedThreadId,
+        ) ??
+        _channelRouters[resolvedChannelId] ??
+        ChatRouter.defaultRoute;
+  }
+
+  String _routerLabel(ChatRouter router) {
+    switch (router) {
+      case ChatRouter.defaultRoute:
+        return 'Bricks Default';
+      case ChatRouter.openclaw:
+        return 'OpenClaw';
+    }
+  }
+
+  String _threadRouterMenuLabel(ChatRouter? router) {
+    if (router == null) return 'Follow channel';
+    return _routerLabel(router);
+  }
+
+  String _activeRouterSummary() {
+    final effective = _routerLabel(_effectiveRouterForScope());
+    final channel = _routerLabel(
+      _channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute,
+    );
+    final thread = _threadRouterMenuLabel(_explicitThreadRouter());
+    return 'Router: $effective · Channel $channel · Thread $thread';
+  }
+
+  Future<void> _saveChannelRouter(ChatRouter router) async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
+      return;
+    }
+
+    final channelId = _activeChannelId;
+    final previous = _channelRouters[channelId];
+    setState(() {
+      if (router == ChatRouter.defaultRoute) {
+        _channelRouters.remove(channelId);
+      } else {
+        _channelRouters[channelId] = router;
+      }
+    });
+    _configureActiveScopeSync();
+
+    try {
+      await _chatHistoryApiService.saveScopeSetting(
+        token: token,
+        scopeType: ChatScopeType.channel,
+        channelId: channelId,
+        router: router == ChatRouter.defaultRoute ? null : router,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Channel router set to ${_routerLabel(router)}'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (previous == null) {
+          _channelRouters.remove(channelId);
+        } else {
+          _channelRouters[channelId] = previous;
+        }
+      });
+      _configureActiveScopeSync();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save channel router: $error')),
+      );
+    }
+  }
+
+  Future<void> _saveThreadRouter(ChatRouter? router) async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
+      return;
+    }
+
+    final channelId = _activeChannelId;
+    final threadId = _activeSubSection;
+    final key = _subSectionKey(channelId, threadId);
+    final previous = _threadRouters[key];
+    setState(() {
+      if (router == null) {
+        _threadRouters.remove(key);
+      } else {
+        _threadRouters[key] = router;
+      }
+    });
+    _configureActiveScopeSync();
+
+    try {
+      await _chatHistoryApiService.saveScopeSetting(
+        token: token,
+        scopeType: ChatScopeType.thread,
+        channelId: channelId,
+        threadId: threadId,
+        router: router,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Thread router set to ${_threadRouterMenuLabel(router)}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (previous == null) {
+          _threadRouters.remove(key);
+        } else {
+          _threadRouters[key] = previous;
+        }
+      });
+      _configureActiveScopeSync();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save thread router: $error')),
+      );
+    }
+  }
+
+  void _handleRouterMenuSelection(String value) {
+    switch (value) {
+      case 'channel:default':
+        unawaited(_saveChannelRouter(ChatRouter.defaultRoute));
+        return;
+      case 'channel:openclaw':
+        unawaited(_saveChannelRouter(ChatRouter.openclaw));
+        return;
+      case 'thread:inherit':
+        unawaited(_saveThreadRouter(null));
+        return;
+      case 'thread:default':
+        unawaited(_saveThreadRouter(ChatRouter.defaultRoute));
+        return;
+      case 'thread:openclaw':
+        unawaited(_saveThreadRouter(ChatRouter.openclaw));
+        return;
+    }
+  }
 
   void _updateSubSectionLastMessageAtFromMessages({
     String? channelId,
@@ -643,8 +874,11 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     if (latest == null) return;
     setState(() {
-      _subSectionLastMessageAt[
-          _subSectionKey(resolvedChannelId, resolvedSubSection)] = latest;
+      _subSectionLastMessageAt[_subSectionKey(
+            resolvedChannelId,
+            resolvedSubSection,
+          )] =
+          latest;
     });
   }
 
@@ -677,13 +911,171 @@ class _ChatScreenState extends State<ChatScreen> {
       _chatHistoryApiService
           .upsertMessages(token: token, messages: _messages)
           .then((lastSeq) {
-        if (!mounted || lastSeq <= 0) return;
-        // Only advance the cursor, never move it backwards.
-        setState(() {
-          if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
-        });
-      }).catchError((_) {}),
+            if (!mounted || lastSeq <= 0) return;
+            // Only advance the cursor, never move it backwards.
+            setState(() {
+              if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
+            });
+          })
+          .catchError((_) {}),
     );
+  }
+
+  bool _hasPendingAssistantTasks() {
+    return _messages.any(
+      (message) =>
+          message.role == 'assistant' &&
+          (message.taskState == ChatTaskState.accepted ||
+              message.taskState == ChatTaskState.dispatched),
+    );
+  }
+
+  bool _shouldSyncActiveScope() {
+    final token = _authToken;
+    if (token == null || token.isEmpty) return false;
+    if (_effectiveRouterForScope() == ChatRouter.openclaw) return true;
+    return _hasPendingAssistantTasks();
+  }
+
+  void _configureActiveScopeSync({bool triggerNow = true}) {
+    if (!_shouldSyncActiveScope()) {
+      _syncTimer?.cancel();
+      _syncTimer = null;
+      return;
+    }
+    final shouldTriggerImmediately =
+        triggerNow && _syncTimer == null && !_syncInFlight;
+    _syncTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_syncInFlight) return;
+      unawaited(_syncActiveScope());
+    });
+    if (shouldTriggerImmediately) {
+      unawaited(_syncActiveScope());
+    }
+  }
+
+  ChatTaskState? _normalizedServerTaskState(
+    ChatMessage message, {
+    ChatTaskState? fallback,
+  }) {
+    if (message.taskState != null) return message.taskState;
+    if (message.role == 'assistant' && message.content.trim().isNotEmpty) {
+      return ChatTaskState.completed;
+    }
+    return fallback;
+  }
+
+  ChatMessage _mergeServerMessage(ChatMessage current, ChatMessage incoming) {
+    return incoming.copyWith(
+      agentId: incoming.agentId ?? current.agentId,
+      agentName: incoming.agentName ?? current.agentName,
+      idempotencyKey: current.idempotencyKey,
+      acknowledgedAt: incoming.acknowledgedAt ?? current.acknowledgedAt,
+      checkpointCursor: incoming.checkpointCursor ?? current.checkpointCursor,
+      resolvedBotId: incoming.resolvedBotId ?? current.resolvedBotId,
+      resolvedSkillId: incoming.resolvedSkillId ?? current.resolvedSkillId,
+      arbitrationMode: current.arbitrationMode,
+      fallbackToDefaultBot: current.fallbackToDefaultBot,
+      decisionReason: current.decisionReason,
+      traceId: current.traceId,
+      tieDetected: current.tieDetected,
+      tieBotIds: current.tieBotIds,
+      selectedScore: current.selectedScore,
+      candidateScoreSummary: current.candidateScoreSummary,
+      isStreaming: false,
+      taskState: _normalizedServerTaskState(
+        incoming,
+        fallback: current.taskState,
+      ),
+    );
+  }
+
+  int _compareChatMessages(ChatMessage a, ChatMessage b) {
+    final aTime = a.createdAt ?? a.timestamp;
+    final bTime = b.createdAt ?? b.timestamp;
+    final byTime = aTime.compareTo(bTime);
+    if (byTime != 0) return byTime;
+    if (a.role != b.role) {
+      if (a.role == 'user') return -1;
+      if (b.role == 'user') return 1;
+    }
+    return (a.messageId ?? '').compareTo(b.messageId ?? '');
+  }
+
+  List<ChatMessage> _mergeSyncedMessages(
+    List<ChatMessage> current,
+    List<ChatMessage> incoming,
+  ) {
+    final merged = [...current];
+    final byId = <String, int>{};
+    for (var i = 0; i < merged.length; i++) {
+      final messageId = merged[i].messageId;
+      if (messageId != null && messageId.isNotEmpty) {
+        byId[messageId] = i;
+      }
+    }
+
+    for (final message in incoming) {
+      final normalized = message.copyWith(
+        isStreaming: false,
+        taskState: _normalizedServerTaskState(message),
+      );
+      final messageId = normalized.messageId;
+      if (messageId != null && byId.containsKey(messageId)) {
+        final index = byId[messageId]!;
+        merged[index] = _mergeServerMessage(merged[index], normalized);
+        continue;
+      }
+      merged.add(normalized);
+      if (messageId != null && messageId.isNotEmpty) {
+        byId[messageId] = merged.length - 1;
+      }
+    }
+
+    merged.sort(_compareChatMessages);
+    return merged;
+  }
+
+  Future<void> _syncActiveScope() async {
+    if (_syncInFlight) return;
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+
+    final capturedSessionId = _sessionIdForScope;
+    final capturedChannelId = _activeChannelId;
+    final capturedSubSection = _activeSubSection;
+    _syncInFlight = true;
+    try {
+      final snapshot = await _chatHistoryApiService.sync(
+        token: token,
+        sessionId: capturedSessionId,
+        afterSeq: _lastSyncedSeq,
+      );
+      if (!mounted || _sessionIdForScope != capturedSessionId) return;
+      if (snapshot.messages.isEmpty && snapshot.lastSeqId <= _lastSyncedSeq) {
+        return;
+      }
+      final merged = _mergeSyncedMessages(_messages, snapshot.messages);
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(merged);
+        if (snapshot.lastSeqId > _lastSyncedSeq) {
+          _lastSyncedSeq = snapshot.lastSeqId;
+        }
+      });
+      _updateSubSectionLastMessageAtFromMessages(
+        channelId: capturedChannelId,
+        subSection: capturedSubSection,
+      );
+    } catch (error) {
+      debugPrint('chat scope sync failed: $error');
+    } finally {
+      _syncInFlight = false;
+      if (mounted) {
+        _configureActiveScopeSync(triggerNow: false);
+      }
+    }
   }
 
   void _createSubSection() {
@@ -697,7 +1089,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     setState(() {
       final items = _channelSubSections.putIfAbsent(
-          _activeChannelId, () => <ChatSubSection>[]);
+        _activeChannelId,
+        () => <ChatSubSection>[],
+      );
       items.add(section);
       _activeSubSection = id;
       _messages.clear();
@@ -705,6 +1099,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _persistActiveScopeMessages();
+    _configureActiveScopeSync();
   }
 
   Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
@@ -736,16 +1131,18 @@ class _ChatScreenState extends State<ChatScreen> {
       messageId: message.messageId ?? _newId('msg'),
       channelId: message.channelId ?? _activeScope.channelId,
       sessionId: message.sessionId ?? _activeScope.sessionId,
-      threadId: message.threadId ??
+      threadId:
+          message.threadId ??
           (_activeScope.threadId == 'main' ? null : _activeScope.threadId),
     );
     final messageTime = normalized.createdAt ?? normalized.timestamp;
     setState(() {
       _messages.add(normalized);
       _subSectionLastMessageAt[_subSectionKey(
-        _activeScope.channelId,
-        _activeScope.threadId,
-      )] = messageTime;
+            _activeScope.channelId,
+            _activeScope.threadId,
+          )] =
+          messageTime;
     });
     final shouldPersistImmediately =
         normalized.role == 'user' || (!normalized.isStreaming);
@@ -758,8 +1155,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
-    final positiveCandidates =
-        activeParticipants.where((item) => item.probability > 1e-9).toList();
+    final positiveCandidates = activeParticipants
+        .where((item) => item.probability > 1e-9)
+        .toList();
     final arbitrationMode = positiveCandidates.length > 1;
     final arbitration = _arbitrationEngine.resolve(
       candidates: positiveCandidates
@@ -870,57 +1268,72 @@ class _ChatScreenState extends State<ChatScreen> {
     final generation = ++_respondGeneration;
     _chatHistoryApiService
         .respond(
-      token: token,
-      taskId: taskId,
-      idempotencyKey: idempotencyKey,
-      scope: _activeScope,
-      userMessageId: _messages[agentMessageIndex - 1].messageId!,
-      assistantMessageId: _messages[agentMessageIndex].messageId!,
-      userMessage: text,
-      resolvedBotId: resolvedBotId,
-      resolvedSkillId: resolvedSkillId,
-      provider: runtimeSettings.provider,
-      model: runtimeSettings.model,
-      configId: runtimeSettings.configId,
-      createdAt: envelope.createdAt,
-    )
+          token: token,
+          taskId: taskId,
+          idempotencyKey: idempotencyKey,
+          scope: _activeScope,
+          userMessageId: _messages[agentMessageIndex - 1].messageId!,
+          assistantMessageId: _messages[agentMessageIndex].messageId!,
+          userMessage: text,
+          resolvedBotId: resolvedBotId,
+          resolvedSkillId: resolvedSkillId,
+          provider: runtimeSettings.provider,
+          model: runtimeSettings.model,
+          configId: runtimeSettings.configId,
+          createdAt: envelope.createdAt,
+        )
         .then((result) async {
-      if (!mounted || agentMessageIndex >= _messages.length) return;
-      // Ignore stale completions if stop was pressed after this request started.
-      if (generation != _respondGeneration) return;
-      setState(() {
-        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
-          content: result.text,
-          isStreaming: false,
-          taskState: ChatTaskState.completed,
-        );
-        if (result.lastSeqId > _lastSyncedSeq) {
-          _lastSyncedSeq = result.lastSeqId;
-        }
-      });
-      // Backend already persisted both messages; skip redundant client-side
-      // upsert to avoid overwriting backend-only metadata (provider/model/source).
-      if (mounted) {
-        await _handleProactiveResponses(text);
-        setState(() {
-          _isSending = false;
-          _isStreaming = false;
+          if (!mounted || agentMessageIndex >= _messages.length) return;
+          // Ignore stale completions if stop was pressed after this request started.
+          if (generation != _respondGeneration) return;
+          setState(() {
+            _messages[agentMessageIndex] = _messages[agentMessageIndex]
+                .copyWith(
+                  content: result.text,
+                  isStreaming: false,
+                  taskState:
+                      result.taskState ??
+                      (result.isAsync
+                          ? ChatTaskState.dispatched
+                          : ChatTaskState.completed),
+                );
+            if (result.lastSeqId > _lastSyncedSeq) {
+              _lastSyncedSeq = result.lastSeqId;
+            }
+            if (result.isAsync) {
+              _isSending = false;
+              _isStreaming = false;
+            }
+          });
+          if (result.isAsync) {
+            _configureActiveScopeSync();
+            return;
+          }
+          // Backend already persisted both messages; skip redundant client-side
+          // upsert to avoid overwriting backend-only metadata (provider/model/source).
+          if (mounted) {
+            await _handleProactiveResponses(text);
+            setState(() {
+              _isSending = false;
+              _isStreaming = false;
+            });
+          }
+        })
+        .catchError((error) {
+          if (!mounted || agentMessageIndex >= _messages.length) return;
+          if (generation != _respondGeneration) return;
+          setState(() {
+            _messages[agentMessageIndex] = _messages[agentMessageIndex]
+                .copyWith(
+                  content: 'Error: $error',
+                  isStreaming: false,
+                  taskState: ChatTaskState.failed,
+                );
+            _isSending = false;
+            _isStreaming = false;
+          });
+          _persistActiveScopeMessages(immediate: true);
         });
-      }
-    }).catchError((error) {
-      if (!mounted || agentMessageIndex >= _messages.length) return;
-      if (generation != _respondGeneration) return;
-      setState(() {
-        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
-          content: 'Error: $error',
-          isStreaming: false,
-          taskState: ChatTaskState.failed,
-        );
-        _isSending = false;
-        _isStreaming = false;
-      });
-      _persistActiveScopeMessages(immediate: true);
-    });
   }
 
   void _stopStreaming() {
@@ -1003,17 +1416,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       _updateMessageContent(index, 'Error: $e', isStreaming: false);
-    }
-  }
-
-  Future<void> _openAgentsScreen() async {
-    final updated = await Navigator.push<AgentDefinition?>(
-      context,
-      MaterialPageRoute<AgentDefinition?>(builder: (_) => const AgentsScreen()),
-    );
-    await _reloadAgents();
-    if (updated != null) {
-      _selectAgent(updated);
     }
   }
 
@@ -1107,9 +1509,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loadingAgents || _loadingLlmConfigs) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final activeAgentName = _activeAgent?.name;
@@ -1169,9 +1569,54 @@ class _ChatScreenState extends State<ChatScreen> {
                   'Responding as @$activeAgentName',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
+              Text(
+                _activeRouterSummary(),
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
             ],
           ),
           actions: [
+            PopupMenuButton<String>(
+              popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
+              tooltip: 'Router settings',
+              onSelected: _handleRouterMenuSelection,
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: Text(
+                    'Channel router · ${_routerLabel(_channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute)}',
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'channel:default',
+                  child: Text('Bricks Default'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'channel:openclaw',
+                  child: Text('OpenClaw'),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem<String>(
+                  enabled: false,
+                  child: Text(
+                    'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'thread:inherit',
+                  child: Text('Follow channel'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'thread:default',
+                  child: Text('Bricks Default'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'thread:openclaw',
+                  child: Text('OpenClaw'),
+                ),
+              ],
+              icon: const Icon(Icons.alt_route),
+            ),
             PopupMenuButton<String>(
               popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
               tooltip: 'Sub sections',
@@ -1180,17 +1625,19 @@ class _ChatScreenState extends State<ChatScreen> {
                   _createSubSection();
                   unawaited(_loadMessagesForActiveScope());
                 } else {
+                  _syncTimer?.cancel();
+                  _syncTimer = null;
                   setState(() {
                     _activeSubSection = value;
+                    _messages.clear();
+                    _latestCheckpointCursor = null;
+                    _lastSyncedSeq = 0;
                   });
                   unawaited(_loadMessagesForActiveScope());
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem<String>(
-                  value: 'main',
-                  child: Text('回到主区'),
-                ),
+                const PopupMenuItem<String>(value: 'main', child: Text('回到主区')),
                 const PopupMenuItem<String>(
                   value: '__new__',
                   child: Text('新建子区'),
@@ -1204,16 +1651,19 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ],
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: BricksSpacing.md),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: BricksSpacing.md,
+                ),
                 child: Row(
                   children: [
                     const Icon(Icons.splitscreen_outlined),
                     const SizedBox(width: BricksSpacing.xs),
-                    Text(_activeSubSection == 'main'
-                        ? '主区'
-                        : (_subSectionNameById(_activeSubSection) ??
-                            _activeSubSection)),
+                    Text(
+                      _activeSubSection == 'main'
+                          ? '主区'
+                          : (_subSectionNameById(_activeSubSection) ??
+                                _activeSubSection),
+                    ),
                     const Icon(Icons.arrow_drop_down),
                   ],
                 ),

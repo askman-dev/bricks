@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/settings/llm_config_service.dart';
 import 'package:mobile_chat_app/features/settings/model_settings_screen.dart';
@@ -69,22 +70,35 @@ const _secondConfig = LlmConfig(
 Widget _buildScreen(LlmConfigService service) =>
     MaterialApp(home: ModelSettingsScreen(service: service));
 
+Future<void> _scrollUntilVisible(
+  WidgetTester tester,
+  Finder target, {
+  double delta = 300,
+}) async {
+  await tester.scrollUntilVisible(
+    target,
+    delta,
+    scrollable: find.byType(Scrollable).first,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('ModelSettingsScreen – delete flow', () {
-    testWidgets(
-        'delete button shows confirmation dialog for persisted config',
+    testWidgets('delete button shows confirmation dialog for persisted config',
         (tester) async {
-      final service =
-          _FakeLlmConfigService(configs: [_persistedConfig]);
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       expect(find.text('Delete configuration?'), findsOneWidget);
@@ -92,13 +106,13 @@ void main() {
 
     testWidgets('canceling confirmation dialog does not delete config',
         (tester) async {
-      final service =
-          _FakeLlmConfigService(configs: [_persistedConfig]);
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // Dismiss via Cancel.
@@ -110,16 +124,16 @@ void main() {
       expect(find.text('claude-sonnet-4-5'), findsWidgets);
     });
 
-    testWidgets(
-        'confirming dialog calls deleteConfig with the correct id',
+    testWidgets('confirming dialog calls deleteConfig with the correct id',
         (tester) async {
-      final service = _FakeLlmConfigService(
-          configs: [_persistedConfig, _secondConfig]);
+      final service =
+          _FakeLlmConfigService(configs: [_persistedConfig, _secondConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // Tap the Delete button inside the AlertDialog (FilledButton).
@@ -140,14 +154,15 @@ void main() {
         'deleting unsaved config removes it locally without showing dialog',
         (tester) async {
       // First config has no id (unsaved); second is persisted.
-      final service = _FakeLlmConfigService(
-          configs: [_unsavedConfig, _secondConfig]);
+      final service =
+          _FakeLlmConfigService(configs: [_unsavedConfig, _secondConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
       // Active config is the first (unsaved) one.
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // No confirmation dialog should appear.
@@ -156,8 +171,7 @@ void main() {
       expect(service.deletedIds, isEmpty);
     });
 
-    testWidgets(
-        'deleting the last config auto-adds a blank config',
+    testWidgets('deleting the last config auto-adds a blank config',
         (tester) async {
       // Single unsaved config – deletion is immediate (no dialog).
       final service = _FakeLlmConfigService(configs: [_unsavedConfig]);
@@ -165,28 +179,37 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       // The form should still be present (blank config was auto-added).
       expect(find.byType(Form), findsOneWidget);
       // A Delete button should still be visible.
-      expect(find.widgetWithText(OutlinedButton, 'Delete'), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     });
 
-    testWidgets('delete and save buttons are both visible and initially enabled',
+    testWidgets(
+        'delete and save buttons are both visible and initially enabled',
         (tester) async {
-      final service =
-          _FakeLlmConfigService(configs: [_persistedConfig]);
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
 
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.save_outlined));
       final deleteBtn = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, 'Delete'),
+        find.ancestor(
+          of: find.byIcon(Icons.delete_outline),
+          matching: find.byType(OutlinedButton),
+        ),
       );
       final saveBtn = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Save'),
+        find.ancestor(
+          of: find.byIcon(Icons.save_outlined),
+          matching: find.byType(FilledButton),
+        ),
       );
 
       expect(deleteBtn.onPressed, isNotNull);
@@ -203,7 +226,8 @@ void main() {
       await tester.pumpWidget(_buildScreen(service));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Delete'));
+      await _scrollUntilVisible(tester, find.byIcon(Icons.delete_outline));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pumpAndSettle();
 
       await tester.tap(
@@ -218,6 +242,92 @@ void main() {
         find.text('Failed to delete model configuration'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('ModelSettingsScreen – copy actions', () {
+    final clipboardCalls = <MethodCall>[];
+
+    setUp(() {
+      clipboardCalls.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboardCalls.add(call);
+        }
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    testWidgets('copy api url action copies base url to clipboard',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Copy API URL'));
+      await tester.pumpAndSettle();
+
+      expect(clipboardCalls, hasLength(1));
+      expect(
+        clipboardCalls.single.arguments,
+        containsPair('text', 'https://api.anthropic.com'),
+      );
+      expect(find.text('API URL copied'), findsOneWidget);
+    });
+
+    testWidgets('copy api url action shows empty snackbar when field is blank',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Base URL'),
+        '   ',
+      );
+      await tester.tap(find.byTooltip('Copy API URL'));
+      await tester.pumpAndSettle();
+
+      expect(clipboardCalls, isEmpty);
+      expect(find.text('API URL is empty'), findsOneWidget);
+    });
+
+    testWidgets('copy api key action shows empty snackbar when field is blank',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Copy API Key'));
+      await tester.pumpAndSettle();
+
+      expect(clipboardCalls, isEmpty);
+      expect(find.text('API Key is empty'), findsOneWidget);
+    });
+
+    testWidgets('copy api key action copies non-empty key to clipboard',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'API Key'), ' test-api-key ');
+      await tester.tap(find.byTooltip('Copy API Key'));
+      await tester.pumpAndSettle();
+
+      expect(clipboardCalls, hasLength(1));
+      expect(
+        clipboardCalls.single.arguments,
+        containsPair('text', 'test-api-key'),
+      );
+      expect(find.text('API Key copied'), findsOneWidget);
     });
   });
 }

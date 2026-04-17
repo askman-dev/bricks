@@ -1,0 +1,5 @@
+- [x] Review PR feedback threads and current implementation details in docs/UI tests
+- [x] Update OpenClaw integration doc to clarify PATCH semantics, ACK semantics, canonical plugin identity, and error schema/status matrices
+- [x] Add widget test for successful non-empty API key copy flow
+- [x] Run bootstrap and targeted Flutter tests for modified areas
+- [ ] Run final validation (including parallel validation), capture screenshot, and reply to the new PR comment

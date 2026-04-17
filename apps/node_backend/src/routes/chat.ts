@@ -1,4 +1,5 @@
 import express, { Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   acceptTask,
@@ -9,11 +10,25 @@ import {
   type AcceptTaskInput,
   type MessageUpsertInput,
 } from '../services/chatAsyncTransportService.js';
+import {
+  CHAT_ROUTER_DEFAULT,
+  CHAT_ROUTER_OPENCLAW,
+  deleteChatScopeSetting,
+  listChatScopeSettings,
+  resolveChatRouter,
+  type ChatRouter,
+  type ChatScopeType,
+  upsertChatScopeSetting,
+} from '../services/chatRouterService.js';
 import { generateWithUserConfig } from '../llm/llm_service.js';
 import type { LlmProvider } from '../llm/types.js';
 
 const router = express.Router();
 router.use(authenticate);
+
+const OPENCLAW_PENDING_TEXT = 'Waiting for OpenClaw...';
+const CHAT_SYNC_WINDOW_MS = 60 * 1000;
+const CHAT_SYNC_MAX_REQUESTS_PER_WINDOW = 120;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -28,6 +43,36 @@ function parseProvider(value: unknown): LlmProvider | undefined {
   return undefined;
 }
 
+function parseChatRouter(value: unknown): ChatRouter | null {
+  if (value === CHAT_ROUTER_DEFAULT || value === CHAT_ROUTER_OPENCLAW) {
+    return value;
+  }
+  return null;
+}
+
+function parseScopeType(value: unknown): ChatScopeType | null {
+  if (value === 'channel' || value === 'thread') return value;
+  return null;
+}
+
+const syncLimiter = rateLimit({
+  windowMs: CHAT_SYNC_WINDOW_MS,
+  max: CHAT_SYNC_MAX_REQUESTS_PER_WINDOW,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId =
+      typeof (req as AuthRequest).userId === 'string'
+        ? (req as AuthRequest).userId
+        : 'anonymous';
+    const sessionId = parseSessionId(req.params.sessionId) ?? 'invalid-session';
+    return `${userId}:${sessionId}`;
+  },
+  message: {
+    error: 'Too many sync requests for this chat session, please try again later.',
+  },
+});
+
 router.post('/respond', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
@@ -41,6 +86,7 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
     const idempotencyKey = parseSessionId(body.idempotencyKey);
     const channelId = parseSessionId(body.channelId);
     const sessionId = parseSessionId(body.sessionId);
+    const threadId = parseSessionId(body.threadId);
     const userMessageId = parseSessionId(body.userMessageId);
     const assistantMessageId = parseSessionId(body.assistantMessageId);
     const userMessage = typeof body.userMessage === 'string' ? body.userMessage.trim() : '';
@@ -58,13 +104,76 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
       idempotencyKey,
       channelId,
       sessionId,
-      threadId: parseSessionId(body.threadId),
+      threadId,
       resolvedBotId: parseSessionId(body.resolvedBotId),
       resolvedSkillId: parseSessionId(body.resolvedSkillId),
     };
+    const resolvedRouter = await resolveChatRouter(userId, {
+      channelId,
+      threadId,
+    });
     const acceptedTask = await acceptTask(userId, input);
     const acceptedTaskId = acceptedTask.taskId;
     const acceptedSessionId = acceptedTask.sessionId;
+
+    const userMessageMetadata = {
+      resolvedBotId: input.resolvedBotId,
+      resolvedSkillId: input.resolvedSkillId,
+      source:
+        resolvedRouter === CHAT_ROUTER_OPENCLAW
+          ? 'backend.respond.openclaw'
+          : 'backend.respond',
+      pendingAssistantMessageId:
+        resolvedRouter === CHAT_ROUTER_OPENCLAW ? assistantMessageId : undefined,
+    };
+
+    if (resolvedRouter === CHAT_ROUTER_OPENCLAW) {
+      const persisted = await upsertMessages(userId, [
+        {
+          messageId: userMessageId,
+          taskId: acceptedTaskId,
+          channelId,
+          sessionId: acceptedSessionId,
+          threadId: input.threadId,
+          role: 'user',
+          content: userMessage,
+          taskState: 'dispatched',
+          checkpointCursor: null,
+          metadata: userMessageMetadata,
+          createdAt: typeof body.createdAt === 'string' ? body.createdAt : null,
+        },
+        {
+          messageId: assistantMessageId,
+          taskId: acceptedTaskId,
+          channelId,
+          sessionId: acceptedSessionId,
+          threadId: input.threadId,
+          role: 'assistant',
+          content: OPENCLAW_PENDING_TEXT,
+          taskState: 'dispatched',
+          checkpointCursor: null,
+          metadata: {
+            resolvedBotId: input.resolvedBotId,
+            resolvedSkillId: input.resolvedSkillId,
+            source: 'backend.respond.openclaw.placeholder',
+            pendingFromMessageId: userMessageId,
+          },
+          createdAt: typeof body.createdAt === 'string' ? body.createdAt : null,
+        },
+      ]);
+
+      res.json({
+        taskId: acceptedTaskId,
+        sessionId: acceptedSessionId,
+        assistantMessageId,
+        text: OPENCLAW_PENDING_TEXT,
+        lastSeqId: persisted.lastSeqId,
+        state: 'dispatched',
+        mode: 'async',
+        router: resolvedRouter,
+      });
+      return;
+    }
 
     await upsertMessages(userId, [
       {
@@ -77,11 +186,7 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
         content: userMessage,
         taskState: 'accepted',
         checkpointCursor: null,
-        metadata: {
-          resolvedBotId: input.resolvedBotId,
-          resolvedSkillId: input.resolvedSkillId,
-          source: 'backend.respond',
-        },
+        metadata: userMessageMetadata,
         createdAt: typeof body.createdAt === 'string' ? body.createdAt : null,
       },
     ]);
@@ -131,6 +236,9 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
       provider: response.provider,
       model: response.model,
       lastSeqId: persisted.lastSeqId,
+      state: 'completed',
+      mode: 'sync',
+      router: resolvedRouter,
     });
   } catch (error) {
     console.error('Chat respond error:', error);
@@ -232,7 +340,7 @@ router.put('/messages/batch', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/sync/:sessionId', async (req: AuthRequest, res: Response) => {
+router.get('/sync/:sessionId', syncLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
@@ -310,6 +418,83 @@ router.get('/scopes', async (req: AuthRequest, res: Response) => {
     res.json({ scopes });
   } catch (error) {
     console.error('List chat scopes error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/scope-settings', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const settings = await listChatScopeSettings(userId);
+    res.json({ settings });
+  } catch (error) {
+    console.error('List chat scope settings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/scope-settings', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const scopeType = parseScopeType(body.scopeType);
+    const channelId = parseSessionId(body.channelId);
+    const threadId = parseSessionId(body.threadId);
+    const routerValue =
+      body.router === null || body.router === undefined
+        ? null
+        : parseChatRouter(body.router);
+
+    if (!scopeType || !channelId) {
+      res.status(400).json({
+        error: 'Invalid payload: scopeType and channelId are required',
+      });
+      return;
+    }
+
+    if (scopeType === 'thread' && !threadId) {
+      res.status(400).json({
+        error: 'Invalid payload: threadId is required for thread scope settings',
+      });
+      return;
+    }
+
+    if (body.router !== null && body.router !== undefined && !routerValue) {
+      res.status(400).json({
+        error: 'Invalid payload: router must be "default", "openclaw", or null',
+      });
+      return;
+    }
+
+    if (routerValue == null) {
+      const deleted = await deleteChatScopeSetting(userId, {
+        scopeType,
+        channelId,
+        threadId,
+      });
+      res.json({ deleted: deleted.deleted });
+      return;
+    }
+
+    const setting = await upsertChatScopeSetting(userId, {
+      scopeType,
+      channelId,
+      threadId,
+      router: routerValue,
+    });
+    res.json({ setting });
+  } catch (error) {
+    console.error('Upsert chat scope setting error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
