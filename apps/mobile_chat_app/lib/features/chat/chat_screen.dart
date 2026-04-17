@@ -1097,12 +1097,12 @@ class _ChatScreenState extends State<ChatScreen> {
       debugPrint('chat scope sync failed: $error');
     } finally {
       _syncInFlight = false;
-      if (syncFailed) {
-        _increaseSyncBackoff();
-      } else {
-        _nextSyncDelay = _syncPollInterval;
-      }
-      if (mounted) {
+      if (mounted && _sessionIdForScope == capturedSessionId) {
+        if (syncFailed) {
+          _increaseSyncBackoff();
+        } else {
+          _nextSyncDelay = _syncPollInterval;
+        }
         _configureActiveScopeSync(triggerNow: false);
       }
     }
