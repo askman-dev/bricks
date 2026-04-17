@@ -1,5 +1,9 @@
 {
   "id": "dev-askman-bricks",
+  "kind": "channel",
+  "channels": [
+    "dev-askman-bricks"
+  ],
   "name": "Bricks OpenClaw Plugin",
   "description": "Bricks pull-only OpenClaw channel plugin with interactive onboarding.",
   "version": "0.1.0",
@@ -22,11 +26,6 @@
       "schema": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "BRICKS_BASE_URL",
-          "BRICKS_PLUGIN_ID",
-          "BRICKS_PLATFORM_TOKEN"
-        ],
         "properties": {
           "BRICKS_BASE_URL": {
             "type": "string",
