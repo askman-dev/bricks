@@ -147,9 +147,9 @@ router.get('/platform-token', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const requestedPluginId = typeof req.query.pluginId === 'string' ? req.query.pluginId.trim() : '';
+    const queryPluginId = typeof req.query.pluginId === 'string' ? req.query.pluginId.trim() : '';
     const pluginId =
-      requestedPluginId ||
+      queryPluginId ||
       process.env.BRICKS_PLATFORM_DEFAULT_PLUGIN_ID?.trim() ||
       'plugin_local_main';
     const scopes = (process.env.BRICKS_PLATFORM_API_SCOPES ??
