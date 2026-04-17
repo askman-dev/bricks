@@ -7,7 +7,9 @@ import 'package:mobile_chat_app/features/chat/widgets/composer_bar.dart';
 // duration instead of pumpAndSettle() to avoid timeouts.
 const _settle = Duration(milliseconds: 300);
 
-Widget _buildBar({VoidCallback? onOpenModelSelection}) => MaterialApp(
+Widget _buildBar(
+        {VoidCallback? onOpenModelSelection, VoidCallback? onShowInfo}) =>
+    MaterialApp(
       home: Scaffold(
         body: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -15,6 +17,7 @@ Widget _buildBar({VoidCallback? onOpenModelSelection}) => MaterialApp(
             ComposerBar(
               agents: const [],
               onOpenModelSelection: onOpenModelSelection,
+              onShowInfo: onShowInfo,
             ),
           ],
         ),
@@ -67,6 +70,21 @@ void main() {
       await tester.pump();
     });
 
+    testWidgets('selecting info action triggers onShowInfo', (tester) async {
+      var called = false;
+
+      await tester.pumpWidget(_buildBar(onShowInfo: () => called = true));
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<ComposerMenuAction>>(
+        find.byType(PopupMenuButton<ComposerMenuAction>),
+      );
+      button.onSelected?.call(ComposerMenuAction.info);
+      await tester.pump();
+
+      expect(called, isTrue);
+    });
+
     testWidgets('popup menu items are present in the menu builder',
         (tester) async {
       await tester.pumpWidget(_buildBar());
@@ -89,6 +107,7 @@ void main() {
             ComposerMenuAction.newContext,
             ComposerMenuAction.model,
             ComposerMenuAction.agents,
+            ComposerMenuAction.info,
           ]));
     });
 

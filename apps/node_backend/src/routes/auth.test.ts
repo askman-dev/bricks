@@ -14,7 +14,11 @@ vi.mock('../services/userService.js', () => ({
   deleteUser: vi.fn(),
 }));
 
-import { decodeOAuthState, validateOAuthCallbackState } from './auth.js';
+import {
+  buildPostLoginRedirectTarget,
+  decodeOAuthState,
+  validateOAuthCallbackState,
+} from './auth.js';
 
 describe('auth return_to validation', () => {
   it('allows same-origin return_to when it matches callback URL origin', () => {
@@ -193,5 +197,66 @@ describe('validateOAuthCallbackState', () => {
 
     expect(result).toEqual({ valid: false });
     expect(lookup).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildPostLoginRedirectTarget', () => {
+  it('returns original redirect for same-origin flow', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks.askman.dev/',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    expect(redirect).toBe('https://bricks.askman.dev/');
+  });
+
+  it('appends auth_token fragment for cross-origin flow', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks-aoqjuy2sr-askman-dev.vercel.app/',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    expect(redirect).toBe('https://bricks-aoqjuy2sr-askman-dev.vercel.app/#auth_token=jwt-token');
+  });
+
+  it('preserves existing fragment params when appending auth_token', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks-aoqjuy2sr-askman-dev.vercel.app/#foo=bar',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    expect(redirect).toContain('#');
+    const hash = redirect.split('#')[1] ?? '';
+    const params = new URLSearchParams(hash);
+    expect(params.get('foo')).toBe('bar');
+    expect(params.get('auth_token')).toBe('jwt-token');
+  });
+
+  it('preserves Flutter Web hash routes when appending auth_token', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks-aoqjuy2sr-askman-dev.vercel.app/#/chat',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    expect(redirect).toContain('#/');
+    const [base, hash = ''] = redirect.split('#');
+    expect(base).toBe('https://bricks-aoqjuy2sr-askman-dev.vercel.app/');
+    expect(hash.startsWith('/chat')).toBe(true);
+    expect(hash).toContain('auth_token=jwt-token');
+  });
+
+  it('preserves Flutter Web hash route with existing query params', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'https://bricks-aoqjuy2sr-askman-dev.vercel.app/#/home?tab=1',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+    const [base, hash = ''] = redirect.split('#');
+    expect(base).toBe('https://bricks-aoqjuy2sr-askman-dev.vercel.app/');
+    expect(hash.startsWith('/home')).toBe(true);
+    const queryPart = hash.split('?')[1] ?? '';
+    const params = new URLSearchParams(queryPart);
+    expect(params.get('tab')).toBe('1');
+    expect(params.get('auth_token')).toBe('jwt-token');
   });
 });

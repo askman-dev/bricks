@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'llm_config_service.dart';
 
@@ -241,6 +242,30 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
     }
   }
 
+  Future<void> _copyToClipboard({
+    required String value,
+    required String emptyMessage,
+    required String successMessage,
+  }) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+
+    final text = value.trim();
+    messenger.hideCurrentSnackBar();
+    if (text.isEmpty) {
+      messenger.showSnackBar(SnackBar(content: Text(emptyMessage)));
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+
+    final refreshedMessenger = ScaffoldMessenger.maybeOf(context);
+    if (refreshedMessenger == null) return;
+    refreshedMessenger.hideCurrentSnackBar();
+    refreshedMessenger.showSnackBar(SnackBar(content: Text(successMessage)));
+  }
+
   Widget _buildConfigSelector() {
     return Wrap(
       spacing: 8,
@@ -302,7 +327,20 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _baseUrlController,
-                    decoration: const InputDecoration(labelText: 'Base URL'),
+                    decoration: InputDecoration(
+                      labelText: 'Base URL',
+                      suffixIcon: IconButton(
+                        tooltip: 'Copy API URL',
+                        icon: const Icon(Icons.copy_outlined),
+                        onPressed: () {
+                          _copyToClipboard(
+                            value: _baseUrlController.text,
+                            emptyMessage: 'API URL is empty',
+                            successMessage: 'API URL copied',
+                          );
+                        },
+                      ),
+                    ),
                     validator: (value) {
                       final text = value?.trim() ?? '';
                       if (text.isEmpty) return 'Base URL is required';
@@ -332,12 +370,32 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
                       helperText: _configs[_activeConfigIndex].id == null
                           ? null
                           : 'Leave blank to keep your existing key',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _showApiKey ? Icons.visibility_off : Icons.visibility,
-                        ),
-                        onPressed: () =>
-                            setState(() => _showApiKey = !_showApiKey),
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Copy API Key',
+                            icon: const Icon(Icons.copy_outlined),
+                            onPressed: () {
+                              _copyToClipboard(
+                                value: _apiKeyController.text,
+                                emptyMessage: 'API Key is empty',
+                                successMessage: 'API Key copied',
+                              );
+                            },
+                          ),
+                          IconButton(
+                            tooltip:
+                                _showApiKey ? 'Hide API key' : 'Show API key',
+                            icon: Icon(
+                              _showApiKey
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                            ),
+                            onPressed: () =>
+                                setState(() => _showApiKey = !_showApiKey),
+                          ),
+                        ],
                       ),
                     ),
                     validator: (value) {

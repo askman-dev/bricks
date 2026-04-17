@@ -70,3 +70,33 @@ agent_message_attribution:
           then:
             - Each agent message shows a visual tag or avatar indicating which agent authored it.
             - User messages remain unattributed (no agent ID).
+
+channel_mode_and_arbitration:
+  description: Validate channel-based routing behavior between single-agent direct mode and LLM-scored multi-agent arbitration mode.
+  given:
+    - description: A channel has exactly one active agent participant.
+      when:
+        - description: The user sends a message into the channel.
+          then:
+            - The active agent is assigned immediately without running arbitration.
+            - The response is generated in standard one-agent conversation mode.
+    - description: A channel has two or more active agent participants.
+      when:
+        - description: The user sends a task message into the channel.
+          then:
+            - The backend asks a judge LLM to score each candidate agent for this message.
+            - The judge output includes per-agent score, confidence, and reason.
+            - The highest-scoring agent is selected as the responder.
+    - description: A channel has multiple active agents and top scores are tied.
+      when:
+        - description: The judge LLM returns the same top score for two or more agents.
+          then:
+            - The system detects the tie deterministically.
+            - The configured default agent is selected to answer this turn.
+            - The decision trace records tied agent IDs and fallback-to-default status.
+    - description: A channel has multiple active agents but LLM decision output is invalid.
+      when:
+        - description: The judge response cannot be parsed or misses required score fields.
+          then:
+            - The system routes the message to the configured default agent.
+            - The conversation records that arbitration failed and fallback was applied.

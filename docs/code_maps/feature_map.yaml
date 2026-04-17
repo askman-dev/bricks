@@ -1,0 +1,163 @@
+version: 1
+map_type: feature_map
+owner: bricks
+last_updated: 2026-04-16
+purpose: >
+  为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
+
+products:
+  - product_id: mobile_chat_app
+    name: Mobile Chat App
+    platform:
+      - flutter_mobile
+      - flutter_web
+    entry_points:
+      - path: apps/mobile_chat_app/lib/main.dart
+        route: App root
+    features:
+      - feature_id: auth_login
+        name: GitHub OAuth 登录
+        user_value: 用户可完成登录并进入应用。
+        entry_paths:
+          - screen: LoginScreen
+            route_hint: apps/mobile_chat_app/lib/features/auth/login_screen.dart
+          - service: GitHubOAuth/AuthService
+            route_hint: apps/mobile_chat_app/lib/features/auth/
+        smoke_checks:
+          - 打开登录页并发起 GitHub 登录。
+          - 完成 token 回调后进入主界面。
+
+      - feature_id: chat_session
+        name: 多 Agent 聊天会话
+        user_value: 用户可在会话中发送消息并观察 Agent 协同回复。
+        entry_paths:
+          - screen: ChatScreen
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - navigation: ChatNavigationPage
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
+        smoke_checks:
+          - 发送一条消息后可以看到消息列表更新。
+          - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
+          - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。
+          - 刷新页面后，已发送过消息的频道仍会在侧边栏中显示并可继续会话。
+          - 切换 Agent 后仍可继续会话。
+          - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
+          - 打开右上角分区菜单与输入框配置菜单时，弹出动画应快速并呈现缩放+淡入效果。
+
+      - feature_id: model_settings
+        name: 模型与提供商配置
+        user_value: 用户可选择可用模型并保存默认配置，并可快速复制 API URL 与 API Key。
+        entry_paths:
+          - screen: ModelSettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
+          - service: LlmConfigService
+            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+        smoke_checks:
+          - 进入模型设置并保存配置。
+          - 重新进入页面后配置保持一致。
+          - 点击 Base URL 右侧复制按钮后可复制 API URL。
+          - 点击 API Key 右侧复制按钮时，非空 key 可被复制，空值会提示不可复制。
+
+      - feature_id: openclaw_token_settings
+        name: OpenClaw Token 配置
+        user_value: 用户可在设置页生成并复制 Openclaw Token，用于插件对接。
+        entry_paths:
+          - screen: SettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
+          - screen: OpenclawTokenSettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/openclaw_token_settings_screen.dart
+          - service: LlmConfigService.fetchPlatformToken
+            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+        smoke_checks:
+          - 在设置页可看到并进入 “Openclaw Token” 设置项。
+          - 点击 “Openclaw Token” 按钮后可生成 token 信息。
+          - 生成后可复制 Openclaw Token 到剪贴板。
+
+      - feature_id: workspace_resources
+        name: Workspace / Projects / Skills / Resources 管理
+        user_value: 用户可浏览工作区相关资源。
+        entry_paths:
+          - screen: WorkspaceScreen
+            route_hint: apps/mobile_chat_app/lib/features/workspace/workspace_screen.dart
+          - screen: ProjectsScreen
+            route_hint: apps/mobile_chat_app/lib/features/projects/projects_screen.dart
+          - screen: SkillsScreen
+            route_hint: apps/mobile_chat_app/lib/features/skills/skills_screen.dart
+          - screen: ResourcesScreen
+            route_hint: apps/mobile_chat_app/lib/features/resources/resources_screen.dart
+        smoke_checks:
+          - 从侧边导航进入每个页面。
+          - 页面可正常渲染且无崩溃。
+
+  - product_id: node_backend
+    name: Node Backend API
+    platform:
+      - nodejs
+      - vercel
+    entry_points:
+      - path: apps/node_backend/src/index.ts
+        route: API root
+    features:
+      - feature_id: backend_auth
+        name: 认证与回跳控制
+        user_value: API 请求可被认证并处理回跳逻辑。
+        entry_paths:
+          - route: /api/auth/github
+            route_hint: apps/node_backend/src/routes/auth.ts
+          - route: /api/auth/github/callback
+            route_hint: apps/node_backend/src/routes/auth.ts
+          - route: /api/auth/me
+            route_hint: apps/node_backend/src/routes/auth.ts
+        smoke_checks:
+          - 未登录请求返回预期状态码。
+          - 合法回跳参数通过校验。
+
+      - feature_id: backend_chat_llm
+        name: Chat 与 LLM 调用
+        user_value: 服务端可处理聊天请求并路由到模型提供商，并向远端小龙虾/OpenClaw 提供 pull-only 平台接口。
+        entry_paths:
+          - route: /api/chat
+            route_hint: apps/node_backend/src/routes/chat.ts
+          - route: /api/llm
+            route_hint: apps/node_backend/src/routes/llm.ts
+          - route: /api/v1/platform/*
+            route_hint: apps/node_backend/src/routes/platform.ts
+          - route: /api/config/platform-token
+            route_hint: apps/node_backend/src/routes/config.ts
+          - service: LlmService
+            route_hint: apps/node_backend/src/llm/llm_service.ts
+        smoke_checks:
+          - 调用 chat 接口时返回结构化响应。
+          - provider 配置缺失时给出明确错误。
+          - 使用 API Key + X-Bricks-Plugin-Id 可访问 `/api/v1/platform/events` 并获取 `nextCursor`。
+          - `/api/v1/platform/events/ack` 禁止 body 中传 `pluginId`，合法 ACK 可重复调用并返回成功。
+
+  - product_id: node_openclaw_plugin
+    name: Node OpenClaw Plugin
+    platform:
+      - nodejs
+    entry_points:
+      - path: apps/node_openclaw_plugin/src/index.ts
+        route: plugin runtime main
+    features:
+      - feature_id: node_openclaw_pull_loop
+        name: OpenClaw Pull-only 插件运行时与 Onboarding 配置
+        user_value: 远端插件可在 OpenClaw onboarding 中完成 channel 配置，并轮询 Bricks 平台事件执行 ACK 与消息回写闭环。
+        entry_paths:
+          - setup: onboarding.configureInteractive
+            route_hint: apps/node_openclaw_plugin/src/openclawExtension.ts
+          - manifest: channelConfigs.dev-askman-bricks
+            route_hint: apps/node_openclaw_plugin/openclaw.plugin.json
+          - runtime: NodeOpenClawPluginRunner
+            route_hint: apps/node_openclaw_plugin/src/pluginRunner.ts
+          - client: PlatformClient
+            route_hint: apps/node_openclaw_plugin/src/platformClient.ts
+          - state: FileStateStore
+            route_hint: apps/node_openclaw_plugin/src/stateStore.ts
+        smoke_checks:
+          - 安装插件后执行 `openclaw onboard` 可提示输入 BRICKS_BASE_URL / BRICKS_PLUGIN_ID / BRICKS_PLATFORM_TOKEN 并写入 `channels.dev-askman-bricks`。
+          - 设置 BRICKS_BASE_URL / BRICKS_PLATFORM_TOKEN / BRICKS_PLUGIN_ID 后可启动插件轮询。
+          - 非 JWT token 或 claims 不完整时插件启动应失败（JWT-only）。
+          - 插件可调用 `/api/v1/platform/events` 拉取事件并以 `X-Bricks-Plugin-Id` 发送请求。
+          - 插件 ACK body 仅包含 `cursor` 与 `ackedEventIds` 且可推进本地 cursor。
+          - 收到 `message.created` 事件后可执行 create + patch 消息回写。

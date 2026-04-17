@@ -127,3 +127,9 @@ When an implementation plan is requested (for humans or agents), use the followi
 3. Acceptance criteria must be testable and user-observable where applicable.
 4. If validation commands are relevant, include them explicitly (for example: `flutter analyze`, `npm run type-check`).
 5. Keep display naming and storage identity separate when defining extensible configuration systems (e.g., labels vs stable IDs).
+
+## Code map memory
+- “代码地图（Code Maps）”由 `docs/code_maps/feature_map.yaml` 与 `docs/code_maps/logic_map.yaml` 组成。
+- 当任务涉及功能入口、业务逻辑、测试索引、文档索引变更时，完成代码修改后必须同步检查并更新代码地图。
+- 维护代码地图时优先使用 `code-map-maintainer` skill（`.codex/skills/code-map-maintainer/SKILL.md`）。
+- 如果本次变更不需要更新代码地图，在最终说明中给出不更新的理由（例如仅改注释或纯重构且无行为变化）。
