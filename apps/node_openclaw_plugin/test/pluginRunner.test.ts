@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { extractIncomingText, shouldProcessEvent } from '../src/pluginRunner.js';
+import {
+  assistantClientTokenForEvent,
+  extractIncomingText,
+  shouldProcessEvent,
+} from '../src/pluginRunner.js';
 
 describe('extractIncomingText', () => {
   it('returns top-level text first', () => {
@@ -58,5 +62,30 @@ describe('shouldProcessEvent', () => {
         },
       ),
     ).toBe(true);
+  });
+});
+
+describe('assistantClientTokenForEvent', () => {
+  it('prefers pending assistant message id from payload metadata', () => {
+    expect(
+      assistantClientTokenForEvent({
+        eventId: 'evt_1',
+        eventType: 'message.created',
+        payload: {
+          metadata: {
+            pendingAssistantMessageId: 'msg-assistant-1',
+          },
+        },
+      }),
+    ).toBe('msg-assistant-1');
+  });
+
+  it('falls back to event-derived client token', () => {
+    expect(
+      assistantClientTokenForEvent({
+        eventId: 'evt_2',
+        eventType: 'message.created',
+      }),
+    ).toBe('evt:evt_2');
   });
 });

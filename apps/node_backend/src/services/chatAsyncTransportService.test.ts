@@ -86,6 +86,7 @@ describe('chatAsyncTransportService', () => {
     const clientQueryMock = vi.fn()
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })             // BEGIN
       .mockResolvedValueOnce({ rows: [{ counter: 11 }], rowCount: 1 }) // counter++
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })             // SELECT existing metadata
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })             // INSERT message
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })             // INSERT checkpoint
       .mockResolvedValueOnce({ rows: [], rowCount: 0 });            // COMMIT
@@ -112,7 +113,7 @@ describe('chatAsyncTransportService', () => {
     ]);
 
     expect(result.lastSeqId).toBe(11);
-    expect(clientQueryMock).toHaveBeenCalledTimes(5);
+    expect(clientQueryMock).toHaveBeenCalledTimes(6);
   });
 
   it('upsertMessages rolls back on error', async () => {
@@ -148,6 +149,60 @@ describe('chatAsyncTransportService', () => {
     ).rejects.toThrow('DB error');
 
     expect(releaseMock).toHaveBeenCalled();
+  });
+
+  it('upsertMessages preserves existing server metadata keys', async () => {
+    const clientQueryMock = vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ counter: 12 }], rowCount: 1 }) // counter++
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              metadata: JSON.stringify({
+                source: 'backend.respond.openclaw',
+                pendingAssistantMessageId: 'msg-assistant-1',
+              }),
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // INSERT message
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // checkpoint
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+
+    connectMock.mockResolvedValueOnce({
+      query: clientQueryMock,
+      release: vi.fn(),
+    });
+
+    await upsertMessages('u-1', [
+      {
+        messageId: 'msg-user-1',
+        taskId: 'task-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        threadId: null,
+        role: 'user',
+        content: 'hello',
+        taskState: 'dispatched',
+        checkpointCursor: null,
+        metadata: { resolvedBotId: 'ask' },
+        createdAt: null,
+      },
+    ]);
+
+    expect(clientQueryMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('INSERT INTO chat_messages'),
+      expect.arrayContaining([
+        JSON.stringify({
+          source: 'backend.respond.openclaw',
+          pendingAssistantMessageId: 'msg-assistant-1',
+          resolvedBotId: 'ask',
+        }),
+      ]),
+    );
   });
 
   it('syncMessages returns ordered deltas using write_seq cursor', async () => {
@@ -198,6 +253,7 @@ describe('chatAsyncTransportService', () => {
       ],
       rowCount: 2,
     });
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const scopes = await listUserScopes('u-1');
     expect(scopes).toEqual([
@@ -212,6 +268,34 @@ describe('chatAsyncTransportService', () => {
         threadId: 'main',
         sessionId: 'session:default:main',
         lastActivityAt: '2026-04-08T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('listUserScopes includes configured scopes without message history', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          scope_type: 'channel',
+          channel_id: 'openclaw-lab',
+          thread_id: '',
+          router: 'openclaw',
+          created_at: '2026-04-17T07:00:00.000Z',
+          updated_at: '2026-04-17T07:00:00.000Z',
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const scopes = await listUserScopes('u-1');
+
+    expect(scopes).toEqual([
+      {
+        channelId: 'openclaw-lab',
+        threadId: 'main',
+        sessionId: 'session:openclaw-lab:main',
+        lastActivityAt: null,
       },
     ]);
   });

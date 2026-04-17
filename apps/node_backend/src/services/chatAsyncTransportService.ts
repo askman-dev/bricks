@@ -1,4 +1,9 @@
 import pool from '../db/index.js';
+import {
+  buildChatSessionId,
+  listChatScopeSettings,
+  normalizeChatThreadId,
+} from './chatRouterService.js';
 
 export interface AcceptTaskInput {
   taskId: string;
@@ -66,7 +71,7 @@ export interface ChatPersistedScope {
   channelId: string;
   threadId: string;
   sessionId: string;
-  lastActivityAt: string;
+  lastActivityAt: string | null;
 }
 
 function parseMetadata(raw: unknown): Record<string, unknown> | null {
@@ -194,6 +199,18 @@ export async function upsertMessages(
       }
       const writeSeq = Number(seqResult.rows[0].counter);
 
+      const existingMessage = await client.query<{ metadata: unknown }>(
+        `SELECT metadata
+           FROM chat_messages
+          WHERE user_id = $1 AND message_id = $2
+          LIMIT 1`,
+        [userId, message.messageId],
+      );
+      const mergedMetadata = {
+        ...(parseMetadata(existingMessage.rows[0]?.metadata) ?? {}),
+        ...(message.metadata ?? {}),
+      };
+
       await client.query(
         `INSERT INTO chat_messages (
             message_id,
@@ -229,7 +246,7 @@ export async function upsertMessages(
           message.content,
           message.taskState ?? null,
           message.checkpointCursor ?? null,
-          JSON.stringify(message.metadata ?? {}),
+          JSON.stringify(mergedMetadata),
           message.createdAt ?? null,
           writeSeq,
         ],
@@ -331,7 +348,8 @@ export async function listSessionMessagesForModel(
 }
 
 export async function listUserScopes(userId: string): Promise<ChatPersistedScope[]> {
-  const result = await pool.query<ChatScopeRow>(
+  const [result, settings] = await Promise.all([
+    pool.query<ChatScopeRow>(
     `SELECT
         scope.channel_id,
         scope.thread_id,
@@ -354,15 +372,45 @@ export async function listUserScopes(userId: string): Promise<ChatPersistedScope
         FROM chat_tasks
         WHERE user_id = $1
       ) scope
-      GROUP BY scope.channel_id, scope.thread_id, scope.session_id
-      ORDER BY last_activity_at DESC`,
+       GROUP BY scope.channel_id, scope.thread_id, scope.session_id
+       ORDER BY last_activity_at DESC`,
     [userId],
-  );
+    ),
+    listChatScopeSettings(userId),
+  ]);
 
-  return result.rows.map((row) => ({
-    channelId: row.channel_id,
-    threadId: row.thread_id ?? 'main',
-    sessionId: row.session_id,
-    lastActivityAt: row.last_activity_at,
-  }));
+  const bySessionId = new Map<string, ChatPersistedScope>();
+  for (const row of result.rows) {
+    const threadId = normalizeChatThreadId(row.thread_id);
+    bySessionId.set(row.session_id, {
+      channelId: row.channel_id,
+      threadId,
+      sessionId: row.session_id,
+      lastActivityAt: row.last_activity_at,
+    });
+  }
+
+  for (const setting of settings) {
+    const threadId =
+      setting.scopeType === 'thread'
+        ? normalizeChatThreadId(setting.threadId)
+        : 'main';
+    const sessionId = buildChatSessionId(setting.channelId, threadId);
+    if (bySessionId.has(sessionId)) continue;
+    bySessionId.set(sessionId, {
+      channelId: setting.channelId,
+      threadId,
+      sessionId,
+      lastActivityAt: null,
+    });
+  }
+
+  return [...bySessionId.values()].sort((a, b) => {
+    if (a.lastActivityAt && b.lastActivityAt) {
+      return b.lastActivityAt.localeCompare(a.lastActivityAt);
+    }
+    if (b.lastActivityAt) return 1;
+    if (a.lastActivityAt) return -1;
+    return a.sessionId.localeCompare(b.sessionId);
+  });
 }

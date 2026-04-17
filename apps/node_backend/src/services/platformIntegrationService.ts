@@ -11,6 +11,7 @@ type ChatMessageEventRow = {
   role: string;
   content: string;
   created_at: string;
+  metadata: unknown;
 };
 
 type ExistingMessageRow = {
@@ -39,9 +40,10 @@ export interface PlatformEvent {
       userId: string;
       displayName: string;
     };
-    text: string;
-    attachments: unknown[];
-  };
+       text: string;
+       attachments: unknown[];
+       metadata?: Record<string, unknown>;
+     };
 }
 
 function cursorToSeq(cursor?: string): number {
@@ -85,14 +87,27 @@ export async function listPlatformEvents(params: {
   const afterSeq = cursorToSeq(params.cursor);
   const workspaceId = params.workspaceId ?? process.env.BRICKS_PLATFORM_WORKSPACE_ID ?? 'ws_local';
 
-  const baseSelect = `SELECT write_seq, message_id, user_id, channel_id, session_id, thread_id, role, content, created_at
-       FROM chat_messages`;
+  const baseSelect = `SELECT
+         msg.write_seq,
+         msg.message_id,
+         msg.user_id,
+         msg.channel_id,
+         msg.session_id,
+         msg.thread_id,
+         msg.role,
+         msg.content,
+         msg.created_at,
+         msg.metadata
+       FROM chat_messages msg`;
   const queryParams: unknown[] = [afterSeq, limit];
-  const userFilter = params.userId ? ` AND user_id = $${queryParams.push(params.userId)}` : '';
+  const userFilter = params.userId ? ` AND msg.user_id = $${queryParams.push(params.userId)}` : '';
   const result = await pool.query<ChatMessageEventRow>(
     `${baseSelect}
-      WHERE write_seq > $1${userFilter}
-      ORDER BY write_seq ASC
+      WHERE msg.write_seq > $1${userFilter}
+        AND msg.role = 'user'
+        AND msg.task_state = 'dispatched'
+        AND CAST(msg.metadata AS TEXT) LIKE '%pendingAssistantMessageId%'
+      ORDER BY msg.write_seq ASC
       LIMIT $2`,
     queryParams,
   );
@@ -112,10 +127,14 @@ export async function listPlatformEvents(params: {
       },
       text: row.content,
       attachments: [],
+      metadata: parseMetadata(row.metadata) ?? undefined,
     },
   }));
 
-  const nextSeq = result.rows.length > 0 ? result.rows[result.rows.length - 1].write_seq : afterSeq;
+  const nextSeq =
+    result.rows.length > 0
+      ? result.rows[result.rows.length - 1].write_seq
+      : afterSeq;
   return {
     nextCursor: seqToCursor(nextSeq),
     events,
@@ -169,7 +188,7 @@ export async function createPlatformMessage(input: {
       threadId: input.threadId ?? null,
       role: input.role,
       content: input.text,
-      taskState: null,
+      taskState: input.role === 'assistant' ? 'dispatched' : null,
       checkpointCursor: null,
       metadata: input.metadata ?? { source: 'platform.messages.create' },
       createdAt: null,
@@ -232,7 +251,7 @@ export async function patchPlatformMessage(input: {
       threadId: row.thread_id,
       role: row.role,
       content: input.text ?? row.content,
-      taskState: null,
+      taskState: row.role === 'assistant' ? 'completed' : null,
       checkpointCursor: null,
       metadata: mergedMetadata,
       createdAt: row.created_at,
