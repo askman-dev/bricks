@@ -98,42 +98,44 @@ void main() {
     expect(lastSeq, equals(7));
   });
 
-  test('filters transient empty assistant placeholder before persistence',
-      () async {
-    final client = MockClient((request) async {
-      expect(request.url.path.endsWith('/messages/batch'), isTrue);
-      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
-      final messages =
-          (decoded['messages'] as List).cast<Map<String, dynamic>>();
-      expect(messages, hasLength(1));
-      expect(messages.single['messageId'], equals('msg-user'));
-      return http.Response(jsonEncode({'lastSeqId': 8}), 200);
-    });
+  test(
+    'filters transient empty assistant placeholder before persistence',
+    () async {
+      final client = MockClient((request) async {
+        expect(request.url.path.endsWith('/messages/batch'), isTrue);
+        final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+        final messages = (decoded['messages'] as List)
+            .cast<Map<String, dynamic>>();
+        expect(messages, hasLength(1));
+        expect(messages.single['messageId'], equals('msg-user'));
+        return http.Response(jsonEncode({'lastSeqId': 8}), 200);
+      });
 
-    final service = ChatHistoryApiService(httpClient: client);
-    final lastSeq = await service.upsertMessages(
-      token: 'token-1',
-      messages: [
-        ChatMessage(
-          messageId: 'msg-user',
-          role: 'user',
-          content: 'DDD',
-          channelId: 'default',
-          sessionId: 'session:default:main',
-        ),
-        ChatMessage(
-          messageId: 'msg-assistant',
-          role: 'assistant',
-          content: '',
-          isStreaming: true,
-          channelId: 'default',
-          sessionId: 'session:default:main',
-        ),
-      ],
-    );
+      final service = ChatHistoryApiService(httpClient: client);
+      final lastSeq = await service.upsertMessages(
+        token: 'token-1',
+        messages: [
+          ChatMessage(
+            messageId: 'msg-user',
+            role: 'user',
+            content: 'DDD',
+            channelId: 'default',
+            sessionId: 'session:default:main',
+          ),
+          ChatMessage(
+            messageId: 'msg-assistant',
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            channelId: 'default',
+            sessionId: 'session:default:main',
+          ),
+        ],
+      );
 
-    expect(lastSeq, equals(8));
-  });
+      expect(lastSeq, equals(8));
+    },
+  );
 
   test('respond sends one backend-owned orchestration request', () async {
     final client = MockClient((request) async {
@@ -142,7 +144,15 @@ void main() {
       final decoded = jsonDecode(request.body) as Map<String, dynamic>;
       expect(decoded['taskId'], equals('task-2'));
       expect(decoded['userMessage'], equals('1+3'));
-      return http.Response(jsonEncode({'text': '4', 'lastSeqId': 12}), 200);
+      return http.Response(
+        jsonEncode({
+          'text': '4',
+          'lastSeqId': 12,
+          'mode': 'sync',
+          'state': 'completed',
+        }),
+        200,
+      );
     });
 
     final service = ChatHistoryApiService(httpClient: client);
@@ -160,6 +170,8 @@ void main() {
 
     expect(result.text, equals('4'));
     expect(result.lastSeqId, equals(12));
+    expect(result.isAsync, isFalse);
+    expect(result.taskState, ChatTaskState.completed);
   });
 
   test('loads persisted scopes for channel/sidebar hydration', () async {
@@ -194,5 +206,53 @@ void main() {
     expect(scopes.first.channelId, equals('channel-1'));
     expect(scopes.first.threadId, equals('sub-1'));
     expect(scopes.first.sessionId, equals('session:channel-1:sub-1'));
+  });
+
+  test('loads scope settings and saves router updates', () async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET') {
+        expect(request.url.path.endsWith('/chat/scope-settings'), isTrue);
+        return http.Response(
+          jsonEncode({
+            'settings': [
+              {
+                'scopeType': 'channel',
+                'channelId': 'default',
+                'router': 'openclaw',
+                'updatedAt': '2026-04-17T07:00:00.000Z',
+              },
+            ],
+          }),
+          200,
+        );
+      }
+
+      expect(request.method, equals('PUT'));
+      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(decoded['scopeType'], equals('thread'));
+      expect(decoded['channelId'], equals('default'));
+      expect(decoded['threadId'], equals('main'));
+      expect(decoded['router'], equals('default'));
+      return http.Response(
+        jsonEncode({
+          'setting': {'router': 'default'},
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final settings = await service.loadScopeSettings(token: 'token-1');
+    await service.saveScopeSetting(
+      token: 'token-1',
+      scopeType: ChatScopeType.thread,
+      channelId: 'default',
+      threadId: 'main',
+      router: ChatRouter.defaultRoute,
+    );
+
+    expect(settings, hasLength(1));
+    expect(settings.single.scopeType, ChatScopeType.channel);
+    expect(settings.single.router, ChatRouter.openclaw);
   });
 }

@@ -18,6 +18,15 @@ void main() {
     expect(resolved, 'default');
   });
 
+  test('parses router and scope type api values', () {
+    expect(chatRouterFromApi('openclaw'), ChatRouter.openclaw);
+    expect(chatRouterFromApi('default'), ChatRouter.defaultRoute);
+    expect(chatScopeTypeFromApi('channel'), ChatScopeType.channel);
+    expect(chatScopeTypeFromApi('thread'), ChatScopeType.thread);
+    expect(ChatRouter.openclaw.apiValue, 'openclaw');
+    expect(ChatScopeType.thread.apiValue, 'thread');
+  });
+
   test('applies acknowledged state and cursor to message', () {
     final protocol = ChatTaskProtocol();
     final envelope = ChatTaskEnvelope(
@@ -43,30 +52,32 @@ void main() {
     expect(next.checkpointCursor, startsWith('cursor:default:task-1'));
   });
 
-  test('does not apply acknowledged state when ack task id mismatches message task id',
-      () {
-    final protocol = ChatTaskProtocol();
-    final envelope = ChatTaskEnvelope(
-      taskId: 'task-2',
-      idempotencyKey: 'idem-2',
-      createdAt: DateTime(2026, 4, 4),
-      channelId: 'default',
-      sessionId: 'session:default:main',
-    );
-    final ack = protocol.acknowledge(envelope);
+  test(
+    'does not apply acknowledged state when ack task id mismatches message task id',
+    () {
+      final protocol = ChatTaskProtocol();
+      final envelope = ChatTaskEnvelope(
+        taskId: 'task-2',
+        idempotencyKey: 'idem-2',
+        createdAt: DateTime(2026, 4, 4),
+        channelId: 'default',
+        sessionId: 'session:default:main',
+      );
+      final ack = protocol.acknowledge(envelope);
 
-    final message = ChatMessage(
-      role: 'assistant',
-      content: '',
-      taskId: 'task-1',
-      taskState: ChatTaskState.accepted,
-    );
+      final message = ChatMessage(
+        role: 'assistant',
+        content: '',
+        taskId: 'task-1',
+        taskState: ChatTaskState.accepted,
+      );
 
-    final next = protocol.applyAcceptedState(message, ack);
+      final next = protocol.applyAcceptedState(message, ack);
 
-    expect(next.taskId, 'task-1');
-    expect(next.taskState, ChatTaskState.accepted);
-    expect(next.acknowledgedAt, isNull);
-    expect(next.checkpointCursor, isNull);
-  });
+      expect(next.taskId, 'task-1');
+      expect(next.taskState, ChatTaskState.accepted);
+      expect(next.acknowledgedAt, isNull);
+      expect(next.checkpointCursor, isNull);
+    },
+  );
 }
