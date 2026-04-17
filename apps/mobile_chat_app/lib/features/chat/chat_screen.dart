@@ -55,7 +55,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final ChatTopologyResolver _topologyResolver = const ChatTopologyResolver();
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
-  AgentsRepository? _agentsRepository;
   List<AgentDefinition> _agents = [];
   AgentDefinition? _activeAgent;
   final LlmConfigService _llmConfigService = const LlmConfigService();
@@ -152,7 +151,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
       );
       if (!mounted) return;
-      _agentsRepository = repo;
       _syncParticipants(definitions);
       final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
       final restoredSubSections = _hydrateSubSectionsFromScopes(
