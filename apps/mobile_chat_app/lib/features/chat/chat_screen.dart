@@ -9,7 +9,6 @@ import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
 
-import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
@@ -182,18 +181,6 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text('Failed to load chat setup: $error')),
       );
     }
-  }
-
-  Future<void> _reloadAgents() async {
-    final repo = _agentsRepository ?? await createAgentsRepository();
-    final definitions = await _readAgentDefinitions(repo);
-    if (!mounted) return;
-    _syncParticipants(definitions);
-    setState(() {
-      _agentsRepository = repo;
-      _agents = definitions;
-      _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
-    });
   }
 
   Future<List<AgentDefinition>> _readAgentDefinitions(
@@ -1003,17 +990,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       _updateMessageContent(index, 'Error: $e', isStreaming: false);
-    }
-  }
-
-  Future<void> _openAgentsScreen() async {
-    final updated = await Navigator.push<AgentDefinition?>(
-      context,
-      MaterialPageRoute<AgentDefinition?>(builder: (_) => const AgentsScreen()),
-    );
-    await _reloadAgents();
-    if (updated != null) {
-      _selectAgent(updated);
     }
   }
 

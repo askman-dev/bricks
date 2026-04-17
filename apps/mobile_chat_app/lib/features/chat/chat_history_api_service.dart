@@ -142,7 +142,7 @@ class ChatHistoryApiService {
       return const ChatHistorySnapshot(messages: [], lastSeqId: 0);
     }
 
-    final map = Map<String, dynamic>.from(raw as Map);
+    final map = Map<String, dynamic>.from(raw);
     final messages = ((map['messages'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, Object?>.from(item))
@@ -172,7 +172,7 @@ class ChatHistoryApiService {
     if (raw is! Map) {
       return ChatHistorySnapshot(messages: const [], lastSeqId: afterSeq);
     }
-    final map = Map<String, dynamic>.from(raw as Map);
+    final map = Map<String, dynamic>.from(raw);
     final messages = ((map['messages'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, Object?>.from(item))
