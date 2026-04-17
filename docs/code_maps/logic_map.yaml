@@ -199,8 +199,9 @@ index:
 
 
   - feature_id: node_openclaw_pull_loop
-    capability: Node OpenClaw pull-only 事件消费与消息回写
+    capability: Node OpenClaw onboarding 配置 + pull-only 事件消费与消息回写
     code_index:
+      - apps/node_openclaw_plugin/src/openclawExtension.ts
       - apps/node_openclaw_plugin/src/index.ts
       - apps/node_openclaw_plugin/src/jwtClaims.ts
       - apps/node_openclaw_plugin/src/pluginRunner.ts
@@ -211,6 +212,7 @@ index:
       - docs/openclaw_pull_only_integration_dev_doc.md
       - docs/plugin_development_architecture.md
       - apps/node_openclaw_plugin/README.md
+      - apps/node_openclaw_plugin/openclaw.plugin.json
     test_index:
       - apps/node_openclaw_plugin/test/jwtClaims.test.ts
       - apps/node_openclaw_plugin/test/stateStore.test.ts
@@ -218,6 +220,8 @@ index:
     keywords:
       - openclaw
       - plugin
+      - onboarding
+      - configureInteractive
       - pull-only
       - events
       - ack
@@ -225,6 +229,7 @@ index:
       - messages
       - jwt
     change_risks:
+      - onboarding hook 字段名与 manifest schema 不一致会导致向导写入后校验失败。
       - cursor 持久化失败会导致重复消费或漏消费。
       - ACK 与本地去重顺序错误可能造成事件堆积或错误跳过。
       - 上游接口字段变化可能导致回写消息失败。

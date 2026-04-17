@@ -141,9 +141,13 @@ products:
         route: plugin runtime main
     features:
       - feature_id: node_openclaw_pull_loop
-        name: OpenClaw Pull-only 插件运行时
-        user_value: 远端插件可轮询 Bricks 平台事件并执行 ACK 与消息回写闭环。
+        name: OpenClaw Pull-only 插件运行时与 Onboarding 配置
+        user_value: 远端插件可在 OpenClaw onboarding 中完成 channel 配置，并轮询 Bricks 平台事件执行 ACK 与消息回写闭环。
         entry_paths:
+          - setup: onboarding.configureInteractive
+            route_hint: apps/node_openclaw_plugin/src/openclawExtension.ts
+          - manifest: channelConfigs.dev-askman-bricks
+            route_hint: apps/node_openclaw_plugin/openclaw.plugin.json
           - runtime: NodeOpenClawPluginRunner
             route_hint: apps/node_openclaw_plugin/src/pluginRunner.ts
           - client: PlatformClient
@@ -151,6 +155,7 @@ products:
           - state: FileStateStore
             route_hint: apps/node_openclaw_plugin/src/stateStore.ts
         smoke_checks:
+          - 安装插件后执行 `openclaw onboard` 可提示输入 BRICKS_BASE_URL / BRICKS_PLUGIN_ID / BRICKS_PLATFORM_TOKEN 并写入 `channels.dev-askman-bricks`。
           - 设置 BRICKS_BASE_URL / BRICKS_PLATFORM_TOKEN / BRICKS_PLUGIN_ID 后可启动插件轮询。
           - 非 JWT token 或 claims 不完整时插件启动应失败（JWT-only）。
           - 插件可调用 `/api/v1/platform/events` 拉取事件并以 `X-Bricks-Plugin-Id` 发送请求。
