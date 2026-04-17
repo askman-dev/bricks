@@ -1,0 +1,62 @@
+{
+  "id": "dev-askman-bricks",
+  "name": "Bricks OpenClaw Plugin",
+  "description": "Bricks pull-only OpenClaw channel plugin with interactive onboarding.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "channelEnvVars": {
+    "dev-askman-bricks": [
+      "BRICKS_BASE_URL",
+      "BRICKS_PLUGIN_ID",
+      "BRICKS_PLATFORM_TOKEN"
+    ]
+  },
+  "channelConfigs": {
+    "dev-askman-bricks": {
+      "label": "Bricks",
+      "description": "Bricks platform API channel settings.",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "BRICKS_BASE_URL",
+          "BRICKS_PLUGIN_ID",
+          "BRICKS_PLATFORM_TOKEN"
+        ],
+        "properties": {
+          "BRICKS_BASE_URL": {
+            "type": "string",
+            "minLength": 1
+          },
+          "BRICKS_PLUGIN_ID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "BRICKS_PLATFORM_TOKEN": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "uiHints": {
+        "BRICKS_BASE_URL": {
+          "label": "Bricks Base URL",
+          "placeholder": "https://api.example.com"
+        },
+        "BRICKS_PLUGIN_ID": {
+          "label": "Bricks Plugin ID",
+          "placeholder": "dev-askman-bricks"
+        },
+        "BRICKS_PLATFORM_TOKEN": {
+          "label": "Bricks Platform Token",
+          "sensitive": true,
+          "placeholder": "paste your JWT platform token"
+        }
+      }
+    }
+  }
+}
