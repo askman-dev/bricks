@@ -81,6 +81,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _persistDebounce;
   Timer? _syncTimer;
   bool _syncInFlight = false;
+  static const Duration _syncPollInterval = Duration(seconds: 2);
+  static const Duration _syncMaxBackoff = Duration(seconds: 10);
+  Duration _nextSyncDelay = _syncPollInterval;
   final Map<String, ChatRouter> _channelRouters = {};
   final Map<String, ChatRouter> _threadRouters = {};
   int _respondGeneration = 0;
@@ -94,7 +97,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _persistDebounce?.cancel();
-    _syncTimer?.cancel();
+    _cancelSyncPolling(resetDelay: false);
     _doPersistActiveScopeMessages();
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
@@ -598,8 +601,7 @@ class _ChatScreenState extends State<ChatScreen> {
         (remembered != null && sections.any((s) => s.id == remembered))
         ? remembered
         : 'main';
-    _syncTimer?.cancel();
-    _syncTimer = null;
+    _cancelSyncPolling();
     setState(() {
       _activeChannelId = resolvedChannelId;
       _activeSubSection = restoredSubSection;
@@ -660,8 +662,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final capturedChannelId = _activeChannelId;
     final capturedSubSection = _activeSubSection;
     final capturedSessionId = _sessionIdForScope;
-    _syncTimer?.cancel();
-    _syncTimer = null;
+    _cancelSyncPolling();
 
     bool _isScopeStale() => _sessionIdForScope != capturedSessionId;
 
@@ -937,21 +938,43 @@ class _ChatScreenState extends State<ChatScreen> {
     return _hasPendingAssistantTasks();
   }
 
-  void _configureActiveScopeSync({bool triggerNow = true}) {
-    if (!_shouldSyncActiveScope()) {
-      _syncTimer?.cancel();
-      _syncTimer = null;
+  void _cancelSyncPolling({bool resetDelay = true}) {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    if (resetDelay) {
+      _nextSyncDelay = _syncPollInterval;
+    }
+  }
+
+  void _scheduleSync(Duration delay) {
+    if (_syncTimer != null || _syncInFlight || !_shouldSyncActiveScope()) {
       return;
     }
-    final shouldTriggerImmediately =
-        triggerNow && _syncTimer == null && !_syncInFlight;
-    _syncTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
-      if (_syncInFlight) return;
+
+    _syncTimer = Timer(delay, () {
+      _syncTimer = null;
+      if (_syncInFlight || !_shouldSyncActiveScope()) {
+        return;
+      }
       unawaited(_syncActiveScope());
     });
-    if (shouldTriggerImmediately) {
-      unawaited(_syncActiveScope());
+  }
+
+  void _increaseSyncBackoff() {
+    final doubledMilliseconds = _nextSyncDelay.inMilliseconds * 2;
+    final cappedMilliseconds = doubledMilliseconds.clamp(
+      _syncPollInterval.inMilliseconds,
+      _syncMaxBackoff.inMilliseconds,
+    );
+    _nextSyncDelay = Duration(milliseconds: cappedMilliseconds);
+  }
+
+  void _configureActiveScopeSync({bool triggerNow = true}) {
+    if (!_shouldSyncActiveScope()) {
+      _cancelSyncPolling();
+      return;
     }
+    _scheduleSync(triggerNow ? Duration.zero : _nextSyncDelay);
   }
 
   ChatTaskState? _normalizedServerTaskState(
@@ -1045,6 +1068,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final capturedChannelId = _activeChannelId;
     final capturedSubSection = _activeSubSection;
     _syncInFlight = true;
+    var syncFailed = false;
     try {
       final snapshot = await _chatHistoryApiService.sync(
         token: token,
@@ -1069,9 +1093,15 @@ class _ChatScreenState extends State<ChatScreen> {
         subSection: capturedSubSection,
       );
     } catch (error) {
+      syncFailed = true;
       debugPrint('chat scope sync failed: $error');
     } finally {
       _syncInFlight = false;
+      if (syncFailed) {
+        _increaseSyncBackoff();
+      } else {
+        _nextSyncDelay = _syncPollInterval;
+      }
       if (mounted) {
         _configureActiveScopeSync(triggerNow: false);
       }
@@ -1625,8 +1655,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   _createSubSection();
                   unawaited(_loadMessagesForActiveScope());
                 } else {
-                  _syncTimer?.cancel();
-                  _syncTimer = null;
+                  _cancelSyncPolling();
                   setState(() {
                     _activeSubSection = value;
                     _messages.clear();
