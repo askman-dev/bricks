@@ -24,7 +24,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./src/openclawExtension.ts"
+      "./dist/openclawExtension.js"
     ],
     "channel": {
       "id": "dev-askman-bricks",
@@ -40,7 +40,6 @@
     },
     "install": {
       "localPath": "apps/node_openclaw_plugin",
-      "npmSpec": "@bricks/node-openclaw-plugin",
       "defaultChoice": "local"
     }
   }

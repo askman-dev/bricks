@@ -55,7 +55,18 @@ const plugin = {
   configSchema: {
     type: 'object',
     additionalProperties: false,
-    properties: {},
+    properties: {
+      BRICKS_BASE_URL: {
+        type: 'string',
+      },
+      BRICKS_PLUGIN_ID: {
+        type: 'string',
+      },
+      BRICKS_PLATFORM_TOKEN: {
+        type: 'string',
+      },
+    },
+    required: ['BRICKS_BASE_URL', 'BRICKS_PLUGIN_ID', 'BRICKS_PLATFORM_TOKEN'],
   },
   onboarding: {
     async configureInteractive(ctx: OnboardingContext): Promise<OnboardingResult> {
