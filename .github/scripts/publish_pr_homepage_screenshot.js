@@ -16,7 +16,10 @@ const sha = process.env.GITHUB_SHA;
 const prNumber = process.env.PR_NUMBER;
 const prHeadRef = process.env.PR_HEAD_REF;
 
-if (!token) throw new Error('GITHUB_TOKEN or GH_TOKEN is required.');
+if (!token) {
+  console.warn('Warning: GITHUB_TOKEN or GH_TOKEN is not set. Skipping PR screenshot publish step.');
+  process.exit(0);
+}
 if (!repository || !prNumber || !runId || !prHeadRef || !sha) {
   throw new Error('Missing one or more required GitHub environment variables.');
 }
