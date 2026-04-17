@@ -50,7 +50,7 @@ export function issuePlatformAccessToken(params: {
 }): string {
   const pluginId = params.pluginId.trim();
   if (!pluginId) {
-    throw new Error('pluginId must be a non-empty string');
+    throw new Error('pluginId is required and must not be empty or whitespace-only');
   }
   const payload: PlatformJwtPayload = {
     typ: 'platform_plugin',
