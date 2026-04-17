@@ -188,4 +188,23 @@ describe('chat routes', () => {
       threadId: 'main',
     });
   });
+
+  it('rate limits sync polling per user and session after 120 requests per minute', async () => {
+    const encodedSessionId = encodeURIComponent('session:rate-limit:main');
+
+    for (let i = 0; i < 120; i += 1) {
+      const response = await fetch(
+        `${baseUrl}/api/chat/sync/${encodedSessionId}?afterSeq=${i}`,
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const limited = await fetch(
+      `${baseUrl}/api/chat/sync/${encodedSessionId}?afterSeq=999`,
+    );
+
+    expect(limited.status).toBe(429);
+    const body = (await limited.json()) as { error?: string };
+    expect(body.error).toContain('Too many sync requests');
+  });
 });

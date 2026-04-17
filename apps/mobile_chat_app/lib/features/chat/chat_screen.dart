@@ -943,10 +943,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _syncTimer = null;
       return;
     }
+    final shouldTriggerImmediately =
+        triggerNow && _syncTimer == null && !_syncInFlight;
     _syncTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_syncInFlight) return;
       unawaited(_syncActiveScope());
     });
-    if (triggerNow) {
+    if (shouldTriggerImmediately) {
       unawaited(_syncActiveScope());
     }
   }

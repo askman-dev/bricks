@@ -1,4 +1,5 @@
 import express, { Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   acceptTask,
@@ -26,6 +27,8 @@ const router = express.Router();
 router.use(authenticate);
 
 const OPENCLAW_PENDING_TEXT = 'Waiting for OpenClaw...';
+const CHAT_SYNC_WINDOW_MS = 60 * 1000;
+const CHAT_SYNC_MAX_REQUESTS_PER_WINDOW = 120;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -51,6 +54,24 @@ function parseScopeType(value: unknown): ChatScopeType | null {
   if (value === 'channel' || value === 'thread') return value;
   return null;
 }
+
+const syncLimiter = rateLimit({
+  windowMs: CHAT_SYNC_WINDOW_MS,
+  max: CHAT_SYNC_MAX_REQUESTS_PER_WINDOW,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId =
+      typeof (req as AuthRequest).userId === 'string'
+        ? (req as AuthRequest).userId
+        : 'anonymous';
+    const sessionId = parseSessionId(req.params.sessionId) ?? 'invalid-session';
+    return `${userId}:${sessionId}`;
+  },
+  message: {
+    error: 'Too many sync requests for this chat session, please try again later.',
+  },
+});
 
 router.post('/respond', async (req: AuthRequest, res: Response) => {
   try {
@@ -319,7 +340,7 @@ router.put('/messages/batch', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/sync/:sessionId', async (req: AuthRequest, res: Response) => {
+router.get('/sync/:sessionId', syncLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
