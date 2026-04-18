@@ -168,9 +168,27 @@ void main() {
     });
   });
 
-  group('MessageList bubble width', () {
+  testWidgets('does not render a decoration for assistant messages',
+      (tester) async {
+    final assistant = ChatMessage(
+      messageId: 'assistant-plain',
+      role: 'assistant',
+      content: 'plain assistant content',
+      timestamp: DateTime.utc(2026, 1, 1),
+    );
+
+    await tester.pumpWidget(_build([assistant]));
+    await tester.pumpAndSettle();
+
+    final assistantContainer = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('message-assistant-plain')),
+    );
+    expect(assistantContainer.decoration, isNull);
+  });
+
+  group('MessageList message width', () {
     testWidgets(
-        'assistant bubble uses full list width while user stays compact',
+        'assistant message uses full list width while user stays compact',
         (tester) async {
       final user = ChatMessage(
         messageId: 'u',
@@ -189,14 +207,14 @@ void main() {
       await tester.pumpAndSettle();
 
       final userBox = tester.renderObject<RenderBox>(
-        find.byKey(const ValueKey<String>('bubble-u')),
+        find.byKey(const ValueKey<String>('message-u')),
       );
       final assistantBox = tester.renderObject<RenderBox>(
-        find.byKey(const ValueKey<String>('bubble-a')),
+        find.byKey(const ValueKey<String>('message-a')),
       );
 
       expect(assistantBox.size.width, greaterThan(userBox.size.width));
-      expect(assistantBox.size.width, greaterThanOrEqualTo(320));
+      expect(assistantBox.size.width, greaterThanOrEqualTo(330));
     });
   });
 }

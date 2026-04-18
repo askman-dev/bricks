@@ -194,25 +194,30 @@ class _MessageListState extends State<MessageList> {
                   ),
                 Container(
                   key: ValueKey<String>(
-                    'bubble-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                    'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
                   ),
                   margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: BricksSpacing.md,
-                    vertical: BricksSpacing.sm,
-                  ),
+                  padding: isUser
+                      ? const EdgeInsets.symmetric(
+                          horizontal: BricksSpacing.md,
+                          vertical: BricksSpacing.sm,
+                        )
+                      : const EdgeInsets.symmetric(
+                          horizontal: BricksSpacing.xs,
+                          vertical: BricksSpacing.xs,
+                        ),
                   width: isUser ? null : double.infinity,
                   constraints: isUser
                       ? BoxConstraints(
                           maxWidth: MediaQuery.of(context).size.width * 0.75,
                         )
                       : null,
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(BricksRadius.md),
-                  ),
+                  decoration: isUser
+                      ? BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(BricksRadius.md),
+                        )
+                      : null,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -227,12 +232,12 @@ class _MessageListState extends State<MessageList> {
                       else
                         Text(
                           msg.content,
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface,
-                                  ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
                         ),
                       if (msg.isStreaming)
                         Padding(
