@@ -174,6 +174,83 @@ void main() {
     expect(result.taskState, ChatTaskState.completed);
   });
 
+  test(
+    'respond maps openclaw async accepted state to sent-but-unread contract',
+    () async {
+      final client = MockClient((request) async {
+        expect(request.url.path.endsWith('/chat/respond'), isTrue);
+        expect(request.method, equals('POST'));
+        final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(decoded['channelId'], equals('default'));
+        expect(decoded['threadId'], equals('main'));
+        expect(decoded['taskId'], equals('task-openclaw-accepted'));
+        return http.Response(
+          jsonEncode({
+            'text': '',
+            'lastSeqId': 18,
+            'mode': 'async',
+            'state': 'accepted',
+          }),
+          200,
+        );
+      });
+
+      final service = ChatHistoryApiService(httpClient: client);
+      final result = await service.respond(
+        token: 'token-1',
+        taskId: 'task-openclaw-accepted',
+        idempotencyKey: 'idem-openclaw-accepted',
+        scope: const ChatSessionScope(channelId: 'default', threadId: 'main'),
+        userMessageId: 'u-openclaw-1',
+        assistantMessageId: 'a-openclaw-1',
+        userMessage: 'ping openclaw',
+      );
+
+      expect(result.isAsync, isTrue);
+      expect(result.taskState, ChatTaskState.accepted);
+      expect(result.text, isEmpty);
+      expect(result.lastSeqId, equals(18));
+    },
+  );
+
+  test(
+    'respond maps openclaw completed state to read-with-reply contract',
+    () async {
+      final client = MockClient((request) async {
+        expect(request.url.path.endsWith('/chat/respond'), isTrue);
+        expect(request.method, equals('POST'));
+        final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(decoded['taskId'], equals('task-openclaw-completed'));
+        expect(decoded['userMessage'], equals('hello plugin'));
+        return http.Response(
+          jsonEncode({
+            'text': 'plugin reply',
+            'lastSeqId': 21,
+            'mode': 'sync',
+            'state': 'completed',
+          }),
+          200,
+        );
+      });
+
+      final service = ChatHistoryApiService(httpClient: client);
+      final result = await service.respond(
+        token: 'token-1',
+        taskId: 'task-openclaw-completed',
+        idempotencyKey: 'idem-openclaw-completed',
+        scope: const ChatSessionScope(channelId: 'default', threadId: 'main'),
+        userMessageId: 'u-openclaw-2',
+        assistantMessageId: 'a-openclaw-2',
+        userMessage: 'hello plugin',
+      );
+
+      expect(result.isAsync, isFalse);
+      expect(result.taskState, ChatTaskState.completed);
+      expect(result.text, equals('plugin reply'));
+      expect(result.lastSeqId, equals(21));
+    },
+  );
+
   test('loads persisted scopes for channel/sidebar hydration', () async {
     final client = MockClient((request) async {
       expect(request.url.path.endsWith('/chat/scopes'), isTrue);

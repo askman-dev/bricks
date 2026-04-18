@@ -26,7 +26,6 @@ import type { LlmProvider } from '../llm/types.js';
 const router = express.Router();
 router.use(authenticate);
 
-const OPENCLAW_PENDING_TEXT = 'Waiting for OpenClaw...';
 const CHAT_SYNC_WINDOW_MS = 60 * 1000;
 const CHAT_SYNC_MAX_REQUESTS_PER_WINDOW = 120;
 
@@ -137,27 +136,9 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
           threadId: input.threadId,
           role: 'user',
           content: userMessage,
-          taskState: 'dispatched',
+          taskState: 'accepted',
           checkpointCursor: null,
           metadata: userMessageMetadata,
-          createdAt: typeof body.createdAt === 'string' ? body.createdAt : null,
-        },
-        {
-          messageId: assistantMessageId,
-          taskId: acceptedTaskId,
-          channelId,
-          sessionId: acceptedSessionId,
-          threadId: input.threadId,
-          role: 'assistant',
-          content: OPENCLAW_PENDING_TEXT,
-          taskState: 'dispatched',
-          checkpointCursor: null,
-          metadata: {
-            resolvedBotId: input.resolvedBotId,
-            resolvedSkillId: input.resolvedSkillId,
-            source: 'backend.respond.openclaw.placeholder',
-            pendingFromMessageId: userMessageId,
-          },
           createdAt: typeof body.createdAt === 'string' ? body.createdAt : null,
         },
       ]);
@@ -166,9 +147,9 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
         taskId: acceptedTaskId,
         sessionId: acceptedSessionId,
         assistantMessageId,
-        text: OPENCLAW_PENDING_TEXT,
+        text: '',
         lastSeqId: persisted.lastSeqId,
-        state: 'dispatched',
+        state: 'accepted',
         mode: 'async',
         router: resolvedRouter,
       });
