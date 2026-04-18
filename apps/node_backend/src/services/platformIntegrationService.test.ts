@@ -16,6 +16,7 @@ vi.mock('./chatAsyncTransportService.js', () => ({
 }));
 
 import {
+  ackPlatformEvents,
   createPlatformMessage,
   listPlatformEvents,
   patchPlatformMessage,
@@ -115,5 +116,23 @@ describe('platformIntegrationService', () => {
         }),
       ]),
     );
+  });
+
+  it('ack marks user message as completed and records plugin read marker', async () => {
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    const result = await ackPlatformEvents({
+      pluginId: 'plugin_local_main',
+      userId: 'u-1',
+      cursor: 'cur_5',
+      ackedEventIds: ['evt_msg_msg-user-1_5'],
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("SET task_state = 'completed'");
+    expect(sql).toContain("AND task_state IN ('accepted', 'dispatched')");
+    expect(params).toEqual(['msg-user-1', 5, 'plugin_local_main', 'u-1']);
   });
 });

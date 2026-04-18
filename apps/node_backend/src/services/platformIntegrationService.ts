@@ -105,7 +105,7 @@ export async function listPlatformEvents(params: {
     `${baseSelect}
       WHERE msg.write_seq > $1${userFilter}
         AND msg.role = 'user'
-        AND msg.task_state = 'dispatched'
+        AND msg.task_state IN ('accepted', 'dispatched')
         AND CAST(msg.metadata AS TEXT) LIKE '%pendingAssistantMessageId%'
       ORDER BY msg.write_seq ASC
       LIMIT $2`,
@@ -143,6 +143,7 @@ export async function listPlatformEvents(params: {
 
 export async function ackPlatformEvents(params: {
   pluginId: string;
+  userId?: string;
   cursor: string;
   ackedEventIds: string[];
 }): Promise<{ ok: true }> {
@@ -157,7 +158,42 @@ export async function ackPlatformEvents(params: {
       throw new Error('INVALID_ACKED_EVENT_IDS');
     }
   }
+
+  const ackedMessages = params.ackedEventIds
+    .map(parseAckedMessageEventId)
+    .filter((item): item is { messageId: string; writeSeq: number } => item !== null);
+
+  for (const item of ackedMessages) {
+    const queryParams: unknown[] = [item.messageId, item.writeSeq, params.pluginId];
+    const userFilter = params.userId ? ` AND user_id = $${queryParams.push(params.userId)}` : '';
+    await pool.query(
+      `UPDATE chat_messages
+          SET task_state = 'completed',
+              metadata = jsonb_set(
+                COALESCE(metadata, '{}'::jsonb),
+                '{pluginReadBy}',
+                COALESCE(COALESCE(metadata, '{}'::jsonb)->'pluginReadBy', '{}'::jsonb)
+                  || jsonb_build_object($3, to_jsonb(CURRENT_TIMESTAMP)),
+                true
+              ),
+              updated_at = CURRENT_TIMESTAMP
+        WHERE message_id = $1
+          AND write_seq = $2
+          AND role = 'user'
+          AND task_state IN ('accepted', 'dispatched')${userFilter}`,
+      queryParams,
+    );
+  }
   return { ok: true };
+}
+
+function parseAckedMessageEventId(eventId: string): { messageId: string; writeSeq: number } | null {
+  const match = /^evt_msg_(.+)_(\d+)$/.exec(eventId.trim());
+  if (!match) return null;
+  const messageId = match[1].trim();
+  const writeSeq = Number.parseInt(match[2], 10);
+  if (!messageId || !Number.isFinite(writeSeq) || writeSeq <= 0) return null;
+  return { messageId, writeSeq };
 }
 
 function generateMessageId(clientToken?: string): string {

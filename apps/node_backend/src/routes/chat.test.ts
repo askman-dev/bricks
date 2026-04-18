@@ -144,28 +144,23 @@ describe('chat routes', () => {
       lastSeqId?: number;
     };
     expect(body.mode).toBe('async');
-    expect(body.state).toBe('dispatched');
-    expect(body.text).toBe('Waiting for OpenClaw...');
+    expect(body.state).toBe('accepted');
+    expect(body.text).toBe('');
     expect(body.lastSeqId).toBe(7);
     expect(generateWithUserConfigMock).not.toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith(
       'user-123',
-      expect.arrayContaining([
+      [
         expect.objectContaining({
           messageId: 'msg-user-1',
           role: 'user',
-          taskState: 'dispatched',
+          taskState: 'accepted',
           metadata: expect.objectContaining({
             source: 'backend.respond.openclaw',
             pendingAssistantMessageId: 'msg-assistant-1',
           }),
         }),
-        expect.objectContaining({
-          messageId: 'msg-assistant-1',
-          role: 'assistant',
-          taskState: 'dispatched',
-        }),
-      ]),
+      ],
     );
   });
 
