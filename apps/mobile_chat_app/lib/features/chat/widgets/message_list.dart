@@ -230,14 +230,10 @@ class _MessageListState extends State<MessageList> {
                           textColor: Theme.of(context).colorScheme.onPrimary,
                         )
                       else
-                        Text(
-                          msg.content,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
+                        _AssistantMarkdownText(
+                          text: msg.content,
+                          textColor: Theme.of(context).colorScheme.onSurface,
+                          textStyle: Theme.of(context).textTheme.bodyMedium,
                         ),
                       if (msg.isStreaming)
                         Padding(
@@ -321,6 +317,177 @@ class _MessageListState extends State<MessageList> {
       ),
     );
   }
+}
+
+class _AssistantMarkdownText extends StatelessWidget {
+  const _AssistantMarkdownText({
+    required this.text,
+    required this.textColor,
+    required this.textStyle,
+  });
+
+  final String text;
+  final Color textColor;
+  final TextStyle? textStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = (textStyle ?? const TextStyle()).copyWith(
+      color: textColor,
+    );
+    final lines = text.split('\n');
+    if (lines.isEmpty) {
+      return Text(text, style: baseStyle);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: lines.map((line) {
+        final block = _MarkdownBlock.tryParse(line);
+        final lineStyle = block.type == _MarkdownBlockType.heading
+            ? baseStyle.copyWith(fontWeight: FontWeight.w700)
+            : baseStyle;
+        final inlineSpans = _parseInlineMarkdown(
+          block.text,
+          baseStyle: lineStyle,
+          headingLike: false,
+        );
+        if (block.type == _MarkdownBlockType.unorderedList ||
+            block.type == _MarkdownBlockType.orderedList) {
+          return Padding(
+            padding: const EdgeInsets.only(left: BricksSpacing.md),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  block.marker,
+                  style: lineStyle,
+                ),
+                const SizedBox(width: BricksSpacing.xs),
+                Expanded(child: Text.rich(TextSpan(children: inlineSpans))),
+              ],
+            ),
+          );
+        }
+
+        return Text.rich(TextSpan(children: inlineSpans));
+      }).toList(growable: false),
+    );
+  }
+}
+
+enum _MarkdownBlockType { paragraph, heading, unorderedList, orderedList }
+
+class _MarkdownBlock {
+  const _MarkdownBlock({
+    required this.type,
+    required this.text,
+    this.marker = '',
+  });
+
+  final _MarkdownBlockType type;
+  final String text;
+  final String marker;
+
+  static final RegExp _headingPattern = RegExp(r'^\s{0,3}(#{1,6})\s+(.*)$');
+  static final RegExp _unorderedListPattern = RegExp(r'^\s*([-*+])\s+(.*)$');
+  static final RegExp _orderedListPattern = RegExp(r'^\s*(\d+)\.\s+(.*)$');
+
+  static _MarkdownBlock tryParse(String line) {
+    final headingMatch = _headingPattern.firstMatch(line);
+    if (headingMatch != null) {
+      return _MarkdownBlock(
+        type: _MarkdownBlockType.heading,
+        text: headingMatch.group(2) ?? '',
+      );
+    }
+
+    final unorderedMatch = _unorderedListPattern.firstMatch(line);
+    if (unorderedMatch != null) {
+      return _MarkdownBlock(
+        type: _MarkdownBlockType.unorderedList,
+        marker: unorderedMatch.group(1) ?? '•',
+        text: unorderedMatch.group(2) ?? '',
+      );
+    }
+
+    final orderedMatch = _orderedListPattern.firstMatch(line);
+    if (orderedMatch != null) {
+      return _MarkdownBlock(
+        type: _MarkdownBlockType.orderedList,
+        marker: '${orderedMatch.group(1)}.',
+        text: orderedMatch.group(2) ?? '',
+      );
+    }
+
+    return _MarkdownBlock(type: _MarkdownBlockType.paragraph, text: line);
+  }
+}
+
+List<InlineSpan> _parseInlineMarkdown(
+  String source, {
+  required TextStyle baseStyle,
+  required bool headingLike,
+}) {
+  if (source.isEmpty) {
+    return <InlineSpan>[
+      TextSpan(text: '', style: _styleFor(baseStyle, false, false, headingLike))
+    ];
+  }
+
+  final spans = <InlineSpan>[];
+  final buffer = StringBuffer();
+  var bold = false;
+  var italic = false;
+  var i = 0;
+
+  void flush() {
+    if (buffer.isEmpty) return;
+    spans.add(
+      TextSpan(
+        text: buffer.toString(),
+        style: _styleFor(baseStyle, bold, italic, headingLike),
+      ),
+    );
+    buffer.clear();
+  }
+
+  while (i < source.length) {
+    if (i + 1 < source.length) {
+      final pair = source.substring(i, i + 2);
+      if (pair == '**' || pair == '__') {
+        flush();
+        bold = !bold;
+        i += 2;
+        continue;
+      }
+    }
+    final char = source[i];
+    if (char == '*' || char == '_') {
+      flush();
+      italic = !italic;
+      i++;
+      continue;
+    }
+    buffer.write(char);
+    i++;
+  }
+
+  flush();
+  return spans;
+}
+
+TextStyle _styleFor(
+  TextStyle baseStyle,
+  bool isBold,
+  bool isItalic,
+  bool headingLike,
+) {
+  return baseStyle.copyWith(
+    fontWeight:
+        (headingLike || isBold) ? FontWeight.w700 : baseStyle.fontWeight,
+    fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+  );
 }
 
 class _MessageExpandToggle extends StatefulWidget {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:design_system/design_system.dart';
 import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
@@ -215,6 +216,77 @@ void main() {
 
       expect(assistantBox.size.width, greaterThan(userBox.size.width));
       expect(assistantBox.size.width, greaterThanOrEqualTo(330));
+    });
+  });
+
+  group('Assistant markdown rendering', () {
+    testWidgets(
+        'renders markdown heading without heading marker and without size increase',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-markdown-heading',
+        role: 'assistant',
+        content: '# Heading line\nnormal paragraph',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('# Heading line'), findsNothing);
+      expect(find.text('Heading line'), findsOneWidget);
+
+      final richTexts = tester.widgetList<RichText>(find.byType(RichText));
+      RichText? headingRichText;
+      RichText? paragraphRichText;
+      for (final richText in richTexts) {
+        final span = richText.text as TextSpan;
+        final plain = span.toPlainText();
+        if (plain == 'Heading line') {
+          headingRichText = richText;
+        }
+        if (plain == 'normal paragraph') {
+          paragraphRichText = richText;
+        }
+      }
+
+      expect(headingRichText, isNotNull);
+      expect(paragraphRichText, isNotNull);
+
+      final headingSpan = headingRichText!.text as TextSpan;
+      final paragraphSpan = paragraphRichText!.text as TextSpan;
+      final headingStyle =
+          headingSpan.children?.first.style ?? headingSpan.style!;
+      final paragraphStyle =
+          paragraphSpan.children?.first.style ?? paragraphSpan.style!;
+
+      expect(headingStyle.fontSize, paragraphStyle.fontSize);
+    });
+
+    testWidgets('renders markdown list items with left indentation',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-markdown-list',
+        role: 'assistant',
+        content: '- first item',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pumpAndSettle();
+
+      final markerFinder = find.text('-');
+      expect(markerFinder, findsOneWidget);
+
+      final padding = tester.widget<Padding>(
+        find
+            .ancestor(
+              of: markerFinder,
+              matching: find.byType(Padding),
+            )
+            .first,
+      );
+      expect(padding.padding, const EdgeInsets.only(left: BricksSpacing.md));
     });
   });
 }
