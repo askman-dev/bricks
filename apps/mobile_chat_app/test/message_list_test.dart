@@ -253,14 +253,27 @@ void main() {
       expect(headingRichText, isNotNull);
       expect(paragraphRichText, isNotNull);
 
-      final headingSpan = headingRichText!.text as TextSpan;
-      final paragraphSpan = paragraphRichText!.text as TextSpan;
-      final headingStyle =
-          headingSpan.children?.first.style ?? headingSpan.style!;
-      final paragraphStyle =
-          paragraphSpan.children?.first.style ?? paragraphSpan.style!;
+      // Flutter wraps the TextSpan passed to Text.rich in an extra level with
+      // the effective text style, so we traverse to the first leaf span that
+      // carries a non-null style to reach the style actually applied by our
+      // markdown renderer.
+      TextStyle? firstLeafStyle(InlineSpan span) {
+        if (span is TextSpan) {
+          if (span.children != null && span.children!.isNotEmpty) {
+            return firstLeafStyle(span.children!.first);
+          }
+          return span.style;
+        }
+        return null;
+      }
 
-      expect(headingStyle.fontSize, paragraphStyle.fontSize);
+      final headingStyle = firstLeafStyle(headingRichText!.text);
+      final paragraphStyle = firstLeafStyle(paragraphRichText!.text);
+
+      expect(headingStyle, isNotNull);
+      expect(paragraphStyle, isNotNull);
+      expect(headingStyle!.fontSize, paragraphStyle!.fontSize);
+      expect(headingStyle.fontWeight, FontWeight.w700);
     });
 
     testWidgets('renders markdown list items with left indentation',

@@ -335,10 +335,10 @@ class _AssistantMarkdownText extends StatelessWidget {
     final baseStyle = (textStyle ?? const TextStyle()).copyWith(
       color: textColor,
     );
-    final lines = text.split('\n');
-    if (lines.isEmpty) {
+    if (text.isEmpty) {
       return Text(text, style: baseStyle);
     }
+    final lines = text.split('\n');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -456,18 +456,26 @@ List<InlineSpan> _parseInlineMarkdown(
     if (i + 1 < source.length) {
       final pair = source.substring(i, i + 2);
       if (pair == '**' || pair == '__') {
-        flush();
-        bold = !bold;
-        i += 2;
-        continue;
+        // Only treat as a delimiter when toggling off (already open) or
+        // when a matching closing pair exists later in the string.
+        if (bold || source.indexOf(pair, i + 2) != -1) {
+          flush();
+          bold = !bold;
+          i += 2;
+          continue;
+        }
       }
     }
     final char = source[i];
     if (char == '*' || char == '_') {
-      flush();
-      italic = !italic;
-      i++;
-      continue;
+      // Only treat as a delimiter when toggling off (already open) or
+      // when a matching closing character exists later in the string.
+      if (italic || source.indexOf(char, i + 1) != -1) {
+        flush();
+        italic = !italic;
+        i++;
+        continue;
+      }
     }
     buffer.write(char);
     i++;
@@ -486,7 +494,7 @@ TextStyle _styleFor(
   return baseStyle.copyWith(
     fontWeight:
         (headingLike || isBold) ? FontWeight.w700 : baseStyle.fontWeight,
-    fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+    fontStyle: isItalic ? FontStyle.italic : baseStyle.fontStyle,
   );
 }
 
