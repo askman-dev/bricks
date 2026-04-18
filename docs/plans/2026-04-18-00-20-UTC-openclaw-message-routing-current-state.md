@@ -2,11 +2,9 @@
 
 ## Background
 
-为避免历史方案并存造成误解，本文件合并并替代以下旧文档中的阶段性结论：
-- `2026-04-17-09-30-UTC-openclaw-web-read-state-test.md`
-- `2026-04-17-10-25-UTC-openclaw-read-state-and-placeholder-removal.md`
-- `2026-04-17-11-15-UTC-openclaw-platform-events-filter-investigation.md`
-- `2026-04-17-11-50-UTC-openclaw-full-flow-test-coverage-review.md`
+为避免历史方案并存造成误解，本文件统一承接 2026-04-17 这一组 OpenClaw 消息路由调整的阶段性结论。
+此前对应的阶段性计划文档已从 `docs/plans/` 中移除，因此此处不再保留旧文件名列表，避免形成失效引用。
+本文件即为该主题当前唯一保留且持续维护的有效基线。
 
 ## Goals
 

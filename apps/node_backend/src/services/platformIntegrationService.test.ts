@@ -133,6 +133,7 @@ describe('platformIntegrationService', () => {
     const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("SET task_state = 'completed'");
     expect(sql).toContain("AND task_state IN ('accepted', 'dispatched')");
-    expect(params).toEqual(['msg-user-1', 5, 'plugin_local_main', 'u-1']);
+    expect(sql).toContain('UNNEST($1::text[], $2::int[])');
+    expect(params).toEqual([['msg-user-1'], [5], 'plugin_local_main', 'u-1']);
   });
 });
