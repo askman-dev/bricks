@@ -156,8 +156,17 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.byTooltip('Router settings'), findsOneWidget);
-      expect(find.byType(PopupMenuButton<ComposerMenuAction>), findsOneWidget);
+      final routerActionFinder = find.byTooltip('Router settings');
+      final menuButtonFinder =
+          find.byType(PopupMenuButton<ComposerMenuAction>);
+
+      expect(routerActionFinder, findsOneWidget);
+      expect(menuButtonFinder, findsOneWidget);
+
+      final routerActionPosition = tester.getTopLeft(routerActionFinder);
+      final menuButtonPosition = tester.getTopLeft(menuButtonFinder);
+
+      expect(routerActionPosition.dx, lessThan(menuButtonPosition.dx));
     });
   });
 
