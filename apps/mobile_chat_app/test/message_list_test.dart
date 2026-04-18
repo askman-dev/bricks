@@ -168,6 +168,24 @@ void main() {
     });
   });
 
+  testWidgets('does not render a bubble decoration for assistant messages',
+      (tester) async {
+    final assistant = ChatMessage(
+      messageId: 'assistant-plain',
+      role: 'assistant',
+      content: 'plain assistant content',
+      timestamp: DateTime.utc(2026, 1, 1),
+    );
+
+    await tester.pumpWidget(_build([assistant]));
+    await tester.pumpAndSettle();
+
+    final assistantContainer = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('bubble-assistant-plain')),
+    );
+    expect(assistantContainer.decoration, isNull);
+  });
+
   group('MessageList bubble width', () {
     testWidgets(
         'assistant bubble uses full list width while user stays compact',
@@ -196,7 +214,7 @@ void main() {
       );
 
       expect(assistantBox.size.width, greaterThan(userBox.size.width));
-      expect(assistantBox.size.width, greaterThanOrEqualTo(320));
+      expect(assistantBox.size.width, greaterThanOrEqualTo(330));
     });
   });
 }
