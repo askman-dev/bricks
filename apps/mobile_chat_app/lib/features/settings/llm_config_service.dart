@@ -298,7 +298,7 @@ class LlmConfigService {
           : normalizedSlotIdForModel(defaultModel),
       provider: provider,
       baseUrl: (map['endpoint'] as String?) ?? _defaultBaseUrl(provider),
-      apiKey: '',
+      apiKey: ((map['api_key'] as String?) ?? '').trim(),
       defaultModel: defaultModel,
       models: models,
       isDefault: _parseIsDefaultValue(config['is_default']),
