@@ -157,11 +157,12 @@ export async function ackPlatformEvents(params: {
     throw new Error('INVALID_ACKED_EVENT_IDS');
   }
 
+  // Deduplicate to prevent redundant DB updates for duplicate event IDs in the payload.
   const ackedMessages = Array.from(
     new Map(
-      (parsedAckedMessages as { messageId: string; writeSeq: number }[]).map(
-        (item) => [`${item.messageId}:${item.writeSeq}`, item] as const,
-      ),
+      parsedAckedMessages
+        .filter((item): item is { messageId: string; writeSeq: number } => item !== null)
+        .map((item) => [`${item.messageId}:${item.writeSeq}`, item] as const),
     ).values(),
   );
 
