@@ -194,7 +194,7 @@ class _MessageListState extends State<MessageList> {
                   ),
                 Container(
                   key: ValueKey<String>(
-                    'bubble-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                    'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
                   ),
                   margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
                   padding: isUser
