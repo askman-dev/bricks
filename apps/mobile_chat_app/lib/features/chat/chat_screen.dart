@@ -1107,43 +1107,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scheduleSync(triggerNow ? Duration.zero : _nextSyncDelay);
   }
 
-  ChatTaskState? _normalizedServerTaskState(
-    ChatMessage message, {
-    ChatTaskState? fallback,
-  }) {
-    if (message.taskState != null) return message.taskState;
-    if (message.role == 'assistant' && message.content.trim().isNotEmpty) {
-      return ChatTaskState.completed;
-    }
-    return fallback;
-  }
-
-  ChatMessage _mergeServerMessage(ChatMessage current, ChatMessage incoming) {
-    return incoming.copyWith(
-      agentId: incoming.agentId ?? current.agentId,
-      agentName: incoming.agentName ?? current.agentName,
-      idempotencyKey: current.idempotencyKey,
-      acknowledgedAt: incoming.acknowledgedAt ?? current.acknowledgedAt,
-      checkpointCursor: incoming.checkpointCursor ?? current.checkpointCursor,
-      resolvedBotId: incoming.resolvedBotId ?? current.resolvedBotId,
-      resolvedSkillId: incoming.resolvedSkillId ?? current.resolvedSkillId,
-      arbitrationMode: current.arbitrationMode,
-      fallbackToDefaultBot: current.fallbackToDefaultBot,
-      decisionReason: current.decisionReason,
-      traceId: current.traceId,
-      tieDetected: current.tieDetected,
-      tieBotIds: current.tieBotIds,
-      selectedScore: current.selectedScore,
-      candidateScoreSummary: current.candidateScoreSummary,
-      isStreaming: false,
-      taskState: _normalizedServerTaskState(
-        incoming,
-        fallback: current.taskState,
-      ),
-    );
-  }
-
-
   List<ChatMessage> _mergeSyncedMessages(
     List<ChatMessage> current,
     List<ChatMessage> incoming,
@@ -1160,12 +1123,12 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final message in incoming) {
       final normalized = message.copyWith(
         isStreaming: false,
-        taskState: _normalizedServerTaskState(message),
+        taskState: normalizedServerTaskState(message),
       );
       final messageId = normalized.messageId;
       if (messageId != null && byId.containsKey(messageId)) {
         final index = byId[messageId]!;
-        merged[index] = _mergeServerMessage(merged[index], normalized);
+        merged[index] = mergeServerMessage(merged[index], normalized);
         continue;
       }
       merged.add(normalized);
