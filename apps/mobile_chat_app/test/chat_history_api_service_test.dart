@@ -52,6 +52,42 @@ void main() {
     expect(snapshot.lastSeqId, equals(2));
   });
 
+  test('sorts loaded history by createdAt to keep chronology stable', () async {
+    final client = MockClient((request) async {
+      expect(request.method, equals('GET'));
+      return http.Response(
+        jsonEncode({
+          'messages': [
+            {
+              'messageId': 'assistant-late',
+              'role': 'assistant',
+              'content': 'openclaw delayed reply',
+              'createdAt': '2026-04-19T11:38:15.000Z',
+            },
+            {
+              'messageId': 'user-earlier',
+              'role': 'user',
+              'content': 'return to default route',
+              'createdAt': '2026-04-19T11:38:10.000Z',
+            },
+          ],
+          'lastSeqId': 9,
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final snapshot = await service.load(
+      token: 'token-1',
+      sessionId: 'session:default:main',
+    );
+
+    expect(snapshot.messages, hasLength(2));
+    expect(snapshot.messages.first.messageId, equals('user-earlier'));
+    expect(snapshot.messages.last.messageId, equals('assistant-late'));
+  });
+
   test('accepts task and upserts messages', () async {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/tasks/accept')) {
@@ -104,8 +140,8 @@ void main() {
       final client = MockClient((request) async {
         expect(request.url.path.endsWith('/messages/batch'), isTrue);
         final decoded = jsonDecode(request.body) as Map<String, dynamic>;
-        final messages = (decoded['messages'] as List)
-            .cast<Map<String, dynamic>>();
+        final messages =
+            (decoded['messages'] as List).cast<Map<String, dynamic>>();
         expect(messages, hasLength(1));
         expect(messages.single['messageId'], equals('msg-user'));
         return http.Response(jsonEncode({'lastSeqId': 8}), 200);

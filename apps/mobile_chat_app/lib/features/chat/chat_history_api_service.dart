@@ -62,8 +62,8 @@ class ChatAcceptedTask {
 
 class ChatHistoryApiService {
   ChatHistoryApiService({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client(),
-      _ownsHttpClient = httpClient == null;
+      : _httpClient = httpClient ?? http.Client(),
+        _ownsHttpClient = httpClient == null;
 
   final http.Client _httpClient;
   final bool _ownsHttpClient;
@@ -90,12 +90,12 @@ class ChatHistoryApiService {
   String get _base => LlmConfigService.resolveBaseUrl();
 
   Uri _historyUri(String sessionId, {required int limit}) => Uri.parse(
-    '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
-  );
+        '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
+      );
 
   Uri _syncUri(String sessionId, {required int afterSeq}) => Uri.parse(
-    '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
-  );
+        '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
+      );
 
   Uri get _acceptTaskUri => Uri.parse('$_base/api/chat/tasks/accept');
 
@@ -109,6 +109,18 @@ class ChatHistoryApiService {
       if (state.name == value) return state;
     }
     return null;
+  }
+
+  int _compareMessagesByCreatedTime(ChatMessage a, ChatMessage b) {
+    final aTime = a.createdAt ?? a.timestamp;
+    final bTime = b.createdAt ?? b.timestamp;
+    final byTime = aTime.compareTo(bTime);
+    if (byTime != 0) return byTime;
+    if (a.role != b.role) {
+      if (a.role == 'user') return -1;
+      if (b.role == 'user') return 1;
+    }
+    return (a.messageId ?? '').compareTo(b.messageId ?? '');
   }
 
   Future<List<ChatPersistedScope>> loadScopes({required String token}) async {
@@ -158,21 +170,20 @@ class ChatHistoryApiService {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .map((item) {
-          final scopeType = chatScopeTypeFromApi(item['scopeType'] as String?);
-          if (scopeType == null) {
-            throw const FormatException('Invalid scopeType');
-          }
-          return ChatScopeSetting(
-            scopeType: scopeType,
-            channelId: (item['channelId'] as String?) ?? 'default',
-            threadId: item['threadId'] as String?,
-            router: chatRouterFromApi(item['router'] as String?),
-            updatedAt: item['updatedAt'] is String
-                ? DateTime.tryParse(item['updatedAt'] as String)
-                : null,
-          );
-        })
-        .toList(growable: false);
+      final scopeType = chatScopeTypeFromApi(item['scopeType'] as String?);
+      if (scopeType == null) {
+        throw const FormatException('Invalid scopeType');
+      }
+      return ChatScopeSetting(
+        scopeType: scopeType,
+        channelId: (item['channelId'] as String?) ?? 'default',
+        threadId: item['threadId'] as String?,
+        router: chatRouterFromApi(item['router'] as String?),
+        updatedAt: item['updatedAt'] is String
+            ? DateTime.tryParse(item['updatedAt'] as String)
+            : null,
+      );
+    }).toList(growable: false);
   }
 
   Future<ChatHistorySnapshot> load({
@@ -199,6 +210,7 @@ class ChatHistoryApiService {
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
+    messages.sort(_compareMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,
@@ -229,6 +241,7 @@ class ChatHistoryApiService {
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
+    messages.sort(_compareMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,
@@ -280,9 +293,8 @@ class ChatHistoryApiService {
     }
 
     final raw = jsonDecode(response.body);
-    final map = raw is Map
-        ? Map<String, dynamic>.from(raw)
-        : const <String, dynamic>{};
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
     return ChatRespondResult(
       text: (map['text'] as String?) ?? '',
       lastSeqId: (map['lastSeqId'] as num?)?.toInt() ?? 0,
@@ -347,9 +359,8 @@ class ChatHistoryApiService {
     }
 
     final raw = jsonDecode(response.body);
-    final map = raw is Map
-        ? Map<String, dynamic>.from(raw)
-        : const <String, dynamic>{};
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
     return ChatAcceptedTask(
       taskId: (map['taskId'] as String?) ?? taskId,
       sessionId: (map['sessionId'] as String?) ?? scope.sessionId,
@@ -365,10 +376,9 @@ class ChatHistoryApiService {
     // meaningful content.
     return messages
         .where(
-          (message) =>
-              !(message.role == 'assistant' &&
-                  message.isStreaming &&
-                  message.content.trim().isEmpty),
+          (message) => !(message.role == 'assistant' &&
+              message.isStreaming &&
+              message.content.trim().isEmpty),
         )
         .toList(growable: false);
   }
