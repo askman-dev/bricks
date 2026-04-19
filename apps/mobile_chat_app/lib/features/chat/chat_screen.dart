@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
+import 'chat_message_sort.dart';
 
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
@@ -1106,54 +1107,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scheduleSync(triggerNow ? Duration.zero : _nextSyncDelay);
   }
 
-  ChatTaskState? _normalizedServerTaskState(
-    ChatMessage message, {
-    ChatTaskState? fallback,
-  }) {
-    if (message.taskState != null) return message.taskState;
-    if (message.role == 'assistant' && message.content.trim().isNotEmpty) {
-      return ChatTaskState.completed;
-    }
-    return fallback;
-  }
-
-  ChatMessage _mergeServerMessage(ChatMessage current, ChatMessage incoming) {
-    return incoming.copyWith(
-      agentId: incoming.agentId ?? current.agentId,
-      agentName: incoming.agentName ?? current.agentName,
-      idempotencyKey: current.idempotencyKey,
-      acknowledgedAt: incoming.acknowledgedAt ?? current.acknowledgedAt,
-      checkpointCursor: incoming.checkpointCursor ?? current.checkpointCursor,
-      resolvedBotId: incoming.resolvedBotId ?? current.resolvedBotId,
-      resolvedSkillId: incoming.resolvedSkillId ?? current.resolvedSkillId,
-      arbitrationMode: current.arbitrationMode,
-      fallbackToDefaultBot: current.fallbackToDefaultBot,
-      decisionReason: current.decisionReason,
-      traceId: current.traceId,
-      tieDetected: current.tieDetected,
-      tieBotIds: current.tieBotIds,
-      selectedScore: current.selectedScore,
-      candidateScoreSummary: current.candidateScoreSummary,
-      isStreaming: false,
-      taskState: _normalizedServerTaskState(
-        incoming,
-        fallback: current.taskState,
-      ),
-    );
-  }
-
-  int _compareChatMessages(ChatMessage a, ChatMessage b) {
-    final aTime = a.createdAt ?? a.timestamp;
-    final bTime = b.createdAt ?? b.timestamp;
-    final byTime = aTime.compareTo(bTime);
-    if (byTime != 0) return byTime;
-    if (a.role != b.role) {
-      if (a.role == 'user') return -1;
-      if (b.role == 'user') return 1;
-    }
-    return (a.messageId ?? '').compareTo(b.messageId ?? '');
-  }
-
   List<ChatMessage> _mergeSyncedMessages(
     List<ChatMessage> current,
     List<ChatMessage> incoming,
@@ -1170,12 +1123,12 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final message in incoming) {
       final normalized = message.copyWith(
         isStreaming: false,
-        taskState: _normalizedServerTaskState(message),
+        taskState: normalizedServerTaskState(message),
       );
       final messageId = normalized.messageId;
       if (messageId != null && byId.containsKey(messageId)) {
         final index = byId[messageId]!;
-        merged[index] = _mergeServerMessage(merged[index], normalized);
+        merged[index] = mergeServerMessage(merged[index], normalized);
         continue;
       }
       merged.add(normalized);
@@ -1184,7 +1137,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    merged.sort(_compareChatMessages);
+    merged.sort(compareChatMessagesByCreatedTime);
     return merged;
   }
 
