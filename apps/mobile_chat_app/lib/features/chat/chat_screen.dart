@@ -87,6 +87,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, ChatRouter> _channelRouters = {};
   final Map<String, ChatRouter> _threadRouters = {};
   int _respondGeneration = 0;
+  int _idCounter = 0;
 
   @override
   void initState() {
@@ -174,12 +175,10 @@ class _ChatScreenState extends State<ChatScreen> {
         _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
         _loadingAgents = false;
         _llmConfigs = llmConfigs;
-        _sessionConfigSlotId ??= llmConfigs.isNotEmpty
-            ? defaultConfig.slotId
-            : null;
-        _sessionModelOverride ??= llmConfigs.isNotEmpty
-            ? defaultConfig.defaultModel
-            : null;
+        _sessionConfigSlotId ??=
+            llmConfigs.isNotEmpty ? defaultConfig.slotId : null;
+        _sessionModelOverride ??=
+            llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
         _loadingLlmConfigs = false;
         _authToken = authToken;
         _channels
@@ -265,8 +264,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   AgentSettings _settingsForAgent(AgentDefinition? agent) {
     final selectedConfig = _activeLlmConfig;
-    final selectedModel =
-        _sessionModelOverride ??
+    final selectedModel = _sessionModelOverride ??
         selectedConfig?.defaultModel ??
         _resolveModelId(agent?.model);
     return AgentSettings(
@@ -314,8 +312,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    var selectedSlot =
-        _sessionConfigSlotId ??
+    var selectedSlot = _sessionConfigSlotId ??
         _llmConfigs
             .firstWhere((c) => c.isDefault, orElse: () => _llmConfigs.first)
             .slotId;
@@ -440,7 +437,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _newId(String prefix) {
     final ms = DateTime.now().millisecondsSinceEpoch;
-    return '$prefix-$ms';
+    return '$prefix-$ms-${_idCounter++}';
   }
 
   String _timestampName({String prefix = 'channel'}) {
@@ -521,8 +518,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final current = byChannel[scope.channelId];
       final currentAt = current?.lastActivityAt;
       final nextAt = scope.lastActivityAt;
-      final shouldReplace =
-          current == null ||
+      final shouldReplace = current == null ||
           (nextAt != null && (currentAt == null || nextAt.isAfter(currentAt)));
       if (shouldReplace) byChannel[scope.channelId] = scope;
     }
@@ -734,8 +730,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final sections = _channelSubSections[resolvedChannelId] ?? const [];
     final restoredSubSection =
         (remembered != null && sections.any((s) => s.id == remembered))
-        ? remembered
-        : 'main';
+            ? remembered
+            : 'main';
     _cancelSyncPolling();
     setState(() {
       _activeChannelId = resolvedChannelId;
@@ -771,9 +767,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   ChatSessionScope get _activeScope => ChatSessionScope(
-    channelId: _activeChannelId,
-    threadId: _activeSubSection,
-  );
+        channelId: _activeChannelId,
+        threadId: _activeSubSection,
+      );
 
   String get _sessionIdForScope => _activeScope.sessionId;
 
@@ -1011,10 +1007,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (latest == null) return;
     setState(() {
       _subSectionLastMessageAt[_subSectionKey(
-            resolvedChannelId,
-            resolvedSubSection,
-          )] =
-          latest;
+        resolvedChannelId,
+        resolvedSubSection,
+      )] = latest;
     });
   }
 
@@ -1047,13 +1042,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _chatHistoryApiService
           .upsertMessages(token: token, messages: _messages)
           .then((lastSeq) {
-            if (!mounted || lastSeq <= 0) return;
-            // Only advance the cursor, never move it backwards.
-            setState(() {
-              if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
-            });
-          })
-          .catchError((_) {}),
+        if (!mounted || lastSeq <= 0) return;
+        // Only advance the cursor, never move it backwards.
+        setState(() {
+          if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
+        });
+      }).catchError((_) {}),
     );
   }
 
@@ -1296,18 +1290,16 @@ class _ChatScreenState extends State<ChatScreen> {
       messageId: message.messageId ?? _newId('msg'),
       channelId: message.channelId ?? _activeScope.channelId,
       sessionId: message.sessionId ?? _activeScope.sessionId,
-      threadId:
-          message.threadId ??
+      threadId: message.threadId ??
           (_activeScope.threadId == 'main' ? null : _activeScope.threadId),
     );
     final messageTime = normalized.createdAt ?? normalized.timestamp;
     setState(() {
       _messages.add(normalized);
       _subSectionLastMessageAt[_subSectionKey(
-            _activeScope.channelId,
-            _activeScope.threadId,
-          )] =
-          messageTime;
+        _activeScope.channelId,
+        _activeScope.threadId,
+      )] = messageTime;
     });
     final shouldPersistImmediately =
         normalized.role == 'user' || (!normalized.isStreaming);
@@ -1315,14 +1307,33 @@ class _ChatScreenState extends State<ChatScreen> {
     return _messages.length - 1;
   }
 
+  int _indexOfMessageId(String? messageId) {
+    if (messageId == null || messageId.isEmpty) return -1;
+    return _messages.indexWhere((message) => message.messageId == messageId);
+  }
+
+  bool _updateMessageById(
+    String? messageId,
+    ChatMessage Function(ChatMessage current) updater, {
+    void Function()? onStateUpdate,
+  }) {
+    if (!mounted) return false;
+    final targetIndex = _indexOfMessageId(messageId);
+    if (targetIndex < 0) return false;
+    setState(() {
+      _messages[targetIndex] = updater(_messages[targetIndex]);
+      onStateUpdate?.call();
+    });
+    return true;
+  }
+
   void _sendMessage(String text) {
     if (text.trim().isEmpty || _isSending) return;
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
-    final positiveCandidates = activeParticipants
-        .where((item) => item.probability > 1e-9)
-        .toList();
+    final positiveCandidates =
+        activeParticipants.where((item) => item.probability > 1e-9).toList();
     final arbitrationMode = positiveCandidates.length > 1;
     final arbitration = _arbitrationEngine.resolve(
       candidates: positiveCandidates
@@ -1341,6 +1352,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final taskId = _newId('task');
     final idempotencyKey = _newId('idem');
     final traceId = _newId('trace');
+    final userMessageId = _newId('msg');
+    final assistantMessageId = _newId('msg');
     final envelope = ChatTaskEnvelope(
       taskId: taskId,
       idempotencyKey: idempotencyKey,
@@ -1358,6 +1371,7 @@ class _ChatScreenState extends State<ChatScreen> {
         .join(', ');
     _appendMessage(
       ChatMessage(
+        messageId: userMessageId,
         role: 'user',
         content: text,
         taskId: taskId,
@@ -1380,8 +1394,9 @@ class _ChatScreenState extends State<ChatScreen> {
         traceId: arbitrationMode ? traceId : null,
       ),
     );
-    final agentMessageIndex = _appendMessage(
+    _appendMessage(
       ChatMessage(
+        messageId: assistantMessageId,
         role: 'assistant',
         content: '',
         agentId: resolvedBotId,
@@ -1416,13 +1431,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final token = _authToken;
     final runtimeSettings = _settingsForAgent(agent);
     if (token == null || token.isEmpty) {
-      if (mounted && agentMessageIndex < _messages.length) {
-        setState(() {
-          _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+      final updated = _updateMessageById(
+        assistantMessageId,
+        (current) {
+          return current.copyWith(
             content: 'Error: Missing auth token',
             isStreaming: false,
             taskState: ChatTaskState.failed,
           );
+        },
+        onStateUpdate: () {
+          _isSending = false;
+          _isStreaming = false;
+        },
+      );
+      if (!updated) {
+        setState(() {
           _isSending = false;
           _isStreaming = false;
         });
@@ -1433,72 +1457,94 @@ class _ChatScreenState extends State<ChatScreen> {
     final generation = ++_respondGeneration;
     _chatHistoryApiService
         .respond(
-          token: token,
-          taskId: taskId,
-          idempotencyKey: idempotencyKey,
-          scope: _activeScope,
-          userMessageId: _messages[agentMessageIndex - 1].messageId!,
-          assistantMessageId: _messages[agentMessageIndex].messageId!,
-          userMessage: text,
-          resolvedBotId: resolvedBotId,
-          resolvedSkillId: resolvedSkillId,
-          provider: runtimeSettings.provider,
-          model: runtimeSettings.model,
-          configId: runtimeSettings.configId,
-          createdAt: envelope.createdAt,
-        )
+      token: token,
+      taskId: taskId,
+      idempotencyKey: idempotencyKey,
+      scope: _activeScope,
+      userMessageId: userMessageId,
+      assistantMessageId: assistantMessageId,
+      userMessage: text,
+      resolvedBotId: resolvedBotId,
+      resolvedSkillId: resolvedSkillId,
+      provider: runtimeSettings.provider,
+      model: runtimeSettings.model,
+      configId: runtimeSettings.configId,
+      createdAt: envelope.createdAt,
+    )
         .then((result) async {
-          if (!mounted || agentMessageIndex >= _messages.length) return;
-          // Ignore stale completions if stop was pressed after this request started.
-          if (generation != _respondGeneration) return;
-          setState(() {
-            _messages[agentMessageIndex] = _messages[agentMessageIndex]
-                .copyWith(
-                  content: result.text,
-                  isStreaming: false,
-                  taskState:
-                      result.taskState ??
-                      (result.isAsync
-                          ? ChatTaskState.dispatched
-                          : ChatTaskState.completed),
-                );
-            if (result.lastSeqId > _lastSyncedSeq) {
-              _lastSyncedSeq = result.lastSeqId;
-            }
-            if (result.isAsync) {
-              _isSending = false;
-              _isStreaming = false;
-            }
-          });
+      if (!mounted) return;
+      // Ignore stale completions if stop was pressed after this request started.
+      if (generation != _respondGeneration) return;
+      final updated = _updateMessageById(
+        assistantMessageId,
+        (current) {
+          return current.copyWith(
+            content: result.text,
+            isStreaming: false,
+            taskState: result.taskState ??
+                (result.isAsync
+                    ? ChatTaskState.dispatched
+                    : ChatTaskState.completed),
+          );
+        },
+        onStateUpdate: () {
+          if (result.lastSeqId > _lastSyncedSeq) {
+            _lastSyncedSeq = result.lastSeqId;
+          }
           if (result.isAsync) {
-            _configureActiveScopeSync();
-            return;
+            _isSending = false;
+            _isStreaming = false;
           }
-          // Backend already persisted both messages; skip redundant client-side
-          // upsert to avoid overwriting backend-only metadata (provider/model/source).
-          if (mounted) {
-            await _handleProactiveResponses(text);
-            setState(() {
-              _isSending = false;
-              _isStreaming = false;
-            });
-          }
-        })
-        .catchError((error) {
-          if (!mounted || agentMessageIndex >= _messages.length) return;
-          if (generation != _respondGeneration) return;
+        },
+      );
+      if (!updated) {
+        setState(() {
+          _isSending = false;
+          _isStreaming = false;
+        });
+        return;
+      }
+      if (result.isAsync) {
+        _configureActiveScopeSync();
+        return;
+      }
+      // Backend already persisted both messages; skip redundant client-side
+      // upsert to avoid overwriting backend-only metadata (provider/model/source).
+      if (mounted) {
+        await _handleProactiveResponses(text);
+        if (mounted) {
           setState(() {
-            _messages[agentMessageIndex] = _messages[agentMessageIndex]
-                .copyWith(
-                  content: 'Error: $error',
-                  isStreaming: false,
-                  taskState: ChatTaskState.failed,
-                );
             _isSending = false;
             _isStreaming = false;
           });
-          _persistActiveScopeMessages(immediate: true);
+        }
+      }
+    }).catchError((error) {
+      if (!mounted) return;
+      if (generation != _respondGeneration) return;
+      final updated = _updateMessageById(
+        assistantMessageId,
+        (current) {
+          return current.copyWith(
+            content: 'Error: $error',
+            isStreaming: false,
+            taskState: ChatTaskState.failed,
+          );
+        },
+        onStateUpdate: () {
+          _isSending = false;
+          _isStreaming = false;
+        },
+      );
+      if (!updated) {
+        setState(() {
+          _isSending = false;
+          _isStreaming = false;
         });
+        return;
+      }
+      _persistActiveScopeMessages(immediate: true);
+    });
   }
 
   void _stopStreaming() {
@@ -1835,7 +1881,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       _activeSubSection == 'main'
                           ? '主区'
                           : (_subSectionNameById(_activeSubSection) ??
-                                _activeSubSection),
+                              _activeSubSection),
                     ),
                     const Icon(Icons.arrow_drop_down),
                   ],
