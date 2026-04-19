@@ -119,6 +119,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final definitions = await _readAgentDefinitions(repo);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
+      List<ChatChannelNameSetting> channelNames = const [];
       if (authToken != null && authToken.isNotEmpty) {
         try {
           persistedScopes = await _chatHistoryApiService.loadScopes(
@@ -140,6 +141,15 @@ class _ChatScreenState extends State<ChatScreen> {
             'loadScopeSettings failed, continuing without router hydration: $e',
           );
         }
+        try {
+          channelNames = await _chatHistoryApiService.loadChannelNames(
+            token: authToken,
+          );
+        } catch (e) {
+          debugPrint(
+            'loadChannelNames failed, continuing without channel name hydration: $e',
+          );
+        }
       }
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
@@ -156,6 +166,10 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       _syncParticipants(definitions);
       final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
+      final restoredNamedChannels = _applyPersistedChannelNames(
+        channels: restoredChannels,
+        channelNames: channelNames,
+      );
       final restoredSubSections = _hydrateSubSectionsFromScopes(
         persistedScopes,
       );
@@ -174,17 +188,15 @@ class _ChatScreenState extends State<ChatScreen> {
         _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
         _loadingAgents = false;
         _llmConfigs = llmConfigs;
-        _sessionConfigSlotId ??= llmConfigs.isNotEmpty
-            ? defaultConfig.slotId
-            : null;
-        _sessionModelOverride ??= llmConfigs.isNotEmpty
-            ? defaultConfig.defaultModel
-            : null;
+        _sessionConfigSlotId ??=
+            llmConfigs.isNotEmpty ? defaultConfig.slotId : null;
+        _sessionModelOverride ??=
+            llmConfigs.isNotEmpty ? defaultConfig.defaultModel : null;
         _loadingLlmConfigs = false;
         _authToken = authToken;
         _channels
           ..clear()
-          ..addAll(restoredChannels);
+          ..addAll(restoredNamedChannels);
         _channelSubSections
           ..clear()
           ..addAll(restoredSubSections);
@@ -265,8 +277,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   AgentSettings _settingsForAgent(AgentDefinition? agent) {
     final selectedConfig = _activeLlmConfig;
-    final selectedModel =
-        _sessionModelOverride ??
+    final selectedModel = _sessionModelOverride ??
         selectedConfig?.defaultModel ??
         _resolveModelId(agent?.model);
     return AgentSettings(
@@ -314,8 +325,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    var selectedSlot =
-        _sessionConfigSlotId ??
+    var selectedSlot = _sessionConfigSlotId ??
         _llmConfigs
             .firstWhere((c) => c.isDefault, orElse: () => _llmConfigs.first)
             .slotId;
@@ -513,6 +523,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return subSections;
   }
 
+  List<ChatChannel> _applyPersistedChannelNames({
+    required List<ChatChannel> channels,
+    required List<ChatChannelNameSetting> channelNames,
+  }) {
+    if (channelNames.isEmpty) return channels;
+    final namesById = <String, String>{
+      for (final item in channelNames) item.channelId: item.displayName,
+    };
+    return channels.map((channel) {
+      final displayName = namesById[channel.id];
+      if (displayName == null || displayName.trim().isEmpty) {
+        return channel;
+      }
+      return ChatChannel(
+        id: channel.id,
+        name: displayName,
+        isDefault: channel.isDefault,
+      );
+    }).toList(growable: false);
+  }
+
   Map<String, String> _hydrateLastActiveSubSectionByChannel(
     List<ChatPersistedScope> scopes,
   ) {
@@ -521,8 +552,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final current = byChannel[scope.channelId];
       final currentAt = current?.lastActivityAt;
       final nextAt = scope.lastActivityAt;
-      final shouldReplace =
-          current == null ||
+      final shouldReplace = current == null ||
           (nextAt != null && (currentAt == null || nextAt.isAfter(currentAt)));
       if (shouldReplace) byChannel[scope.channelId] = scope;
     }
@@ -615,6 +645,16 @@ class _ChatScreenState extends State<ChatScreen> {
             isDefault: existingChannel.isDefault,
           );
         });
+        final token = _authToken;
+        if (token != null && token.isNotEmpty) {
+          unawaited(
+            _chatHistoryApiService.saveChannelName(
+              token: token,
+              channelId: channelId,
+              displayName: name,
+            ),
+          );
+        }
       },
     );
   }
@@ -646,6 +686,16 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     if (wasActive) {
       unawaited(_loadMessagesForActiveScope());
+    }
+    final token = _authToken;
+    if (token != null && token.isNotEmpty) {
+      unawaited(
+        _chatHistoryApiService.saveChannelName(
+          token: token,
+          channelId: channelId,
+          displayName: null,
+        ),
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已归档频道：${channel.name}')),
@@ -734,8 +784,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final sections = _channelSubSections[resolvedChannelId] ?? const [];
     final restoredSubSection =
         (remembered != null && sections.any((s) => s.id == remembered))
-        ? remembered
-        : 'main';
+            ? remembered
+            : 'main';
     _cancelSyncPolling();
     setState(() {
       _activeChannelId = resolvedChannelId;
@@ -771,9 +821,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   ChatSessionScope get _activeScope => ChatSessionScope(
-    channelId: _activeChannelId,
-    threadId: _activeSubSection,
-  );
+        channelId: _activeChannelId,
+        threadId: _activeSubSection,
+      );
 
   String get _sessionIdForScope => _activeScope.sessionId;
 
@@ -1011,10 +1061,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (latest == null) return;
     setState(() {
       _subSectionLastMessageAt[_subSectionKey(
-            resolvedChannelId,
-            resolvedSubSection,
-          )] =
-          latest;
+        resolvedChannelId,
+        resolvedSubSection,
+      )] = latest;
     });
   }
 
@@ -1047,13 +1096,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _chatHistoryApiService
           .upsertMessages(token: token, messages: _messages)
           .then((lastSeq) {
-            if (!mounted || lastSeq <= 0) return;
-            // Only advance the cursor, never move it backwards.
-            setState(() {
-              if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
-            });
-          })
-          .catchError((_) {}),
+        if (!mounted || lastSeq <= 0) return;
+        // Only advance the cursor, never move it backwards.
+        setState(() {
+          if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
+        });
+      }).catchError((_) {}),
     );
   }
 
@@ -1296,18 +1344,16 @@ class _ChatScreenState extends State<ChatScreen> {
       messageId: message.messageId ?? _newId('msg'),
       channelId: message.channelId ?? _activeScope.channelId,
       sessionId: message.sessionId ?? _activeScope.sessionId,
-      threadId:
-          message.threadId ??
+      threadId: message.threadId ??
           (_activeScope.threadId == 'main' ? null : _activeScope.threadId),
     );
     final messageTime = normalized.createdAt ?? normalized.timestamp;
     setState(() {
       _messages.add(normalized);
       _subSectionLastMessageAt[_subSectionKey(
-            _activeScope.channelId,
-            _activeScope.threadId,
-          )] =
-          messageTime;
+        _activeScope.channelId,
+        _activeScope.threadId,
+      )] = messageTime;
     });
     final shouldPersistImmediately =
         normalized.role == 'user' || (!normalized.isStreaming);
@@ -1320,9 +1366,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
-    final positiveCandidates = activeParticipants
-        .where((item) => item.probability > 1e-9)
-        .toList();
+    final positiveCandidates =
+        activeParticipants.where((item) => item.probability > 1e-9).toList();
     final arbitrationMode = positiveCandidates.length > 1;
     final arbitration = _arbitrationEngine.resolve(
       candidates: positiveCandidates
@@ -1433,72 +1478,68 @@ class _ChatScreenState extends State<ChatScreen> {
     final generation = ++_respondGeneration;
     _chatHistoryApiService
         .respond(
-          token: token,
-          taskId: taskId,
-          idempotencyKey: idempotencyKey,
-          scope: _activeScope,
-          userMessageId: _messages[agentMessageIndex - 1].messageId!,
-          assistantMessageId: _messages[agentMessageIndex].messageId!,
-          userMessage: text,
-          resolvedBotId: resolvedBotId,
-          resolvedSkillId: resolvedSkillId,
-          provider: runtimeSettings.provider,
-          model: runtimeSettings.model,
-          configId: runtimeSettings.configId,
-          createdAt: envelope.createdAt,
-        )
+      token: token,
+      taskId: taskId,
+      idempotencyKey: idempotencyKey,
+      scope: _activeScope,
+      userMessageId: _messages[agentMessageIndex - 1].messageId!,
+      assistantMessageId: _messages[agentMessageIndex].messageId!,
+      userMessage: text,
+      resolvedBotId: resolvedBotId,
+      resolvedSkillId: resolvedSkillId,
+      provider: runtimeSettings.provider,
+      model: runtimeSettings.model,
+      configId: runtimeSettings.configId,
+      createdAt: envelope.createdAt,
+    )
         .then((result) async {
-          if (!mounted || agentMessageIndex >= _messages.length) return;
-          // Ignore stale completions if stop was pressed after this request started.
-          if (generation != _respondGeneration) return;
-          setState(() {
-            _messages[agentMessageIndex] = _messages[agentMessageIndex]
-                .copyWith(
-                  content: result.text,
-                  isStreaming: false,
-                  taskState:
-                      result.taskState ??
-                      (result.isAsync
-                          ? ChatTaskState.dispatched
-                          : ChatTaskState.completed),
-                );
-            if (result.lastSeqId > _lastSyncedSeq) {
-              _lastSyncedSeq = result.lastSeqId;
-            }
-            if (result.isAsync) {
-              _isSending = false;
-              _isStreaming = false;
-            }
-          });
-          if (result.isAsync) {
-            _configureActiveScopeSync();
-            return;
-          }
-          // Backend already persisted both messages; skip redundant client-side
-          // upsert to avoid overwriting backend-only metadata (provider/model/source).
-          if (mounted) {
-            await _handleProactiveResponses(text);
-            setState(() {
-              _isSending = false;
-              _isStreaming = false;
-            });
-          }
-        })
-        .catchError((error) {
-          if (!mounted || agentMessageIndex >= _messages.length) return;
-          if (generation != _respondGeneration) return;
-          setState(() {
-            _messages[agentMessageIndex] = _messages[agentMessageIndex]
-                .copyWith(
-                  content: 'Error: $error',
-                  isStreaming: false,
-                  taskState: ChatTaskState.failed,
-                );
-            _isSending = false;
-            _isStreaming = false;
-          });
-          _persistActiveScopeMessages(immediate: true);
+      if (!mounted || agentMessageIndex >= _messages.length) return;
+      // Ignore stale completions if stop was pressed after this request started.
+      if (generation != _respondGeneration) return;
+      setState(() {
+        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+          content: result.text,
+          isStreaming: false,
+          taskState: result.taskState ??
+              (result.isAsync
+                  ? ChatTaskState.dispatched
+                  : ChatTaskState.completed),
+        );
+        if (result.lastSeqId > _lastSyncedSeq) {
+          _lastSyncedSeq = result.lastSeqId;
+        }
+        if (result.isAsync) {
+          _isSending = false;
+          _isStreaming = false;
+        }
+      });
+      if (result.isAsync) {
+        _configureActiveScopeSync();
+        return;
+      }
+      // Backend already persisted both messages; skip redundant client-side
+      // upsert to avoid overwriting backend-only metadata (provider/model/source).
+      if (mounted) {
+        await _handleProactiveResponses(text);
+        setState(() {
+          _isSending = false;
+          _isStreaming = false;
         });
+      }
+    }).catchError((error) {
+      if (!mounted || agentMessageIndex >= _messages.length) return;
+      if (generation != _respondGeneration) return;
+      setState(() {
+        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+          content: 'Error: $error',
+          isStreaming: false,
+          taskState: ChatTaskState.failed,
+        );
+        _isSending = false;
+        _isStreaming = false;
+      });
+      _persistActiveScopeMessages(immediate: true);
+    });
   }
 
   void _stopStreaming() {
@@ -1835,7 +1876,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       _activeSubSection == 'main'
                           ? '主区'
                           : (_subSectionNameById(_activeSubSection) ??
-                                _activeSubSection),
+                              _activeSubSection),
                     ),
                     const Icon(Icons.arrow_drop_down),
                   ],

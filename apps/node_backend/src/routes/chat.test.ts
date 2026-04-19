@@ -11,6 +11,9 @@ const {
   resolveChatRouterMock,
   upsertChatScopeSettingMock,
   deleteChatScopeSettingMock,
+  listChatChannelNamesMock,
+  upsertChatChannelNameMock,
+  deleteChatChannelNameMock,
   generateWithUserConfigMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
@@ -34,6 +37,14 @@ const {
     updatedAt: '2026-04-17T07:00:00.000Z',
   })),
   deleteChatScopeSettingMock: vi.fn(async () => ({ deleted: true })),
+  listChatChannelNamesMock: vi.fn(async () => []),
+  upsertChatChannelNameMock: vi.fn(async () => ({
+    channelId: 'channel-1',
+    displayName: '项目频道',
+    createdAt: '2026-04-18T08:00:00.000Z',
+    updatedAt: '2026-04-18T08:00:00.000Z',
+  })),
+  deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
   generateWithUserConfigMock: vi.fn(async () => ({
     text: 'sync reply',
     provider: 'anthropic',
@@ -56,6 +67,12 @@ vi.mock('../services/chatRouterService.js', () => ({
   listChatScopeSettings: listChatScopeSettingsMock,
   resolveChatRouter: resolveChatRouterMock,
   upsertChatScopeSetting: upsertChatScopeSettingMock,
+}));
+
+vi.mock('../services/chatChannelNameService.js', () => ({
+  deleteChatChannelName: deleteChatChannelNameMock,
+  listChatChannelNames: listChatChannelNamesMock,
+  upsertChatChannelName: upsertChatChannelNameMock,
 }));
 
 vi.mock('../llm/llm_service.js', () => ({
@@ -116,6 +133,9 @@ describe('chat routes', () => {
     resolveChatRouterMock.mockClear();
     upsertChatScopeSettingMock.mockClear();
     deleteChatScopeSettingMock.mockClear();
+    listChatChannelNamesMock.mockClear();
+    upsertChatChannelNameMock.mockClear();
+    deleteChatChannelNameMock.mockClear();
     generateWithUserConfigMock.mockClear();
   });
 
@@ -201,5 +221,60 @@ describe('chat routes', () => {
     expect(limited.status).toBe(429);
     const body = (await limited.json()) as { error?: string };
     expect(body.error).toContain('Too many sync requests');
+  });
+
+  it('lists persisted channel names', async () => {
+    listChatChannelNamesMock.mockResolvedValueOnce([
+      {
+        channelId: 'channel-1',
+        displayName: '重命名频道',
+        createdAt: '2026-04-18T08:00:00.000Z',
+        updatedAt: '2026-04-18T08:01:00.000Z',
+      },
+    ] as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/channel-names`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      channelNames?: Array<{ channelId: string; displayName: string }>;
+    };
+    expect(body.channelNames?.[0]?.channelId).toBe('channel-1');
+    expect(body.channelNames?.[0]?.displayName).toBe('重命名频道');
+  });
+
+  it('upserts channel name when displayName is non-empty', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channelId: 'channel-1',
+        displayName: '  新频道名  ',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(upsertChatChannelNameMock).toHaveBeenCalledWith('user-123', {
+      channelId: 'channel-1',
+      displayName: '新频道名',
+    });
+    expect(deleteChatChannelNameMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes channel name mapping when displayName is null', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channelId: 'channel-1',
+        displayName: null,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(deleteChatChannelNameMock).toHaveBeenCalledWith(
+      'user-123',
+      'channel-1',
+    );
+    expect(upsertChatChannelNameMock).not.toHaveBeenCalled();
   });
 });

@@ -45,6 +45,7 @@ products:
           - 刷新页面后，已发送过消息的频道仍会在侧边栏中显示并可继续会话。
           - 新建频道时必须输入频道名，且重复名称会被拦截。
           - 长按非默认频道会出现“改名/归档”菜单；归档后频道从列表中隐藏。
+          - 长按频道改名后刷新页面，频道名称应保持为用户设置值（由数据库映射恢复）。
           - 顶部标题显示当前频道名且左对齐。
           - 切换 Agent 后仍可继续会话。
           - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
@@ -137,6 +138,7 @@ products:
           - provider 配置缺失时给出明确错误。
           - 使用 API Key + X-Bricks-Plugin-Id 可访问 `/api/v1/platform/events` 并获取 `nextCursor`。
           - `/api/v1/platform/events/ack` 禁止 body 中传 `pluginId`，合法 ACK 可重复调用并返回成功。
+          - 调用 `/api/chat/channel-names` 可保存并读取每个用户的频道自定义名称。
 
   - product_id: node_openclaw_plugin
     name: Node OpenClaw Plugin

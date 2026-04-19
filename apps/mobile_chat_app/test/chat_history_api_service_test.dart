@@ -104,8 +104,8 @@ void main() {
       final client = MockClient((request) async {
         expect(request.url.path.endsWith('/messages/batch'), isTrue);
         final decoded = jsonDecode(request.body) as Map<String, dynamic>;
-        final messages = (decoded['messages'] as List)
-            .cast<Map<String, dynamic>>();
+        final messages =
+            (decoded['messages'] as List).cast<Map<String, dynamic>>();
         expect(messages, hasLength(1));
         expect(messages.single['messageId'], equals('msg-user'));
         return http.Response(jsonEncode({'lastSeqId': 8}), 200);
@@ -331,5 +331,50 @@ void main() {
     expect(settings, hasLength(1));
     expect(settings.single.scopeType, ChatScopeType.channel);
     expect(settings.single.router, ChatRouter.openclaw);
+  });
+
+  test('loads and saves channel name mappings', () async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET') {
+        expect(request.url.path.endsWith('/chat/channel-names'), isTrue);
+        return http.Response(
+          jsonEncode({
+            'channelNames': [
+              {
+                'channelId': 'channel-1',
+                'displayName': 'renamed-channel',
+              },
+            ],
+          }),
+          200,
+        );
+      }
+
+      expect(request.method, equals('PUT'));
+      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(decoded['channelId'], equals('channel-1'));
+      expect(decoded['displayName'], equals('latest-channel-name'));
+      return http.Response(
+        jsonEncode({
+          'setting': {
+            'channelId': 'channel-1',
+            'displayName': 'latest-channel-name',
+          },
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final channelNames = await service.loadChannelNames(token: 'token-1');
+    await service.saveChannelName(
+      token: 'token-1',
+      channelId: 'channel-1',
+      displayName: 'latest-channel-name',
+    );
+
+    expect(channelNames, hasLength(1));
+    expect(channelNames.single.channelId, equals('channel-1'));
+      expect(channelNames.single.displayName, equals('renamed-channel'));
   });
 }

@@ -60,10 +60,20 @@ class ChatAcceptedTask {
   final String acceptedAt;
 }
 
+class ChatChannelNameSetting {
+  const ChatChannelNameSetting({
+    required this.channelId,
+    required this.displayName,
+  });
+
+  final String channelId;
+  final String displayName;
+}
+
 class ChatHistoryApiService {
   ChatHistoryApiService({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client(),
-      _ownsHttpClient = httpClient == null;
+      : _httpClient = httpClient ?? http.Client(),
+        _ownsHttpClient = httpClient == null;
 
   final http.Client _httpClient;
   final bool _ownsHttpClient;
@@ -90,18 +100,19 @@ class ChatHistoryApiService {
   String get _base => LlmConfigService.resolveBaseUrl();
 
   Uri _historyUri(String sessionId, {required int limit}) => Uri.parse(
-    '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
-  );
+        '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
+      );
 
   Uri _syncUri(String sessionId, {required int afterSeq}) => Uri.parse(
-    '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
-  );
+        '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
+      );
 
   Uri get _acceptTaskUri => Uri.parse('$_base/api/chat/tasks/accept');
 
   Uri get _batchMessagesUri => Uri.parse('$_base/api/chat/messages/batch');
   Uri get _scopesUri => Uri.parse('$_base/api/chat/scopes');
   Uri get _scopeSettingsUri => Uri.parse('$_base/api/chat/scope-settings');
+  Uri get _channelNamesUri => Uri.parse('$_base/api/chat/channel-names');
 
   ChatTaskState? _parseTaskState(Object? value) {
     if (value is! String || value.isEmpty) return null;
@@ -158,20 +169,51 @@ class ChatHistoryApiService {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .map((item) {
-          final scopeType = chatScopeTypeFromApi(item['scopeType'] as String?);
-          if (scopeType == null) {
-            throw const FormatException('Invalid scopeType');
-          }
-          return ChatScopeSetting(
-            scopeType: scopeType,
-            channelId: (item['channelId'] as String?) ?? 'default',
-            threadId: item['threadId'] as String?,
-            router: chatRouterFromApi(item['router'] as String?),
-            updatedAt: item['updatedAt'] is String
-                ? DateTime.tryParse(item['updatedAt'] as String)
-                : null,
-          );
-        })
+      final scopeType = chatScopeTypeFromApi(item['scopeType'] as String?);
+      if (scopeType == null) {
+        throw const FormatException('Invalid scopeType');
+      }
+      return ChatScopeSetting(
+        scopeType: scopeType,
+        channelId: (item['channelId'] as String?) ?? 'default',
+        threadId: item['threadId'] as String?,
+        router: chatRouterFromApi(item['router'] as String?),
+        updatedAt: item['updatedAt'] is String
+            ? DateTime.tryParse(item['updatedAt'] as String)
+            : null,
+      );
+    }).toList(growable: false);
+  }
+
+  Future<List<ChatChannelNameSetting>> loadChannelNames({
+    required String token,
+  }) async {
+    final response = await _client.get(
+      _channelNamesUri,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load chat channel names (${response.statusCode})',
+      );
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map) return const [];
+    final map = Map<String, dynamic>.from(raw);
+    return ((map['channelNames'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map(
+          (item) => ChatChannelNameSetting(
+            channelId: (item['channelId'] as String?) ?? '',
+            displayName: (item['displayName'] as String?) ?? '',
+          ),
+        )
+        .where(
+          (item) =>
+              item.channelId.trim().isNotEmpty &&
+              item.displayName.trim().isNotEmpty,
+        )
         .toList(growable: false);
   }
 
@@ -280,9 +322,8 @@ class ChatHistoryApiService {
     }
 
     final raw = jsonDecode(response.body);
-    final map = raw is Map
-        ? Map<String, dynamic>.from(raw)
-        : const <String, dynamic>{};
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
     return ChatRespondResult(
       text: (map['text'] as String?) ?? '',
       lastSeqId: (map['lastSeqId'] as num?)?.toInt() ?? 0,
@@ -318,6 +359,29 @@ class ChatHistoryApiService {
     }
   }
 
+  Future<void> saveChannelName({
+    required String token,
+    required String channelId,
+    String? displayName,
+  }) async {
+    final response = await _client.put(
+      _channelNamesUri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'channelId': channelId,
+        'displayName': displayName?.trim(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to save chat channel name (${response.statusCode})',
+      );
+    }
+  }
+
   Future<ChatAcceptedTask> acceptTask({
     required String token,
     required String taskId,
@@ -347,9 +411,8 @@ class ChatHistoryApiService {
     }
 
     final raw = jsonDecode(response.body);
-    final map = raw is Map
-        ? Map<String, dynamic>.from(raw)
-        : const <String, dynamic>{};
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
     return ChatAcceptedTask(
       taskId: (map['taskId'] as String?) ?? taskId,
       sessionId: (map['sessionId'] as String?) ?? scope.sessionId,
@@ -365,10 +428,9 @@ class ChatHistoryApiService {
     // meaningful content.
     return messages
         .where(
-          (message) =>
-              !(message.role == 'assistant' &&
-                  message.isStreaming &&
-                  message.content.trim().isEmpty),
+          (message) => !(message.role == 'assistant' &&
+              message.isStreaming &&
+              message.content.trim().isEmpty),
         )
         .toList(growable: false);
   }
