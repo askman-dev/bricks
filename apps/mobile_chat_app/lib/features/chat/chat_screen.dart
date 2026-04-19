@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
+import 'chat_message_sort.dart';
 
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
@@ -87,6 +88,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, ChatRouter> _channelRouters = {};
   final Map<String, ChatRouter> _threadRouters = {};
   int _respondGeneration = 0;
+  int _idCounter = 0;
 
   @override
   void initState() {
@@ -436,7 +438,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _newId(String prefix) {
     final ms = DateTime.now().millisecondsSinceEpoch;
-    return '$prefix-$ms';
+    return '$prefix-$ms-${_idCounter++}';
   }
 
   String _timestampName({String prefix = 'channel'}) {
@@ -1105,54 +1107,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scheduleSync(triggerNow ? Duration.zero : _nextSyncDelay);
   }
 
-  ChatTaskState? _normalizedServerTaskState(
-    ChatMessage message, {
-    ChatTaskState? fallback,
-  }) {
-    if (message.taskState != null) return message.taskState;
-    if (message.role == 'assistant' && message.content.trim().isNotEmpty) {
-      return ChatTaskState.completed;
-    }
-    return fallback;
-  }
-
-  ChatMessage _mergeServerMessage(ChatMessage current, ChatMessage incoming) {
-    return incoming.copyWith(
-      agentId: incoming.agentId ?? current.agentId,
-      agentName: incoming.agentName ?? current.agentName,
-      idempotencyKey: current.idempotencyKey,
-      acknowledgedAt: incoming.acknowledgedAt ?? current.acknowledgedAt,
-      checkpointCursor: incoming.checkpointCursor ?? current.checkpointCursor,
-      resolvedBotId: incoming.resolvedBotId ?? current.resolvedBotId,
-      resolvedSkillId: incoming.resolvedSkillId ?? current.resolvedSkillId,
-      arbitrationMode: current.arbitrationMode,
-      fallbackToDefaultBot: current.fallbackToDefaultBot,
-      decisionReason: current.decisionReason,
-      traceId: current.traceId,
-      tieDetected: current.tieDetected,
-      tieBotIds: current.tieBotIds,
-      selectedScore: current.selectedScore,
-      candidateScoreSummary: current.candidateScoreSummary,
-      isStreaming: false,
-      taskState: _normalizedServerTaskState(
-        incoming,
-        fallback: current.taskState,
-      ),
-    );
-  }
-
-  int _compareChatMessages(ChatMessage a, ChatMessage b) {
-    final aTime = a.createdAt ?? a.timestamp;
-    final bTime = b.createdAt ?? b.timestamp;
-    final byTime = aTime.compareTo(bTime);
-    if (byTime != 0) return byTime;
-    if (a.role != b.role) {
-      if (a.role == 'user') return -1;
-      if (b.role == 'user') return 1;
-    }
-    return (a.messageId ?? '').compareTo(b.messageId ?? '');
-  }
-
   List<ChatMessage> _mergeSyncedMessages(
     List<ChatMessage> current,
     List<ChatMessage> incoming,
@@ -1169,12 +1123,12 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final message in incoming) {
       final normalized = message.copyWith(
         isStreaming: false,
-        taskState: _normalizedServerTaskState(message),
+        taskState: normalizedServerTaskState(message),
       );
       final messageId = normalized.messageId;
       if (messageId != null && byId.containsKey(messageId)) {
         final index = byId[messageId]!;
-        merged[index] = _mergeServerMessage(merged[index], normalized);
+        merged[index] = mergeServerMessage(merged[index], normalized);
         continue;
       }
       merged.add(normalized);
@@ -1183,7 +1137,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    merged.sort(_compareChatMessages);
+    merged.sort(compareChatMessagesByCreatedTime);
     return merged;
   }
 
@@ -1306,6 +1260,26 @@ class _ChatScreenState extends State<ChatScreen> {
     return _messages.length - 1;
   }
 
+  int _indexOfMessageId(String? messageId) {
+    if (messageId == null || messageId.isEmpty) return -1;
+    return _messages.indexWhere((message) => message.messageId == messageId);
+  }
+
+  bool _updateMessageById(
+    String? messageId,
+    ChatMessage Function(ChatMessage current) updater, {
+    void Function()? onStateUpdate,
+  }) {
+    if (!mounted) return false;
+    final targetIndex = _indexOfMessageId(messageId);
+    if (targetIndex < 0) return false;
+    setState(() {
+      _messages[targetIndex] = updater(_messages[targetIndex]);
+      onStateUpdate?.call();
+    });
+    return true;
+  }
+
   void _sendMessage(String text) {
     if (text.trim().isEmpty || _isSending) return;
 
@@ -1331,6 +1305,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final taskId = _newId('task');
     final idempotencyKey = _newId('idem');
     final traceId = _newId('trace');
+    final userMessageId = _newId('msg');
+    final assistantMessageId = _newId('msg');
     final envelope = ChatTaskEnvelope(
       taskId: taskId,
       idempotencyKey: idempotencyKey,
@@ -1348,6 +1324,7 @@ class _ChatScreenState extends State<ChatScreen> {
         .join(', ');
     _appendMessage(
       ChatMessage(
+        messageId: userMessageId,
         role: 'user',
         content: text,
         taskId: taskId,
@@ -1370,8 +1347,9 @@ class _ChatScreenState extends State<ChatScreen> {
         traceId: arbitrationMode ? traceId : null,
       ),
     );
-    final agentMessageIndex = _appendMessage(
+    _appendMessage(
       ChatMessage(
+        messageId: assistantMessageId,
         role: 'assistant',
         content: '',
         agentId: resolvedBotId,
@@ -1406,13 +1384,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final token = _authToken;
     final runtimeSettings = _settingsForAgent(agent);
     if (token == null || token.isEmpty) {
-      if (mounted && agentMessageIndex < _messages.length) {
-        setState(() {
-          _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
+      final updated = _updateMessageById(
+        assistantMessageId,
+        (current) {
+          return current.copyWith(
             content: 'Error: Missing auth token',
             isStreaming: false,
             taskState: ChatTaskState.failed,
           );
+        },
+        onStateUpdate: () {
+          _isSending = false;
+          _isStreaming = false;
+        },
+      );
+      if (!updated) {
+        setState(() {
           _isSending = false;
           _isStreaming = false;
         });
@@ -1427,8 +1414,8 @@ class _ChatScreenState extends State<ChatScreen> {
       taskId: taskId,
       idempotencyKey: idempotencyKey,
       scope: _activeScope,
-      userMessageId: _messages[agentMessageIndex - 1].messageId!,
-      assistantMessageId: _messages[agentMessageIndex].messageId!,
+      userMessageId: userMessageId,
+      assistantMessageId: assistantMessageId,
       userMessage: text,
       resolvedBotId: resolvedBotId,
       resolvedSkillId: resolvedSkillId,
@@ -1438,26 +1425,38 @@ class _ChatScreenState extends State<ChatScreen> {
       createdAt: envelope.createdAt,
     )
         .then((result) async {
-      if (!mounted || agentMessageIndex >= _messages.length) return;
+      if (!mounted) return;
       // Ignore stale completions if stop was pressed after this request started.
       if (generation != _respondGeneration) return;
-      setState(() {
-        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
-          content: result.text,
-          isStreaming: false,
-          taskState: result.taskState ??
-              (result.isAsync
-                  ? ChatTaskState.dispatched
-                  : ChatTaskState.completed),
-        );
-        if (result.lastSeqId > _lastSyncedSeq) {
-          _lastSyncedSeq = result.lastSeqId;
-        }
-        if (result.isAsync) {
+      final updated = _updateMessageById(
+        assistantMessageId,
+        (current) {
+          return current.copyWith(
+            content: result.text,
+            isStreaming: false,
+            taskState: result.taskState ??
+                (result.isAsync
+                    ? ChatTaskState.dispatched
+                    : ChatTaskState.completed),
+          );
+        },
+        onStateUpdate: () {
+          if (result.lastSeqId > _lastSyncedSeq) {
+            _lastSyncedSeq = result.lastSeqId;
+          }
+          if (result.isAsync) {
+            _isSending = false;
+            _isStreaming = false;
+          }
+        },
+      );
+      if (!updated) {
+        setState(() {
           _isSending = false;
           _isStreaming = false;
-        }
-      });
+        });
+        return;
+      }
       if (result.isAsync) {
         _configureActiveScopeSync();
         return;
@@ -1466,23 +1465,37 @@ class _ChatScreenState extends State<ChatScreen> {
       // upsert to avoid overwriting backend-only metadata (provider/model/source).
       if (mounted) {
         await _handleProactiveResponses(text);
+        if (mounted) {
+          setState(() {
+            _isSending = false;
+            _isStreaming = false;
+          });
+        }
+      }
+    }).catchError((error) {
+      if (!mounted) return;
+      if (generation != _respondGeneration) return;
+      final updated = _updateMessageById(
+        assistantMessageId,
+        (current) {
+          return current.copyWith(
+            content: 'Error: $error',
+            isStreaming: false,
+            taskState: ChatTaskState.failed,
+          );
+        },
+        onStateUpdate: () {
+          _isSending = false;
+          _isStreaming = false;
+        },
+      );
+      if (!updated) {
         setState(() {
           _isSending = false;
           _isStreaming = false;
         });
+        return;
       }
-    }).catchError((error) {
-      if (!mounted || agentMessageIndex >= _messages.length) return;
-      if (generation != _respondGeneration) return;
-      setState(() {
-        _messages[agentMessageIndex] = _messages[agentMessageIndex].copyWith(
-          content: 'Error: $error',
-          isStreaming: false,
-          taskState: ChatTaskState.failed,
-        );
-        _isSending = false;
-        _isStreaming = false;
-      });
       _persistActiveScopeMessages(immediate: true);
     });
   }
