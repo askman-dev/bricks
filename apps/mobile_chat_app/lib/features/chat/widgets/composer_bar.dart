@@ -11,6 +11,7 @@ class ComposerBar extends StatefulWidget {
     super.key,
     required this.agents,
     this.activeAgent,
+    this.routerAction,
     this.onSend,
     this.onAgentSelected,
     this.onOpenModelSelection,
@@ -24,6 +25,9 @@ class ComposerBar extends StatefulWidget {
 
   /// The agent currently selected for replies.
   final AgentDefinition? activeAgent;
+
+  /// Optional router switch action displayed before composer action buttons.
+  final Widget? routerAction;
 
   /// Called when the user submits a message. Null while a send is in progress.
   final void Function(String text)? onSend;
@@ -194,6 +198,10 @@ class _ComposerBarState extends State<ComposerBar>
                     padding: const EdgeInsets.only(right: BricksSpacing.xs),
                     child: Row(
                       children: [
+                        if (widget.routerAction != null) ...[
+                          widget.routerAction!,
+                          const SizedBox(width: BricksSpacing.xs),
+                        ],
                         PopupMenuButton<ComposerMenuAction>(
                           popUpAnimationStyle:
                               BricksTheme.menuPopupAnimationStyle,
