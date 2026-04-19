@@ -1751,47 +1751,6 @@ class _ChatScreenState extends State<ChatScreen> {
           actions: [
             PopupMenuButton<String>(
               popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-              tooltip: 'Router settings',
-              onSelected: _handleRouterMenuSelection,
-              itemBuilder: (context) => [
-                PopupMenuItem<String>(
-                  enabled: false,
-                  child: Text(
-                    'Channel router · ${_routerLabel(_channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute)}',
-                  ),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'channel:default',
-                  child: Text('Bricks Default'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'channel:openclaw',
-                  child: Text('OpenClaw'),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem<String>(
-                  enabled: false,
-                  child: Text(
-                    'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
-                  ),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'thread:inherit',
-                  child: Text('Follow channel'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'thread:default',
-                  child: Text('Bricks Default'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'thread:openclaw',
-                  child: Text('OpenClaw'),
-                ),
-              ],
-              icon: const Icon(Icons.alt_route),
-            ),
-            PopupMenuButton<String>(
-              popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
               tooltip: 'Sub sections',
               onSelected: (value) {
                 if (value == '__new__') {
@@ -1850,6 +1809,58 @@ class _ChatScreenState extends State<ChatScreen> {
             ComposerBar(
               activeAgent: _activeAgent,
               agents: _agents,
+              routerAction: PopupMenuButton<String>(
+                popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
+                tooltip: 'Router settings',
+                onSelected: _handleRouterMenuSelection,
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    enabled: false,
+                    child: Text(
+                      'Channel router · ${_routerLabel(_channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute)}',
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'channel:default',
+                    child: Text('Bricks Default'),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'channel:openclaw',
+                    child: Text('OpenClaw'),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem<String>(
+                    enabled: false,
+                    child: Text(
+                      'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'thread:inherit',
+                    child: Text('Follow channel'),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'thread:default',
+                    child: Text('Bricks Default'),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'thread:openclaw',
+                    child: Text('OpenClaw'),
+                  ),
+                ],
+                icon: SizedBox.square(
+                  dimension: 24,
+                  child: Center(
+                    child: _effectiveRouterForScope() == ChatRouter.openclaw
+                        ? const Text(
+                            '🦞',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 18, height: 1),
+                          )
+                        : const Icon(Icons.alt_route, size: 20),
+                  ),
+                ),
+              ),
               onAgentSelected: _selectAgent,
               onOpenModelSelection: _openRuntimeModelConfigDialog,
               onShowInfo: _showDebugInfoDialog,

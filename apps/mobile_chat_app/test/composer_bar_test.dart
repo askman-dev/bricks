@@ -8,7 +8,9 @@ import 'package:mobile_chat_app/features/chat/widgets/composer_bar.dart';
 const _settle = Duration(milliseconds: 300);
 
 Widget _buildBar(
-        {VoidCallback? onOpenModelSelection, VoidCallback? onShowInfo}) =>
+        {VoidCallback? onOpenModelSelection,
+        VoidCallback? onShowInfo,
+        Widget? routerAction}) =>
     MaterialApp(
       home: Scaffold(
         body: Column(
@@ -16,6 +18,7 @@ Widget _buildBar(
           children: [
             ComposerBar(
               agents: const [],
+              routerAction: routerAction,
               onOpenModelSelection: onOpenModelSelection,
               onShowInfo: onShowInfo,
             ),
@@ -138,6 +141,32 @@ void main() {
       );
       expect(button.enabled, isFalse);
       expect(called, isFalse);
+    });
+
+    testWidgets('renders optional router action before composer menu button',
+        (tester) async {
+      await tester.pumpWidget(
+        _buildBar(
+          routerAction: const IconButton(
+            onPressed: null,
+            tooltip: 'Router settings',
+            icon: Icon(Icons.alt_route),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final routerActionFinder = find.byTooltip('Router settings');
+      final menuButtonFinder =
+          find.byType(PopupMenuButton<ComposerMenuAction>);
+
+      expect(routerActionFinder, findsOneWidget);
+      expect(menuButtonFinder, findsOneWidget);
+
+      final routerActionPosition = tester.getTopLeft(routerActionFinder);
+      final menuButtonPosition = tester.getTopLeft(menuButtonFinder);
+
+      expect(routerActionPosition.dx, lessThan(menuButtonPosition.dx));
     });
   });
 
