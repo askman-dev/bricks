@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
+import 'chat_message_sort.dart';
 
 import '../auth/auth_service.dart';
 import '../settings/llm_config_service.dart';
@@ -1142,17 +1143,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  int _compareChatMessages(ChatMessage a, ChatMessage b) {
-    final aTime = a.createdAt ?? a.timestamp;
-    final bTime = b.createdAt ?? b.timestamp;
-    final byTime = aTime.compareTo(bTime);
-    if (byTime != 0) return byTime;
-    if (a.role != b.role) {
-      if (a.role == 'user') return -1;
-      if (b.role == 'user') return 1;
-    }
-    return (a.messageId ?? '').compareTo(b.messageId ?? '');
-  }
 
   List<ChatMessage> _mergeSyncedMessages(
     List<ChatMessage> current,
@@ -1184,7 +1174,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    merged.sort(_compareChatMessages);
+    merged.sort(compareChatMessagesByCreatedTime);
     return merged;
   }
 

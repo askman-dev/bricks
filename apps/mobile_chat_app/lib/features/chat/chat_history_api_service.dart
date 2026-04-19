@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../settings/llm_config_service.dart';
 import 'chat_message.dart';
+import 'chat_message_sort.dart';
 import 'chat_topology.dart';
 
 class ChatHistorySnapshot {
@@ -111,18 +112,6 @@ class ChatHistoryApiService {
     return null;
   }
 
-  int _compareMessagesByCreatedTime(ChatMessage a, ChatMessage b) {
-    final aTime = a.createdAt ?? a.timestamp;
-    final bTime = b.createdAt ?? b.timestamp;
-    final byTime = aTime.compareTo(bTime);
-    if (byTime != 0) return byTime;
-    if (a.role != b.role) {
-      if (a.role == 'user') return -1;
-      if (b.role == 'user') return 1;
-    }
-    return (a.messageId ?? '').compareTo(b.messageId ?? '');
-  }
-
   Future<List<ChatPersistedScope>> loadScopes({required String token}) async {
     final response = await _client.get(
       _scopesUri,
@@ -210,7 +199,7 @@ class ChatHistoryApiService {
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
-    messages.sort(_compareMessagesByCreatedTime);
+    messages.sort(compareChatMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,
@@ -241,7 +230,7 @@ class ChatHistoryApiService {
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
-    messages.sort(_compareMessagesByCreatedTime);
+    messages.sort(compareChatMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,
