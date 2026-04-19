@@ -63,6 +63,9 @@ void main() {
     expect(find.textContaining('Plugin ID:'), findsOneWidget);
     expect(
         find.widgetWithText(TextFormField, 'Openclaw Token'), findsOneWidget);
+    expect(find.text('Install Instructions'), findsOneWidget);
+    expect(find.textContaining('"channels"'), findsOneWidget);
+    expect(find.textContaining('pluginId: plugin_local_main'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Copy Openclaw Token'));
     await tester.pumpAndSettle();
@@ -71,5 +74,22 @@ void main() {
     expect(clipboardCalls.single.arguments,
         containsPair('text', 'platform-token-123'));
     expect(find.text('Openclaw Token copied'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    final copyInstallInstructionsButton =
+        find.byKey(const ValueKey('copyInstallInstructionsButton'));
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.tap(copyInstallInstructionsButton.hitTestable());
+    await tester.pumpAndSettle();
+
+    expect(clipboardCalls, hasLength(2));
+    final copiedInstruction = clipboardCalls.last.arguments['text'] as String;
+    expect(copiedInstruction,
+        contains('"BRICKS_BASE_URL": "https://bricks.askman.dev"'));
+    expect(copiedInstruction, contains('scopes: events:read, events:ack'));
+    expect(copiedInstruction, contains('token: platform-token-123'));
+    expect(find.text('Install instructions copied'), findsOneWidget);
   });
 }
