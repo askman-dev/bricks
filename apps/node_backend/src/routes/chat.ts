@@ -459,6 +459,13 @@ router.put('/channel-names', async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    if (displayNameRaw && displayNameRaw.length > 255) {
+      res.status(400).json({
+        error: 'Invalid payload: displayName must be 255 characters or fewer',
+      });
+      return;
+    }
+
     if (!displayNameRaw) {
       const deleted = await deleteChatChannelName(userId, channelId);
       res.json({ deleted: deleted.deleted });

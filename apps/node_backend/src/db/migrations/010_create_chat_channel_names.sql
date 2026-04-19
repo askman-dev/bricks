@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS chat_channel_names (
   UNIQUE (user_id, channel_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_chat_channel_names_user_channel
-  ON chat_channel_names(user_id, channel_id);
+CREATE INDEX IF NOT EXISTS idx_chat_channel_names_user_id
+  ON chat_channel_names(user_id);
 
 CREATE TRIGGER update_chat_channel_names_updated_at
   BEFORE UPDATE ON chat_channel_names

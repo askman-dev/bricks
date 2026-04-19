@@ -648,11 +648,15 @@ class _ChatScreenState extends State<ChatScreen> {
         final token = _authToken;
         if (token != null && token.isNotEmpty) {
           unawaited(
-            _chatHistoryApiService.saveChannelName(
-              token: token,
-              channelId: channelId,
-              displayName: name,
-            ),
+            _chatHistoryApiService
+                .saveChannelName(
+                  token: token,
+                  channelId: channelId,
+                  displayName: name,
+                )
+                .catchError((Object error, StackTrace stackTrace) {
+              debugPrint('Failed to save channel name "$channelId": $error');
+            }),
           );
         }
       },
@@ -690,11 +694,15 @@ class _ChatScreenState extends State<ChatScreen> {
     final token = _authToken;
     if (token != null && token.isNotEmpty) {
       unawaited(
-        _chatHistoryApiService.saveChannelName(
-          token: token,
-          channelId: channelId,
-          displayName: null,
-        ),
+        _chatHistoryApiService
+            .saveChannelName(
+              token: token,
+              channelId: channelId,
+              displayName: null,
+            )
+            .catchError((Object error, StackTrace stackTrace) {
+          debugPrint('Failed to archive channel "$channelId": $error');
+        }),
       );
     }
     ScaffoldMessenger.of(context).showSnackBar(

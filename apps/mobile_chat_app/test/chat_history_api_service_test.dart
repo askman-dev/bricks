@@ -375,6 +375,6 @@ void main() {
 
     expect(channelNames, hasLength(1));
     expect(channelNames.single.channelId, equals('channel-1'));
-      expect(channelNames.single.displayName, equals('renamed-channel'));
+    expect(channelNames.single.displayName, equals('renamed-channel'));
   });
 }
