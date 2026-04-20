@@ -272,6 +272,58 @@ describe('chatAsyncTransportService', () => {
     expect(result.lastSeqId).toBe(51);
   });
 
+  it('listSessionHistory returns max writeSeq as lastSeqId when created_at and write_seq diverge', async () => {
+    // Simulate async session: user message created first but written later (higher write_seq),
+    // assistant reply created second but written first (lower write_seq).
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          seq_id: 10,
+          write_seq: 80,
+          message_id: 'user-msg',
+          task_id: 'task-1',
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'user',
+          content: 'hello',
+          task_state: null,
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-20T08:00:00.000Z',
+          updated_at: '2026-04-20T08:00:00.000Z',
+        },
+        {
+          seq_id: 11,
+          write_seq: 50,
+          message_id: 'assistant-msg',
+          task_id: 'task-1',
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'assistant',
+          content: 'world',
+          task_state: 'completed',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-20T08:00:01.000Z',
+          updated_at: '2026-04-20T08:00:02.000Z',
+        },
+      ],
+      rowCount: 2,
+    });
+
+    const result = await listSessionHistory('u-1', 'session:default:main');
+
+    // Messages ordered by created_at ASC: user-msg first, assistant-msg second
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].messageId).toBe('user-msg');
+    expect(result.messages[1].messageId).toBe('assistant-msg');
+    // lastSeqId must be the max writeSeq (80), not the last message's writeSeq (50),
+    // so subsequent sync calls don't re-fetch messages already in the window.
+    expect(result.lastSeqId).toBe(80);
+  });
+
   it('listUserScopes returns distinct scopes ordered by latest activity', async () => {
     queryMock.mockResolvedValueOnce({
       rows: [

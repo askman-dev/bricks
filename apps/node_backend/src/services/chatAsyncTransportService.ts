@@ -329,7 +329,7 @@ export async function listSessionHistory(
   );
 
   const messages = result.rows.map(toMessageDto);
-  const lastSeqId = messages.length > 0 ? messages[messages.length - 1].writeSeq : 0;
+  const lastSeqId = messages.reduce((max, m) => Math.max(max, m.writeSeq), 0);
   return { messages, lastSeqId };
 }
 
