@@ -151,21 +151,26 @@ class _MessageListState extends State<MessageList> {
       return null;
     }
 
-    final assistantsByTask = allMessages.where(
-      (candidate) =>
-          candidate.role == 'assistant' &&
-          candidate.taskId != null &&
-          candidate.taskId == message.taskId,
-    );
-    final hasCompletedReply = assistantsByTask.any(
-      (assistant) =>
-          assistant.taskState == ChatTaskState.completed ||
-          (!assistant.isStreaming && assistant.content.trim().isNotEmpty),
-    );
-    final isDispatched = assistantsByTask.any(
-      (assistant) => assistant.taskState == ChatTaskState.dispatched,
-    );
+    var hasCompletedReply = false;
+    var isDispatched = false;
+    for (final candidate in allMessages) {
+      if (candidate.role != 'assistant' ||
+          candidate.taskId == null ||
+          candidate.taskId != message.taskId) {
+        continue;
+      }
 
+      if (candidate.taskState == ChatTaskState.completed ||
+          (!candidate.isStreaming && candidate.content.trim().isNotEmpty)) {
+        hasCompletedReply = true;
+      }
+      if (candidate.taskState == ChatTaskState.dispatched) {
+        isDispatched = true;
+      }
+      if (hasCompletedReply && isDispatched) {
+        break;
+      }
+    }
     if (isOpenclaw) {
       if (hasCompletedReply) {
         return const _UserDeliveryIndicator.check(isCompleted: true);
