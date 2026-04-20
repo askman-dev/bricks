@@ -71,7 +71,6 @@ index:
       - session
       - history
       - single-query commit
-      - pending retry
       - auto-scroll
       - popup-menu
       - menu-animation

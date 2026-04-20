@@ -79,8 +79,6 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
-  bool _userQueryCommitInFlight = false;
-  ChatMessage? _pendingUserQueryCommit;
   Timer? _syncTimer;
   bool _syncInFlight = false;
   static const Duration _syncPollInterval = Duration(seconds: 2);
@@ -1085,68 +1083,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return null;
   }
 
-  bool _hasPendingUserQueryCommit() {
-    return _userQueryCommitInFlight || _pendingUserQueryCommit != null;
-  }
-
-  void _showPendingCommitToast() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('有未完成的消息入库，请先点击重试。')),
-    );
-  }
-
-  Future<void> _commitUserQuery(
-    ChatMessage userMessage, {
-    bool isRetry = false,
-  }) async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
-    if (_userQueryCommitInFlight) return;
-
-    _userQueryCommitInFlight = true;
-    try {
-      final lastSeq = await _chatHistoryApiService.upsertMessages(
-        token: token,
-        messages: [userMessage],
-      );
-      if (!mounted) return;
-      setState(() {
-        if (lastSeq > _lastSyncedSeq) {
-          _lastSyncedSeq = lastSeq;
-        }
-        if (_pendingUserQueryCommit?.messageId == userMessage.messageId) {
-          _pendingUserQueryCommit = null;
-        }
-      });
-      if (isRetry && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('消息入库重试成功。')),
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _pendingUserQueryCommit = userMessage;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('消息入库失败，请手动重试：$error'),
-          action: SnackBarAction(
-            label: '重试',
-            onPressed: () {
-              final pending = _pendingUserQueryCommit;
-              if (pending == null) return;
-              unawaited(_commitUserQuery(pending, isRetry: true));
-            },
-          ),
-        ),
-      );
-    } finally {
-      _userQueryCommitInFlight = false;
-    }
-  }
-
   bool _hasPendingAssistantTasks() {
     return _messages.any(
       (message) =>
@@ -1372,10 +1308,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _sendMessage(String text) {
     if (text.trim().isEmpty || _isSending) return;
-    if (_hasPendingUserQueryCommit()) {
-      _showPendingCommitToast();
-      return;
-    }
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
@@ -1439,7 +1371,6 @@ class _ChatScreenState extends State<ChatScreen> {
       traceId: arbitrationMode ? traceId : null,
     );
     _appendMessage(userMessage);
-    unawaited(_commitUserQuery(userMessage));
     _appendMessage(
       ChatMessage(
         messageId: assistantMessageId,
