@@ -98,5 +98,6 @@ npm run dev
 
 - ACK body 仅包含 `cursor` 与 `ackedEventIds`，不发送 `pluginId` 字段。
 - 启动阶段会校验 JWT claims：`typ=platform_plugin`、`pluginId` 与 `BRICKS_PLUGIN_ID` 一致、且必须包含 `userId`。
+- OpenClaw channel account scoping uses the stored platform token's `userId` claim. If `BRICKS_PLUGIN_ID` / `BRICKS_PLATFORM_TOKEN` are missing or invalid, OpenClaw status/config flows now fail loudly so the user fixes the stored config instead of silently falling back to `default`.
 - 收到 `message.created` 时会先写入一条 streaming 消息，随后通过 PATCH 更新消息的 `text`/`metadata`；当前不会将 `status` patch 为 `completed`。
 - 收到 `conversation.binding_changed` 时当前仅记录日志（MVP noop）。

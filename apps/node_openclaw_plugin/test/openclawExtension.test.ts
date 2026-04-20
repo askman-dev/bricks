@@ -6,6 +6,12 @@ import pluginEntry, {
   bricksChannelPlugin,
 } from '../src/openclawExtension.js';
 
+function makePlatformJwt(payload: Record<string, unknown>): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${header}.${body}.signature`;
+}
+
 describe('openclawExtension channel entry', () => {
   it('reuses the Bricks channel config schema', () => {
     expect(pluginEntry.configSchema).toEqual(BRICKS_CHANNEL_CONFIG_SCHEMA);
@@ -86,6 +92,30 @@ describe('bricksChannelPlugin setup', () => {
 
 describe('bricksChannelPlugin config and wizard', () => {
   it('reports configured state from stored channel config', async () => {
+    const token = makePlatformJwt({
+      typ: 'platform_plugin',
+      pluginId: 'plugin-id',
+      userId: 'user_1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const cfg = {
+      channels: {
+        [CHANNEL_ID]: {
+          BRICKS_BASE_URL: 'https://api.example.com',
+          BRICKS_PLUGIN_ID: 'plugin-id',
+          BRICKS_PLATFORM_TOKEN: token,
+        },
+      },
+    };
+
+    expect(bricksChannelPlugin.config.listAccountIds(cfg)).toEqual(['user_1']);
+    expect(bricksChannelPlugin.config.defaultAccountId?.(cfg)).toBe('user_1');
+    expect(bricksChannelPlugin.config.resolveAccount(cfg).accountId).toBe('user_1');
+    expect(bricksChannelPlugin.config.resolveAccount(cfg).configured).toBe(true);
+    expect(await bricksChannelPlugin.setupWizard.status.resolveConfigured({ cfg })).toBe(true);
+  });
+
+  it('describes accounts safely without inventing a default account id', () => {
     const cfg = {
       channels: {
         [CHANNEL_ID]: {
@@ -96,9 +126,73 @@ describe('bricksChannelPlugin config and wizard', () => {
       },
     };
 
-    expect(bricksChannelPlugin.config.listAccountIds(cfg)).toEqual([DEFAULT_ACCOUNT_ID]);
-    expect(bricksChannelPlugin.config.resolveAccount(cfg).configured).toBe(true);
-    expect(await bricksChannelPlugin.setupWizard.status.resolveConfigured({ cfg })).toBe(true);
+    expect(
+      bricksChannelPlugin.config.describeAccount?.(
+        {
+          enabled: true,
+        } as never,
+        cfg,
+      ),
+    ).toEqual({
+      enabled: true,
+      configured: false,
+      extra: {
+        baseUrl: 'https://api.example.com',
+        pluginId: 'plugin-id',
+        warning: expect.stringContaining('Invalid Bricks platform token'),
+      },
+    });
+  });
+
+  it('marks partial accounts as unconfigured when required config is missing', () => {
+    const cfg = {
+      channels: {
+        [CHANNEL_ID]: {
+          BRICKS_BASE_URL: 'https://api.example.com',
+          BRICKS_PLATFORM_TOKEN: 'jwt-token',
+        },
+      },
+    };
+
+    expect(
+      bricksChannelPlugin.config.describeAccount?.(
+        {
+          enabled: true,
+          configured: true,
+        } as never,
+        cfg,
+      ),
+    ).toEqual({
+      enabled: true,
+      configured: false,
+      extra: {
+        baseUrl: 'https://api.example.com',
+        pluginId: null,
+        warning: 'Missing required Bricks config: BRICKS_PLUGIN_ID',
+      },
+    });
+  });
+
+  it('throws when stored token config cannot derive a real account id', () => {
+    const cfg = {
+      channels: {
+        [CHANNEL_ID]: {
+          BRICKS_BASE_URL: 'https://api.example.com',
+          BRICKS_PLUGIN_ID: 'plugin-id',
+          BRICKS_PLATFORM_TOKEN: 'not-a-jwt',
+        },
+      },
+    };
+
+    expect(() => bricksChannelPlugin.config.listAccountIds(cfg)).toThrow(
+      'Invalid Bricks platform token config: BRICKS_PLATFORM_TOKEN must be a JWT with 3 segments',
+    );
+    expect(() => bricksChannelPlugin.config.defaultAccountId?.(cfg)).toThrow(
+      'Invalid Bricks platform token config: BRICKS_PLATFORM_TOKEN must be a JWT with 3 segments',
+    );
+    expect(() => bricksChannelPlugin.config.resolveAccount(cfg)).toThrow(
+      'Invalid Bricks platform token config: BRICKS_PLATFORM_TOKEN must be a JWT with 3 segments',
+    );
   });
 
   it('stores wizard text and credential fields through channel config helpers', async () => {

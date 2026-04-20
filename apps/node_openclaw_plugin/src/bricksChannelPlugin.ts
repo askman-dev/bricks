@@ -1,3 +1,5 @@
+import { parseAndValidatePlatformTokenClaims } from './jwtClaims.js';
+
 export const CHANNEL_ID = 'dev-askman-bricks';
 export const CHANNEL_NAME = 'Bricks OpenClaw Plugin';
 export const CHANNEL_DESCRIPTION = 'Bricks pull-only OpenClaw channel plugin with interactive onboarding.';
@@ -21,6 +23,10 @@ interface BricksStoredConfig {
   BRICKS_BASE_URL?: string;
   BRICKS_PLUGIN_ID?: string;
   BRICKS_PLATFORM_TOKEN?: string;
+}
+
+interface BricksAccountLike {
+  enabled?: unknown;
 }
 
 interface BricksResolvedAccount {
@@ -166,8 +172,8 @@ function readOptionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function readStoredChannelConfig(cfg: OpenClawConfig): BricksStoredConfig {
-  const channels = isRecord(cfg.channels) ? cfg.channels : {};
+function readStoredChannelConfig(cfg?: OpenClawConfig | null): BricksStoredConfig {
+  const channels = isRecord(cfg?.channels) ? cfg.channels : {};
   const rawChannelConfig = channels[CHANNEL_ID];
   const channelConfig = isRecord(rawChannelConfig) ? rawChannelConfig : {};
 
@@ -178,13 +184,63 @@ function readStoredChannelConfig(cfg: OpenClawConfig): BricksStoredConfig {
   };
 }
 
-function hasStoredChannelSection(cfg: OpenClawConfig): boolean {
-  const channels = isRecord(cfg.channels) ? cfg.channels : {};
+function hasStoredChannelSection(cfg?: OpenClawConfig | null): boolean {
+  const channels = isRecord(cfg?.channels) ? cfg.channels : {};
   return isRecord(channels[CHANNEL_ID]);
 }
 
 function isBricksChannelConfigured(config: BricksStoredConfig): boolean {
   return Boolean(config.BRICKS_BASE_URL && config.BRICKS_PLUGIN_ID && config.BRICKS_PLATFORM_TOKEN);
+}
+
+function resolveStoredAccountId(cfg?: OpenClawConfig | null): string {
+  if (!hasStoredChannelSection(cfg)) {
+    return DEFAULT_ACCOUNT_ID;
+  }
+
+  const config = readStoredChannelConfig(cfg);
+  if (!config.BRICKS_PLUGIN_ID) {
+    throw new Error('BRICKS_PLUGIN_ID is required to derive Bricks accountId');
+  }
+  if (!config.BRICKS_PLATFORM_TOKEN) {
+    throw new Error('BRICKS_PLATFORM_TOKEN is required to derive Bricks accountId');
+  }
+  try {
+    return parseAndValidatePlatformTokenClaims(
+      config.BRICKS_PLATFORM_TOKEN,
+      config.BRICKS_PLUGIN_ID,
+    ).userId;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown token error';
+    throw new Error(`Invalid Bricks platform token config: ${message}`);
+  }
+}
+
+function missingBricksConfigMessage(config: BricksStoredConfig): string | undefined {
+  const missingKeys = [
+    !config.BRICKS_BASE_URL ? 'BRICKS_BASE_URL' : null,
+    !config.BRICKS_PLUGIN_ID ? 'BRICKS_PLUGIN_ID' : null,
+    !config.BRICKS_PLATFORM_TOKEN ? 'BRICKS_PLATFORM_TOKEN' : null,
+  ].filter((key): key is string => key !== null);
+
+  if (missingKeys.length === 0) {
+    return undefined;
+  }
+
+  return `Missing required Bricks config: ${missingKeys.join(', ')}`;
+}
+
+function validateBricksChannelConfig(config: BricksStoredConfig): { configured: boolean; warning?: string } {
+  if (!isBricksChannelConfigured(config)) {
+    return { configured: false, warning: missingBricksConfigMessage(config) };
+  }
+  try {
+    parseAndValidatePlatformTokenClaims(config.BRICKS_PLATFORM_TOKEN!, config.BRICKS_PLUGIN_ID!);
+    return { configured: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown token error';
+    return { configured: false, warning: `Invalid Bricks platform token: ${message}` };
+  }
 }
 
 function readInputValue(input: ChannelSetupInput, key: BricksConfigKey): string | undefined {
@@ -279,43 +335,50 @@ export const BRICKS_CHANNEL_CONFIG_SCHEMA: ChannelConfigSchema = {
 
 const bricksConfigAdapter: ChannelConfigAdapter = {
   listAccountIds(cfg) {
-    return hasStoredChannelSection(cfg) ? [DEFAULT_ACCOUNT_ID] : [];
+    return hasStoredChannelSection(cfg) ? [resolveStoredAccountId(cfg)] : [];
   },
-  resolveAccount(cfg, accountId) {
-    const resolvedAccountId = readOptionalString(accountId) ?? DEFAULT_ACCOUNT_ID;
+  resolveAccount(cfg, _accountId) {
     const config = readStoredChannelConfig(cfg);
 
     return {
-      accountId: resolvedAccountId,
+      accountId: resolveStoredAccountId(cfg),
       enabled: true,
       configured: isBricksChannelConfigured(config),
       config,
     };
   },
-  defaultAccountId() {
-    return DEFAULT_ACCOUNT_ID;
+  defaultAccountId(cfg) {
+    return resolveStoredAccountId(cfg);
   },
   inspectAccount(cfg, accountId) {
     const account = this.resolveAccount(cfg, accountId);
+    const warning = missingBricksConfigMessage(account.config);
     return {
       enabled: account.enabled,
       configured: account.configured,
       tokenStatus: account.config.BRICKS_PLATFORM_TOKEN ? 'available' : 'missing',
       pluginId: account.config.BRICKS_PLUGIN_ID ?? null,
       baseUrl: account.config.BRICKS_BASE_URL ?? null,
+      ...(warning ? { warning } : {}),
     };
   },
-  isConfigured(account) {
-    return account.configured;
+  isConfigured(_account, cfg) {
+    return validateBricksChannelConfig(readStoredChannelConfig(cfg)).configured;
   },
-  describeAccount(account) {
+  describeAccount(account, cfg) {
+    const accountLike = account as BricksAccountLike | undefined;
+    const config = readStoredChannelConfig(cfg);
+    const validation = validateBricksChannelConfig(config);
+
     return {
-      accountId: account.accountId,
-      enabled: account.enabled,
-      configured: account.configured,
+      enabled: typeof accountLike?.enabled === 'boolean'
+        ? accountLike.enabled
+        : true,
+      configured: validation.configured,
       extra: {
-        baseUrl: account.config.BRICKS_BASE_URL ?? null,
-        pluginId: account.config.BRICKS_PLUGIN_ID ?? null,
+        baseUrl: config.BRICKS_BASE_URL ?? null,
+        pluginId: config.BRICKS_PLUGIN_ID ?? null,
+        ...(validation.warning ? { warning: validation.warning } : {}),
       },
     };
   },
@@ -368,9 +431,11 @@ const bricksSetupWizard: ChannelSetupWizard = {
     unconfiguredHint: 'requires Bricks base URL, plugin id, and platform token',
     configuredScore: 1,
     unconfiguredScore: 0,
-    resolveConfigured: ({ cfg }) => isBricksChannelConfigured(readStoredChannelConfig(cfg)),
-    resolveSelectionHint: ({ configured }) =>
-      configured ? 'configured' : 'Bricks pull-only platform channel',
+    resolveConfigured: ({ cfg }) => validateBricksChannelConfig(readStoredChannelConfig(cfg)).configured,
+    resolveSelectionHint: ({ cfg, configured }) =>
+      configured
+        ? 'configured'
+        : missingBricksConfigMessage(readStoredChannelConfig(cfg)) ?? 'Bricks pull-only platform channel',
   },
   credentials: [
     {
