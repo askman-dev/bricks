@@ -308,6 +308,31 @@ export async function syncMessages(
   return { messages, lastSeqId };
 }
 
+export async function listSessionHistory(
+  userId: string,
+  sessionId: string,
+  options: { limit?: number } = {},
+): Promise<{ messages: ReturnType<typeof toMessageDto>[]; lastSeqId: number }> {
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+  const result = await pool.query<ChatMessageRow>(
+    `SELECT * FROM (
+       SELECT seq_id, write_seq, message_id, task_id, channel_id, session_id, thread_id,
+              role, content, task_state, checkpoint_cursor, metadata, created_at, updated_at
+         FROM chat_messages
+        WHERE user_id = $1
+          AND session_id = $2
+        ORDER BY created_at DESC, seq_id DESC
+        LIMIT $3
+     ) recent
+     ORDER BY created_at ASC, seq_id ASC`,
+    [userId, sessionId, limit],
+  );
+
+  const messages = result.rows.map(toMessageDto);
+  const lastSeqId = messages.length > 0 ? messages[messages.length - 1].writeSeq : 0;
+  return { messages, lastSeqId };
+}
+
 
 export async function listSessionMessagesForModel(
   userId: string,

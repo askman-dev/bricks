@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 const {
   acceptTaskMock,
+  listSessionHistoryMock,
   listSessionMessagesForModelMock,
   syncMessagesMock,
   upsertMessagesMock,
@@ -19,6 +20,7 @@ const {
     state: 'accepted',
     acceptedAt: '2026-04-17T07:00:00.000Z',
   })),
+  listSessionHistoryMock: vi.fn(async () => ({ messages: [], lastSeqId: 0 })),
   listSessionMessagesForModelMock: vi.fn(async () => []),
   syncMessagesMock: vi.fn(async () => ({ messages: [], lastSeqId: 0 })),
   upsertMessagesMock: vi.fn(async () => ({ lastSeqId: 7 })),
@@ -43,6 +45,7 @@ const {
 
 vi.mock('../services/chatAsyncTransportService.js', () => ({
   acceptTask: acceptTaskMock,
+  listSessionHistory: listSessionHistoryMock,
   listSessionMessagesForModel: listSessionMessagesForModelMock,
   listUserScopes: listUserScopesMock,
   syncMessages: syncMessagesMock,
@@ -108,6 +111,7 @@ afterAll(async () => {
 describe('chat routes', () => {
   beforeEach(() => {
     acceptTaskMock.mockClear();
+    listSessionHistoryMock.mockClear();
     listSessionMessagesForModelMock.mockClear();
     syncMessagesMock.mockClear();
     upsertMessagesMock.mockClear();
@@ -182,6 +186,48 @@ describe('chat routes', () => {
       channelId: 'default',
       threadId: 'main',
     });
+  });
+
+  it('uses createdAt-ordered history window for /history endpoint', async () => {
+    listSessionHistoryMock.mockResolvedValueOnce({
+      messages: [
+        {
+          seqId: 21,
+          writeSeq: 40,
+          messageId: 'm-1',
+          taskId: 'task-1',
+          channelId: 'default',
+          sessionId: 'session:default:main',
+          threadId: null,
+          role: 'user',
+          content: 'hello',
+          taskState: 'accepted',
+          checkpointCursor: null,
+          metadata: null,
+          createdAt: '2026-04-20T08:00:00.000Z',
+          updatedAt: '2026-04-20T08:00:00.000Z',
+        },
+      ],
+      lastSeqId: 40,
+    });
+
+    const encodedSessionId = encodeURIComponent('session:default:main');
+    const response = await fetch(
+      `${baseUrl}/api/chat/history/${encodedSessionId}?limit=120`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(listSessionHistoryMock).toHaveBeenCalledWith(
+      'user-123',
+      'session:default:main',
+      { limit: 120 },
+    );
+    expect(syncMessagesMock).not.toHaveBeenCalledWith(
+      'user-123',
+      'session:default:main',
+      0,
+      expect.anything(),
+    );
   });
 
   it('rate limits sync polling per user and session after 120 requests per minute', async () => {

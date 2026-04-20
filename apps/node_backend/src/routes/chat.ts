@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   acceptTask,
+  listSessionHistory,
   listUserScopes,
   listSessionMessagesForModel,
   syncMessages,
@@ -371,7 +372,7 @@ router.get('/history/:sessionId', async (req: AuthRequest, res: Response) => {
       Math.min(Number.isNaN(parsedLimit) ? 100 : parsedLimit, 500),
     );
 
-    const synced = await syncMessages(userId, sessionId, 0, { limit });
+    const synced = await listSessionHistory(userId, sessionId, { limit });
     const latestCheckpointCursor =
       [...synced.messages].reverse().find((m) => m.checkpointCursor != null)
         ?.checkpointCursor ?? null;

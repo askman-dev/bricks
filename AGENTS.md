@@ -9,6 +9,10 @@
 - For each feature or task, create and save a markdown plan file in `docs/plans/`.
 - Name plan files with a `YYYY-MM-DD-HH-mm` prefix using 24-hour time (optionally appending a timezone such as `-UTC`).
 
+## Analysis and fix quality bar
+- Do not use probabilistic or guess-based analysis methods; use deterministic evidence from code paths, data flow, and reproducible checks.
+- Do not use probabilistic or speculative fix strategies; implement fixes with explicit invariants, clear causal reasoning, and regression tests.
+
 ## API debugging workflow
 - When debugging API/interface errors, try the `vercel-api-log-context` skill first to collect Vercel deployment log context before proposing fixes.
 

@@ -14,6 +14,7 @@ vi.mock('../db/index.js', () => ({
 
 import {
   acceptTask,
+  listSessionHistory,
   listUserScopes,
   syncMessages,
   upsertMessages,
@@ -233,6 +234,42 @@ describe('chatAsyncTransportService', () => {
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].messageId).toBe('m-1');
     expect(result.messages[0].writeSeq).toBe(7);
+  });
+
+  it('listSessionHistory returns createdAt-ordered timeline window', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          seq_id: 12,
+          write_seq: 51,
+          message_id: 'a-1',
+          task_id: 'task-1',
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'assistant',
+          content: 'reply',
+          task_state: 'completed',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-20T08:00:01.000Z',
+          updated_at: '2026-04-20T08:00:02.000Z',
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const result = await listSessionHistory('u-1', 'session:default:main', {
+      limit: 100,
+    });
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining('ORDER BY created_at DESC, seq_id DESC'),
+      ['u-1', 'session:default:main', 100],
+    );
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].messageId).toBe('a-1');
+    expect(result.lastSeqId).toBe(51);
   });
 
   it('listUserScopes returns distinct scopes ordered by latest activity', async () => {
