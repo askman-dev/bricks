@@ -1,13 +1,13 @@
 # Hermes Agent 插件对接调研计划
 
 ## Background
-当前仓库已具备 OpenClaw 插件与多 Agent 能力。用户要求基于现有代码确认架构与接口后，评估对接 Hermes Agent 插件系统所需工作，以及对 bricks platform 的平台侧要求。
+当前仓库已具备 OpenClaw 插件与多 Agent 能力。用户要求基于现有代码确认架构与接口后，评估对接 Hermes Agent 插件系统所需工作，以及对 Bricks platform 的平台侧要求。
 
 ## Goals
 - 盘点仓库中现有 Agent/Plugin/MCP 相关架构与接口（以代码为准）。
 - 明确现有 OpenClaw 插件实现可复用部分与缺口。
 - 输出 Hermes Agent 插件对接清单（插件层、协议层、平台治理层）。
-- 输出对 bricks platform 的必要要求与建议优先级。
+- 输出对 Bricks platform 的必要要求与建议优先级。
 
 ## Implementation Plan (phased)
 ### Phase 1: 代码基线盘点
