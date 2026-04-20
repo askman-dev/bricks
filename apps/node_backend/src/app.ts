@@ -15,6 +15,20 @@ dotenv.config();
 
 const app = express();
 
+function shouldSkipGenericApiLimiter(req: Request): boolean {
+  if (req.originalUrl.startsWith('/api/chat/sync/')) {
+    return true;
+  }
+
+  if (!req.originalUrl.startsWith('/api/v1/platform/')) {
+    return false;
+  }
+
+  const authHeader = req.header('Authorization');
+  const pluginIdHeader = req.header('X-Bricks-Plugin-Id');
+  return Boolean(authHeader?.startsWith('Bearer ') && pluginIdHeader?.trim());
+}
+
 // Only enable trust proxy when running behind Vercel (or another trusted proxy),
 // so non-proxied environments keep the safer default behavior.
 if (process.env.VERCEL || process.env.VERCEL_ENV) {
@@ -55,7 +69,10 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   // `/api/chat/sync/*` is polled by authenticated chat clients and uses a
   // route-specific limiter keyed by user/session instead of the coarse IP cap.
-  skip: (req) => req.originalUrl.startsWith('/api/chat/sync/'),
+  // `/api/v1/platform/*` also has a dedicated limiter keyed by authenticated
+  // plugin identity, so authenticated plugin traffic should bypass the generic
+  // IP bucket as well.
+  skip: shouldSkipGenericApiLimiter,
 });
 
 app.use('/api/', limiter);

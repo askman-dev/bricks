@@ -96,6 +96,18 @@ describe('app rate limiting', () => {
     }
   });
 
+  it('skips the generic api limiter for authenticated platform routes', async () => {
+    for (let i = 0; i < 110; i += 1) {
+      const response = await fetch(`${baseUrl}/api/v1/platform/noop`, {
+        headers: {
+          Authorization: 'Bearer test-platform-key',
+          'X-Bricks-Plugin-Id': 'plugin_local_main',
+        },
+      });
+      expect(response.status).toBe(200);
+    }
+  });
+
   it('still applies the generic api limiter to non-sync api routes', async () => {
     let response: globalThis.Response | null = null;
     for (let i = 0; i < 101; i += 1) {

@@ -1,9 +1,11 @@
+import {
+  CHANNEL_DESCRIPTION,
+  CHANNEL_ID,
+  CHANNEL_NAME,
+  DEFAULT_ACCOUNT_ID,
+} from './channelConstants.js';
 import { parseAndValidatePlatformTokenClaims } from './jwtClaims.js';
-
-export const CHANNEL_ID = 'dev-askman-bricks';
-export const CHANNEL_NAME = 'Bricks OpenClaw Plugin';
-export const CHANNEL_DESCRIPTION = 'Bricks pull-only OpenClaw channel plugin with interactive onboarding.';
-export const DEFAULT_ACCOUNT_ID = 'default';
+import { createBricksGatewayAdapter, type ChannelGatewayAdapter } from './openclawGateway.js';
 
 type BricksConfigKey = 'BRICKS_BASE_URL' | 'BRICKS_PLUGIN_ID' | 'BRICKS_PLATFORM_TOKEN';
 type JsonObject = Record<string, unknown>;
@@ -157,6 +159,7 @@ export interface BricksChannelPlugin {
   config: ChannelConfigAdapter;
   setup: ChannelSetupAdapter;
   setupWizard: ChannelSetupWizard;
+  gateway?: ChannelGatewayAdapter;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -503,4 +506,5 @@ export const bricksChannelPlugin: BricksChannelPlugin = {
   config: bricksConfigAdapter,
   setup: bricksSetupAdapter,
   setupWizard: bricksSetupWizard,
+  gateway: createBricksGatewayAdapter(),
 };

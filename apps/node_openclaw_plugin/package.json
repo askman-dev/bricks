@@ -15,7 +15,9 @@
   "engines": {
     "node": ">=20.19.0"
   },
-  "dependencies": {},
+  "dependencies": {
+    "openclaw": "2026.4.15"
+  },
   "devDependencies": {
     "@types/node": "^20.10.6",
     "tsx": "^4.20.6",
