@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-19
+last_updated: 2026-04-20
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -40,6 +40,8 @@ products:
           - 将路由切到 openclaw 后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
           - 在 openclaw 离线后切回默认路由继续发送时，历史消息应按 createdAt 时间顺序渲染，后到达回复显示在列表末尾。
+          - 当多条消息 createdAt 相同（秒级碰撞）时，消息仍应按服务端 writeSeq 稳定从旧到新渲染。
+          - 当 createdAt 显示时钟顺序与服务端写入顺序冲突时（混合时间格式/时区来源），列表仍应按 writeSeq 从旧到新渲染。
           - Openclaw 异步模式下不应额外持久化 assistant 站位消息行；“已读”应由用户消息状态属性反映。
           - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
           - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。

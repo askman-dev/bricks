@@ -9,6 +9,7 @@ class ChatMessage {
     required this.role,
     required this.content,
     this.messageId,
+    this.writeSeq,
     this.agentId,
     this.agentName,
     DateTime? timestamp,
@@ -38,6 +39,7 @@ class ChatMessage {
   final String role;
   final String content;
   final String? messageId;
+  final int? writeSeq;
 
   final String? agentId;
   final String? agentName;
@@ -72,6 +74,7 @@ class ChatMessage {
     String? role,
     String? content,
     String? messageId,
+    int? writeSeq,
     String? agentId,
     String? agentName,
     DateTime? timestamp,
@@ -101,6 +104,7 @@ class ChatMessage {
       role: role ?? this.role,
       content: content ?? this.content,
       messageId: messageId ?? this.messageId,
+      writeSeq: writeSeq ?? this.writeSeq,
       agentId: agentId ?? this.agentId,
       agentName: agentName ?? this.agentName,
       timestamp: timestamp ?? this.timestamp,
@@ -134,6 +138,7 @@ class ChatMessage {
       'role': role,
       'content': content,
       'messageId': messageId,
+      'writeSeq': writeSeq,
       'agentId': agentId,
       'agentName': agentName,
       'timestamp': timestamp.toIso8601String(),
@@ -179,6 +184,7 @@ class ChatMessage {
       role: (map['role'] as String?) ?? 'assistant',
       content: (map['content'] as String?) ?? '',
       messageId: map['messageId'] as String?,
+      writeSeq: (map['writeSeq'] as num?)?.toInt(),
       agentId: map['agentId'] as String?,
       agentName: map['agentName'] as String?,
       timestamp: parseDate(map['timestamp']),

@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-04-19
+last_updated: 2026-04-20
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -38,6 +38,7 @@ index:
       - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
       - apps/mobile_chat_app/lib/features/chat/chat_task_protocol.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_message_sort.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
       - packages/design_system/lib/src/bricks_theme.dart
@@ -52,6 +53,7 @@ index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
+      - apps/mobile_chat_app/test/chat_message_sort_test.dart
       - apps/mobile_chat_app/test/chat_navigation_page_test.dart
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/composer_bar_test.dart
@@ -77,6 +79,8 @@ index:
       - 菜单动画时长或曲线调整不当可能导致菜单响应突兀或视觉跳变。
       - 频道重命名与新建时若未统一大小写/空白策略，可能出现“看似重复”名称并影响切换。
       - 异步路由（如 OpenClaw）与默认路由混用时，若未按 createdAt 稳定排序可能导致历史消息时序错乱。
+      - 当多条消息 createdAt 相同且客户端未使用 writeSeq 作为并列排序键时，可能出现“新消息插到旧消息上方”的顺序抖动。
+      - 当 createdAt 来自不同精度/时区来源时，若仍以 createdAt 作为主排序键，会出现与服务端写入顺序不一致的错位。
 
   - feature_id: model_settings
     capability: 模型配置读写

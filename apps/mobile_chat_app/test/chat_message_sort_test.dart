@@ -144,4 +144,54 @@ void main() {
       );
     });
   });
+
+  group('compareChatMessagesByCreatedTime', () {
+    test('uses writeSeq as deterministic tie-breaker for equal createdAt', () {
+      final t = DateTime.utc(2026, 4, 20, 0, 0, 1);
+      final newerWrite = ChatMessage(
+        messageId: 'task-2',
+        writeSeq: 101,
+        role: 'assistant',
+        content: 'newer',
+        createdAt: t,
+      );
+      final olderWrite = ChatMessage(
+        messageId: 'task-1',
+        writeSeq: 100,
+        role: 'assistant',
+        content: 'older',
+        createdAt: t,
+      );
+
+      final sorted = [newerWrite, olderWrite]
+        ..sort(compareChatMessagesByCreatedTime);
+
+      expect(sorted.first.messageId, equals('task-1'));
+      expect(sorted.last.messageId, equals('task-2'));
+    });
+
+    test('prefers writeSeq over createdAt when both messages are server-synced',
+        () {
+      final olderBySeqButLaterClock = ChatMessage(
+        messageId: 'msg-10',
+        writeSeq: 10,
+        role: 'assistant',
+        content: 'older write, later clock',
+        createdAt: DateTime.utc(2026, 4, 19, 19, 38, 10, 305),
+      );
+      final newerBySeqButEarlierClock = ChatMessage(
+        messageId: 'msg-11',
+        writeSeq: 11,
+        role: 'user',
+        content: 'newer write, earlier clock',
+        createdAt: DateTime.utc(2026, 4, 19, 11, 38, 10),
+      );
+
+      final sorted = [newerBySeqButEarlierClock, olderBySeqButLaterClock]
+        ..sort(compareChatMessagesByCreatedTime);
+
+      expect(sorted.first.messageId, equals('msg-10'));
+      expect(sorted.last.messageId, equals('msg-11'));
+    });
+  });
 }
