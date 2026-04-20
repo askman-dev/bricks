@@ -64,6 +64,7 @@ export interface PluginPersistentState {
   cursor: string;
   processedEventIds: string[];
   clientTokenMessageMap: Record<string, string>;
+  clientTokenReplyTextMap: Record<string, string>;
   pendingAck: PendingAckState | null;
 }
 
@@ -76,4 +77,10 @@ export interface PluginRuntimeConfig {
   defaultCursor: string;
   stateFilePath: string;
   assistantName: string;
+}
+
+export interface RunnerLogSink {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
 }

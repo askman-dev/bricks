@@ -223,6 +223,37 @@ describe('chat routes', () => {
     expect(body.error).toContain('Too many sync requests');
   });
 
+  it('rate limits respond requests per user and session after 120 requests per minute', async () => {
+    resolveChatRouterMock.mockResolvedValue('openclaw');
+
+    const sendRespond = async (sessionId: string, suffix: string) => fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: `task-${suffix}`,
+        idempotencyKey: `idem-${suffix}`,
+        channelId: 'default',
+        sessionId,
+        userMessageId: `msg-user-${suffix}`,
+        assistantMessageId: `msg-assistant-${suffix}`,
+        userMessage: 'hello',
+      }),
+    });
+
+    for (let i = 0; i < 120; i += 1) {
+      const response = await sendRespond('session:respond-rate-limit:a', `a-${i}`);
+      expect(response.status).toBe(200);
+    }
+
+    const limited = await sendRespond('session:respond-rate-limit:a', 'a-limited');
+    expect(limited.status).toBe(429);
+    const limitedBody = (await limited.json()) as { error?: string };
+    expect(limitedBody.error).toContain('Too many respond requests');
+
+    const differentSession = await sendRespond('session:respond-rate-limit:b', 'b-1');
+    expect(differentSession.status).toBe(200);
+  });
+
   it('lists persisted channel names', async () => {
     listChatChannelNamesMock.mockResolvedValueOnce([
       {

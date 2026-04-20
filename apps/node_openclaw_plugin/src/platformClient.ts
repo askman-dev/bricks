@@ -10,14 +10,45 @@ export class PlatformHttpError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly retryable?: boolean;
+  readonly retryAfterMs?: number;
 
-  constructor(status: number, message: string, code?: string, retryable?: boolean) {
+  constructor(
+    status: number,
+    message: string,
+    code?: string,
+    retryable?: boolean,
+    retryAfterMs?: number,
+  ) {
     super(message);
     this.name = 'PlatformHttpError';
     this.status = status;
     this.code = code;
     this.retryable = retryable;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const asSeconds = Number.parseInt(trimmed, 10);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return asSeconds * 1000;
+  }
+
+  const asDate = Date.parse(trimmed);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(0, asDate - Date.now());
+  }
+
+  return undefined;
 }
 
 export class PlatformClient {
@@ -25,6 +56,7 @@ export class PlatformClient {
     private readonly baseUrl: string,
     private readonly token: string,
     private readonly pluginId: string,
+    private readonly resolveSignal?: () => AbortSignal | undefined,
   ) {}
 
   async getEvents(cursor: string, limit = 50): Promise<GetEventsResponse> {
@@ -66,6 +98,7 @@ export class PlatformClient {
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(new URL(path, this.baseUrl), {
       ...init,
+      signal: init?.signal ?? this.resolveSignal?.(),
       headers: {
         Authorization: `Bearer ${this.token}`,
         'X-Bricks-Plugin-Id': this.pluginId,
@@ -75,7 +108,9 @@ export class PlatformClient {
     });
 
     if (!response.ok) {
-      const message = `Platform request failed: ${response.status} ${response.statusText}`;
+      const statusSuffix = response.statusText ? ` ${response.statusText}` : '';
+      const message = `Platform request failed: ${response.status}${statusSuffix}`;
+      const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'));
       try {
         const body = (await response.json()) as {
           error?: { code?: string; message?: string; retryable?: boolean };
@@ -84,13 +119,20 @@ export class PlatformClient {
           response.status,
           body.error?.message ?? message,
           body.error?.code,
-          body.error?.retryable,
+          body.error?.retryable ?? (response.status === 429 || response.status >= 500),
+          retryAfterMs,
         );
       } catch (error) {
         if (error instanceof PlatformHttpError) {
           throw error;
         }
-        throw new PlatformHttpError(response.status, message);
+        throw new PlatformHttpError(
+          response.status,
+          message,
+          undefined,
+          response.status === 429 || response.status >= 500,
+          retryAfterMs,
+        );
       }
     }
 

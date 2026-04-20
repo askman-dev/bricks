@@ -33,6 +33,8 @@ router.use(authenticate);
 
 const CHAT_SYNC_WINDOW_MS = 60 * 1000;
 const CHAT_SYNC_MAX_REQUESTS_PER_WINDOW = 120;
+const CHAT_RESPOND_WINDOW_MS = 60 * 1000;
+const CHAT_RESPOND_MAX_REQUESTS_PER_WINDOW = 120;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -59,25 +61,43 @@ function parseScopeType(value: unknown): ChatScopeType | null {
   return null;
 }
 
+function chatSessionRateLimitKey(req: express.Request, sessionId: string): string {
+  const userId =
+    typeof (req as AuthRequest).userId === 'string'
+      ? (req as AuthRequest).userId
+      : 'anonymous';
+  return `${userId}:${sessionId}`;
+}
+
 const syncLimiter = rateLimit({
   windowMs: CHAT_SYNC_WINDOW_MS,
   max: CHAT_SYNC_MAX_REQUESTS_PER_WINDOW,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    const userId =
-      typeof (req as AuthRequest).userId === 'string'
-        ? (req as AuthRequest).userId
-        : 'anonymous';
     const sessionId = parseSessionId(req.params.sessionId) ?? 'invalid-session';
-    return `${userId}:${sessionId}`;
+    return chatSessionRateLimitKey(req, sessionId);
   },
   message: {
     error: 'Too many sync requests for this chat session, please try again later.',
   },
 });
 
-router.post('/respond', async (req: AuthRequest, res: Response) => {
+const respondLimiter = rateLimit({
+  windowMs: CHAT_RESPOND_WINDOW_MS,
+  max: CHAT_RESPOND_MAX_REQUESTS_PER_WINDOW,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const sessionId = parseSessionId(req.body?.sessionId) ?? 'invalid-session';
+    return chatSessionRateLimitKey(req, sessionId);
+  },
+  message: {
+    error: 'Too many respond requests for this chat session, please try again later.',
+  },
+});
+
+router.post('/respond', respondLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {

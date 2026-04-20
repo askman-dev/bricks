@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
 import { issuePlatformAccessToken } from '../middleware/platformAuth.js';
 import {
+  ackPlatformEvents,
   listPlatformEvents,
   createPlatformMessage,
 } from '../services/platformIntegrationService.js';
@@ -18,6 +19,7 @@ vi.mock('../services/platformIntegrationService.js', () => ({
 
 let server: ReturnType<express.Express['listen']> | null = null;
 let baseUrl = '';
+let createPlatformRouter: typeof import('./platform.js').createPlatformRouter;
 
 beforeAll(async () => {
   process.env.BRICKS_PLATFORM_API_KEY = 'test-platform-key';
@@ -26,7 +28,9 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  const { default: platformRoutes } = await import('./platform.js');
+  const platformModule = await import('./platform.js');
+  createPlatformRouter = platformModule.createPlatformRouter;
+  const { default: platformRoutes } = platformModule;
   app.use('/api/v1/platform', platformRoutes);
 
   await new Promise<void>((resolve) => {
@@ -242,5 +246,125 @@ describe('platform route auth and ack constraints', () => {
     expect(vi.mocked(createPlatformMessage)).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-123' }),
     );
+  });
+});
+
+describe('platform route rate limiting', () => {
+  let limitedServer: ReturnType<express.Express['listen']> | null = null;
+  let limitedBaseUrl = '';
+
+  beforeAll(async () => {
+    const app = express();
+    app.use(express.json());
+    app.use(
+      '/api/v1/platform',
+      createPlatformRouter({
+        rateLimit: {
+          windowMs: 60 * 1000,
+          readMax: 1,
+          writeMax: 1,
+        },
+      }),
+    );
+
+    await new Promise<void>((resolve) => {
+      limitedServer = app.listen(0, '127.0.0.1', () => {
+        const address = limitedServer?.address();
+        if (address && typeof address === 'object') {
+          limitedBaseUrl = `http://127.0.0.1:${address.port}`;
+        }
+        resolve();
+      });
+    });
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      if (!limitedServer) {
+        resolve();
+        return;
+      }
+      limitedServer.close((err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('keys read limits by pluginId:userId for JWT requests', async () => {
+    const user1Token = issuePlatformAccessToken({
+      userId: 'user-1',
+      pluginId: 'plugin_local_main',
+      scopes: ['events:read'],
+      expiresIn: '1h',
+    });
+    const user2Token = issuePlatformAccessToken({
+      userId: 'user-2',
+      pluginId: 'plugin_local_main',
+      scopes: ['events:read'],
+      expiresIn: '1h',
+    });
+
+    const first = await fetch(`${limitedBaseUrl}/api/v1/platform/events?cursor=cur_0`, {
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+    });
+    const secondUser = await fetch(`${limitedBaseUrl}/api/v1/platform/events?cursor=cur_0`, {
+      headers: {
+        Authorization: `Bearer ${user2Token}`,
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+    });
+    const limited = await fetch(`${limitedBaseUrl}/api/v1/platform/events?cursor=cur_0`, {
+      headers: {
+        Authorization: `Bearer ${user1Token}`,
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+    });
+
+    expect(first.status).toBe(200);
+    expect(secondUser.status).toBe(200);
+    expect(limited.status).toBe(429);
+
+    const body = (await limited.json()) as { error?: { code?: string; retryable?: boolean } };
+    expect(body.error?.code).toBe('RATE_LIMITED');
+    expect(body.error?.retryable).toBe(true);
+    expect(limited.headers.get('retry-after')).toBeTruthy();
+  });
+
+  it('returns retryable 429 responses for platform writes', async () => {
+    vi.mocked(ackPlatformEvents).mockClear();
+
+    const first = await fetch(`${limitedBaseUrl}/api/v1/platform/events/ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({ ackedEventIds: ['evt_1'], cursor: 'cur_1' }),
+    });
+    const limited = await fetch(`${limitedBaseUrl}/api/v1/platform/events/ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({ ackedEventIds: ['evt_2'], cursor: 'cur_2' }),
+    });
+
+    expect(first.status).toBe(200);
+    expect(limited.status).toBe(429);
+    const body = (await limited.json()) as { error?: { code?: string; retryable?: boolean; message?: string } };
+    expect(body.error?.code).toBe('RATE_LIMITED');
+    expect(body.error?.retryable).toBe(true);
+    expect(body.error?.message).toContain('platform write');
+    expect(limited.headers.get('retry-after')).toBeTruthy();
   });
 });

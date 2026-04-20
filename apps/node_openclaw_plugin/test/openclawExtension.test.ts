@@ -36,6 +36,13 @@ describe('openclawExtension channel entry', () => {
 
     expect(registerChannel).not.toHaveBeenCalled();
   });
+
+  it('exposes a gateway adapter for OpenClaw-managed lifecycle', () => {
+    expect(bricksChannelPlugin.gateway).toEqual({
+      startAccount: expect.any(Function),
+      stopAccount: expect.any(Function),
+    });
+  });
 });
 
 describe('bricksChannelPlugin setup', () => {
