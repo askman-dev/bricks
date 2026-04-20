@@ -20,6 +20,11 @@ import {
   type ChatScopeType,
   upsertChatScopeSetting,
 } from '../services/chatRouterService.js';
+import {
+  deleteChatChannelName,
+  listChatChannelNames,
+  upsertChatChannelName,
+} from '../services/chatChannelNameService.js';
 import { generateWithUserConfig } from '../llm/llm_service.js';
 import type { LlmProvider } from '../llm/types.js';
 
@@ -415,6 +420,65 @@ router.get('/scope-settings', async (req: AuthRequest, res: Response) => {
     res.json({ settings });
   } catch (error) {
     console.error('List chat scope settings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/channel-names', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const channelNames = await listChatChannelNames(userId);
+    res.json({ channelNames });
+  } catch (error) {
+    console.error('List chat channel names error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/channel-names', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const channelId = parseSessionId(body.channelId);
+    const displayNameRaw = typeof body.displayName === 'string' ? body.displayName.trim() : null;
+
+    if (!channelId) {
+      res.status(400).json({
+        error: 'Invalid payload: channelId is required',
+      });
+      return;
+    }
+
+    if (displayNameRaw && displayNameRaw.length > 255) {
+      res.status(400).json({
+        error: 'Invalid payload: displayName must be 255 characters or fewer',
+      });
+      return;
+    }
+
+    if (!displayNameRaw) {
+      const deleted = await deleteChatChannelName(userId, channelId);
+      res.json({ deleted: deleted.deleted });
+      return;
+    }
+
+    const setting = await upsertChatChannelName(userId, {
+      channelId,
+      displayName: displayNameRaw,
+    });
+    res.json({ setting });
+  } catch (error) {
+    console.error('Upsert chat channel name error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

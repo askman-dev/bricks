@@ -121,6 +121,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final definitions = await _readAgentDefinitions(repo);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
+      List<ChatChannelNameSetting> channelNames = const [];
       if (authToken != null && authToken.isNotEmpty) {
         try {
           persistedScopes = await _chatHistoryApiService.loadScopes(
@@ -142,6 +143,15 @@ class _ChatScreenState extends State<ChatScreen> {
             'loadScopeSettings failed, continuing without router hydration: $e',
           );
         }
+        try {
+          channelNames = await _chatHistoryApiService.loadChannelNames(
+            token: authToken,
+          );
+        } catch (e) {
+          debugPrint(
+            'loadChannelNames failed, continuing without channel name hydration: $e',
+          );
+        }
       }
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
@@ -158,6 +168,10 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       _syncParticipants(definitions);
       final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
+      final restoredNamedChannels = _applyPersistedChannelNames(
+        channels: restoredChannels,
+        channelNames: channelNames,
+      );
       final restoredSubSections = _hydrateSubSectionsFromScopes(
         persistedScopes,
       );
@@ -184,7 +198,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _authToken = authToken;
         _channels
           ..clear()
-          ..addAll(restoredChannels);
+          ..addAll(restoredNamedChannels);
         _channelSubSections
           ..clear()
           ..addAll(restoredSubSections);
@@ -511,6 +525,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return subSections;
   }
 
+  List<ChatChannel> _applyPersistedChannelNames({
+    required List<ChatChannel> channels,
+    required List<ChatChannelNameSetting> channelNames,
+  }) {
+    if (channelNames.isEmpty) return channels;
+    final namesById = <String, String>{
+      for (final item in channelNames) item.channelId: item.displayName,
+    };
+    return channels.map((channel) {
+      final displayName = namesById[channel.id];
+      if (displayName == null || displayName.trim().isEmpty) {
+        return channel;
+      }
+      return ChatChannel(
+        id: channel.id,
+        name: displayName,
+        isDefault: channel.isDefault,
+      );
+    }).toList(growable: false);
+  }
+
   Map<String, String> _hydrateLastActiveSubSectionByChannel(
     List<ChatPersistedScope> scopes,
   ) {
@@ -612,6 +647,20 @@ class _ChatScreenState extends State<ChatScreen> {
             isDefault: existingChannel.isDefault,
           );
         });
+        final token = _authToken;
+        if (token != null && token.isNotEmpty) {
+          unawaited(
+            _chatHistoryApiService
+                .saveChannelName(
+                  token: token,
+                  channelId: channelId,
+                  displayName: name,
+                )
+                .catchError((Object error, StackTrace stackTrace) {
+              debugPrint('Failed to save channel name "$channelId": $error');
+            }),
+          );
+        }
       },
     );
   }
@@ -643,6 +692,20 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     if (wasActive) {
       unawaited(_loadMessagesForActiveScope());
+    }
+    final token = _authToken;
+    if (token != null && token.isNotEmpty) {
+      unawaited(
+        _chatHistoryApiService
+            .saveChannelName(
+              token: token,
+              channelId: channelId,
+              displayName: null,
+            )
+            .catchError((Object error, StackTrace stackTrace) {
+          debugPrint('Failed to archive channel "$channelId": $error');
+        }),
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已归档频道：${channel.name}')),
