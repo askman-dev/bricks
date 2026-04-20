@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../settings/llm_config_service.dart';
 import 'chat_message.dart';
+import 'chat_message_sort.dart';
 import 'chat_topology.dart';
 
 class ChatHistorySnapshot {
@@ -241,6 +242,7 @@ class ChatHistoryApiService {
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
+    messages.sort(compareChatMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,
@@ -271,6 +273,7 @@ class ChatHistoryApiService {
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
+    messages.sort(compareChatMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,

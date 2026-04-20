@@ -52,6 +52,82 @@ void main() {
     expect(snapshot.lastSeqId, equals(2));
   });
 
+  test('sorts loaded history by createdAt to keep chronology stable', () async {
+    final client = MockClient((request) async {
+      expect(request.method, equals('GET'));
+      return http.Response(
+        jsonEncode({
+          'messages': [
+            {
+              'messageId': 'assistant-late',
+              'role': 'assistant',
+              'content': 'openclaw delayed reply',
+              'createdAt': '2026-04-19T11:38:15.000Z',
+            },
+            {
+              'messageId': 'user-earlier',
+              'role': 'user',
+              'content': 'return to default route',
+              'createdAt': '2026-04-19T11:38:10.000Z',
+            },
+          ],
+          'lastSeqId': 9,
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final snapshot = await service.load(
+      token: 'token-1',
+      sessionId: 'session:default:main',
+    );
+
+    expect(snapshot.messages, hasLength(2));
+    expect(snapshot.messages.first.messageId, equals('user-earlier'));
+    expect(snapshot.messages.last.messageId, equals('assistant-late'));
+  });
+
+  test('sorts synced messages by createdAt to keep chronology stable',
+      () async {
+    final client = MockClient((request) async {
+      expect(request.method, equals('GET'));
+      expect(request.url.path, contains('/chat/sync/'));
+      return http.Response(
+        jsonEncode({
+          'messages': [
+            {
+              'messageId': 'assistant-async',
+              'role': 'assistant',
+              'content': 'async openclaw reply',
+              'createdAt': '2026-04-19T12:00:20.000Z',
+            },
+            {
+              'messageId': 'user-second',
+              'role': 'user',
+              'content': 'second message',
+              'createdAt': '2026-04-19T12:00:15.000Z',
+            },
+          ],
+          'lastSeqId': 15,
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final snapshot = await service.sync(
+      token: 'token-1',
+      sessionId: 'session:default:main',
+      afterSeq: 10,
+    );
+
+    expect(snapshot.messages, hasLength(2));
+    expect(snapshot.messages.first.messageId, equals('user-second'));
+    expect(snapshot.messages.last.messageId, equals('assistant-async'));
+    expect(snapshot.lastSeqId, equals(15));
+  });
+
   test('accepts task and upserts messages', () async {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/tasks/accept')) {
