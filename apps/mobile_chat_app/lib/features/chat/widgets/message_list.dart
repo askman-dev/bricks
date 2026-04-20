@@ -134,6 +134,55 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
+  _UserDeliveryIndicator? _deliveryIndicatorForUserMessage(
+    ChatMessage message,
+    List<ChatMessage> allMessages,
+  ) {
+    final source = message.source;
+    final openclawBySource = source == 'backend.respond.openclaw';
+    final genericRemoteBySource = source != null &&
+        source.startsWith('backend.respond.') &&
+        source != 'backend.respond.openclaw';
+    final openclawByResolvedBot = (source == null || source.isEmpty) &&
+        message.resolvedBotId == 'openclaw';
+    final isOpenclaw = openclawBySource || openclawByResolvedBot;
+    final isGenericRemote = genericRemoteBySource;
+    if (!isOpenclaw && !isGenericRemote) {
+      return null;
+    }
+
+    var hasCompletedReply = false;
+    var isDispatched = false;
+    for (final candidate in allMessages) {
+      if (candidate.role != 'assistant' ||
+          candidate.taskId == null ||
+          candidate.taskId != message.taskId) {
+        continue;
+      }
+
+      if (candidate.taskState == ChatTaskState.completed ||
+          (candidate.taskState == null &&
+              !candidate.isStreaming &&
+              candidate.content.trim().isNotEmpty)) {
+        hasCompletedReply = true;
+      }
+      if (candidate.taskState == ChatTaskState.dispatched) {
+        isDispatched = true;
+      }
+      if (hasCompletedReply && isDispatched) {
+        break;
+      }
+    }
+    if (isOpenclaw) {
+      if (hasCompletedReply) {
+        return const _UserDeliveryIndicator.check(isCompleted: true);
+      }
+      return _UserDeliveryIndicator.lobster(isDispatched: isDispatched);
+    }
+
+    return _UserDeliveryIndicator.check(isCompleted: hasCompletedReply);
+  }
+
   @override
   Widget build(BuildContext context) {
     final messages = widget.messages;
@@ -157,6 +206,8 @@ class _MessageListState extends State<MessageList> {
         itemBuilder: (context, index) {
           final msg = messages[index];
           final isUser = msg.role == 'user';
+          final deliveryIndicator =
+              isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
           // Attach the focused-item key only to the target row so that
           // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
           // without maintaining a GlobalKey for every list item.
@@ -299,15 +350,27 @@ class _MessageListState extends State<MessageList> {
                     right: BricksSpacing.xs,
                     bottom: BricksSpacing.md,
                   ),
-                  child: Text(
-                    [
-                      _formatTime(msg.timestamp),
-                      if (msg.threadId != null) 'thread:${msg.threadId}',
-                      if (msg.isRecovered) 'Recovered',
-                    ].join(' · '),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        [
+                          _formatTime(msg.timestamp),
+                          if (msg.threadId != null) 'thread:${msg.threadId}',
+                          if (msg.isRecovered) 'Recovered',
+                        ].join(' · '),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                      if (deliveryIndicator != null) ...[
+                        const SizedBox(width: BricksSpacing.xs),
+                        _UserMessageDeliveryStatus(
+                          indicator: deliveryIndicator,
+                          messageId: msg.messageId,
                         ),
+                      ],
+                    ],
                   ),
                 ),
               ],
@@ -317,6 +380,86 @@ class _MessageListState extends State<MessageList> {
       ),
     );
   }
+}
+
+class _UserMessageDeliveryStatus extends StatelessWidget {
+  const _UserMessageDeliveryStatus({
+    required this.indicator,
+    required this.messageId,
+  });
+
+  final _UserDeliveryIndicator indicator;
+  final String? messageId;
+
+  @override
+  Widget build(BuildContext context) {
+    final key = ValueKey<String>('user-delivery-${messageId ?? 'unknown'}');
+    final statusLabel = indicator.icon == _DeliveryIcon.lobster
+        ? 'Pending'
+        : indicator.isCompleted
+        ? 'Delivered'
+        : 'Dispatched';
+    if (indicator.icon == _DeliveryIcon.lobster) {
+      return Semantics(
+        label: statusLabel,
+        child: Tooltip(
+          message: statusLabel,
+          child: Text(
+            '🦞',
+            key: key,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withOpacity(indicator.opacity),
+            ),
+          ),
+        ),
+      );
+    }
+    return Semantics(
+      label: statusLabel,
+      child: Tooltip(
+        message: statusLabel,
+        child: Icon(
+          Icons.check,
+          key: key,
+          size: 14,
+          color: indicator.isCompleted
+              ? Colors.green
+              : Theme.of(context).colorScheme.outline,
+        ),
+      ),
+    );
+  }
+}
+
+enum _DeliveryIcon { lobster, check }
+
+class _UserDeliveryIndicator {
+  const _UserDeliveryIndicator._({
+    required this.icon,
+    required this.isCompleted,
+    required this.opacity,
+  });
+
+  const _UserDeliveryIndicator.lobster({required bool isDispatched})
+      : this._(
+          icon: _DeliveryIcon.lobster,
+          isCompleted: false,
+          opacity: isDispatched ? 0.75 : 0.45,
+        );
+
+  const _UserDeliveryIndicator.check({required bool isCompleted})
+      : this._(
+          icon: _DeliveryIcon.check,
+          isCompleted: isCompleted,
+          opacity: 1,
+        );
+
+  final _DeliveryIcon icon;
+  final bool isCompleted;
+  final double opacity;
 }
 
 class _AssistantMarkdownText extends StatelessWidget {

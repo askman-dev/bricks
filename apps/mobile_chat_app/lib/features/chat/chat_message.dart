@@ -30,6 +30,7 @@ class ChatMessage {
     this.fallbackToDefaultBot = false,
     this.decisionReason,
     this.traceId,
+    this.source,
     this.tieDetected = false,
     this.tieBotIds = const [],
     this.selectedScore,
@@ -65,6 +66,7 @@ class ChatMessage {
   final bool fallbackToDefaultBot;
   final String? decisionReason;
   final String? traceId;
+  final String? source;
   final bool tieDetected;
   final List<String> tieBotIds;
   final double? selectedScore;
@@ -97,6 +99,7 @@ class ChatMessage {
     bool? fallbackToDefaultBot,
     String? decisionReason,
     String? traceId,
+    String? source,
     bool? tieDetected,
     List<String>? tieBotIds,
     double? selectedScore,
@@ -128,6 +131,7 @@ class ChatMessage {
       fallbackToDefaultBot: fallbackToDefaultBot ?? this.fallbackToDefaultBot,
       decisionReason: decisionReason ?? this.decisionReason,
       traceId: traceId ?? this.traceId,
+      source: source ?? this.source,
       tieDetected: tieDetected ?? this.tieDetected,
       tieBotIds: tieBotIds ?? this.tieBotIds,
       selectedScore: selectedScore ?? this.selectedScore,
@@ -163,6 +167,7 @@ class ChatMessage {
       'fallbackToDefaultBot': fallbackToDefaultBot,
       'decisionReason': decisionReason,
       'traceId': traceId,
+      'source': source,
       'tieDetected': tieDetected,
       'tieBotIds': tieBotIds,
       'selectedScore': selectedScore,
@@ -217,6 +222,7 @@ class ChatMessage {
       fallbackToDefaultBot: map['fallbackToDefaultBot'] as bool? ?? false,
       decisionReason: map['decisionReason'] as String?,
       traceId: map['traceId'] as String?,
+      source: map['source'] as String?,
       tieDetected: map['tieDetected'] as bool? ?? false,
       tieBotIds: ((map['tieBotIds'] as List<Object?>?) ?? const [])
           .whereType<String>()
