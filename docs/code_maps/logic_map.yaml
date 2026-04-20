@@ -70,6 +70,8 @@ index:
       - archive
       - session
       - history
+      - single-query commit
+      - pending retry
       - auto-scroll
       - popup-menu
       - menu-animation
@@ -83,6 +85,7 @@ index:
       - 异步路由（如 OpenClaw）与默认路由混用时，若排序键选错（例如把可变写入游标当作时间序）可能导致历史消息时序错乱。
       - 当多条消息 createdAt 相同且缺少 seqId/稳定并列键时，可能出现“新消息插到旧消息上方”的顺序抖动。
       - 当 writeSeq 与 seqId 语义混用，或 createdAt 来自不同时区来源时，会出现“回复跑到提问前”的错位。
+      - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
 
   - feature_id: model_settings
     capability: 模型配置读写
