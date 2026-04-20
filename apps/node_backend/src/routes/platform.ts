@@ -6,6 +6,7 @@ import {
   type PlatformAuthRequest,
 } from '../middleware/platformAuth.js';
 import {
+  MAX_PLATFORM_ACK_BATCH_SIZE,
   ackPlatformEvents,
   createPlatformMessage,
   listPlatformEvents,
@@ -175,6 +176,16 @@ export function createPlatformRouter(options: {
           return;
         }
 
+        if (ackedEventIds.length > MAX_PLATFORM_ACK_BATCH_SIZE) {
+          sendError(
+            res,
+            400,
+            'INVALID_PAYLOAD',
+            `ackedEventIds must contain no more than ${MAX_PLATFORM_ACK_BATCH_SIZE} items`,
+          );
+          return;
+        }
+
         await ackPlatformEvents({
           pluginId: req.platformPluginId ?? 'unknown',
           userId: req.platformUserId,
@@ -185,6 +196,15 @@ export function createPlatformRouter(options: {
       } catch (error) {
         if (error instanceof Error && error.message === 'INVALID_CURSOR') {
           sendError(res, 400, 'INVALID_CURSOR', 'cursor is malformed');
+          return;
+        }
+        if (error instanceof Error && error.message === 'TOO_MANY_ACKED_EVENT_IDS') {
+          sendError(
+            res,
+            400,
+            'INVALID_PAYLOAD',
+            `ackedEventIds must contain no more than ${MAX_PLATFORM_ACK_BATCH_SIZE} items`,
+          );
           return;
         }
         console.error('platform ack error:', error);
