@@ -230,6 +230,19 @@ function missingBricksConfigMessage(config: BricksStoredConfig): string | undefi
   return `Missing required Bricks config: ${missingKeys.join(', ')}`;
 }
 
+function validateBricksChannelConfig(config: BricksStoredConfig): { configured: boolean; warning?: string } {
+  if (!isBricksChannelConfigured(config)) {
+    return { configured: false, warning: missingBricksConfigMessage(config) };
+  }
+  try {
+    parseAndValidatePlatformTokenClaims(config.BRICKS_PLATFORM_TOKEN!, config.BRICKS_PLUGIN_ID!);
+    return { configured: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown token error';
+    return { configured: false, warning: `Invalid Bricks platform token: ${message}` };
+  }
+}
+
 function readInputValue(input: ChannelSetupInput, key: BricksConfigKey): string | undefined {
   return readOptionalString(input[key]);
 }
@@ -350,22 +363,22 @@ const bricksConfigAdapter: ChannelConfigAdapter = {
     };
   },
   isConfigured(_account, cfg) {
-    return isBricksChannelConfigured(readStoredChannelConfig(cfg));
+    return validateBricksChannelConfig(readStoredChannelConfig(cfg)).configured;
   },
   describeAccount(account, cfg) {
     const accountLike = account as BricksAccountLike | undefined;
     const config = readStoredChannelConfig(cfg);
-    const warning = missingBricksConfigMessage(config);
+    const validation = validateBricksChannelConfig(config);
 
     return {
       enabled: typeof accountLike?.enabled === 'boolean'
         ? accountLike.enabled
         : true,
-      configured: isBricksChannelConfigured(config),
+      configured: validation.configured,
       extra: {
         baseUrl: config.BRICKS_BASE_URL ?? null,
         pluginId: config.BRICKS_PLUGIN_ID ?? null,
-        ...(warning ? { warning } : {}),
+        ...(validation.warning ? { warning: validation.warning } : {}),
       },
     };
   },
@@ -418,7 +431,7 @@ const bricksSetupWizard: ChannelSetupWizard = {
     unconfiguredHint: 'requires Bricks base URL, plugin id, and platform token',
     configuredScore: 1,
     unconfiguredScore: 0,
-    resolveConfigured: ({ cfg }) => isBricksChannelConfigured(readStoredChannelConfig(cfg)),
+    resolveConfigured: ({ cfg }) => validateBricksChannelConfig(readStoredChannelConfig(cfg)).configured,
     resolveSelectionHint: ({ cfg, configured }) =>
       configured
         ? 'configured'

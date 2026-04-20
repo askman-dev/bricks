@@ -135,10 +135,11 @@ describe('bricksChannelPlugin config and wizard', () => {
       ),
     ).toEqual({
       enabled: true,
-      configured: true,
+      configured: false,
       extra: {
         baseUrl: 'https://api.example.com',
         pluginId: 'plugin-id',
+        warning: expect.stringContaining('Invalid Bricks platform token'),
       },
     });
   });
