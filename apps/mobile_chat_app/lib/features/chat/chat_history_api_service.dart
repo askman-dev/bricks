@@ -61,6 +61,16 @@ class ChatAcceptedTask {
   final String acceptedAt;
 }
 
+class ChatChannelNameSetting {
+  const ChatChannelNameSetting({
+    required this.channelId,
+    required this.displayName,
+  });
+
+  final String channelId;
+  final String displayName;
+}
+
 class ChatHistoryApiService {
   ChatHistoryApiService({http.Client? httpClient})
       : _httpClient = httpClient ?? http.Client(),
@@ -103,6 +113,7 @@ class ChatHistoryApiService {
   Uri get _batchMessagesUri => Uri.parse('$_base/api/chat/messages/batch');
   Uri get _scopesUri => Uri.parse('$_base/api/chat/scopes');
   Uri get _scopeSettingsUri => Uri.parse('$_base/api/chat/scope-settings');
+  Uri get _channelNamesUri => Uri.parse('$_base/api/chat/channel-names');
 
   ChatTaskState? _parseTaskState(Object? value) {
     if (value is! String || value.isEmpty) return null;
@@ -173,6 +184,38 @@ class ChatHistoryApiService {
             : null,
       );
     }).toList(growable: false);
+  }
+
+  Future<List<ChatChannelNameSetting>> loadChannelNames({
+    required String token,
+  }) async {
+    final response = await _client.get(
+      _channelNamesUri,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load chat channel names (${response.statusCode})',
+      );
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map) return const [];
+    final map = Map<String, dynamic>.from(raw);
+    return ((map['channelNames'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map(
+          (item) => ChatChannelNameSetting(
+            channelId: (item['channelId'] as String?) ?? '',
+            displayName: (item['displayName'] as String?) ?? '',
+          ),
+        )
+        .where(
+          (item) =>
+              item.channelId.trim().isNotEmpty &&
+              item.displayName.trim().isNotEmpty,
+        )
+        .toList(growable: false);
   }
 
   Future<ChatHistorySnapshot> load({
@@ -315,6 +358,29 @@ class ChatHistoryApiService {
     if (response.statusCode != 200) {
       throw Exception(
         'Failed to save chat scope setting (${response.statusCode})',
+      );
+    }
+  }
+
+  Future<void> saveChannelName({
+    required String token,
+    required String channelId,
+    String? displayName,
+  }) async {
+    final response = await _client.put(
+      _channelNamesUri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'channelId': channelId,
+        'displayName': displayName?.trim(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to save chat channel name (${response.statusCode})',
       );
     }
   }
