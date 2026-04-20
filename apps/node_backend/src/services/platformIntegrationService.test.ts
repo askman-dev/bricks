@@ -26,6 +26,7 @@ describe('platformIntegrationService', () => {
   beforeEach(() => {
     queryMock.mockReset();
     upsertMessagesMock.mockClear();
+    delete process.env.TURSO_DATABASE_URL;
   });
 
   it('lists only OpenClaw-ready user events with pending assistant metadata', async () => {
@@ -134,6 +135,30 @@ describe('platformIntegrationService', () => {
     expect(sql).toContain("SET task_state = 'completed'");
     expect(sql).toContain("AND task_state IN ('accepted', 'dispatched')");
     expect(sql).toContain('UNNEST($1::text[], $2::int[])');
+    expect(sql).toContain('jsonb_set(');
     expect(params).toEqual([['msg-user-1'], [5], 'plugin_local_main', 'u-1']);
+  });
+
+  it('ack uses Turso-compatible JSON patch SQL when libsql is enabled', async () => {
+    process.env.TURSO_DATABASE_URL = 'libsql://example.turso.io';
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    const result = await ackPlatformEvents({
+      pluginId: 'plugin_local_main',
+      userId: 'u-1',
+      cursor: 'cur_5',
+      ackedEventIds: ['evt_msg_msg-user-1_5', 'evt_msg_msg-user-2_8'],
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("SET task_state = 'completed'");
+    expect(sql).toContain("AND task_state IN ('accepted', 'dispatched')");
+    expect(sql).toContain('json_patch(');
+    expect(sql).toContain("json_object('pluginReadBy', json_object($1, CURRENT_TIMESTAMP))");
+    expect(sql).not.toContain('UNNEST(');
+    expect(sql).not.toContain('::jsonb');
+    expect(params).toEqual(['plugin_local_main', 'msg-user-1', 5, 'msg-user-2', 8, 'u-1']);
   });
 });
