@@ -70,6 +70,7 @@ index:
       - archive
       - session
       - history
+      - single-query commit
       - auto-scroll
       - delivery-status
       - popup-menu
@@ -85,6 +86,7 @@ index:
       - 当多条消息 createdAt 相同且缺少 seqId/稳定并列键时，可能出现“新消息插到旧消息上方”的顺序抖动。
       - 当 writeSeq 与 seqId 语义混用，或 createdAt 来自不同时区来源时，会出现“回复跑到提问前”的错位。
       - user 气泡投递状态若未按路由类型区分（default/openclaw/其他远端），会导致状态图标误导用户。
+      - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
 
   - feature_id: model_settings
     capability: 模型配置读写
@@ -114,7 +116,7 @@ index:
       - 后端默认模型与前端选择策略不一致。
 
   - feature_id: openclaw_token_settings
-    capability: 设置页 Openclaw Token 生成与复制
+    capability: 设置页 Openclaw Token 生成、安装说明展示与复制
     code_index:
       - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
       - apps/mobile_chat_app/lib/features/settings/openclaw_token_settings_screen.dart
@@ -129,9 +131,12 @@ index:
       - openclaw token
       - platform token
       - copy
+      - install instructions
+      - openclaw.json
     change_risks:
       - 设置入口位置变化后，用户可能无法在预期页面找到 token 生成功能。
       - token 展示与复制反馈文案不一致时，可能导致配置操作误判。
+      - 安装说明模板字段缺失或格式错误会导致 OpenClaw 配置失败。
 
   - feature_id: workspace_resources
     capability: Workspace / Projects / Skills / Resources 导航

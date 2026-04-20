@@ -161,7 +161,9 @@ class _MessageListState extends State<MessageList> {
       }
 
       if (candidate.taskState == ChatTaskState.completed ||
-          (!candidate.isStreaming && candidate.content.trim().isNotEmpty)) {
+          (candidate.taskState == null &&
+              !candidate.isStreaming &&
+              candidate.content.trim().isNotEmpty)) {
         hasCompletedReply = true;
       }
       if (candidate.taskState == ChatTaskState.dispatched) {

@@ -15,6 +15,19 @@ dotenv.config();
 
 const app = express();
 
+function shouldSkipGenericApiLimiter(req: Request): boolean {
+  if (req.originalUrl.startsWith('/api/chat/sync/')) {
+    return true;
+  }
+
+  if (req.originalUrl.startsWith('/api/chat/respond')) {
+    const authHeader = req.header('Authorization');
+    return Boolean(authHeader?.startsWith('Bearer '));
+  }
+
+  return false;
+}
+
 // Only enable trust proxy when running behind Vercel (or another trusted proxy),
 // so non-proxied environments keep the safer default behavior.
 if (process.env.VERCEL || process.env.VERCEL_ENV) {
@@ -55,7 +68,9 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   // `/api/chat/sync/*` is polled by authenticated chat clients and uses a
   // route-specific limiter keyed by user/session instead of the coarse IP cap.
-  skip: (req) => req.originalUrl.startsWith('/api/chat/sync/'),
+  // `/api/chat/respond` is also authenticated and uses its own limiter keyed by
+  // user/session so repeated sends do not exhaust the shared IP bucket.
+  skip: shouldSkipGenericApiLimiter,
 });
 
 app.use('/api/', limiter);

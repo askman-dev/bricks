@@ -79,7 +79,6 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
-  Timer? _persistDebounce;
   Timer? _syncTimer;
   bool _syncInFlight = false;
   static const Duration _syncPollInterval = Duration(seconds: 2);
@@ -98,9 +97,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _persistDebounce?.cancel();
     _cancelSyncPolling(resetDelay: false);
-    _doPersistActiveScopeMessages();
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
@@ -609,7 +606,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _latestCheckpointCursor = null;
           _lastSyncedSeq = 0;
         });
-        _persistActiveScopeMessages();
         _configureActiveScopeSync();
         ScaffoldMessenger.of(
           context,
@@ -1092,34 +1088,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return null;
   }
 
-  void _persistActiveScopeMessages({bool immediate = false}) {
-    _persistDebounce?.cancel();
-    if (immediate) {
-      _doPersistActiveScopeMessages();
-      return;
-    }
-    // Debounce to avoid request storms on streaming deltas.
-    _persistDebounce = Timer(const Duration(milliseconds: 500), () {
-      _doPersistActiveScopeMessages();
-    });
-  }
-
-  void _doPersistActiveScopeMessages() {
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
-    unawaited(
-      _chatHistoryApiService
-          .upsertMessages(token: token, messages: _messages)
-          .then((lastSeq) {
-        if (!mounted || lastSeq <= 0) return;
-        // Only advance the cursor, never move it backwards.
-        setState(() {
-          if (lastSeq > _lastSyncedSeq) _lastSyncedSeq = lastSeq;
-        });
-      }).catchError((_) {}),
-    );
-  }
-
   bool _hasPendingAssistantTasks() {
     return _messages.any(
       (message) =>
@@ -1278,7 +1246,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
     });
-    _persistActiveScopeMessages();
     _configureActiveScopeSync();
   }
 
@@ -1303,7 +1270,6 @@ class _ChatScreenState extends State<ChatScreen> {
         isStreaming: isStreaming,
       );
     });
-    _persistActiveScopeMessages();
   }
 
   int _appendMessage(ChatMessage message) {
@@ -1322,9 +1288,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _activeScope.threadId,
       )] = messageTime;
     });
-    final shouldPersistImmediately =
-        normalized.role == 'user' || (!normalized.isStreaming);
-    _persistActiveScopeMessages(immediate: shouldPersistImmediately);
     return _messages.length - 1;
   }
 
@@ -1385,36 +1348,34 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     final ack = _taskProtocol.acknowledge(envelope);
     _latestCheckpointCursor = ack.checkpointCursor;
-    _persistActiveScopeMessages();
 
     final scoreSummary = arbitration.candidateScores
         .map((item) => '${item.botId}:${item.score.toStringAsFixed(2)}')
         .join(', ');
-    _appendMessage(
-      ChatMessage(
-        messageId: userMessageId,
-        role: 'user',
-        content: text,
-        taskId: taskId,
-        taskState: ChatTaskState.accepted,
-        idempotencyKey: idempotencyKey,
-        createdAt: envelope.createdAt,
-        acknowledgedAt: ack.acceptedAt,
-        checkpointCursor: ack.checkpointCursor,
-        channelId: envelope.channelId,
-        sessionId: envelope.sessionId,
-        threadId: envelope.threadId,
-        resolvedBotId: resolvedBotId,
-        resolvedSkillId: resolvedSkillId,
-        arbitrationMode: arbitrationMode,
-        tieDetected: arbitration.tieDetected,
-        tieBotIds: arbitration.tieBotIds,
-        selectedScore: arbitration.selectedScore,
-        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
-        decisionReason: arbitration.reason,
-        traceId: arbitrationMode ? traceId : null,
-      ),
+    final userMessage = ChatMessage(
+      messageId: userMessageId,
+      role: 'user',
+      content: text,
+      taskId: taskId,
+      taskState: ChatTaskState.accepted,
+      idempotencyKey: idempotencyKey,
+      createdAt: envelope.createdAt,
+      acknowledgedAt: ack.acceptedAt,
+      checkpointCursor: ack.checkpointCursor,
+      channelId: envelope.channelId,
+      sessionId: envelope.sessionId,
+      threadId: envelope.threadId,
+      resolvedBotId: resolvedBotId,
+      resolvedSkillId: resolvedSkillId,
+      arbitrationMode: arbitrationMode,
+      tieDetected: arbitration.tieDetected,
+      tieBotIds: arbitration.tieBotIds,
+      selectedScore: arbitration.selectedScore,
+      candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
+      decisionReason: arbitration.reason,
+      traceId: arbitrationMode ? traceId : null,
     );
+    _appendMessage(userMessage);
     _appendMessage(
       ChatMessage(
         messageId: assistantMessageId,
@@ -1571,7 +1532,6 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         return;
       }
-      _persistActiveScopeMessages(immediate: true);
     });
   }
 
@@ -1596,7 +1556,6 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
       });
-      _persistActiveScopeMessages(immediate: true);
     }
   }
 

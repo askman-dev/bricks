@@ -1,10 +1,8 @@
 import {
   BRICKS_CHANNEL_CONFIG_SCHEMA,
-  CHANNEL_DESCRIPTION,
-  CHANNEL_ID,
-  CHANNEL_NAME,
   bricksChannelPlugin,
 } from './bricksChannelPlugin.js';
+import { CHANNEL_DESCRIPTION, CHANNEL_ID, CHANNEL_NAME } from './channelConstants.js';
 
 interface ChannelRegistrationApi {
   registrationMode?: string;
@@ -27,4 +25,5 @@ const pluginEntry = {
 };
 
 export default pluginEntry;
-export { BRICKS_CHANNEL_CONFIG_SCHEMA, CHANNEL_ID, DEFAULT_ACCOUNT_ID, bricksChannelPlugin } from './bricksChannelPlugin.js';
+export { BRICKS_CHANNEL_CONFIG_SCHEMA, bricksChannelPlugin } from './bricksChannelPlugin.js';
+export { CHANNEL_ID, DEFAULT_ACCOUNT_ID } from './channelConstants.js';

@@ -9,6 +9,7 @@ export function createDefaultState(defaultCursor: string): PluginPersistentState
     cursor: defaultCursor,
     processedEventIds: [],
     clientTokenMessageMap: {},
+    clientTokenReplyTextMap: {},
     pendingAck: null,
   };
 }
@@ -28,6 +29,7 @@ export class FileStateStore {
         cursor: parsed.cursor || this.defaultCursor,
         processedEventIds: Array.isArray(parsed.processedEventIds) ? parsed.processedEventIds : [],
         clientTokenMessageMap: parsed.clientTokenMessageMap ?? {},
+        clientTokenReplyTextMap: parsed.clientTokenReplyTextMap ?? {},
         pendingAck:
           parsed.pendingAck &&
           typeof parsed.pendingAck === 'object' &&
