@@ -1,5 +1,5 @@
 # Background
-The chat frontend currently persists messages by repeatedly upserting the whole in-memory message list. During streaming and state transitions this causes replay writes, write sequence churn, and potential ordering side effects.
+The chat frontend previously persisted messages by repeatedly upserting the whole in-memory message list. During streaming and state transitions this caused replay writes, write sequence churn, and potential ordering side effects.
 
 # Goals
 1. Stop full-list client-side persistence on every streaming delta or state transition.
@@ -11,7 +11,7 @@ The chat frontend currently persists messages by repeatedly upserting the whole 
 2. Remove the `_persistDebounce` timer and related cleanup.
 3. Remove all call sites that trigger whole-list upserts during streaming, message updates, and scope changes.
 4. Confirm that the backend `/respond` endpoint already persists the user message (both sync and OpenClaw async paths).
-5. No client-side single-message commit is needed — the `/respond` endpoint is the single source of persistence for user queries.
+5. Verify that no client-side single-message commit remains — the `/respond` endpoint is the single source of persistence for user queries.
 6. Run targeted Dart/Flutter tests and formatting for touched files.
 7. Review code-map impact and update maps only if feature/logic/test entry indexing changed.
 
