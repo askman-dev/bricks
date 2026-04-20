@@ -404,6 +404,7 @@ class ChatHistoryApiService {
     final payload = <String, Object?>{
       ...metadata,
       'messageId': map['messageId'],
+      'seqId': map['seqId'],
       'writeSeq': map['writeSeq'],
       'taskId': map['taskId'],
       'channelId': map['channelId'],

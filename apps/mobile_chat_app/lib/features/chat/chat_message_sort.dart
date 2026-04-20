@@ -2,15 +2,23 @@ import 'chat_message.dart';
 
 /// Compares two [ChatMessage]s by creation time for deterministic ordering.
 ///
-/// Primary sort key (when available from server): `writeSeq`.
+/// Primary sort key (when available from server): immutable `seqId`.
+/// Secondary key for synced deltas: `writeSeq` (sync cursor semantics).
 /// Fallback key: `createdAt` falling back to `timestamp`.
 /// Final tie-breakers: `role` (user before assistant), then `messageId`.
 int compareChatMessagesByCreatedTime(ChatMessage a, ChatMessage b) {
-  final aSeq = a.writeSeq;
-  final bSeq = b.writeSeq;
-  if (aSeq != null && bSeq != null) {
-    final bySeq = aSeq.compareTo(bSeq);
-    if (bySeq != 0) return bySeq;
+  final aSeqId = a.seqId;
+  final bSeqId = b.seqId;
+  if (aSeqId != null && bSeqId != null) {
+    final bySeqId = aSeqId.compareTo(bSeqId);
+    if (bySeqId != 0) return bySeqId;
+  }
+
+  final aWriteSeq = a.writeSeq;
+  final bWriteSeq = b.writeSeq;
+  if (aWriteSeq != null && bWriteSeq != null) {
+    final byWriteSeq = aWriteSeq.compareTo(bWriteSeq);
+    if (byWriteSeq != 0) return byWriteSeq;
   }
   final aTime = a.createdAt ?? a.timestamp;
   final bTime = b.createdAt ?? b.timestamp;

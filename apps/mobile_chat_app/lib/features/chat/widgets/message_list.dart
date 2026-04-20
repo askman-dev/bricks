@@ -116,7 +116,7 @@ class _MessageListState extends State<MessageList> {
   }
 
   String _formatTime(DateTime timestamp) {
-    return DateFormat('HH:mm').format(timestamp);
+    return DateFormat('HH:mm').format(timestamp.toLocal());
   }
 
   String _taskLabel(ChatTaskState state) {

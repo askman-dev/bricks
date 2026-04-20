@@ -9,6 +9,7 @@ class ChatMessage {
     required this.role,
     required this.content,
     this.messageId,
+    this.seqId,
     this.writeSeq,
     this.agentId,
     this.agentName,
@@ -39,6 +40,7 @@ class ChatMessage {
   final String role;
   final String content;
   final String? messageId;
+  final int? seqId;
   final int? writeSeq;
 
   final String? agentId;
@@ -74,6 +76,7 @@ class ChatMessage {
     String? role,
     String? content,
     String? messageId,
+    int? seqId,
     int? writeSeq,
     String? agentId,
     String? agentName,
@@ -104,6 +107,7 @@ class ChatMessage {
       role: role ?? this.role,
       content: content ?? this.content,
       messageId: messageId ?? this.messageId,
+      seqId: seqId ?? this.seqId,
       writeSeq: writeSeq ?? this.writeSeq,
       agentId: agentId ?? this.agentId,
       agentName: agentName ?? this.agentName,
@@ -138,6 +142,7 @@ class ChatMessage {
       'role': role,
       'content': content,
       'messageId': messageId,
+      'seqId': seqId,
       'writeSeq': writeSeq,
       'agentId': agentId,
       'agentName': agentName,
@@ -177,13 +182,21 @@ class ChatMessage {
 
     DateTime? parseDate(Object? value) {
       if (value is! String || value.isEmpty) return null;
-      return DateTime.tryParse(value);
+      final raw = value.trim();
+      if (raw.isEmpty) return null;
+
+      final hasTimezone = raw.endsWith('Z') ||
+          RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(raw) ||
+          RegExp(r'[+-]\d{4}$').hasMatch(raw);
+      final normalized = hasTimezone ? raw : '${raw.replaceFirst(' ', 'T')}Z';
+      return DateTime.tryParse(normalized);
     }
 
     return ChatMessage(
       role: (map['role'] as String?) ?? 'assistant',
       content: (map['content'] as String?) ?? '',
       messageId: map['messageId'] as String?,
+      seqId: (map['seqId'] as num?)?.toInt(),
       writeSeq: (map['writeSeq'] as num?)?.toInt(),
       agentId: map['agentId'] as String?,
       agentName: map['agentName'] as String?,
