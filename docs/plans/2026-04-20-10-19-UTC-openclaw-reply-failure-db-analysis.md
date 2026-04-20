@@ -163,3 +163,29 @@ Recommended schema direction:
   - Therefore the UI can legitimately show `task:accepted` while showing no
     plugin placeholder at all: the app-side async task was created, but the
     plugin never reached the event-processing/writeback stage.
+- Additional rate-limit caveat:
+  - `/api/chat/respond` is still subject to the generic `/api/*` IP limiter in
+    `apps/node_backend/src/app.ts`.
+  - The current code only exempts `/api/chat/sync/*` and authenticated
+    `/api/v1/platform/*`; `apps/node_backend/src/routes/chat.ts` does not apply a
+    dedicated limiter to `/respond`.
+  - That means repeated manual/browser testing can receive `429 Too Many
+    Requests` on the initial send path before the async OpenClaw handoff even
+    starts.
+  - In that case the limiter rejects the request before the route handler runs,
+    so the backend does not accept/persist the task through `/api/chat/respond`.
+- Follow-up `/api/chat/respond` limiter fix:
+  - Authenticated `/api/chat/respond` now bypasses the generic `/api/*` IP
+    limiter in `apps/node_backend/src/app.ts`, just like chat sync/platform
+    routes already do.
+  - `apps/node_backend/src/routes/chat.ts` now adds a dedicated route-specific
+    limiter for `/respond`, keyed by `userId:sessionId`, with a budget of
+    `120 requests / minute / user-session`.
+  - Added regression coverage proving:
+    - authenticated `/api/chat/respond` no longer exhausts the generic IP bucket
+    - `/api/chat/respond` is still capped per user/session
+    - different sessions get independent `/respond` limiter buckets
+  - Revalidated `apps/node_backend` successfully with:
+    - `npm test -- --run src/app.test.ts src/routes/chat.test.ts src/routes/platform.test.ts`
+    - `npm run type-check`
+    - `npm run build`

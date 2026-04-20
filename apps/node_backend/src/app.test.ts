@@ -25,6 +25,10 @@ chatRouter.get('/sync/:sessionId', (_req, res) => {
   res.json({ messages: [], lastSeqId: 0 });
 });
 
+chatRouter.post('/respond', (_req, res) => {
+  res.json({ ok: true });
+});
+
 platformRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
 });
@@ -103,6 +107,28 @@ describe('app rate limiting', () => {
           Authorization: 'Bearer test-platform-key',
           'X-Bricks-Plugin-Id': 'plugin_local_main',
         },
+      });
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('skips the generic api limiter for authenticated chat respond requests', async () => {
+    for (let i = 0; i < 110; i += 1) {
+      const response = await fetch(`${baseUrl}/api/chat/respond`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-user-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: `task-${i}`,
+          idempotencyKey: `idem-${i}`,
+          channelId: 'default',
+          sessionId: 'session:default:main',
+          userMessageId: `msg-user-${i}`,
+          assistantMessageId: `msg-assistant-${i}`,
+          userMessage: 'hello',
+        }),
       });
       expect(response.status).toBe(200);
     }
