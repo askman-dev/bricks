@@ -385,7 +385,7 @@ export function appendReplyText(existing: string, incoming: string): string {
   if (!existing) {
     return next;
   }
-  if (existing.endsWith(next)) {
+  if (existing === next || existing.endsWith(`\n\n${next}`)) {
     return existing;
   }
   return `${existing}\n\n${next}`;

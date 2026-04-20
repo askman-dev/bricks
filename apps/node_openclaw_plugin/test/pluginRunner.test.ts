@@ -151,6 +151,15 @@ describe('appendReplyText', () => {
     expect(appendReplyText('first', 'second')).toBe('first\n\nsecond');
     expect(appendReplyText('first\n\nsecond', 'second')).toBe('first\n\nsecond');
   });
+
+  it('deduplicates only exact matches or delimiter-bounded suffix, not arbitrary suffix', () => {
+    // "bar" is a suffix of "foobar" but not preceded by \n\n, so it should be appended
+    expect(appendReplyText('foobar', 'bar')).toBe('foobar\n\nbar');
+    // identical content should be treated as duplicate
+    expect(appendReplyText('bar', 'bar')).toBe('bar');
+    // exact delimiter-bounded suffix still deduplicates
+    expect(appendReplyText('foo\n\nbar', 'bar')).toBe('foo\n\nbar');
+  });
 });
 
 describe('buildNoVisibleReplyText', () => {

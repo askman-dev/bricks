@@ -20,18 +20,12 @@ function shouldSkipGenericApiLimiter(req: Request): boolean {
     return true;
   }
 
-   if (req.originalUrl.startsWith('/api/chat/respond')) {
+  if (req.originalUrl.startsWith('/api/chat/respond')) {
     const authHeader = req.header('Authorization');
     return Boolean(authHeader?.startsWith('Bearer '));
   }
 
-  if (!req.originalUrl.startsWith('/api/v1/platform/')) {
-    return false;
-  }
-
-  const authHeader = req.header('Authorization');
-  const pluginIdHeader = req.header('X-Bricks-Plugin-Id');
-  return Boolean(authHeader?.startsWith('Bearer ') && pluginIdHeader?.trim());
+  return false;
 }
 
 // Only enable trust proxy when running behind Vercel (or another trusted proxy),
@@ -76,9 +70,6 @@ const limiter = rateLimit({
   // route-specific limiter keyed by user/session instead of the coarse IP cap.
   // `/api/chat/respond` is also authenticated and uses its own limiter keyed by
   // user/session so repeated sends do not exhaust the shared IP bucket.
-  // `/api/v1/platform/*` also has a dedicated limiter keyed by authenticated
-  // plugin identity, so authenticated plugin traffic should bypass the generic
-  // IP bucket as well.
   skip: shouldSkipGenericApiLimiter,
 });
 

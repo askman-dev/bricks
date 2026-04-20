@@ -100,8 +100,10 @@ describe('app rate limiting', () => {
     }
   });
 
-  it('skips the generic api limiter for authenticated platform routes', async () => {
-    for (let i = 0; i < 110; i += 1) {
+  it('applies the generic api limiter to platform routes like other api routes', async () => {
+    // Platform routes no longer bypass the generic IP limiter; verify a small
+    // batch of requests still succeeds (the IP budget has not been exhausted yet).
+    for (let i = 0; i < 5; i += 1) {
       const response = await fetch(`${baseUrl}/api/v1/platform/noop`, {
         headers: {
           Authorization: 'Bearer test-platform-key',
