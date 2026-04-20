@@ -8,7 +8,7 @@ fi
 
 repo="$1"
 pr_number="$2"
-comment_body="${3:-@copilot Please go through the PR review comments and address them. Use your own judgment—don't just blindly follow the suggestions. Commit code for the necessary fixes, but for comments you think should be ignored, just leave a reply explaining your reasoning. Make sure to mark all comments as resolved once you're done.}"
+comment_body="${3:-@copilot Please go through **every** PR review comment one by one—do not skip any. For each comment, you must post a reply regardless of whether you act on it or not. If a comment requires a code change, commit the fix and reply explaining what you changed. If a comment should be ignored, still reply with a clear explanation of your reasoning—describe why the suggestion is not necessary or not applicable in this context. After replying to every comment, mark all of them as resolved.}"
 
 token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 if [[ -z "$token" ]]; then
