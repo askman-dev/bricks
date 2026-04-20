@@ -20,6 +20,32 @@ class _OpenclawTokenSettingsScreenState
   bool _loadingPlatformToken = false;
   PlatformTokenBundle? _platformTokenBundle;
 
+  String _buildInstallInstruction(PlatformTokenBundle bundle) {
+    final scopes = bundle.scopes.join(', ');
+    final buffer = StringBuffer()
+      ..writeln('Send this to OpenClaw plugin setup.')
+      ..writeln(
+        'You can also paste this JSON into ~/.openclaw/openclaw.json (replace <CHANNEL_ID>):',
+      )
+      ..writeln()
+      ..writeln('{')
+      ..writeln('  "channels": {')
+      ..writeln('    "<CHANNEL_ID>": {')
+      ..writeln('      "BRICKS_BASE_URL": "${bundle.baseUrl}",')
+      ..writeln('      "BRICKS_PLUGIN_ID": "${bundle.pluginId}",')
+      ..writeln('      "BRICKS_PLATFORM_TOKEN": "${bundle.token}"')
+      ..writeln('    }')
+      ..writeln('  }')
+      ..writeln('}')
+      ..writeln()
+      ..writeln('Parameters:')
+      ..writeln('- pluginId: ${bundle.pluginId}')
+      ..writeln('- url: ${bundle.baseUrl}')
+      ..writeln('- scopes: $scopes')
+      ..write('- token: ${bundle.token}');
+    return buffer.toString();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +104,9 @@ class _OpenclawTokenSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final bundle = _platformTokenBundle;
+    final installInstruction =
+        bundle == null ? null : _buildInstallInstruction(bundle);
     return Scaffold(
       appBar: AppBar(title: const Text('Openclaw Token')),
       body: ListView(
@@ -95,17 +124,17 @@ class _OpenclawTokenSettingsScreenState
             label: Text(
                 _loadingPlatformToken ? 'Generating...' : 'Openclaw Token'),
           ),
-          if (_platformTokenBundle != null) ...[
+          if (bundle != null && installInstruction != null) ...[
             const SizedBox(height: 12),
-            Text('Plugin ID: ${_platformTokenBundle!.pluginId}'),
+            Text('Plugin ID: ${bundle.pluginId}'),
             const SizedBox(height: 6),
-            Text('Base URL: ${_platformTokenBundle!.baseUrl}'),
+            Text('Base URL: ${bundle.baseUrl}'),
             const SizedBox(height: 6),
-            Text('Scopes: ${_platformTokenBundle!.scopes.join(', ')}'),
+            Text('Scopes: ${bundle.scopes.join(', ')}'),
             const SizedBox(height: 8),
             TextFormField(
-              key: ValueKey(_platformTokenBundle!.token),
-              initialValue: _platformTokenBundle!.token,
+              key: ValueKey(bundle.token.hashCode),
+              initialValue: bundle.token,
               readOnly: true,
               decoration: InputDecoration(
                 labelText: 'Openclaw Token',
@@ -114,12 +143,47 @@ class _OpenclawTokenSettingsScreenState
                   icon: const Icon(Icons.copy_outlined),
                   onPressed: () {
                     _copyToClipboard(
-                      value: _platformTokenBundle!.token,
+                      value: bundle.token,
                       emptyMessage: 'Openclaw Token is empty',
                       successMessage: 'Openclaw Token copied',
                     );
                   },
                 ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Install Instructions',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Copy this and send it to OpenClaw plugin setup.',
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              key: const ValueKey('copyInstallInstructionsButton'),
+              onPressed: () {
+                _copyToClipboard(
+                  value: installInstruction,
+                  emptyMessage: 'Install instructions are empty',
+                  successMessage: 'Install instructions copied',
+                );
+              },
+              icon: const Icon(Icons.copy_all_outlined),
+              label: const Text('Copy Install Instructions'),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(color: Theme.of(context).dividerColor),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                installInstruction,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
               ),
             ),
           ],

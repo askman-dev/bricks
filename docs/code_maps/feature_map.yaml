@@ -70,7 +70,7 @@ products:
 
       - feature_id: openclaw_token_settings
         name: OpenClaw Token 配置
-        user_value: 用户可在设置页生成并复制 Openclaw Token，用于插件对接。
+        user_value: 用户可在设置页生成 Openclaw Token，并复制插件安装说明用于 OpenClaw 对接。
         entry_paths:
           - screen: SettingsScreen
             route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
@@ -82,6 +82,8 @@ products:
           - 在设置页可看到并进入 “Openclaw Token” 设置项。
           - 点击 “Openclaw Token” 按钮后可生成 token 信息。
           - 生成后可复制 Openclaw Token 到剪贴板。
+          - 生成后页面会显示包含 pluginId / URL / scopes / token 的安装说明。
+          - 点击 “Copy Install Instructions” 可一键复制完整安装说明文本。
 
       - feature_id: workspace_resources
         name: Workspace / Projects / Skills / Resources 管理

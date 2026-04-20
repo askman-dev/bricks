@@ -112,7 +112,7 @@ index:
       - 后端默认模型与前端选择策略不一致。
 
   - feature_id: openclaw_token_settings
-    capability: 设置页 Openclaw Token 生成与复制
+    capability: 设置页 Openclaw Token 生成、安装说明展示与复制
     code_index:
       - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
       - apps/mobile_chat_app/lib/features/settings/openclaw_token_settings_screen.dart
@@ -127,9 +127,12 @@ index:
       - openclaw token
       - platform token
       - copy
+      - install instructions
+      - openclaw.json
     change_risks:
       - 设置入口位置变化后，用户可能无法在预期页面找到 token 生成功能。
       - token 展示与复制反馈文案不一致时，可能导致配置操作误判。
+      - 安装说明模板字段缺失或格式错误会导致 OpenClaw 配置失败。
 
   - feature_id: workspace_resources
     capability: Workspace / Projects / Skills / Resources 导航
