@@ -409,7 +409,7 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
       key: key,
       size: 14,
       color: indicator.isCompleted
-          ? Colors.green
+          ? Theme.of(context).colorScheme.primary
           : Theme.of(context).colorScheme.outline,
     );
   }
