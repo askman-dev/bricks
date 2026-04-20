@@ -1432,6 +1432,92 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final generation = ++_respondGeneration;
+    final shouldUseDefaultStreaming =
+        _effectiveRouterForScope() != ChatRouter.openclaw;
+    if (shouldUseDefaultStreaming) {
+      unawaited(() async {
+        try {
+          var assembledText = '';
+          await for (final event in _chatHistoryApiService.respondStream(
+            token: token,
+            taskId: taskId,
+            idempotencyKey: idempotencyKey,
+            scope: _activeScope,
+            userMessageId: userMessageId,
+            assistantMessageId: assistantMessageId,
+            userMessage: text,
+            resolvedBotId: resolvedBotId,
+            resolvedSkillId: resolvedSkillId,
+            provider: runtimeSettings.provider,
+            model: runtimeSettings.model,
+            configId: runtimeSettings.configId,
+            createdAt: envelope.createdAt,
+          )) {
+            if (!mounted || generation != _respondGeneration) return;
+            if (event.type == 'delta') {
+              assembledText += event.delta;
+              _updateMessageById(
+                assistantMessageId,
+                (current) => current.copyWith(
+                  content: assembledText,
+                  isStreaming: true,
+                  taskState: ChatTaskState.accepted,
+                ),
+              );
+              continue;
+            }
+            if (event.type == 'done') {
+              final updated = _updateMessageById(
+                assistantMessageId,
+                (current) => current.copyWith(
+                  content: assembledText,
+                  isStreaming: false,
+                  taskState: event.taskState ?? ChatTaskState.completed,
+                ),
+                onStateUpdate: () {
+                  if ((event.lastSeqId ?? 0) > _lastSyncedSeq) {
+                    _lastSyncedSeq = event.lastSeqId!;
+                  }
+                  _isSending = false;
+                  _isStreaming = false;
+                },
+              );
+              if (!updated) return;
+              if (mounted) {
+                await _handleProactiveResponses(text);
+              }
+              return;
+            }
+            if (event.type == 'error') {
+              throw Exception(event.errorMessage ?? 'stream failed');
+            }
+          }
+        } catch (error) {
+          if (!mounted || generation != _respondGeneration) return;
+          _updateMessageById(
+            assistantMessageId,
+            (current) => current.copyWith(
+              content: 'Error: $error',
+              isStreaming: false,
+              taskState: ChatTaskState.failed,
+            ),
+            onStateUpdate: () {
+              _isSending = false;
+              _isStreaming = false;
+            },
+          );
+        } finally {
+          if (mounted && generation == _respondGeneration) {
+            setState(() {
+              _isSending = false;
+              _isStreaming = false;
+            });
+          }
+        }
+      }());
+      return;
+    }
+
     _chatHistoryApiService
         .respond(
       token: token,
@@ -1448,9 +1534,8 @@ class _ChatScreenState extends State<ChatScreen> {
       configId: runtimeSettings.configId,
       createdAt: envelope.createdAt,
     )
-        .then((result) async {
+        .then((result) {
       if (!mounted) return;
-      // Ignore stale completions if stop was pressed after this request started.
       if (generation != _respondGeneration) return;
       final updated = _updateMessageById(
         assistantMessageId,
@@ -1485,16 +1570,11 @@ class _ChatScreenState extends State<ChatScreen> {
         _configureActiveScopeSync();
         return;
       }
-      // Backend already persisted both messages; skip redundant client-side
-      // upsert to avoid overwriting backend-only metadata (provider/model/source).
       if (mounted) {
-        await _handleProactiveResponses(text);
-        if (mounted) {
-          setState(() {
-            _isSending = false;
-            _isStreaming = false;
-          });
-        }
+        setState(() {
+          _isSending = false;
+          _isStreaming = false;
+        });
       }
     }).catchError((error) {
       if (!mounted) return;

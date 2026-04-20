@@ -50,6 +50,7 @@ index:
       - docs/architecture.md
       - openspec/changes/multi-agent-participation/design.md
       - docs/plans/2026-04-18-00-20-UTC-openclaw-message-routing-current-state.md
+      - docs/plans/2026-04-20-10-55-UTC-default-streaming-and-truncation-fix.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
@@ -72,6 +73,8 @@ index:
       - history
       - single-query commit
       - auto-scroll
+      - default streaming
+      - sse
       - popup-menu
       - menu-animation
     change_risks:
@@ -85,6 +88,7 @@ index:
       - 当多条消息 createdAt 相同且缺少 seqId/稳定并列键时，可能出现“新消息插到旧消息上方”的顺序抖动。
       - 当 writeSeq 与 seqId 语义混用，或 createdAt 来自不同时区来源时，会出现“回复跑到提问前”的错位。
       - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
+      - SSE 事件解析异常或断流处理不完整时，可能导致 assistant 文本停留在中间态。
 
   - feature_id: model_settings
     capability: 模型配置读写
@@ -199,6 +203,7 @@ index:
       - docs/architecture.md
       - docs/openclaw_pull_only_integration_dev_doc.md
       - docs/plans/2026-04-18-00-20-UTC-openclaw-message-routing-current-state.md
+      - docs/plans/2026-04-20-10-55-UTC-default-streaming-and-truncation-fix.md
     test_index:
       - apps/node_backend/src/routes/chat.test.ts
       - apps/node_backend/src/routes/platform.test.ts
@@ -215,6 +220,8 @@ index:
       - openclaw
       - x-bricks-plugin-id
       - events ack
+      - respond stream
+      - max tokens
     change_risks:
       - provider 适配器接口变动导致 LLM 调用失败。
       - 流式响应格式变化导致前端解析出错。

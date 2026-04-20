@@ -25,7 +25,7 @@ import {
   listChatChannelNames,
   upsertChatChannelName,
 } from '../services/chatChannelNameService.js';
-import { generateWithUserConfig } from '../llm/llm_service.js';
+import { generateWithUserConfig, streamWithUserConfig } from '../llm/llm_service.js';
 import type { LlmProvider } from '../llm/types.js';
 
 const router = express.Router();
@@ -57,6 +57,12 @@ function parseChatRouter(value: unknown): ChatRouter | null {
 function parseScopeType(value: unknown): ChatScopeType | null {
   if (value === 'channel' || value === 'thread') return value;
   return null;
+}
+
+function parseMaxTokens(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return undefined;
+  if (value < 1 || value > 16384) return undefined;
+  return value;
 }
 
 const syncLimiter = rateLimit({
@@ -94,6 +100,7 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
     const userMessageId = parseSessionId(body.userMessageId);
     const assistantMessageId = parseSessionId(body.assistantMessageId);
     const userMessage = typeof body.userMessage === 'string' ? body.userMessage.trim() : '';
+    const maxTokens = parseMaxTokens(body.maxTokens);
 
     if (!taskId || !idempotencyKey || !channelId || !sessionId || !userMessageId || !assistantMessageId || !userMessage) {
       res.status(400).json({
@@ -188,6 +195,7 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
         model: typeof body.model === 'string' ? body.model : undefined,
         configId: typeof body.configId === 'string' ? body.configId : undefined,
         messages: modelMessages,
+        maxTokens,
       },
       parseProvider(body.provider),
     );
@@ -229,6 +237,208 @@ router.post('/respond', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Chat respond error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/respond/stream', async (req: AuthRequest, res: Response) => {
+  let userId: string | undefined;
+  let acceptedTaskId: string | null = null;
+  let acceptedSessionId: string | null = null;
+  let assistantMessageId: string | null = null;
+  let input: AcceptTaskInput | null = null;
+  let channelId: string | null = null;
+  let streamedText = '';
+  let resolvedProvider: LlmProvider | undefined;
+  let modelId: string | null = null;
+  let startedStream = false;
+
+  try {
+    userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const taskId = parseSessionId(body.taskId);
+    const idempotencyKey = parseSessionId(body.idempotencyKey);
+    channelId = parseSessionId(body.channelId);
+    const sessionId = parseSessionId(body.sessionId);
+    const threadId = parseSessionId(body.threadId);
+    const userMessageId = parseSessionId(body.userMessageId);
+    assistantMessageId = parseSessionId(body.assistantMessageId);
+    const userMessage = typeof body.userMessage === 'string' ? body.userMessage.trim() : '';
+    const maxTokens = parseMaxTokens(body.maxTokens);
+
+    if (
+      !taskId ||
+      !idempotencyKey ||
+      !channelId ||
+      !sessionId ||
+      !userMessageId ||
+      !assistantMessageId ||
+      !userMessage
+    ) {
+      res.status(400).json({
+        error:
+          'Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, userMessage are required',
+      });
+      return;
+    }
+
+    input = {
+      taskId,
+      idempotencyKey,
+      channelId,
+      sessionId,
+      threadId,
+      resolvedBotId: parseSessionId(body.resolvedBotId),
+      resolvedSkillId: parseSessionId(body.resolvedSkillId),
+    };
+
+    const resolvedRouter = await resolveChatRouter(userId, {
+      channelId,
+      threadId,
+    });
+    if (resolvedRouter === CHAT_ROUTER_OPENCLAW) {
+      res.status(409).json({
+        error: 'OpenClaw route is async-only in /respond/stream. Use /api/chat/respond.',
+      });
+      return;
+    }
+
+    const acceptedTask = await acceptTask(userId, input);
+    acceptedTaskId = acceptedTask.taskId;
+    acceptedSessionId = acceptedTask.sessionId;
+
+    await upsertMessages(userId, [
+      {
+        messageId: userMessageId,
+        taskId: acceptedTaskId,
+        channelId,
+        sessionId: acceptedSessionId,
+        threadId: input.threadId,
+        role: 'user',
+        content: userMessage,
+        taskState: 'accepted',
+        checkpointCursor: null,
+        metadata: {
+          resolvedBotId: input.resolvedBotId,
+          resolvedSkillId: input.resolvedSkillId,
+          source: 'backend.respond.stream',
+        },
+        createdAt: typeof body.createdAt === 'string' ? body.createdAt : null,
+      },
+    ]);
+
+    const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
+      limit: 40,
+      maxChars: 10000,
+    });
+
+    const streamResult = await streamWithUserConfig(
+      userId,
+      {
+        model: typeof body.model === 'string' ? body.model : undefined,
+        configId: typeof body.configId === 'string' ? body.configId : undefined,
+        messages: modelMessages,
+        maxTokens,
+      },
+      parseProvider(body.provider),
+    );
+    resolvedProvider = streamResult.provider;
+    modelId = streamResult.modelId;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    startedStream = true;
+
+    for await (const chunk of streamResult.textStream) {
+      streamedText += chunk;
+      res.write(`data: ${JSON.stringify({ type: 'delta', delta: chunk })}\n\n`);
+    }
+
+    const persisted = await upsertMessages(userId, [
+      {
+        messageId: assistantMessageId,
+        taskId: acceptedTaskId,
+        channelId,
+        sessionId: acceptedSessionId,
+        threadId: input.threadId,
+        role: 'assistant',
+        content: streamedText,
+        taskState: 'completed',
+        checkpointCursor: null,
+        metadata: {
+          resolvedBotId: input.resolvedBotId,
+          resolvedSkillId: input.resolvedSkillId,
+          provider: resolvedProvider,
+          model: modelId,
+          source: 'backend.respond.stream',
+        },
+        createdAt: null,
+      },
+    ]);
+
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'done',
+        taskId: acceptedTaskId,
+        sessionId: acceptedSessionId,
+        assistantMessageId,
+        state: 'completed',
+        provider: resolvedProvider,
+        model: modelId,
+        lastSeqId: persisted.lastSeqId,
+      })}\n\n`,
+    );
+    res.end();
+  } catch (error) {
+    if (
+      userId &&
+      acceptedTaskId &&
+      acceptedSessionId &&
+      assistantMessageId &&
+      channelId &&
+      input
+    ) {
+      try {
+        await upsertMessages(userId, [
+          {
+            messageId: assistantMessageId,
+            taskId: acceptedTaskId,
+            channelId,
+            sessionId: acceptedSessionId,
+            threadId: input.threadId,
+            role: 'assistant',
+            content: streamedText,
+            taskState: 'failed',
+            checkpointCursor: null,
+            metadata: {
+              resolvedBotId: input.resolvedBotId,
+              resolvedSkillId: input.resolvedSkillId,
+              provider: resolvedProvider,
+              model: modelId,
+              source: 'backend.respond.stream.error',
+              error: 'stream_failed',
+            },
+            createdAt: null,
+          },
+        ]);
+      } catch (persistError) {
+        console.error('Persist stream failure message error:', persistError);
+      }
+    }
+
+    console.error('Chat respond stream error:', error);
+    if (!startedStream) {
+      res.status(500).json({ error: 'Internal server error' });
+      return;
+    }
+    res.write(`data: ${JSON.stringify({ type: 'error', message: 'stream failed' })}\n\n`);
+    res.end();
   }
 });
 

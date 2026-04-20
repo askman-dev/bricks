@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -31,6 +32,38 @@ class ChatRespondResult {
   final int lastSeqId;
   final bool isAsync;
   final ChatTaskState? taskState;
+}
+
+class ChatRespondStreamEvent {
+  const ChatRespondStreamEvent._({
+    required this.type,
+    this.delta = '',
+    this.lastSeqId,
+    this.taskState,
+    this.errorMessage,
+  });
+
+  final String type;
+  final String delta;
+  final int? lastSeqId;
+  final ChatTaskState? taskState;
+  final String? errorMessage;
+
+  factory ChatRespondStreamEvent.delta(String value) =>
+      ChatRespondStreamEvent._(type: 'delta', delta: value);
+
+  factory ChatRespondStreamEvent.done({
+    required int? lastSeqId,
+    required ChatTaskState? taskState,
+  }) =>
+      ChatRespondStreamEvent._(
+        type: 'done',
+        lastSeqId: lastSeqId,
+        taskState: taskState,
+      );
+
+  factory ChatRespondStreamEvent.error(String message) =>
+      ChatRespondStreamEvent._(type: 'error', errorMessage: message);
 }
 
 class ChatPersistedScope {
@@ -333,6 +366,81 @@ class ChatHistoryApiService {
       isAsync: (map['mode'] as String?) == 'async',
       taskState: _parseTaskState(map['state']),
     );
+  }
+
+  Stream<ChatRespondStreamEvent> respondStream({
+    required String token,
+    required String taskId,
+    required String idempotencyKey,
+    required ChatSessionScope scope,
+    required String userMessageId,
+    required String assistantMessageId,
+    required String userMessage,
+    String? resolvedBotId,
+    String? resolvedSkillId,
+    String? provider,
+    String? model,
+    String? configId,
+    DateTime? createdAt,
+  }) async* {
+    final request = http.Request(
+      'POST',
+      Uri.parse('$_base/api/chat/respond/stream'),
+    )
+      ..headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      })
+      ..body = jsonEncode({
+        'taskId': taskId,
+        'idempotencyKey': idempotencyKey,
+        'channelId': scope.channelId,
+        'sessionId': scope.sessionId,
+        'threadId': scope.threadId,
+        'userMessageId': userMessageId,
+        'assistantMessageId': assistantMessageId,
+        'userMessage': userMessage,
+        'resolvedBotId': resolvedBotId,
+        'resolvedSkillId': resolvedSkillId,
+        'provider': provider,
+        'model': model,
+        'configId': configId,
+        'createdAt': createdAt?.toIso8601String(),
+      });
+
+    final response = await _client.send(request);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to stream chat task (${response.statusCode})');
+    }
+
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) continue;
+      final payload = line.substring(6).trim();
+      if (payload.isEmpty) continue;
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map) continue;
+      final map = Map<String, dynamic>.from(decoded);
+      final type = map['type'] as String?;
+      if (type == 'delta') {
+        yield ChatRespondStreamEvent.delta((map['delta'] as String?) ?? '');
+        continue;
+      }
+      if (type == 'done') {
+        yield ChatRespondStreamEvent.done(
+          lastSeqId: (map['lastSeqId'] as num?)?.toInt(),
+          taskState: _parseTaskState(map['state']),
+        );
+        continue;
+      }
+      if (type == 'error') {
+        yield ChatRespondStreamEvent.error(
+          (map['message'] as String?) ?? 'stream failed',
+        );
+      }
+    }
   }
 
   Future<void> saveScopeSetting({

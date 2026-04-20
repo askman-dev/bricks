@@ -9,6 +9,7 @@ const adapters: Record<LlmProvider, LlmProviderAdapter> = {
   anthropic: new AnthropicAdapter(),
   google_ai_studio: new GoogleAiStudioAdapter(),
 };
+const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 
 const ALLOWED_ENDPOINT_HOSTS = new Set([
   'api.anthropic.com',
@@ -71,7 +72,7 @@ export async function generateWithUserConfig(
       content: m.content,
     })),
     temperature: request.temperature,
-    maxOutputTokens: request.maxTokens ?? 1024,
+    maxOutputTokens: request.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
   });
 
   return {
@@ -100,7 +101,7 @@ export async function streamWithUserConfig(
       content: m.content,
     })),
     temperature: request.temperature,
-    maxOutputTokens: request.maxTokens ?? 1024,
+    maxOutputTokens: request.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
   });
 
   return { textStream: result.textStream, provider: runtimeConfig.provider, modelId };

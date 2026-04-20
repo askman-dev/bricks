@@ -15,6 +15,7 @@ const {
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
   generateWithUserConfigMock,
+  streamWithUserConfigMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: 'task-1',
@@ -50,6 +51,14 @@ const {
     provider: 'anthropic',
     model: 'claude-sonnet-4-5',
   })),
+  streamWithUserConfigMock: vi.fn(async () => ({
+    textStream: (async function* () {
+      yield 'stream ';
+      yield 'reply';
+    })(),
+    provider: 'anthropic',
+    modelId: 'claude-sonnet-4-5',
+  })),
 }));
 
 vi.mock('../services/chatAsyncTransportService.js', () => ({
@@ -77,6 +86,7 @@ vi.mock('../services/chatChannelNameService.js', () => ({
 
 vi.mock('../llm/llm_service.js', () => ({
   generateWithUserConfig: generateWithUserConfigMock,
+  streamWithUserConfig: streamWithUserConfigMock,
 }));
 
 vi.mock('../middleware/auth.js', () => ({
@@ -137,6 +147,7 @@ describe('chat routes', () => {
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
     generateWithUserConfigMock.mockClear();
+    streamWithUserConfigMock.mockClear();
   });
 
   it('routes OpenClaw scopes to async pending dispatch', async () => {
@@ -179,6 +190,43 @@ describe('chat routes', () => {
             source: 'backend.respond.openclaw',
             pendingAssistantMessageId: 'msg-assistant-1',
           }),
+        }),
+      ],
+    );
+  });
+
+  it('streams default route response and persists assistant completion', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/respond/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-1',
+        idempotencyKey: 'idem-2',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-user-2',
+        assistantMessageId: 'msg-assistant-2',
+        userMessage: 'hello stream',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    const text = await response.text();
+    expect(text).toContain('"type":"delta"');
+    expect(text).toContain('"delta":"stream "');
+    expect(text).toContain('"delta":"reply"');
+    expect(text).toContain('"type":"done"');
+    expect(streamWithUserConfigMock).toHaveBeenCalledTimes(1);
+    expect(upsertMessagesMock).toHaveBeenNthCalledWith(
+      2,
+      'user-123',
+      [
+        expect.objectContaining({
+          messageId: 'msg-assistant-2',
+          role: 'assistant',
+          content: 'stream reply',
+          taskState: 'completed',
         }),
       ],
     );

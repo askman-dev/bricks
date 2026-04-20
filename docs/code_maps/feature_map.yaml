@@ -37,6 +37,8 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
         smoke_checks:
           - 发送一条消息后可以看到消息列表更新。
+          - default 路由发送消息时，assistant 气泡应逐步增长（流式）并最终展示完整文本。
+          - default 路由长回答不应出现“半截文本”；完成后应可在历史中看到完整 assistant 内容。
           - 将路由切到 openclaw 后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
           - 在 openclaw 离线后切回默认路由继续发送时，历史消息应优先按服务端 seqId（不可变插入序）渲染，后到达更新不会打乱对话先后。
@@ -141,9 +143,10 @@ products:
             route_hint: apps/node_backend/src/llm/llm_service.ts
         smoke_checks:
           - 调用 chat 接口时返回结构化响应。
+          - "调用 `/api/chat/respond/stream`（default 路由）应返回 SSE `delta`/`done` 事件，并在结束后持久化 assistant 消息。"
           - provider 配置缺失时给出明确错误。
           - 使用 API Key + X-Bricks-Plugin-Id 可访问 `/api/v1/platform/events` 并获取 `nextCursor`。
-          - `/api/v1/platform/events/ack` 禁止 body 中传 `pluginId`，合法 ACK 可重复调用并返回成功。
+          - "`/api/v1/platform/events/ack` 禁止 body 中传 `pluginId`，合法 ACK 可重复调用并返回成功。"
           - 调用 `/api/chat/channel-names` 可保存并读取每个用户的频道自定义名称。
 
   - product_id: node_openclaw_plugin
