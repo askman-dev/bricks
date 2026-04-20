@@ -145,6 +145,25 @@ describe('platform route auth and ack constraints', () => {
     expect(vi.mocked(ackPlatformEvents)).not.toHaveBeenCalled();
   });
 
+  it('returns 400 when service throws INVALID_ACKED_EVENT_IDS', async () => {
+    vi.mocked(ackPlatformEvents).mockRejectedValueOnce(new Error('INVALID_ACKED_EVENT_IDS'));
+
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({ ackedEventIds: ['bad-id'], cursor: 'cur_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } };
+    expect(body.error?.code).toBe('INVALID_PAYLOAD');
+    expect(body.error?.message).toContain('malformed');
+  });
+
   it('accepts user-scoped JWT platform token', async () => {
     const jwtToken = issuePlatformAccessToken({
       userId: 'user-123',

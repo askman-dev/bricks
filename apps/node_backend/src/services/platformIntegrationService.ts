@@ -40,10 +40,10 @@ export interface PlatformEvent {
       userId: string;
       displayName: string;
     };
-       text: string;
-       attachments: unknown[];
-       metadata?: Record<string, unknown>;
-      };
+    text: string;
+    attachments: unknown[];
+    metadata?: Record<string, unknown>;
+  };
 }
 
 export const MAX_PLATFORM_EVENTS_LIMIT = 200;

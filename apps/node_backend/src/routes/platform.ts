@@ -207,6 +207,10 @@ export function createPlatformRouter(options: {
           );
           return;
         }
+        if (error instanceof Error && error.message === 'INVALID_ACKED_EVENT_IDS') {
+          sendError(res, 400, 'INVALID_PAYLOAD', 'one or more ackedEventIds are malformed');
+          return;
+        }
         console.error('platform ack error:', error);
         sendError(res, 500, 'INTERNAL_ERROR', 'internal server error', true);
       }
