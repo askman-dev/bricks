@@ -652,10 +652,10 @@ class _ChatScreenState extends State<ChatScreen> {
           unawaited(
             _chatHistoryApiService
                 .saveChannelName(
-                  token: token,
-                  channelId: channelId,
-                  displayName: name,
-                )
+              token: token,
+              channelId: channelId,
+              displayName: name,
+            )
                 .catchError((Object error, StackTrace stackTrace) {
               debugPrint('Failed to save channel name "$channelId": $error');
             }),
@@ -698,10 +698,10 @@ class _ChatScreenState extends State<ChatScreen> {
       unawaited(
         _chatHistoryApiService
             .saveChannelName(
-              token: token,
-              channelId: channelId,
-              displayName: null,
-            )
+          token: token,
+          channelId: channelId,
+          displayName: null,
+        )
             .catchError((Object error, StackTrace stackTrace) {
           debugPrint('Failed to archive channel "$channelId": $error');
         }),
@@ -922,6 +922,11 @@ class _ChatScreenState extends State<ChatScreen> {
   String _threadRouterMenuLabel(ChatRouter? router) {
     if (router == null) return 'Follow channel';
     return _routerLabel(router);
+  }
+
+  String? _sourceFromRespondRouter(String? router) {
+    if (router == null || router.isEmpty || router == 'default') return null;
+    return 'backend.respond.$router';
   }
 
   String _activeRouterSummary() {
@@ -1491,6 +1496,13 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       // Ignore stale completions if stop was pressed after this request started.
       if (generation != _respondGeneration) return;
+      _updateMessageById(
+        userMessageId,
+        (current) => current.copyWith(
+          taskState: result.taskState ?? current.taskState,
+          source: _sourceFromRespondRouter(result.router) ?? current.source,
+        ),
+      );
       final updated = _updateMessageById(
         assistantMessageId,
         (current) {

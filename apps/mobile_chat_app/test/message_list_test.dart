@@ -302,4 +302,114 @@ void main() {
       expect(padding.padding, const EdgeInsets.only(left: BricksSpacing.md));
     });
   });
+
+  group('User delivery status', () {
+    testWidgets('does not show status for default router messages',
+        (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-default',
+        role: 'user',
+        content: 'hello',
+        taskId: 'task-default',
+        source: 'backend.respond',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('user-delivery-u-default')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('shows gray lobster for openclaw accepted messages',
+        (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-openclaw-accepted',
+        role: 'user',
+        content: 'hello',
+        taskId: 'task-openclaw-accepted',
+        source: 'backend.respond.openclaw',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      final lobster = tester.widget<Text>(
+        find.byKey(
+          const ValueKey<String>('user-delivery-u-openclaw-accepted'),
+        ),
+      );
+      expect(lobster.data, '🦞');
+    });
+
+    testWidgets('shows green check when openclaw has replied', (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-openclaw-completed',
+        role: 'user',
+        content: 'hello',
+        taskId: 'task-openclaw-completed',
+        source: 'backend.respond.openclaw',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      final assistant = ChatMessage(
+        messageId: 'a-openclaw-completed',
+        role: 'assistant',
+        content: 'done',
+        taskId: 'task-openclaw-completed',
+        taskState: ChatTaskState.completed,
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+      );
+
+      await tester.pumpWidget(_build([user, assistant]));
+      await tester.pumpAndSettle();
+
+      final icon = tester.widget<Icon>(
+        find.byKey(
+          const ValueKey<String>('user-delivery-u-openclaw-completed'),
+        ),
+      );
+      expect(icon.icon, Icons.check);
+      expect(icon.color, Colors.green);
+    });
+
+    testWidgets('shows gray then green check for generic remote routes',
+        (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-remote',
+        role: 'user',
+        content: 'hello',
+        taskId: 'task-remote',
+        source: 'backend.respond.custom-router',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+      final beforeReply = tester.widget<Icon>(
+        find.byKey(const ValueKey<String>('user-delivery-u-remote')),
+      );
+      expect(beforeReply.icon, Icons.check);
+      expect(beforeReply.color, isNot(Colors.green));
+
+      final assistant = ChatMessage(
+        messageId: 'a-remote',
+        role: 'assistant',
+        content: 'done',
+        taskId: 'task-remote',
+        taskState: ChatTaskState.completed,
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+      );
+
+      await tester.pumpWidget(_build([user, assistant]));
+      await tester.pumpAndSettle();
+      final afterReply = tester.widget<Icon>(
+        find.byKey(const ValueKey<String>('user-delivery-u-remote')),
+      );
+      expect(afterReply.color, Colors.green);
+    });
+  });
 }

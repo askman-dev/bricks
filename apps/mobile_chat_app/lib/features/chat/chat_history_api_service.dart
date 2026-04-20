@@ -25,12 +25,14 @@ class ChatRespondResult {
     required this.lastSeqId,
     required this.isAsync,
     this.taskState,
+    this.router,
   });
 
   final String text;
   final int lastSeqId;
   final bool isAsync;
   final ChatTaskState? taskState;
+  final String? router;
 }
 
 class ChatPersistedScope {
@@ -90,6 +92,7 @@ class ChatHistoryApiService {
     'agentId',
     'agentName',
     'traceId',
+    'source',
   ];
 
   void dispose() {
@@ -332,6 +335,7 @@ class ChatHistoryApiService {
       lastSeqId: (map['lastSeqId'] as num?)?.toInt() ?? 0,
       isAsync: (map['mode'] as String?) == 'async',
       taskState: _parseTaskState(map['state']),
+      router: map['router'] as String?,
     );
   }
 
