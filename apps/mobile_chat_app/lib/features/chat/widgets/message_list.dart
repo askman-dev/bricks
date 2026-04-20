@@ -392,25 +392,42 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final key = ValueKey<String>('user-delivery-${messageId ?? 'unknown'}');
+    final statusLabel = indicator.icon == _DeliveryIcon.lobster
+        ? 'Pending'
+        : indicator.isCompleted
+        ? 'Delivered'
+        : 'Dispatched';
     if (indicator.icon == _DeliveryIcon.lobster) {
-      return Text(
-        '🦞',
-        key: key,
-        style: TextStyle(
-          fontSize: 12,
-          color: Theme.of(
-            context,
-          ).colorScheme.onSurfaceVariant.withOpacity(indicator.opacity),
+      return Semantics(
+        label: statusLabel,
+        child: Tooltip(
+          message: statusLabel,
+          child: Text(
+            '🦞',
+            key: key,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withOpacity(indicator.opacity),
+            ),
+          ),
         ),
       );
     }
-    return Icon(
-      Icons.check,
-      key: key,
-      size: 14,
-      color: indicator.isCompleted
-          ? Theme.of(context).colorScheme.primary
-          : Theme.of(context).colorScheme.outline,
+    return Semantics(
+      label: statusLabel,
+      child: Tooltip(
+        message: statusLabel,
+        child: Icon(
+          Icons.check,
+          key: key,
+          size: 14,
+          color: indicator.isCompleted
+              ? Colors.green
+              : Theme.of(context).colorScheme.outline,
+        ),
+      ),
     );
   }
 }
