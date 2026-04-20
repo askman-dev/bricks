@@ -57,7 +57,7 @@ jobs:
               : (context.payload.review?.state || '').toLowerCase();
             const actionableStates = new Set(['commented', 'changes_requested']);
             const marker = `<!-- copilot-review-trigger:review-id:${review_id} -->`;
-            const defaultComment = '@copilot+claude-opus-4.6 Hi Please go through the PR review comments and address them. Use your own judgment—don\'t just blindly follow the suggestions. Commit code for the necessary fixes, but for comments you think should be ignored, just leave a reply explaining your reasoning. Make sure to mark all comments as resolved once you\'re done.';
+            const defaultComment = '@copilot+claude-sonnet-4.6 Hi Please go through the PR review comments and address them. Use your own judgment—don\'t just blindly follow the suggestions. Commit code for the necessary fixes, but for comments you think should be ignored, just leave a reply explaining your reasoning. Make sure to mark all comments as resolved once you\'re done.';
 
             async function printTelemetry(data) {
               const entries = Object.entries(data)
