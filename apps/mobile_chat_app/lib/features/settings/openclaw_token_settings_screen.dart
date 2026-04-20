@@ -22,26 +22,28 @@ class _OpenclawTokenSettingsScreenState
 
   String _buildInstallInstruction(PlatformTokenBundle bundle) {
     final scopes = bundle.scopes.join(', ');
-    return '''
-Send this to OpenClaw plugin setup.
-You can also paste this JSON into ~/.openclaw/openclaw.json (replace <CHANNEL_ID>):
-
-{
-  "channels": {
-    "<CHANNEL_ID>": {
-      "BRICKS_BASE_URL": "${bundle.baseUrl}",
-      "BRICKS_PLUGIN_ID": "${bundle.pluginId}",
-      "BRICKS_PLATFORM_TOKEN": "${bundle.token}"
-    }
-  }
-}
-
-Parameters:
-- pluginId: ${bundle.pluginId}
-- url: ${bundle.baseUrl}
-- scopes: $scopes
-- token: ${bundle.token}
-''';
+    final buffer = StringBuffer()
+      ..writeln('Send this to OpenClaw plugin setup.')
+      ..writeln(
+        'You can also paste this JSON into ~/.openclaw/openclaw.json (replace <CHANNEL_ID>):',
+      )
+      ..writeln()
+      ..writeln('{')
+      ..writeln('  "channels": {')
+      ..writeln('    "<CHANNEL_ID>": {')
+      ..writeln('      "BRICKS_BASE_URL": "${bundle.baseUrl}",')
+      ..writeln('      "BRICKS_PLUGIN_ID": "${bundle.pluginId}",')
+      ..writeln('      "BRICKS_PLATFORM_TOKEN": "${bundle.token}"')
+      ..writeln('    }')
+      ..writeln('  }')
+      ..writeln('}')
+      ..writeln()
+      ..writeln('Parameters:')
+      ..writeln('- pluginId: ${bundle.pluginId}')
+      ..writeln('- url: ${bundle.baseUrl}')
+      ..writeln('- scopes: $scopes')
+      ..write('- token: ${bundle.token}');
+    return buffer.toString();
   }
 
   @override
@@ -131,7 +133,7 @@ Parameters:
             Text('Scopes: ${bundle.scopes.join(', ')}'),
             const SizedBox(height: 8),
             TextFormField(
-              key: ValueKey(bundle.token),
+              key: ValueKey(bundle.token.hashCode),
               initialValue: bundle.token,
               readOnly: true,
               decoration: InputDecoration(
