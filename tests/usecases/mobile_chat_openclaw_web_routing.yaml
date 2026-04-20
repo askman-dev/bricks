@@ -1,0 +1,33 @@
+module: mobile_chat_openclaw_web_routing
+
+openclaw_router_delivery_states:
+  description: Validate deterministic web-visible delivery state transitions when channel router is set to openclaw.
+  given:
+    - description: The web chat channel router is configured to openclaw and backend respond API is reachable in local test mode.
+      when:
+        - description: A user sends a message while the OpenClaw plugin is offline and backend responds with async accepted state.
+          then:
+            - The web client shows the message as sent with a non-completed task state.
+            - The web client keeps the assistant reply pending or empty until completion arrives.
+        - description: A user sends a message after OpenClaw plugin is started and configured, and backend responds with completed state and reply text.
+          then:
+            - The web client marks the task as completed.
+            - The web client renders the assistant reply text in the conversation.
+
+openclaw_router_full_flow_contract:
+  description: Validate the full contract from user send to plugin consumption, read acknowledgment, and visible reply.
+  given:
+    - description: The user has set router to openclaw and backend stores user messages with pendingAssistantMessageId metadata.
+      when:
+        - description: The plugin pulls events with a cursor lower than the new user message write_seq.
+          then:
+            - The events API returns the user message event with message text and pendingAssistantMessageId metadata.
+            - The event is filtered by token user scope when JWT userId is present.
+        - description: The plugin posts assistant create and patch messages for the consumed event.
+          then:
+            - The assistant message reuses the pendingAssistantMessageId as client token to keep message identity stable.
+            - The conversation shows the assistant reply as the completion of that event handling.
+        - description: The plugin sends ACK with the consumed event id and cursor.
+          then:
+            - The backend marks the related user message as completed.
+            - The backend records plugin-specific read metadata for audit and debugging.

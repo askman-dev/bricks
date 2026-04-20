@@ -116,7 +116,7 @@ class _MessageListState extends State<MessageList> {
   }
 
   String _formatTime(DateTime timestamp) {
-    return DateFormat('HH:mm').format(timestamp);
+    return DateFormat('HH:mm').format(timestamp.toLocal());
   }
 
   String _taskLabel(ChatTaskState state) {
@@ -194,25 +194,30 @@ class _MessageListState extends State<MessageList> {
                   ),
                 Container(
                   key: ValueKey<String>(
-                    'bubble-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                    'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
                   ),
                   margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: BricksSpacing.md,
-                    vertical: BricksSpacing.sm,
-                  ),
+                  padding: isUser
+                      ? const EdgeInsets.symmetric(
+                          horizontal: BricksSpacing.md,
+                          vertical: BricksSpacing.sm,
+                        )
+                      : const EdgeInsets.symmetric(
+                          horizontal: BricksSpacing.xs,
+                          vertical: BricksSpacing.xs,
+                        ),
                   width: isUser ? null : double.infinity,
                   constraints: isUser
                       ? BoxConstraints(
                           maxWidth: MediaQuery.of(context).size.width * 0.75,
                         )
                       : null,
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(BricksRadius.md),
-                  ),
+                  decoration: isUser
+                      ? BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(BricksRadius.md),
+                        )
+                      : null,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -225,14 +230,10 @@ class _MessageListState extends State<MessageList> {
                           textColor: Theme.of(context).colorScheme.onPrimary,
                         )
                       else
-                        Text(
-                          msg.content,
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface,
-                                  ),
+                        _AssistantMarkdownText(
+                          text: msg.content,
+                          textColor: Theme.of(context).colorScheme.onSurface,
+                          textStyle: Theme.of(context).textTheme.bodyMedium,
                         ),
                       if (msg.isStreaming)
                         Padding(
@@ -316,6 +317,185 @@ class _MessageListState extends State<MessageList> {
       ),
     );
   }
+}
+
+class _AssistantMarkdownText extends StatelessWidget {
+  const _AssistantMarkdownText({
+    required this.text,
+    required this.textColor,
+    required this.textStyle,
+  });
+
+  final String text;
+  final Color textColor;
+  final TextStyle? textStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = (textStyle ?? const TextStyle()).copyWith(
+      color: textColor,
+    );
+    if (text.isEmpty) {
+      return Text(text, style: baseStyle);
+    }
+    final lines = text.split('\n');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: lines.map((line) {
+        final block = _MarkdownBlock.tryParse(line);
+        final lineStyle = block.type == _MarkdownBlockType.heading
+            ? baseStyle.copyWith(fontWeight: FontWeight.w700)
+            : baseStyle;
+        final inlineSpans = _parseInlineMarkdown(
+          block.text,
+          baseStyle: lineStyle,
+          headingLike: false,
+        );
+        if (block.type == _MarkdownBlockType.unorderedList ||
+            block.type == _MarkdownBlockType.orderedList) {
+          return Padding(
+            padding: const EdgeInsets.only(left: BricksSpacing.md),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  block.marker,
+                  style: lineStyle,
+                ),
+                const SizedBox(width: BricksSpacing.xs),
+                Expanded(child: Text.rich(TextSpan(children: inlineSpans))),
+              ],
+            ),
+          );
+        }
+
+        return Text.rich(TextSpan(children: inlineSpans));
+      }).toList(growable: false),
+    );
+  }
+}
+
+enum _MarkdownBlockType { paragraph, heading, unorderedList, orderedList }
+
+class _MarkdownBlock {
+  const _MarkdownBlock({
+    required this.type,
+    required this.text,
+    this.marker = '',
+  });
+
+  final _MarkdownBlockType type;
+  final String text;
+  final String marker;
+
+  static final RegExp _headingPattern = RegExp(r'^\s{0,3}(#{1,6})\s+(.*)$');
+  static final RegExp _unorderedListPattern = RegExp(r'^\s*([-*+])\s+(.*)$');
+  static final RegExp _orderedListPattern = RegExp(r'^\s*(\d+)\.\s+(.*)$');
+
+  static _MarkdownBlock tryParse(String line) {
+    final headingMatch = _headingPattern.firstMatch(line);
+    if (headingMatch != null) {
+      return _MarkdownBlock(
+        type: _MarkdownBlockType.heading,
+        text: headingMatch.group(2) ?? '',
+      );
+    }
+
+    final unorderedMatch = _unorderedListPattern.firstMatch(line);
+    if (unorderedMatch != null) {
+      return _MarkdownBlock(
+        type: _MarkdownBlockType.unorderedList,
+        marker: unorderedMatch.group(1) ?? '•',
+        text: unorderedMatch.group(2) ?? '',
+      );
+    }
+
+    final orderedMatch = _orderedListPattern.firstMatch(line);
+    if (orderedMatch != null) {
+      return _MarkdownBlock(
+        type: _MarkdownBlockType.orderedList,
+        marker: '${orderedMatch.group(1)}.',
+        text: orderedMatch.group(2) ?? '',
+      );
+    }
+
+    return _MarkdownBlock(type: _MarkdownBlockType.paragraph, text: line);
+  }
+}
+
+List<InlineSpan> _parseInlineMarkdown(
+  String source, {
+  required TextStyle baseStyle,
+  required bool headingLike,
+}) {
+  if (source.isEmpty) {
+    return <InlineSpan>[
+      TextSpan(text: '', style: _styleFor(baseStyle, false, false, headingLike))
+    ];
+  }
+
+  final spans = <InlineSpan>[];
+  final buffer = StringBuffer();
+  var bold = false;
+  var italic = false;
+  var i = 0;
+
+  void flush() {
+    if (buffer.isEmpty) return;
+    spans.add(
+      TextSpan(
+        text: buffer.toString(),
+        style: _styleFor(baseStyle, bold, italic, headingLike),
+      ),
+    );
+    buffer.clear();
+  }
+
+  while (i < source.length) {
+    if (i + 1 < source.length) {
+      final pair = source.substring(i, i + 2);
+      if (pair == '**' || pair == '__') {
+        // Only treat as a delimiter when toggling off (already open) or
+        // when a matching closing pair exists later in the string.
+        if (bold || source.indexOf(pair, i + 2) != -1) {
+          flush();
+          bold = !bold;
+          i += 2;
+          continue;
+        }
+      }
+    }
+    final char = source[i];
+    if (char == '*' || char == '_') {
+      // Only treat as a delimiter when toggling off (already open) or
+      // when a matching closing character exists later in the string.
+      if (italic || source.indexOf(char, i + 1) != -1) {
+        flush();
+        italic = !italic;
+        i++;
+        continue;
+      }
+    }
+    buffer.write(char);
+    i++;
+  }
+
+  flush();
+  return spans;
+}
+
+TextStyle _styleFor(
+  TextStyle baseStyle,
+  bool isBold,
+  bool isItalic,
+  bool headingLike,
+) {
+  return baseStyle.copyWith(
+    fontWeight:
+        (headingLike || isBold) ? FontWeight.w700 : baseStyle.fontWeight,
+    fontStyle: isItalic ? FontStyle.italic : baseStyle.fontStyle,
+  );
 }
 
 class _MessageExpandToggle extends StatefulWidget {

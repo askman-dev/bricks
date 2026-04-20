@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../settings/llm_config_service.dart';
 import 'chat_message.dart';
+import 'chat_message_sort.dart';
 import 'chat_topology.dart';
 
 class ChatHistorySnapshot {
@@ -22,10 +23,14 @@ class ChatRespondResult {
   const ChatRespondResult({
     required this.text,
     required this.lastSeqId,
+    required this.isAsync,
+    this.taskState,
   });
 
   final String text;
   final int lastSeqId;
+  final bool isAsync;
+  final ChatTaskState? taskState;
 }
 
 class ChatPersistedScope {
@@ -54,6 +59,16 @@ class ChatAcceptedTask {
   final String sessionId;
   final String state;
   final String acceptedAt;
+}
+
+class ChatChannelNameSetting {
+  const ChatChannelNameSetting({
+    required this.channelId,
+    required this.displayName,
+  });
+
+  final String channelId;
+  final String displayName;
 }
 
 class ChatHistoryApiService {
@@ -86,19 +101,29 @@ class ChatHistoryApiService {
   String get _base => LlmConfigService.resolveBaseUrl();
 
   Uri _historyUri(String sessionId, {required int limit}) => Uri.parse(
-      '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit');
+        '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
+      );
 
   Uri _syncUri(String sessionId, {required int afterSeq}) => Uri.parse(
-      '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq');
+        '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
+      );
 
   Uri get _acceptTaskUri => Uri.parse('$_base/api/chat/tasks/accept');
 
   Uri get _batchMessagesUri => Uri.parse('$_base/api/chat/messages/batch');
   Uri get _scopesUri => Uri.parse('$_base/api/chat/scopes');
+  Uri get _scopeSettingsUri => Uri.parse('$_base/api/chat/scope-settings');
+  Uri get _channelNamesUri => Uri.parse('$_base/api/chat/channel-names');
 
-  Future<List<ChatPersistedScope>> loadScopes({
-    required String token,
-  }) async {
+  ChatTaskState? _parseTaskState(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    for (final state in ChatTaskState.values) {
+      if (state.name == value) return state;
+    }
+    return null;
+  }
+
+  Future<List<ChatPersistedScope>> loadScopes({required String token}) async {
     final response = await _client.get(
       _scopesUri,
       headers: {'Authorization': 'Bearer $token'},
@@ -112,15 +137,84 @@ class ChatHistoryApiService {
     return ((map['scopes'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
-        .map((item) => ChatPersistedScope(
-              channelId: (item['channelId'] as String?) ?? 'default',
-              threadId: (item['threadId'] as String?) ?? 'main',
-              sessionId: (item['sessionId'] as String?) ?? '',
-              lastActivityAt: item['lastActivityAt'] is String
-                  ? DateTime.tryParse(item['lastActivityAt'] as String)
-                  : null,
-            ))
+        .map(
+          (item) => ChatPersistedScope(
+            channelId: (item['channelId'] as String?) ?? 'default',
+            threadId: (item['threadId'] as String?) ?? 'main',
+            sessionId: (item['sessionId'] as String?) ?? '',
+            lastActivityAt: item['lastActivityAt'] is String
+                ? DateTime.tryParse(item['lastActivityAt'] as String)
+                : null,
+          ),
+        )
         .where((scope) => scope.sessionId.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<List<ChatScopeSetting>> loadScopeSettings({
+    required String token,
+  }) async {
+    final response = await _client.get(
+      _scopeSettingsUri,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load chat scope settings (${response.statusCode})',
+      );
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map) return const [];
+    final map = Map<String, dynamic>.from(raw);
+    return ((map['settings'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map((item) {
+      final scopeType = chatScopeTypeFromApi(item['scopeType'] as String?);
+      if (scopeType == null) {
+        throw const FormatException('Invalid scopeType');
+      }
+      return ChatScopeSetting(
+        scopeType: scopeType,
+        channelId: (item['channelId'] as String?) ?? 'default',
+        threadId: item['threadId'] as String?,
+        router: chatRouterFromApi(item['router'] as String?),
+        updatedAt: item['updatedAt'] is String
+            ? DateTime.tryParse(item['updatedAt'] as String)
+            : null,
+      );
+    }).toList(growable: false);
+  }
+
+  Future<List<ChatChannelNameSetting>> loadChannelNames({
+    required String token,
+  }) async {
+    final response = await _client.get(
+      _channelNamesUri,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load chat channel names (${response.statusCode})',
+      );
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map) return const [];
+    final map = Map<String, dynamic>.from(raw);
+    return ((map['channelNames'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map(
+          (item) => ChatChannelNameSetting(
+            channelId: (item['channelId'] as String?) ?? '',
+            displayName: (item['displayName'] as String?) ?? '',
+          ),
+        )
+        .where(
+          (item) =>
+              item.channelId.trim().isNotEmpty &&
+              item.displayName.trim().isNotEmpty,
+        )
         .toList(growable: false);
   }
 
@@ -142,12 +236,13 @@ class ChatHistoryApiService {
       return const ChatHistorySnapshot(messages: [], lastSeqId: 0);
     }
 
-    final map = Map<String, dynamic>.from(raw as Map);
+    final map = Map<String, dynamic>.from(raw);
     final messages = ((map['messages'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
+    messages.sort(compareChatMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,
@@ -172,12 +267,13 @@ class ChatHistoryApiService {
     if (raw is! Map) {
       return ChatHistorySnapshot(messages: const [], lastSeqId: afterSeq);
     }
-    final map = Map<String, dynamic>.from(raw as Map);
+    final map = Map<String, dynamic>.from(raw);
     final messages = ((map['messages'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, Object?>.from(item))
         .map(_messageFromServerMap)
         .toList();
+    messages.sort(compareChatMessagesByCreatedTime);
 
     return ChatHistorySnapshot(
       messages: messages,
@@ -234,7 +330,59 @@ class ChatHistoryApiService {
     return ChatRespondResult(
       text: (map['text'] as String?) ?? '',
       lastSeqId: (map['lastSeqId'] as num?)?.toInt() ?? 0,
+      isAsync: (map['mode'] as String?) == 'async',
+      taskState: _parseTaskState(map['state']),
     );
+  }
+
+  Future<void> saveScopeSetting({
+    required String token,
+    required ChatScopeType scopeType,
+    required String channelId,
+    String? threadId,
+    required ChatRouter? router,
+  }) async {
+    final response = await _client.put(
+      _scopeSettingsUri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'scopeType': scopeType.apiValue,
+        'channelId': channelId,
+        if (threadId != null) 'threadId': threadId,
+        'router': router?.apiValue,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to save chat scope setting (${response.statusCode})',
+      );
+    }
+  }
+
+  Future<void> saveChannelName({
+    required String token,
+    required String channelId,
+    String? displayName,
+  }) async {
+    final response = await _client.put(
+      _channelNamesUri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'channelId': channelId,
+        'displayName': displayName?.trim(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to save chat channel name (${response.statusCode})',
+      );
+    }
   }
 
   Future<ChatAcceptedTask> acceptTask({
@@ -282,9 +430,11 @@ class ChatHistoryApiService {
     // still streaming; otherwise refresh can show an empty bubble with no
     // meaningful content.
     return messages
-        .where((message) => !(message.role == 'assistant' &&
-            message.isStreaming &&
-            message.content.trim().isEmpty))
+        .where(
+          (message) => !(message.role == 'assistant' &&
+              message.isStreaming &&
+              message.content.trim().isEmpty),
+        )
         .toList(growable: false);
   }
 
@@ -320,6 +470,8 @@ class ChatHistoryApiService {
     final payload = <String, Object?>{
       ...metadata,
       'messageId': map['messageId'],
+      'seqId': map['seqId'],
+      'writeSeq': map['writeSeq'],
       'taskId': map['taskId'],
       'channelId': map['channelId'],
       'sessionId': map['sessionId'],

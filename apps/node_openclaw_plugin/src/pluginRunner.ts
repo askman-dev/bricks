@@ -118,7 +118,7 @@ export class NodeOpenClawPluginRunner {
 
     const inputText = extractIncomingText(event.payload);
     const responseText = `收到消息：${inputText}`;
-    const clientToken = `evt:${event.eventId}`;
+    const clientToken = assistantClientTokenForEvent(event);
 
     const createPayload: CreateMessageRequest = {
       workspaceId: event.workspaceId,
@@ -188,4 +188,20 @@ export function shouldProcessEvent(event: PlatformEvent): boolean {
   }
 
   return true;
+}
+
+export function assistantClientTokenForEvent(event: PlatformEvent): string {
+  const metadata = event.payload?.metadata;
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    const pendingAssistantMessageId =
+        (metadata as Record<string, unknown>)['pendingAssistantMessageId'];
+    if (
+      typeof pendingAssistantMessageId === 'string' &&
+      pendingAssistantMessageId.trim().length > 0
+    ) {
+      return pendingAssistantMessageId.trim();
+    }
+  }
+
+  return `evt:${event.eventId}`;
 }

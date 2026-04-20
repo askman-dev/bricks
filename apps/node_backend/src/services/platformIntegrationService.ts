@@ -11,6 +11,7 @@ type ChatMessageEventRow = {
   role: string;
   content: string;
   created_at: string;
+  metadata: unknown;
 };
 
 type ExistingMessageRow = {
@@ -39,9 +40,10 @@ export interface PlatformEvent {
       userId: string;
       displayName: string;
     };
-    text: string;
-    attachments: unknown[];
-  };
+       text: string;
+       attachments: unknown[];
+       metadata?: Record<string, unknown>;
+     };
 }
 
 function cursorToSeq(cursor?: string): number {
@@ -85,14 +87,27 @@ export async function listPlatformEvents(params: {
   const afterSeq = cursorToSeq(params.cursor);
   const workspaceId = params.workspaceId ?? process.env.BRICKS_PLATFORM_WORKSPACE_ID ?? 'ws_local';
 
-  const baseSelect = `SELECT write_seq, message_id, user_id, channel_id, session_id, thread_id, role, content, created_at
-       FROM chat_messages`;
+  const baseSelect = `SELECT
+         msg.write_seq,
+         msg.message_id,
+         msg.user_id,
+         msg.channel_id,
+         msg.session_id,
+         msg.thread_id,
+         msg.role,
+         msg.content,
+         msg.created_at,
+         msg.metadata
+       FROM chat_messages msg`;
   const queryParams: unknown[] = [afterSeq, limit];
-  const userFilter = params.userId ? ` AND user_id = $${queryParams.push(params.userId)}` : '';
+  const userFilter = appendUserIdFilter(params.userId, queryParams);
   const result = await pool.query<ChatMessageEventRow>(
     `${baseSelect}
-      WHERE write_seq > $1${userFilter}
-      ORDER BY write_seq ASC
+      WHERE msg.write_seq > $1${userFilter}
+        AND msg.role = 'user'
+        AND msg.task_state IN ('accepted', 'dispatched')
+        AND CAST(msg.metadata AS TEXT) LIKE '%pendingAssistantMessageId%'
+      ORDER BY msg.write_seq ASC
       LIMIT $2`,
     queryParams,
   );
@@ -112,10 +127,14 @@ export async function listPlatformEvents(params: {
       },
       text: row.content,
       attachments: [],
+      metadata: parseMetadata(row.metadata) ?? undefined,
     },
   }));
 
-  const nextSeq = result.rows.length > 0 ? result.rows[result.rows.length - 1].write_seq : afterSeq;
+  const nextSeq =
+    result.rows.length > 0
+      ? result.rows[result.rows.length - 1].write_seq
+      : afterSeq;
   return {
     nextCursor: seqToCursor(nextSeq),
     events,
@@ -124,21 +143,66 @@ export async function listPlatformEvents(params: {
 
 export async function ackPlatformEvents(params: {
   pluginId: string;
+  userId?: string;
   cursor: string;
   ackedEventIds: string[];
 }): Promise<{ ok: true }> {
-  // Validate inputs even though ACK persistence is intentionally deferred in the MVP.
-  // This keeps the endpoint idempotent while surfacing client-side protocol bugs.
   cursorToSeq(params.cursor);
   if (!Array.isArray(params.ackedEventIds)) {
     throw new Error('INVALID_ACKED_EVENT_IDS');
   }
-  for (const eventId of params.ackedEventIds) {
-    if (typeof eventId !== 'string' || eventId.trim().length === 0) {
-      throw new Error('INVALID_ACKED_EVENT_IDS');
-    }
+
+  const parsedAckedMessages = params.ackedEventIds.map(parseAckedMessageEventId);
+  if (parsedAckedMessages.some((item) => item === null)) {
+    throw new Error('INVALID_ACKED_EVENT_IDS');
   }
+
+  // Deduplicate to prevent redundant DB updates for duplicate event IDs in the payload.
+  const ackedMessages = Array.from(
+    new Map(
+      parsedAckedMessages
+        .filter((item): item is { messageId: string; writeSeq: number } => item !== null)
+        .map((item) => [`${item.messageId}:${item.writeSeq}`, item] as const),
+    ).values(),
+  );
+
+  if (ackedMessages.length === 0) {
+    return { ok: true };
+  }
+
+  const messageIds = ackedMessages.map((item) => item.messageId);
+  const writeSeqs = ackedMessages.map((item) => item.writeSeq);
+  const queryParams: unknown[] = [messageIds, writeSeqs, params.pluginId];
+  const userFilter = appendUserIdFilter(params.userId, queryParams);
+
+  await pool.query(
+    `UPDATE chat_messages
+        SET task_state = 'completed',
+            metadata = jsonb_set(
+              COALESCE(metadata, '{}'::jsonb),
+              '{pluginReadBy}',
+              COALESCE(COALESCE(metadata, '{}'::jsonb)->'pluginReadBy', '{}'::jsonb)
+                || jsonb_build_object($3, to_jsonb(CURRENT_TIMESTAMP)),
+              true
+            ),
+            updated_at = CURRENT_TIMESTAMP
+      WHERE (message_id, write_seq) IN (
+        SELECT * FROM UNNEST($1::text[], $2::int[])
+      )
+        AND role = 'user'
+        AND task_state IN ('accepted', 'dispatched')${userFilter}`,
+    queryParams,
+  );
   return { ok: true };
+}
+
+function parseAckedMessageEventId(eventId: string): { messageId: string; writeSeq: number } | null {
+  const match = /^evt_msg_(.+)_(\d+)$/.exec(eventId.trim());
+  if (!match) return null;
+  const messageId = match[1].trim();
+  const writeSeq = Number.parseInt(match[2], 10);
+  if (!messageId || !Number.isFinite(writeSeq) || writeSeq <= 0) return null;
+  return { messageId, writeSeq };
 }
 
 function generateMessageId(clientToken?: string): string {
@@ -169,7 +233,7 @@ export async function createPlatformMessage(input: {
       threadId: input.threadId ?? null,
       role: input.role,
       content: input.text,
-      taskState: null,
+      taskState: input.role === 'assistant' ? 'dispatched' : null,
       checkpointCursor: null,
       metadata: input.metadata ?? { source: 'platform.messages.create' },
       createdAt: null,
@@ -232,7 +296,7 @@ export async function patchPlatformMessage(input: {
       threadId: row.thread_id,
       role: row.role,
       content: input.text ?? row.content,
-      taskState: null,
+      taskState: row.role === 'assistant' ? 'completed' : null,
       checkpointCursor: null,
       metadata: mergedMetadata,
       createdAt: row.created_at,

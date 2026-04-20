@@ -53,6 +53,9 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
   message: 'Too many requests from this IP, please try again later.',
+  // `/api/chat/sync/*` is polled by authenticated chat clients and uses a
+  // route-specific limiter keyed by user/session instead of the coarse IP cap.
+  skip: (req) => req.originalUrl.startsWith('/api/chat/sync/'),
 });
 
 app.use('/api/', limiter);

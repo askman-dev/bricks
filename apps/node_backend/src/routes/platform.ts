@@ -110,6 +110,7 @@ router.post(
 
       await ackPlatformEvents({
         pluginId: req.platformPluginId ?? 'unknown',
+        userId: req.platformUserId,
         ackedEventIds,
         cursor,
       });

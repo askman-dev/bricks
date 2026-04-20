@@ -43,7 +43,7 @@ const _persistedConfig = LlmConfig(
   slotId: 'config-1',
   provider: LlmProvider.anthropic,
   baseUrl: 'https://api.anthropic.com',
-  apiKey: '',
+  apiKey: '****ABCD',
   defaultModel: 'claude-sonnet-4-5',
   isDefault: true,
 );
@@ -88,6 +88,21 @@ Future<void> _scrollUntilVisible(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('ModelSettingsScreen – API key hint', () {
+    testWidgets('shows API key placeholder hint for stored key',
+        (tester) async {
+      final service = _FakeLlmConfigService(configs: [_persistedConfig]);
+
+      await tester.pumpWidget(_buildScreen(service));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(kApiKeyStoredHint),
+        findsOneWidget,
+      );
+    });
+  });
 
   group('ModelSettingsScreen – delete flow', () {
     testWidgets('delete button shows confirmation dialog for persisted config',

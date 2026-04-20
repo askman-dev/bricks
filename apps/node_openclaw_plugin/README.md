@@ -21,7 +21,7 @@ openclaw plugins install -l ./apps/node_openclaw_plugin
 openclaw gateway restart
 ```
 
-## 2) onboarding / configure 自动写入 channel 配置
+## 2) 作为真实 channel plugin 写入 `channels.dev-askman-bricks`
 
 安装后运行：
 
@@ -51,9 +51,19 @@ openclaw configure
 }
 ```
 
+如果只想改 Bricks 这一项，不想重新跑整套 onboarding，也可以直接写 channel 配置：
+
+```bash
+openclaw config set channels.dev-askman-bricks.BRICKS_BASE_URL https://your-bricks-api.example.com
+openclaw config set channels.dev-askman-bricks.BRICKS_PLUGIN_ID dev-askman-bricks
+openclaw config set channels.dev-askman-bricks.BRICKS_PLATFORM_TOKEN 'your-jwt-token'
+openclaw config validate
+openclaw gateway restart
+```
+
 ### 注意
 
-`openclaw plugins install` 会使用 `npm install --ignore-scripts`，因此不要依赖 npm `postinstall` 写配置；应使用 onboarding hook 进行交互配置。
+`openclaw plugins install` 会使用 `npm install --ignore-scripts`，因此不要依赖 npm `postinstall` 写配置；应使用 channel setup/onboarding 或 `openclaw config set channels.dev-askman-bricks.*` 完成配置。
 
 ## 3) 本地 pull-only 运行时（独立示例）
 
