@@ -170,11 +170,30 @@ export async function ackPlatformEvents(params: {
     return { ok: true };
   }
 
+  if (process.env.TURSO_DATABASE_URL) {
+    const queryParams: unknown[] = [params.pluginId];
+    const ackedMessageFilter = appendAckedMessageFilter(ackedMessages, queryParams);
+    const userFilter = appendUserIdFilter(params.userId, queryParams);
+    await pool.query(
+      `UPDATE chat_messages
+          SET task_state = 'completed',
+              metadata = json_patch(
+                COALESCE(metadata, '{}'),
+                json_object('pluginReadBy', json_object($1, CURRENT_TIMESTAMP))
+              ),
+              updated_at = CURRENT_TIMESTAMP
+        WHERE (${ackedMessageFilter})
+          AND role = 'user'
+          AND task_state IN ('accepted', 'dispatched')${userFilter}`,
+      queryParams,
+    );
+    return { ok: true };
+  }
+
   const messageIds = ackedMessages.map((item) => item.messageId);
   const writeSeqs = ackedMessages.map((item) => item.writeSeq);
   const queryParams: unknown[] = [messageIds, writeSeqs, params.pluginId];
   const userFilter = appendUserIdFilter(params.userId, queryParams);
-
   await pool.query(
     `UPDATE chat_messages
         SET task_state = 'completed',
@@ -313,6 +332,19 @@ export async function patchPlatformMessage(input: {
 function appendUserIdFilter(userId: string | undefined, queryParams: unknown[]): string {
   if (!userId) return '';
   return ` AND user_id = $${queryParams.push(userId)}`;
+}
+
+function appendAckedMessageFilter(
+  ackedMessages: Array<{ messageId: string; writeSeq: number }>,
+  queryParams: unknown[],
+): string {
+  return ackedMessages
+    .map((item) => {
+      const messageIdRef = `$${queryParams.push(item.messageId)}`;
+      const writeSeqRef = `$${queryParams.push(item.writeSeq)}`;
+      return `(message_id = ${messageIdRef} AND write_seq = ${writeSeqRef})`;
+    })
+    .join(' OR ');
 }
 
 export async function resolveConversation(params: {
