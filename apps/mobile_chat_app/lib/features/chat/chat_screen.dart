@@ -578,6 +578,9 @@ class _ChatScreenState extends State<ChatScreen> {
           setting.threadId == null) {
         continue;
       }
+      if (!_isThreadConversation(threadId: setting.threadId)) {
+        continue;
+      }
       routers[_subSectionKey(setting.channelId, setting.threadId!)] =
           setting.router;
     }
@@ -889,6 +892,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatRouter? _explicitThreadRouter({String? channelId, String? threadId}) {
     final resolvedChannelId = channelId ?? _activeChannelId;
     final resolvedThreadId = threadId ?? _activeSubSection;
+    if (!_isThreadConversation(threadId: resolvedThreadId)) return null;
     return _threadRouters[_subSectionKey(resolvedChannelId, resolvedThreadId)];
   }
 
@@ -910,6 +914,11 @@ class _ChatScreenState extends State<ChatScreen> {
       case ChatRouter.openclaw:
         return 'OpenClaw';
     }
+  }
+
+  bool _isThreadConversation({String? threadId}) {
+    final resolvedThreadId = threadId ?? _activeSubSection;
+    return resolvedThreadId != 'main';
   }
 
   String _threadRouterMenuLabel(ChatRouter? router) {
@@ -1043,12 +1052,15 @@ class _ChatScreenState extends State<ChatScreen> {
         unawaited(_saveChannelRouter(ChatRouter.openclaw));
         return;
       case 'thread:inherit':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(null));
         return;
       case 'thread:default':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(ChatRouter.defaultRoute));
         return;
       case 'thread:openclaw':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(ChatRouter.openclaw));
         return;
     }
@@ -1787,41 +1799,61 @@ class _ChatScreenState extends State<ChatScreen> {
                 popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
                 tooltip: 'Router settings',
                 onSelected: _handleRouterMenuSelection,
-                itemBuilder: (context) => [
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    child: Text(
-                      'Channel router · ${_routerLabel(_channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute)}',
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'channel:default',
-                    child: Text('Bricks Default'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'channel:openclaw',
-                    child: Text('OpenClaw'),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    child: Text(
-                      'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:inherit',
-                    child: Text('Follow channel'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:default',
-                    child: Text('Bricks Default'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:openclaw',
-                    child: Text('OpenClaw'),
-                  ),
-                ],
+                itemBuilder: (context) {
+                  final isThreadConversation = _isThreadConversation();
+                  final channelRouterLabel = _routerLabel(
+                    _channelRouters[_activeChannelId] ??
+                        ChatRouter.defaultRoute,
+                  );
+                  return [
+                    if (!isThreadConversation) ...[
+                      PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text(
+                          'Channel router · $channelRouterLabel',
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'channel:default',
+                        child: Text('Bricks Default'),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'channel:openclaw',
+                        child: Text('OpenClaw'),
+                      ),
+                    ],
+                    if (isThreadConversation) ...[
+                      PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text(
+                          'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
+                        ),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'thread:inherit',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Follow channel'),
+                            Text(
+                              channelRouterLabel,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'thread:default',
+                        child: Text('Bricks Default'),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'thread:openclaw',
+                        child: Text('OpenClaw'),
+                      ),
+                    ],
+                  ];
+                },
                 icon: SizedBox.square(
                   dimension: 24,
                   child: Center(

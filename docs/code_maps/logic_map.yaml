@@ -91,6 +91,7 @@ index:
       - 若 default `/chat/respond` 回退为同步阻塞路径，会导致“先入库再异步回复”契约失效并放大接口延迟。
       - 若前端继续渲染空 assistant 占位，用户会误判 AI 已开始回复并干扰两段状态图标语义。
       - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
+      - channel 会话若错误暴露 thread 路由菜单，用户可能误写 thread scope 配置并造成路由预期不一致。
       - 长轮询 waitMs 设置过高且缺少超时保护时，可能导致连接堆积并放大服务端资源占用。
 
   - feature_id: model_settings
