@@ -3,11 +3,6 @@ import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
 
-// Extra bottom padding as a fraction of screen height, so an incoming
-// assistant reply is visible when the list is anchored on the latest user
-// message. ~35 % of screen height works well across common phone sizes.
-const double _kBottomPaddingRatio = 0.35;
-
 /// Displays the list of chat messages in timeline format.
 class MessageList extends StatefulWidget {
   const MessageList({super.key, required this.messages});
@@ -77,11 +72,13 @@ class _MessageListState extends State<MessageList> {
   }
 
   void _scrollToBottom() {
+    // With reverse: true on the ListView, position 0 is always the visual
+    // bottom (most-recent messages). jumpTo(0) is exact and has no timing
+    // dependency on maxScrollExtent being fully computed.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
-      final position = _scrollController.position;
-      _scrollController.jumpTo(position.maxScrollExtent);
+      _scrollController.jumpTo(0);
     });
   }
 
@@ -165,16 +162,16 @@ class _MessageListState extends State<MessageList> {
     return SelectionArea(
       child: ListView.builder(
         controller: _scrollController,
-        padding: EdgeInsets.fromLTRB(
-          BricksSpacing.md,
-          BricksSpacing.md,
-          BricksSpacing.md,
-          BricksSpacing.md +
-              MediaQuery.of(context).size.height * _kBottomPaddingRatio,
-        ),
+        // reverse: true makes position 0 the visual bottom (latest messages).
+        // This means new messages appear at the bottom without needing explicit
+        // scroll-to-bottom calls that depend on maxScrollExtent being accurate.
+        reverse: true,
+        padding: const EdgeInsets.all(BricksSpacing.md),
         itemCount: messages.length,
         itemBuilder: (context, index) {
-          final msg = messages[index];
+          // Reverse the index so that the newest message is at the bottom
+          // (index 0 in reverse list = messages.last).
+          final msg = messages[messages.length - 1 - index];
           final isUser = msg.role == 'user';
           final deliveryIndicator =
               isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
