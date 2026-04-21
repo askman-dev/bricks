@@ -1714,6 +1714,8 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         appBar: AppBar(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
           centerTitle: false,
           titleSpacing: 0,
           leading: Builder(
