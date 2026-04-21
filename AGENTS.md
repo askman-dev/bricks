@@ -12,6 +12,10 @@
 ## API debugging workflow
 - When debugging API/interface errors, try the `vercel-api-log-context` skill first to collect Vercel deployment log context before proposing fixes.
 
+## OpenClaw plugin refresh
+- When users ask how to apply newly pulled local code under `apps/node_openclaw_plugin` to their local OpenClaw install, use the `openclaw-plugin-refresh` skill first.
+- The repository skill lives at `.codex/skills/openclaw-plugin-refresh/SKILL.md` and covers rebuild, linked reinstall, gateway restart, and log verification.
+
 ## GitHub webhook / Cloudflare worker
 - When working on Copilot PR automation that must avoid GitHub Actions approval gates, use the `github-webhook-cloudflare-worker` skill first.
 - The repository's external webhook worker source lives in `.github/cloudflare/` and is managed as a Wrangler project.
