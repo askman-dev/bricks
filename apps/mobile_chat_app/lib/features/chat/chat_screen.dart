@@ -1663,7 +1663,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final activeAgentName = _activeAgent?.name;
     String activeChannelName = '频道';
     for (final item in _channels) {
       if (item.id == _activeChannelId) {
