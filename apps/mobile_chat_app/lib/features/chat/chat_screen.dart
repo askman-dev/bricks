@@ -1757,58 +1757,50 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () => Scaffold.of(context).openDrawer(),
             ),
           ),
-          title: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  activeChannelName,
-                  overflow: TextOverflow.ellipsis,
-                ),
+          title: PopupMenuButton<String>(
+            popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
+            tooltip: '切换子区',
+            onSelected: (value) {
+              if (value == '__new__') {
+                _createSubSection();
+                unawaited(_loadMessagesForActiveScope());
+                return;
+              }
+              _switchToSubSection(value);
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem<String>(
+                value: 'main',
+                child: Text('回到主区'),
               ),
-              const SizedBox(width: BricksSpacing.xs),
-              PopupMenuButton<String>(
-                popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-                tooltip: '切换子区',
-                onSelected: (value) {
-                  if (value == '__new__') {
-                    _createSubSection();
-                    unawaited(_loadMessagesForActiveScope());
-                    return;
-                  }
-                  _switchToSubSection(value);
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem<String>(
-                    value: 'main',
-                    child: Text('回到主区'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: '__new__',
-                    child: Text('新建子区'),
-                  ),
-                  const PopupMenuDivider(),
-                  ..._activeSubSections.map(
-                    (item) => PopupMenuItem<String>(
-                      value: item.id,
-                      child: Text(item.name),
-                    ),
-                  ),
-                ],
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _activeSubSection == 'main'
-                          ? '主区'
-                          : (_subSectionNameById(_activeSubSection) ??
-                              _activeSubSection),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const Icon(Icons.arrow_drop_down),
-                  ],
+              const PopupMenuItem<String>(
+                value: '__new__',
+                child: Text('新建子区'),
+              ),
+              const PopupMenuDivider(),
+              ..._activeSubSections.map(
+                (item) => PopupMenuItem<String>(
+                  value: item.id,
+                  child: Text(item.name),
                 ),
               ),
             ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    _activeSubSection == 'main'
+                        ? activeChannelName
+                        : (_subSectionNameById(_activeSubSection) ??
+                            _activeSubSection),
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                const Icon(Icons.arrow_drop_down),
+              ],
+            ),
           ),
           actions: [
             PopupMenuButton<String>(
