@@ -232,36 +232,62 @@ describe("chat routes", () => {
     expect(body.error).toContain("Too many sync requests");
   });
 
-  it("supports long polling waitMs and retries sync until messages arrive", async () => {
-    const encodedSessionId = encodeURIComponent("session:long-poll:main");
+  it("SSE events endpoint streams new messages as they arrive", async () => {
+    const encodedSessionId = encodeURIComponent("session:sse:main");
     syncMessagesMock
-      .mockResolvedValueOnce({ messages: [], lastSeqId: 20 })
+      .mockResolvedValueOnce({ messages: [], lastSeqId: 30 })
       .mockResolvedValueOnce({
         messages: [
           {
-            messageId: "assistant-1",
+            messageId: "bot-msg-1",
             role: "assistant",
-            content: "hello",
-            writeSeq: 21,
+            content: "hi from bot",
+            writeSeq: 31,
           },
         ],
-        lastSeqId: 21,
+        lastSeqId: 31,
       });
 
-    // Use waitMs larger than CHAT_SYNC_LONG_POLL_INTERVAL_MS (500 ms) so the
-    // retry is guaranteed to fire even on slow CI runners.
     const response = await fetch(
-      `${baseUrl}/api/chat/sync/${encodedSessionId}?afterSeq=20&waitMs=600`,
+      `${baseUrl}/api/chat/events/${encodedSessionId}?afterSeq=30`,
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
+    expect(response.headers.get("content-type")).toContain(
+      "text/event-stream",
+    );
+
+    // Read chunks until we receive a data event, then abort.
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let received = "";
+    let foundData = false;
+
+    // Poll for up to 5 seconds to let the SSE poll fire.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !foundData) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += decoder.decode(value, { stream: true });
+      if (received.includes("data:")) {
+        foundData = true;
+      }
+    }
+
+    reader.cancel();
+
+    expect(foundData).toBe(true);
+    const dataLine = received
+      .split("\n")
+      .find((l) => l.startsWith("data:"))
+      ?.replace(/^data:\s*/, "");
+    expect(dataLine).toBeDefined();
+    const parsed = JSON.parse(dataLine!) as {
       messages?: Array<{ messageId?: string }>;
       lastSeqId?: number;
     };
-    expect(body.messages?.[0]?.messageId).toBe("assistant-1");
-    expect(body.lastSeqId).toBe(21);
-    expect(syncMessagesMock).toHaveBeenCalledTimes(2);
+    expect(parsed.messages?.[0]?.messageId).toBe("bot-msg-1");
+    expect(parsed.lastSeqId).toBe(31);
   });
 
   it("rate limits respond requests per user and session after 120 requests per minute", async () => {

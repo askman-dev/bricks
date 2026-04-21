@@ -75,7 +75,8 @@ index:
       - delivery-status
       - popup-menu
       - menu-animation
-      - long-polling
+      - long-polling (deprecated, replaced by SSE)
+      - SSE (Server-Sent Events)
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。

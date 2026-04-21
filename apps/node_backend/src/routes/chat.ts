@@ -35,10 +35,14 @@ const CHAT_SYNC_WINDOW_MS = 60 * 1000;
 const CHAT_SYNC_MAX_REQUESTS_PER_WINDOW = 120;
 const CHAT_RESPOND_WINDOW_MS = 60 * 1000;
 const CHAT_RESPOND_MAX_REQUESTS_PER_WINDOW = 120;
-// Keep long-poll waits comfortably below common serverless request limits so
-// the application returns the response before the platform times out.
-const CHAT_SYNC_LONG_POLL_MAX_WAIT_MS = 9000;
-const CHAT_SYNC_LONG_POLL_INTERVAL_MS = 500;
+// SSE events endpoint: limit how many new SSE connections can be opened per
+// user/session per minute to prevent connection floods.
+const CHAT_EVENTS_WINDOW_MS = 60 * 1000;
+const CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW = 10;
+// Interval between each poll of syncMessages while an SSE connection is open.
+const CHAT_EVENTS_POLL_INTERVAL_MS = 1000;
+// Interval between keep-alive heartbeat comments sent over the SSE stream.
+const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -54,9 +58,6 @@ function parseNonNegativeInt(value: unknown): number | null {
   return parsed;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 function parseProvider(value: unknown): LlmProvider | undefined {
   if (value === "anthropic" || value === "google_ai_studio") return value;
   if (value === "gemini") return "google_ai_studio";
@@ -100,6 +101,22 @@ const syncLimiter = rateLimit({
       "Too many sync requests for this chat session, please try again later.",
   },
 });
+
+const eventsLimiter = rateLimit({
+  windowMs: CHAT_EVENTS_WINDOW_MS,
+  max: CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const sessionId = parseSessionId(req.params.sessionId) ?? "invalid-session";
+    return chatSessionRateLimitKey(req, sessionId);
+  },
+  message: {
+    error:
+      "Too many SSE connection attempts for this chat session, please try again later.",
+  },
+});
+
 
 const respondLimiter = rateLimit({
   windowMs: CHAT_RESPOND_WINDOW_MS,
@@ -414,45 +431,81 @@ router.get(
         ) || 0,
       );
 
-      const requestedWaitMs = parseNonNegativeInt(req.query.waitMs);
-      const waitMs = Math.min(
-        requestedWaitMs ?? 0,
-        CHAT_SYNC_LONG_POLL_MAX_WAIT_MS,
-      );
-
-      let clientDisconnected = false;
-      const onClose = () => {
-        clientDisconnected = true;
-      };
-      req.on("close", onClose);
-
-      try {
-        const startedAt = Date.now();
-        let synced = await syncMessages(userId, sessionId, afterSeq);
-        while (
-          !clientDisconnected &&
-          waitMs > 0 &&
-          synced.messages.length === 0 &&
-          synced.lastSeqId <= afterSeq &&
-          Date.now() - startedAt < waitMs
-        ) {
-          const elapsed = Date.now() - startedAt;
-          const remaining = waitMs - elapsed;
-          if (remaining <= 0) break;
-          await sleep(Math.min(CHAT_SYNC_LONG_POLL_INTERVAL_MS, remaining));
-          if (clientDisconnected) break;
-          synced = await syncMessages(userId, sessionId, afterSeq);
-        }
-
-        if (clientDisconnected) return;
-        res.json(synced);
-      } finally {
-        req.off("close", onClose);
-      }
+      const synced = await syncMessages(userId, sessionId, afterSeq);
+      res.json(synced);
     } catch (error) {
       console.error("Sync chat messages error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
+  },
+);
+
+router.get(
+  "/events/:sessionId",
+  eventsLimiter,
+  (req: AuthRequest, res: Response) => {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const sessionId = parseSessionId(req.params.sessionId);
+    if (!sessionId) {
+      res.status(400).json({ error: "Invalid sessionId" });
+      return;
+    }
+
+    const afterSeqRaw = req.query.afterSeq;
+    let afterSeq = Math.max(
+      0,
+      Number.parseInt(
+        typeof afterSeqRaw === "string" ? afterSeqRaw : "0",
+        10,
+      ) || 0,
+    );
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    let disconnected = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const cleanup = () => {
+      disconnected = true;
+      if (pollTimer !== null) clearTimeout(pollTimer);
+      if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
+    };
+
+    req.on("close", cleanup);
+
+    heartbeatTimer = setInterval(() => {
+      if (!disconnected) res.write(": heartbeat\n\n");
+    }, CHAT_EVENTS_HEARTBEAT_INTERVAL_MS);
+
+    const poll = async () => {
+      if (disconnected) return;
+      try {
+        const synced = await syncMessages(userId, sessionId, afterSeq);
+        if (
+          !disconnected &&
+          (synced.messages.length > 0 || synced.lastSeqId > afterSeq)
+        ) {
+          afterSeq = synced.lastSeqId;
+          res.write(`data: ${JSON.stringify(synced)}\n\n`);
+        }
+      } catch {
+        // ignore transient poll errors; client will reconnect on stream close
+      }
+      if (!disconnected) {
+        pollTimer = setTimeout(poll, CHAT_EVENTS_POLL_INTERVAL_MS);
+      }
+    };
+
+    pollTimer = setTimeout(poll, 0);
   },
 );
 

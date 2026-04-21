@@ -79,12 +79,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
-  Timer? _syncTimer;
-  bool _syncInFlight = false;
-  static const Duration _syncPollInterval = Duration(seconds: 2);
-  static const Duration _syncMaxBackoff = Duration(seconds: 10);
-  static const int _syncLongPollWaitMs = 8000;
-  Duration _nextSyncDelay = _syncPollInterval;
+  StreamSubscription<ChatHistorySnapshot>? _sseSubscription;
+  static const Duration _sseReconnectDelay = Duration(seconds: 3);
   final Map<String, ChatRouter> _channelRouters = {};
   final Map<String, ChatRouter> _threadRouters = {};
   int _respondGeneration = 0;
@@ -98,7 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _cancelSyncPolling(resetDelay: false);
+    _disconnectSse();
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
@@ -793,7 +789,7 @@ class _ChatScreenState extends State<ChatScreen> {
         (remembered != null && sections.any((s) => s.id == remembered))
             ? remembered
             : 'main';
-    _cancelSyncPolling();
+    _disconnectSse();
     setState(() {
       _activeChannelId = resolvedChannelId;
       _activeSubSection = restoredSubSection;
@@ -854,7 +850,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final capturedChannelId = _activeChannelId;
     final capturedSubSection = _activeSubSection;
     final capturedSessionId = _sessionIdForScope;
-    _cancelSyncPolling();
+    _disconnectSse();
 
     bool _isScopeStale() => _sessionIdForScope != capturedSessionId;
 
@@ -1105,43 +1101,61 @@ class _ChatScreenState extends State<ChatScreen> {
     return _hasPendingAssistantTasks();
   }
 
-  void _cancelSyncPolling({bool resetDelay = true}) {
-    _syncTimer?.cancel();
-    _syncTimer = null;
-    if (resetDelay) {
-      _nextSyncDelay = _syncPollInterval;
-    }
+  void _disconnectSse() {
+    _sseSubscription?.cancel();
+    _sseSubscription = null;
   }
 
-  void _scheduleSync(Duration delay) {
-    if (_syncTimer != null || _syncInFlight || !_shouldSyncActiveScope()) {
-      return;
-    }
+  /// Starts (or restarts) the SSE connection for the active scope.
+  /// Disconnects any existing connection first.  If [_shouldSyncActiveScope]
+  /// returns false the connection is only torn down.
+  void _connectSse() {
+    _disconnectSse();
+    if (!_shouldSyncActiveScope()) return;
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
 
-    _syncTimer = Timer(delay, () {
-      _syncTimer = null;
-      if (_syncInFlight || !_shouldSyncActiveScope()) {
-        return;
-      }
-      unawaited(_syncActiveScope());
-    });
+    final capturedSessionId = _sessionIdForScope;
+    final capturedChannelId = _activeChannelId;
+    final capturedSubSection = _activeSubSection;
+
+    _sseSubscription = _chatHistoryApiService
+        .listenEvents(
+          token: token,
+          sessionId: capturedSessionId,
+          afterSeq: _lastSyncedSeq,
+        )
+        .listen(
+          (snapshot) {
+            if (!mounted || _sessionIdForScope != capturedSessionId) return;
+            _applySseSnapshot(
+              snapshot,
+              channelId: capturedChannelId,
+              subSection: capturedSubSection,
+            );
+          },
+          onError: (Object error) {
+            debugPrint('SSE chat events error: $error');
+            if (mounted && _sessionIdForScope == capturedSessionId) {
+              Future.delayed(_sseReconnectDelay, _connectSse);
+            }
+          },
+          onDone: () {
+            if (mounted &&
+                _sessionIdForScope == capturedSessionId &&
+                _shouldSyncActiveScope()) {
+              Future.delayed(_sseReconnectDelay, _connectSse);
+            }
+          },
+        );
   }
 
-  void _increaseSyncBackoff() {
-    final doubledMilliseconds = _nextSyncDelay.inMilliseconds * 2;
-    final cappedMilliseconds = doubledMilliseconds.clamp(
-      _syncPollInterval.inMilliseconds,
-      _syncMaxBackoff.inMilliseconds,
-    );
-    _nextSyncDelay = Duration(milliseconds: cappedMilliseconds);
-  }
-
-  void _configureActiveScopeSync({bool triggerNow = true}) {
+  void _configureActiveScopeSync() {
     if (!_shouldSyncActiveScope()) {
-      _cancelSyncPolling();
+      _disconnectSse();
       return;
     }
-    _scheduleSync(triggerNow ? Duration.zero : _nextSyncDelay);
+    _connectSse();
   }
 
   List<ChatMessage> _mergeSyncedMessages(
@@ -1178,54 +1192,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return merged;
   }
 
-  Future<void> _syncActiveScope() async {
-    if (_syncInFlight) return;
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
-
-    final capturedSessionId = _sessionIdForScope;
-    final capturedChannelId = _activeChannelId;
-    final capturedSubSection = _activeSubSection;
-    _syncInFlight = true;
-    var syncFailed = false;
-    try {
-      final snapshot = await _chatHistoryApiService.sync(
-        token: token,
-        sessionId: capturedSessionId,
-        afterSeq: _lastSyncedSeq,
-        waitMs: _syncLongPollWaitMs,
-      );
-      if (!mounted || _sessionIdForScope != capturedSessionId) return;
-      if (snapshot.messages.isEmpty && snapshot.lastSeqId <= _lastSyncedSeq) {
-        return;
-      }
-      final merged = _mergeSyncedMessages(_messages, snapshot.messages);
-      setState(() {
-        _messages
-          ..clear()
-          ..addAll(merged);
-        if (snapshot.lastSeqId > _lastSyncedSeq) {
-          _lastSyncedSeq = snapshot.lastSeqId;
-        }
-      });
-      _updateSubSectionLastMessageAtFromMessages(
-        channelId: capturedChannelId,
-        subSection: capturedSubSection,
-      );
-    } catch (error) {
-      syncFailed = true;
-      debugPrint('chat scope sync failed: $error');
-    } finally {
-      _syncInFlight = false;
-      if (mounted && _sessionIdForScope == capturedSessionId) {
-        if (syncFailed) {
-          _increaseSyncBackoff();
-        } else {
-          _nextSyncDelay = _syncPollInterval;
-        }
-        _configureActiveScopeSync(triggerNow: false);
-      }
+  void _applySseSnapshot(
+    ChatHistorySnapshot snapshot, {
+    required String channelId,
+    required String subSection,
+  }) {
+    if (snapshot.messages.isEmpty && snapshot.lastSeqId <= _lastSyncedSeq) {
+      return;
     }
+    final merged = _mergeSyncedMessages(_messages, snapshot.messages);
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll(merged);
+      if (snapshot.lastSeqId > _lastSyncedSeq) {
+        _lastSyncedSeq = snapshot.lastSeqId;
+      }
+    });
+    _updateSubSectionLastMessageAtFromMessages(
+      channelId: channelId,
+      subSection: subSection,
+    );
   }
 
   void _createSubSection() {
@@ -1793,7 +1780,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   _createSubSection();
                   unawaited(_loadMessagesForActiveScope());
                 } else {
-                  _cancelSyncPolling();
+                  _disconnectSse();
                   setState(() {
                     _activeSubSection = value;
                     _messages.clear();
