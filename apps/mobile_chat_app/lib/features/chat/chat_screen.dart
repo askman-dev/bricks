@@ -1230,7 +1230,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _switchToSubSection(String subSectionId) {
-    _disconnectSse();
     setState(() {
       _activeSubSection = subSectionId;
       _messages.clear();
@@ -1828,12 +1827,10 @@ class _ChatScreenState extends State<ChatScreen> {
               itemBuilder: (context) => [
                 const PopupMenuItem<String>(
                   value: '__rename__',
-                  enabled: false,
                   child: Text('分区改名（未实现）'),
                 ),
                 const PopupMenuItem<String>(
                   value: '__archive__',
-                  enabled: false,
                   child: Text('分区存档（未实现）'),
                 ),
               ],
