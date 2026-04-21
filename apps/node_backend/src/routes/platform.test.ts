@@ -4,12 +4,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
 import { issuePlatformAccessToken } from '../middleware/platformAuth.js';
 import {
+  MAX_PLATFORM_ACK_BATCH_SIZE,
   ackPlatformEvents,
   listPlatformEvents,
   createPlatformMessage,
 } from '../services/platformIntegrationService.js';
 
 vi.mock('../services/platformIntegrationService.js', () => ({
+  MAX_PLATFORM_ACK_BATCH_SIZE: 200,
   listPlatformEvents: vi.fn(async () => ({ nextCursor: 'cur_0', events: [] })),
   ackPlatformEvents: vi.fn(async () => ({ ok: true })),
   createPlatformMessage: vi.fn(async () => ({ messageId: 'msg_test', conversationId: 'conv_1', revision: 1 })),
@@ -118,6 +120,48 @@ describe('platform route auth and ack constraints', () => {
 
     const body = (await second.json()) as { ok?: boolean };
     expect(body.ok).toBe(true);
+  });
+
+  it('rejects oversized ack payloads before calling the service', async () => {
+    vi.mocked(ackPlatformEvents).mockClear();
+
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({
+        ackedEventIds: Array.from({ length: MAX_PLATFORM_ACK_BATCH_SIZE + 1 }, (_, index) => `evt_${index + 1}`),
+        cursor: 'cur_1',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } };
+    expect(body.error?.code).toBe('INVALID_PAYLOAD');
+    expect(body.error?.message).toContain(String(MAX_PLATFORM_ACK_BATCH_SIZE));
+    expect(vi.mocked(ackPlatformEvents)).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when service throws INVALID_ACKED_EVENT_IDS', async () => {
+    vi.mocked(ackPlatformEvents).mockRejectedValueOnce(new Error('INVALID_ACKED_EVENT_IDS'));
+
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({ ackedEventIds: ['bad-id'], cursor: 'cur_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string; message?: string } };
+    expect(body.error?.code).toBe('INVALID_PAYLOAD');
+    expect(body.error?.message).toContain('malformed');
   });
 
   it('accepts user-scoped JWT platform token', async () => {

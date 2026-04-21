@@ -11,12 +11,15 @@ type QueryResult<T = any> = {
   rowCount: number;
 };
 
+export type DatabaseDialect = 'postgres' | 'turso';
+
 type QueryableClient = {
   query: <T = any>(text: string, params?: unknown[]) => Promise<QueryResult<T>>;
   release: () => void;
 };
 
 type QueryablePool = {
+  dialect: DatabaseDialect;
   query: <T = any>(text: string, params?: unknown[]) => Promise<QueryResult<T>>;
   connect: () => Promise<QueryableClient>;
   end: () => Promise<void>;
@@ -82,6 +85,7 @@ function createTursoPool(): QueryablePool {
   };
 
   return {
+    dialect: 'turso',
     query,
     connect: async () => {
       let activeTx: Awaited<ReturnType<typeof tursoClient.transaction>> | null = null;
@@ -153,6 +157,7 @@ function createPostgresPool(): QueryablePool {
   });
 
   return {
+    dialect: 'postgres',
     query: async <T = any>(text: string, params: unknown[] = []): Promise<QueryResult<T>> => {
       const result = await pgPool.query(text, params);
       return {
