@@ -44,6 +44,17 @@ const defaultRunnerLog: RunnerLogSink = {
   error: (message) => console.error(message),
 };
 
+const RETRYABLE_NETWORK_ERROR_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENETUNREACH',
+  'ENOTFOUND',
+  'EHOSTUNREACH',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
 export class NodeOpenClawPluginRunner {
   private readonly client: PlatformClientLike;
   private readonly stateStore: StateStoreLike;
@@ -135,15 +146,18 @@ export class NodeOpenClawPluginRunner {
             break;
           }
 
-          const retryDelayMs = resolveRetryDelayMs(error, currentBackoffMs, this.config.pollIntervalMs)
-            ?? this.config.pollIntervalMs;
-          currentBackoffMs = retryDelayMs;
+          const retryDelayMs = resolveRetryDelayMs(error, currentBackoffMs, this.config.pollIntervalMs);
+          if (retryDelayMs !== null) {
+            currentBackoffMs = retryDelayMs;
+            this.log.warn(
+              `[node_openclaw_plugin] retryable platform/network failure; backing off for ${retryDelayMs}ms: ${formatRunnerError(error)}`,
+            );
+          } else {
+            this.log.error(`[node_openclaw_plugin] SSE connection error: ${formatRunnerError(error)}`);
+            currentBackoffMs = this.config.pollIntervalMs;
+          }
 
-          this.log.warn(
-            `[node_openclaw_plugin] SSE connection error; reconnecting after ${retryDelayMs}ms: ${formatRunnerError(error)}`,
-          );
-
-          await sleepUntilNextTick(retryDelayMs, abortSignal);
+          await sleepUntilNextTick(currentBackoffMs, abortSignal);
         }
       }
     } finally {
@@ -402,11 +416,22 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function shouldBackoffPlatformError(error: unknown): error is PlatformHttpError {
-  return error instanceof PlatformHttpError && (
-    error.status === 429
-    || error.retryable === true
-    || error.status >= 500
-  );
+  return error instanceof PlatformHttpError
+    && (
+      error.status === 429
+      || error.retryable === true
+      || error.status >= 500
+    );
+}
+
+export function shouldBackoffRunnerError(error: unknown): boolean {
+  if (error instanceof PlatformHttpError) {
+    return error.status === 429
+      || error.retryable === true
+      || error.status >= 500;
+  }
+
+  return hasRetryableNetworkCause(error);
 }
 
 export function nextBackoffDelayMs(
@@ -433,11 +458,16 @@ export function resolveRetryDelayMs(
   baseDelayMs: number,
   capDelayMs = 10_000,
 ): number | null {
-  if (!shouldBackoffPlatformError(error)) {
+  if (!shouldBackoffRunnerError(error)) {
     return null;
   }
 
-  if (typeof error.retryAfterMs === 'number' && Number.isFinite(error.retryAfterMs) && error.retryAfterMs > 0) {
+  if (
+    error instanceof PlatformHttpError
+    && typeof error.retryAfterMs === 'number'
+    && Number.isFinite(error.retryAfterMs)
+    && error.retryAfterMs > 0
+  ) {
     return Math.max(baseDelayMs, error.retryAfterMs);
   }
 
@@ -463,6 +493,33 @@ function formatErrorChain(error: Error): string {
   }
 
   return parts.join('\nCaused by: ');
+}
+
+function hasRetryableNetworkCause(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const candidate = current as {
+      code?: unknown;
+      name?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+
+    if (typeof candidate.code === 'string' && RETRYABLE_NETWORK_ERROR_CODES.has(candidate.code)) {
+      return true;
+    }
+
+    if (candidate.name === 'TypeError' && candidate.message === 'fetch failed') {
+      return true;
+    }
+
+    current = candidate.cause;
+  }
+
+  return false;
 }
 
 async function sleepUntilNextTick(delayMs: number, abortSignal?: AbortSignal): Promise<void> {

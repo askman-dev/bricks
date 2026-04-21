@@ -1,14 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { queryMock, upsertMessagesMock } = vi.hoisted(() => ({
-  queryMock: vi.fn(),
-  upsertMessagesMock: vi.fn(async () => ({ lastSeqId: 99 })),
-}));
+const { poolMock, queryMock, upsertMessagesMock } = vi.hoisted(() => {
+  const queryMock = vi.fn();
+  const upsertMessagesMock = vi.fn(async () => ({ lastSeqId: 99 }));
+  return {
+    poolMock: {
+      dialect: 'postgres' as 'postgres' | 'turso',
+      query: queryMock,
+    },
+    queryMock,
+    upsertMessagesMock,
+  };
+});
 
 vi.mock('../db/index.js', () => ({
-  default: {
-    query: queryMock,
-  },
+  default: poolMock,
 }));
 
 vi.mock('./chatAsyncTransportService.js', () => ({
@@ -26,7 +32,7 @@ describe('platformIntegrationService', () => {
   beforeEach(() => {
     queryMock.mockReset();
     upsertMessagesMock.mockClear();
-    delete process.env.TURSO_DATABASE_URL;
+    poolMock.dialect = 'postgres';
   });
 
   it('lists only OpenClaw-ready user events with pending assistant metadata', async () => {
@@ -139,8 +145,8 @@ describe('platformIntegrationService', () => {
     expect(params).toEqual([['msg-user-1'], [5], 'plugin_local_main', 'u-1']);
   });
 
-  it('ack uses Turso-compatible JSON patch SQL when libsql is enabled', async () => {
-    process.env.TURSO_DATABASE_URL = 'libsql://example.turso.io';
+  it('ack uses Turso-compatible JSON patch SQL when database dialect is turso', async () => {
+    poolMock.dialect = 'turso';
     queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [] });
 
     const result = await ackPlatformEvents({
@@ -160,5 +166,45 @@ describe('platformIntegrationService', () => {
     expect(sql).not.toContain('UNNEST(');
     expect(sql).not.toContain('::jsonb');
     expect(params).toEqual(['plugin_local_main', 'msg-user-1', 5, 'msg-user-2', 8, 'u-1']);
+  });
+
+  it('chunks Turso ack updates into smaller statements', async () => {
+    poolMock.dialect = 'turso';
+    queryMock.mockResolvedValue({ rowCount: 1, rows: [] });
+
+    const ackedEventIds = Array.from(
+      { length: 51 },
+      (_, index) => `evt_msg_msg-user-${index + 1}_${index + 1}`,
+    );
+
+    const result = await ackPlatformEvents({
+      pluginId: 'plugin_local_main',
+      userId: 'u-1',
+      cursor: 'cur_51',
+      ackedEventIds,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[0]?.[1]).toHaveLength(102);
+    expect(queryMock.mock.calls[1]?.[1]).toEqual(['plugin_local_main', 'msg-user-51', 51, 'u-1']);
+  });
+
+  it('rejects oversized ack batches before querying', async () => {
+    const ackedEventIds = Array.from(
+      { length: 201 },
+      (_, index) => `evt_msg_msg-user-${index + 1}_${index + 1}`,
+    );
+
+    await expect(
+      ackPlatformEvents({
+        pluginId: 'plugin_local_main',
+        userId: 'u-1',
+        cursor: 'cur_201',
+        ackedEventIds,
+      }),
+    ).rejects.toThrow('TOO_MANY_ACKED_EVENT_IDS');
+
+    expect(queryMock).not.toHaveBeenCalled();
   });
 });

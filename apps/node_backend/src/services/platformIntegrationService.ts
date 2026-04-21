@@ -40,11 +40,16 @@ export interface PlatformEvent {
       userId: string;
       displayName: string;
     };
-       text: string;
-       attachments: unknown[];
-       metadata?: Record<string, unknown>;
-     };
+    text: string;
+    attachments: unknown[];
+    metadata?: Record<string, unknown>;
+  };
 }
+
+export const MAX_PLATFORM_EVENTS_LIMIT = 200;
+export const MAX_PLATFORM_ACK_BATCH_SIZE = MAX_PLATFORM_EVENTS_LIMIT;
+const DEFAULT_PLATFORM_EVENTS_LIMIT = 50;
+const TURSO_ACK_UPDATE_CHUNK_SIZE = 50;
 
 function cursorToSeq(cursor?: string): number {
   if (!cursor) return 0;
@@ -83,7 +88,7 @@ export async function listPlatformEvents(params: {
   workspaceId?: string;
   userId?: string;
 }): Promise<{ nextCursor: string; events: PlatformEvent[] }> {
-  const limit = Math.min(200, Math.max(1, params.limit ?? 50));
+  const limit = Math.min(MAX_PLATFORM_EVENTS_LIMIT, Math.max(1, params.limit ?? DEFAULT_PLATFORM_EVENTS_LIMIT));
   const afterSeq = cursorToSeq(params.cursor);
   const workspaceId = params.workspaceId ?? process.env.BRICKS_PLATFORM_WORKSPACE_ID ?? 'ws_local';
 
@@ -170,23 +175,29 @@ export async function ackPlatformEvents(params: {
     return { ok: true };
   }
 
-  if (process.env.TURSO_DATABASE_URL) {
-    const queryParams: unknown[] = [params.pluginId];
-    const ackedMessageFilter = appendAckedMessageFilter(ackedMessages, queryParams);
-    const userFilter = appendUserIdFilter(params.userId, queryParams);
-    await pool.query(
-      `UPDATE chat_messages
-          SET task_state = 'completed',
-              metadata = json_patch(
-                COALESCE(metadata, '{}'),
-                json_object('pluginReadBy', json_object($1, CURRENT_TIMESTAMP))
-              ),
-              updated_at = CURRENT_TIMESTAMP
-        WHERE (${ackedMessageFilter})
-          AND role = 'user'
-          AND task_state IN ('accepted', 'dispatched')${userFilter}`,
-      queryParams,
-    );
+  if (ackedMessages.length > MAX_PLATFORM_ACK_BATCH_SIZE) {
+    throw new Error('TOO_MANY_ACKED_EVENT_IDS');
+  }
+
+  if (pool.dialect === 'turso') {
+    for (const ackedMessageChunk of chunkItems(ackedMessages, TURSO_ACK_UPDATE_CHUNK_SIZE)) {
+      const queryParams: unknown[] = [params.pluginId];
+      const ackedMessageFilter = appendAckedMessageFilter(ackedMessageChunk, queryParams);
+      const userFilter = appendUserIdFilter(params.userId, queryParams);
+      await pool.query(
+        `UPDATE chat_messages
+            SET task_state = 'completed',
+                metadata = json_patch(
+                  COALESCE(metadata, '{}'),
+                  json_object('pluginReadBy', json_object($1, CURRENT_TIMESTAMP))
+                ),
+                updated_at = CURRENT_TIMESTAMP
+          WHERE (${ackedMessageFilter})
+            AND role = 'user'
+            AND task_state IN ('accepted', 'dispatched')${userFilter}`,
+        queryParams,
+      );
+    }
     return { ok: true };
   }
 
@@ -345,6 +356,17 @@ function appendAckedMessageFilter(
       return `(message_id = ${messageIdRef} AND write_seq = ${writeSeqRef})`;
     })
     .join(' OR ');
+}
+
+function chunkItems<T>(items: readonly T[], chunkSize: number): T[][] {
+  if (chunkSize <= 0) {
+    throw new Error('INVALID_CHUNK_SIZE');
+  }
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+  return chunks;
 }
 
 export async function resolveConversation(params: {
