@@ -922,15 +922,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return 'backend.respond.$router';
   }
 
-  String _activeRouterSummary() {
-    final effective = _routerLabel(_effectiveRouterForScope());
-    final channel = _routerLabel(
-      _channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute,
-    );
-    final thread = _threadRouterMenuLabel(_explicitThreadRouter());
-    return 'Router: $effective · Channel $channel · Thread $thread';
-  }
-
   Future<void> _saveChannelRouter(ChatRouter router) async {
     final token = _authToken;
     if (token == null || token.isEmpty) {
@@ -1121,33 +1112,33 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _sseSubscription = _chatHistoryApiService
         .listenEvents(
-          token: token,
-          sessionId: capturedSessionId,
-          afterSeq: _lastSyncedSeq,
-        )
+      token: token,
+      sessionId: capturedSessionId,
+      afterSeq: _lastSyncedSeq,
+    )
         .listen(
-          (snapshot) {
-            if (!mounted || _sessionIdForScope != capturedSessionId) return;
-            _applySseSnapshot(
-              snapshot,
-              channelId: capturedChannelId,
-              subSection: capturedSubSection,
-            );
-          },
-          onError: (Object error) {
-            debugPrint('SSE chat events error: $error');
-            if (mounted && _sessionIdForScope == capturedSessionId) {
-              Future.delayed(_sseReconnectDelay, _connectSse);
-            }
-          },
-          onDone: () {
-            if (mounted &&
-                _sessionIdForScope == capturedSessionId &&
-                _shouldSyncActiveScope()) {
-              Future.delayed(_sseReconnectDelay, _connectSse);
-            }
-          },
+      (snapshot) {
+        if (!mounted || _sessionIdForScope != capturedSessionId) return;
+        _applySseSnapshot(
+          snapshot,
+          channelId: capturedChannelId,
+          subSection: capturedSubSection,
         );
+      },
+      onError: (Object error) {
+        debugPrint('SSE chat events error: $error');
+        if (mounted && _sessionIdForScope == capturedSessionId) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
+      onDone: () {
+        if (mounted &&
+            _sessionIdForScope == capturedSessionId &&
+            _shouldSyncActiveScope()) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
+    );
   }
 
   void _configureActiveScopeSync() {
@@ -1236,6 +1227,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _configureActiveScopeSync();
+  }
+
+  void _switchToSubSection(String subSectionId) {
+    _disconnectSse();
+    setState(() {
+      _activeSubSection = subSectionId;
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
+    });
+    unawaited(_loadMessagesForActiveScope());
   }
 
   Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
@@ -1756,72 +1758,86 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () => Scaffold.of(context).openDrawer(),
             ),
           ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          title: Row(
             children: [
-              Text(activeChannelName),
-              if (activeAgentName != null)
-                Text(
-                  'Responding as @$activeAgentName',
-                  style: Theme.of(context).textTheme.labelSmall,
+              Flexible(
+                child: Text(
+                  activeChannelName,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              Text(
-                _activeRouterSummary(),
-                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              const SizedBox(width: BricksSpacing.xs),
+              PopupMenuButton<String>(
+                popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
+                tooltip: '切换子区',
+                onSelected: (value) {
+                  if (value == '__new__') {
+                    _createSubSection();
+                    unawaited(_loadMessagesForActiveScope());
+                    return;
+                  }
+                  _switchToSubSection(value);
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem<String>(
+                    value: 'main',
+                    child: Text('回到主区'),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: '__new__',
+                    child: Text('新建子区'),
+                  ),
+                  const PopupMenuDivider(),
+                  ..._activeSubSections.map(
+                    (item) => PopupMenuItem<String>(
+                      value: item.id,
+                      child: Text(item.name),
+                    ),
+                  ),
+                ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _activeSubSection == 'main'
+                          ? '主区'
+                          : (_subSectionNameById(_activeSubSection) ??
+                              _activeSubSection),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
               ),
             ],
           ),
           actions: [
             PopupMenuButton<String>(
               popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-              tooltip: 'Sub sections',
+              tooltip: '子区管理',
               onSelected: (value) {
-                if (value == '__new__') {
-                  _createSubSection();
-                  unawaited(_loadMessagesForActiveScope());
-                } else {
-                  _disconnectSse();
-                  setState(() {
-                    _activeSubSection = value;
-                    _messages.clear();
-                    _latestCheckpointCursor = null;
-                    _lastSyncedSeq = 0;
-                  });
-                  unawaited(_loadMessagesForActiveScope());
+                switch (value) {
+                  case '__rename__':
+                  case '__archive__':
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('功能暂未实现')),
+                    );
+                    break;
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem<String>(value: 'main', child: Text('回到主区')),
                 const PopupMenuItem<String>(
-                  value: '__new__',
-                  child: Text('新建子区'),
+                  value: '__rename__',
+                  enabled: false,
+                  child: Text('分区改名（未实现）'),
                 ),
-                const PopupMenuDivider(),
-                ..._activeSubSections.map(
-                  (item) => PopupMenuItem<String>(
-                    value: item.id,
-                    child: Text(item.name),
-                  ),
+                const PopupMenuItem<String>(
+                  value: '__archive__',
+                  enabled: false,
+                  child: Text('分区存档（未实现）'),
                 ),
               ],
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: BricksSpacing.md,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.splitscreen_outlined),
-                    const SizedBox(width: BricksSpacing.xs),
-                    Text(
-                      _activeSubSection == 'main'
-                          ? '主区'
-                          : (_subSectionNameById(_activeSubSection) ??
-                              _activeSubSection),
-                    ),
-                    const Icon(Icons.arrow_drop_down),
-                  ],
-                ),
-              ),
+              icon: const Icon(Icons.more_vert),
             ),
           ],
           bottom: _buildActiveAgentsIndicator(),
