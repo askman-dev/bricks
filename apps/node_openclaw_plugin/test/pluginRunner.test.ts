@@ -216,27 +216,31 @@ describe('NodeOpenClawPluginRunner', () => {
   };
 
   it('creates one placeholder and patches it with OpenClaw replies', async () => {
-    const getEvents = vi.fn<() => Promise<GetEventsResponse>>().mockResolvedValue({
-      nextCursor: 'cur_1',
-      events: [
-        {
-          eventId: 'evt_1',
-          eventType: 'message.created',
-          workspaceId: 'ws_1',
-          conversationId: 'session:general:main',
-          payload: {
-            text: 'hello',
-            sender: {
-              userId: 'user_1',
-              displayName: 'Alice',
-            },
-            metadata: {
-              pendingAssistantMessageId: 'msg_assistant_1',
+    const eventStream = (async function* () {
+      yield {
+        nextCursor: 'cur_1',
+        events: [
+          {
+            eventId: 'evt_1',
+            eventType: 'message.created',
+            workspaceId: 'ws_1',
+            conversationId: 'session:general:main',
+            payload: {
+              text: 'hello',
+              sender: {
+                userId: 'user_1',
+                displayName: 'Alice',
+              },
+              metadata: {
+                pendingAssistantMessageId: 'msg_assistant_1',
+              },
             },
           },
-        },
-      ],
-    });
+        ],
+      } as GetEventsResponse;
+    })();
+
+    const listenEvents = vi.fn(() => eventStream);
     const resolveConversation = vi.fn<() => Promise<ResolveConversationResponse>>().mockResolvedValue({
       conversationId: 'session:general:main',
       channelId: 'general',
@@ -249,9 +253,10 @@ describe('NodeOpenClawPluginRunner', () => {
     const ackEvents = vi.fn<() => Promise<{ ok: boolean }>>().mockResolvedValue({ ok: true });
     const save = vi.fn<(state: PluginPersistentState) => Promise<void>>().mockResolvedValue();
 
+    const abortController = new AbortController();
     const runner = new NodeOpenClawPluginRunner(config, {
       client: {
-        getEvents,
+        listenEvents,
         ackEvents,
         resolveConversation,
         createMessage,
@@ -272,7 +277,9 @@ describe('NodeOpenClawPluginRunner', () => {
       }),
     });
 
-    await runner.tick();
+    // Run briefly and abort
+    setTimeout(() => abortController.abort(), 100);
+    await runner.runUntilAbort(abortController.signal);
 
     expect(createMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -327,13 +334,13 @@ describe('NodeOpenClawPluginRunner', () => {
   });
 
   it('returns immediately when started with an already-aborted signal', async () => {
-    const getEvents = vi.fn<() => Promise<GetEventsResponse>>();
+    const listenEvents = vi.fn();
     const abortController = new AbortController();
     abortController.abort();
 
     const runner = new NodeOpenClawPluginRunner(config, {
       client: {
-        getEvents,
+        listenEvents,
         ackEvents: vi.fn(),
         resolveConversation: vi.fn(),
         createMessage: vi.fn(),
@@ -347,31 +354,35 @@ describe('NodeOpenClawPluginRunner', () => {
 
     await runner.runUntilAbort(abortController.signal);
 
-    expect(getEvents).not.toHaveBeenCalled();
+    expect(listenEvents).not.toHaveBeenCalled();
   });
 
   it('finalizes an existing placeholder when a retry yields no visible reply', async () => {
-    const getEvents = vi.fn<() => Promise<GetEventsResponse>>().mockResolvedValue({
-      nextCursor: 'cur_2',
-      events: [
-        {
-          eventId: 'evt_retry_1',
-          eventType: 'message.created',
-          workspaceId: 'ws_1',
-          conversationId: 'session:general:main',
-          payload: {
-            text: 'hello again',
-            sender: {
-              userId: 'user_1',
-              displayName: 'Alice',
-            },
-            metadata: {
-              pendingAssistantMessageId: 'msg_assistant_retry',
+    const eventStream = (async function* () {
+      yield {
+        nextCursor: 'cur_2',
+        events: [
+          {
+            eventId: 'evt_retry_1',
+            eventType: 'message.created',
+            workspaceId: 'ws_1',
+            conversationId: 'session:general:main',
+            payload: {
+              text: 'hello again',
+              sender: {
+                userId: 'user_1',
+                displayName: 'Alice',
+              },
+              metadata: {
+                pendingAssistantMessageId: 'msg_assistant_retry',
+              },
             },
           },
-        },
-      ],
-    });
+        ],
+      } as GetEventsResponse;
+    })();
+
+    const listenEvents = vi.fn(() => eventStream);
     const resolveConversation = vi.fn<() => Promise<ResolveConversationResponse>>().mockResolvedValue({
       conversationId: 'session:general:main',
       channelId: 'general',
@@ -382,9 +393,10 @@ describe('NodeOpenClawPluginRunner', () => {
     const ackEvents = vi.fn<() => Promise<{ ok: boolean }>>().mockResolvedValue({ ok: true });
     const save = vi.fn<(state: PluginPersistentState) => Promise<void>>().mockResolvedValue();
 
+    const abortController = new AbortController();
     const runner = new NodeOpenClawPluginRunner(config, {
       client: {
-        getEvents,
+        listenEvents,
         ackEvents,
         resolveConversation,
         createMessage: vi.fn(),
@@ -407,7 +419,9 @@ describe('NodeOpenClawPluginRunner', () => {
       },
     } satisfies PluginPersistentState;
 
-    await runner.tick();
+    // Run briefly and abort
+    setTimeout(() => abortController.abort(), 100);
+    await runner.runUntilAbort(abortController.signal);
 
     expect(patchMessage).toHaveBeenCalledWith(
       'assistant_message_retry',

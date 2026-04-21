@@ -16,11 +16,17 @@ import {
 const DEFAULT_PLATFORM_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_PLATFORM_READ_LIMIT_MAX = 300;
 const DEFAULT_PLATFORM_WRITE_LIMIT_MAX = 600;
+const DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX = 10;
+// Interval between each poll of listPlatformEvents while an SSE connection is open.
+const PLATFORM_EVENTS_POLL_INTERVAL_MS = 1000;
+// Interval between keep-alive heartbeat comments sent over the SSE stream.
+const PLATFORM_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
 
 interface PlatformRateLimitOptions {
   windowMs?: number;
   readMax?: number;
   writeMax?: number;
+  eventsStreamMax?: number;
 }
 
 function requestId(): string {
@@ -122,6 +128,11 @@ export function createPlatformRouter(options: {
     max: options.rateLimit?.writeMax ?? DEFAULT_PLATFORM_WRITE_LIMIT_MAX,
     message: 'Too many platform write requests, please try again later.',
   });
+  const eventsStreamLimiter = createPlatformLimiter({
+    windowMs,
+    max: options.rateLimit?.eventsStreamMax ?? DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX,
+    message: 'Too many platform SSE connection attempts, please try again later.',
+  });
 
   router.get('/events', readLimiter, requirePlatformScope('events:read'), async (req: Request, res: Response) => {
     try {
@@ -153,6 +164,66 @@ export function createPlatformRouter(options: {
       sendError(res, 500, 'INTERNAL_ERROR', 'internal server error', true);
     }
   });
+
+  router.get(
+    '/events/stream',
+    eventsStreamLimiter,
+    requirePlatformScope('events:read'),
+    (req: Request, res: Response) => {
+      const platformReq = req as PlatformAuthRequest;
+      const cursorParam = readTrimmedString(req.query.cursor);
+      if (!cursorParam) {
+        sendError(res, 400, 'INVALID_CURSOR', 'cursor query parameter is required');
+        return;
+      }
+
+      let cursor = cursorParam;
+      const userId = platformReq.platformUserId;
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      let disconnected = false;
+      let pollTimer: ReturnType<typeof setTimeout> | null = null;
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+      const cleanup = () => {
+        disconnected = true;
+        if (pollTimer !== null) clearTimeout(pollTimer);
+        if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
+      };
+
+      req.on('close', cleanup);
+
+      heartbeatTimer = setInterval(() => {
+        if (!disconnected) res.write(': heartbeat\n\n');
+      }, PLATFORM_EVENTS_HEARTBEAT_INTERVAL_MS);
+
+      const poll = async () => {
+        if (disconnected) return;
+        try {
+          const response = await listPlatformEvents({
+            cursor,
+            limit: 50,
+            userId,
+          });
+          if (!disconnected && response.events.length > 0) {
+            cursor = response.nextCursor;
+            res.write(`data: ${JSON.stringify(response)}\n\n`);
+          }
+        } catch {
+          // ignore transient poll errors; client will reconnect on stream close
+        }
+        if (!disconnected) {
+          pollTimer = setTimeout(poll, PLATFORM_EVENTS_POLL_INTERVAL_MS);
+        }
+      };
+
+      pollTimer = setTimeout(poll, 0);
+    },
+  );
 
   router.post(
     '/events/ack',

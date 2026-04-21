@@ -95,6 +95,81 @@ export class PlatformClient {
     });
   }
 
+  /**
+   * Opens a persistent SSE connection to `/api/v1/platform/events/stream`
+   * and yields a [GetEventsResponse] each time the server pushes new events.
+   * The stream completes when the underlying HTTP connection closes;
+   * callers are responsible for reconnecting as needed.
+   */
+  async *listenEvents(cursor: string): AsyncGenerator<GetEventsResponse, void, undefined> {
+    const params = new URLSearchParams({ cursor });
+    const url = new URL(`/api/v1/platform/events/stream?${params.toString()}`, this.baseUrl);
+
+    const response = await fetch(url, {
+      signal: this.resolveSignal?.(),
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'X-Bricks-Plugin-Id': this.pluginId,
+        Accept: 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
+    });
+
+    if (!response.ok) {
+      const statusSuffix = response.statusText ? ` ${response.statusText}` : '';
+      throw new PlatformHttpError(
+        response.status,
+        `Failed to open platform events stream: ${response.status}${statusSuffix}`,
+      );
+    }
+
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let partial = '';
+    let pendingData: string | null = null;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        partial += decoder.decode(value, { stream: true });
+
+        // Extract all complete lines (split on \n; trimRight removes any \r).
+        const parts = partial.split('\n');
+        partial = parts[parts.length - 1]; // last part may be incomplete
+
+        for (let i = 0; i < parts.length - 1; i++) {
+          const line = parts[i].trimEnd();
+
+          if (line.length === 0) {
+            // Empty line signals end of one SSE event – dispatch it.
+            if (pendingData !== null) {
+              try {
+                const parsed = JSON.parse(pendingData) as GetEventsResponse;
+                yield parsed;
+              } catch {
+                // ignore malformed SSE events
+              }
+              pendingData = null;
+            }
+          } else if (line.startsWith('data: ')) {
+            pendingData = line.substring(6);
+          } else if (line.startsWith('data:')) {
+            pendingData = line.substring(5);
+          }
+          // Lines starting with ':' are SSE comments (e.g. heartbeats); ignore.
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(new URL(path, this.baseUrl), {
       ...init,
