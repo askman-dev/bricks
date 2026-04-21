@@ -26,7 +26,7 @@ Widget _build(List<ChatMessage> messages) => MaterialApp(
 void _expectNearBottom(ScrollableState scrollable) {
   expect(
     scrollable.position.pixels,
-    greaterThanOrEqualTo(scrollable.position.maxScrollExtent * 0.98),
+    closeTo(scrollable.position.maxScrollExtent, 24.0),
   );
 }
 
