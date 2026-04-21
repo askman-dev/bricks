@@ -411,7 +411,12 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function shouldBackoffPlatformError(error: unknown): error is PlatformHttpError {
-  return error instanceof PlatformHttpError;
+  return error instanceof PlatformHttpError
+    && (
+      error.status === 429
+      || error.retryable === true
+      || error.status >= 500
+    );
 }
 
 export function shouldBackoffRunnerError(error: unknown): boolean {

@@ -395,9 +395,13 @@ describe('NodeOpenClawPluginRunner', () => {
 
     await runner.runUntilAbort(abortController.signal);
 
+    const expectedRetryDelayMs = nextBackoffDelayMs(0, config.pollIntervalMs);
+
     expect(getEvents).toHaveBeenCalledTimes(2);
     expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('retryable platform/network failure; backing off for 2ms'),
+      expect.stringContaining(
+        `retryable platform/network failure; backing off for ${expectedRetryDelayMs}ms`,
+      ),
     );
     expect(log.error).not.toHaveBeenCalled();
   });
