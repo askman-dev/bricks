@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-20
+last_updated: 2026-04-21
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -87,6 +87,27 @@ products:
           - 生成后页面会显示包含 pluginId / URL / scopes / token 的安装说明。
           - 点击 “Copy Install Instructions” 可一键复制完整安装说明文本。
 
+      - feature_id: node_settings
+        name: 节点（Node）管理与节点级 Token
+        user_value: 用户可管理多个节点（本地/云端运行时），并为指定节点生成专属 Token 与安装信息。
+        entry_paths:
+          - screen: SettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
+          - screen: NodeSettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/node_settings_screen.dart
+          - service: LlmConfigService.fetchPlatformNodes/createPlatformNode/renamePlatformNode/fetchPlatformToken(nodeId)
+            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+          - route: /api/config/nodes
+            route_hint: apps/node_backend/src/routes/config.ts
+          - route: /api/config/platform-token?nodeId=...
+            route_hint: apps/node_backend/src/routes/config.ts
+        smoke_checks:
+          - 设置页可看到“节点”入口并进入节点列表页面。
+          - 当节点列表为空时，显示“创建第一个节点”按钮并可创建节点。
+          - 节点创建后可展示默认名称（openclaw 1 / openclaw 2 ...）并支持重命名。
+          - 每个节点可复制 plugin id，可为该节点生成 token 与安装说明。
+          - 使用指定 nodeId 请求 platform-token 时，返回 payload 包含 nodeId / nodeName / pluginId / token。
+
       - feature_id: workspace_resources
         name: Workspace / Projects / Skills / Resources 管理
         user_value: 用户可浏览工作区相关资源。
@@ -143,9 +164,11 @@ products:
         smoke_checks:
           - 调用 chat 接口时返回结构化响应。
           - provider 配置缺失时给出明确错误。
-          - 使用 API Key + X-Bricks-Plugin-Id 可访问 `/api/v1/platform/events` 并获取 `nextCursor`。
-          - `/api/v1/platform/events/ack` 禁止 body 中传 `pluginId`，合法 ACK 可重复调用并返回成功。
-          - 调用 `/api/chat/channel-names` 可保存并读取每个用户的频道自定义名称。
+          - '使用 API Key + X-Bricks-Plugin-Id 可访问 /api/v1/platform/events 并获取 nextCursor。'
+          - '/api/v1/platform/events/ack 禁止 body 中传 pluginId，合法 ACK 可重复调用并返回成功。'
+          - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
+          - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
+          - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'
 
   - product_id: node_openclaw_plugin
     name: Node OpenClaw Plugin

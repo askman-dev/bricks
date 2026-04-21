@@ -17,6 +17,14 @@ vi.mock('../services/platformIntegrationService.js', () => ({
   resolveConversation: vi.fn(),
 }));
 
+vi.mock('../services/platformNodeService.js', () => ({
+  getPlatformNodeByPluginId: vi.fn(async () => ({
+    nodeId: 'node_default',
+    displayName: 'openclaw 1',
+    pluginId: 'plugin_local_main',
+  })),
+}));
+
 let server: ReturnType<express.Express['listen']> | null = null;
 let baseUrl = '';
 let createPlatformRouter: typeof import('./platform.js').createPlatformRouter;

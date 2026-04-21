@@ -12,6 +12,7 @@ import {
   patchPlatformMessage,
   resolveConversation,
 } from '../services/platformIntegrationService.js';
+import { getPlatformNodeByPluginId } from '../services/platformNodeService.js';
 
 const DEFAULT_PLATFORM_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_PLATFORM_READ_LIMIT_MAX = 300;
@@ -73,6 +74,20 @@ function platformLimiterKey(req: PlatformAuthRequest): string {
     || req.socket.remoteAddress
     || 'unknown-client';
   return `${pluginId}:${scopedIdentity}`;
+}
+
+async function buildNodeMetadata(
+  userId: string,
+  pluginId: string | undefined,
+): Promise<Record<string, unknown>> {
+  const plugin = pluginId?.trim();
+  if (!plugin) return {};
+  const node = await getPlatformNodeByPluginId(userId, plugin);
+  if (!node) return {};
+  return {
+    nodeId: node.nodeId,
+    nodeName: node.displayName,
+  };
 }
 
 function resolveRetryAfterSeconds(
@@ -225,6 +240,11 @@ export function createPlatformRouter(options: {
           return;
         }
 
+        const requestMetadata =
+          req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
+            ? (req.body.metadata as Record<string, unknown>)
+            : undefined;
+
         const result = await createPlatformMessage({
           userId,
           conversationId,
@@ -233,10 +253,10 @@ export function createPlatformRouter(options: {
           text,
           role,
           clientToken: readTrimmedString(req.body?.clientToken) ?? undefined,
-          metadata:
-            req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
-              ? (req.body.metadata as Record<string, unknown>)
-              : undefined,
+          metadata: {
+            ...(await buildNodeMetadata(userId, req.platformPluginId)),
+            ...(requestMetadata ?? {}),
+          },
         });
 
         res.status(200).json(result);
@@ -273,13 +293,22 @@ export function createPlatformRouter(options: {
           req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
             ? (req.body.metadata as Record<string, unknown>)
             : undefined;
+        const mergedMetadata = {
+          ...(await buildNodeMetadata(userId, req.platformPluginId)),
+          ...(metadata ?? {}),
+        };
 
-        if (!text && !metadata) {
+        if (!text && Object.keys(mergedMetadata).length === 0) {
           sendError(res, 400, 'INVALID_PAYLOAD', 'at least one of text or metadata is required');
           return;
         }
 
-        const result = await patchPlatformMessage({ userId, messageId, text: text ?? undefined, metadata });
+        const result = await patchPlatformMessage({
+          userId,
+          messageId,
+          text: text ?? undefined,
+          metadata: mergedMetadata,
+        });
         if (!result) {
           sendError(res, 404, 'MESSAGE_NOT_FOUND', 'message not found');
           return;

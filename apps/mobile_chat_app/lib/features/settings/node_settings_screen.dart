@@ -1,0 +1,193 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'llm_config_service.dart';
+
+class NodeSettingsScreen extends StatefulWidget {
+  const NodeSettingsScreen({super.key, LlmConfigService? service})
+      : _service = service ?? const LlmConfigService();
+
+  final LlmConfigService _service;
+
+  @override
+  State<NodeSettingsScreen> createState() => _NodeSettingsScreenState();
+}
+
+class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
+  late final LlmConfigService _service;
+  bool _loading = false;
+  PlatformTokenBundle? _bundle;
+  List<PlatformNodeConfig> _nodes = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _service = widget._service;
+    _loadNodes();
+  }
+
+  Future<void> _loadNodes() async {
+    setState(() => _loading = true);
+    try {
+      final nodes = await _service.fetchPlatformNodes();
+      if (!mounted) return;
+      setState(() => _nodes = nodes);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load nodes')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _createNode() async {
+    await _service.createPlatformNode();
+    await _loadNodes();
+  }
+
+  Future<void> _renameNode(PlatformNodeConfig node) async {
+    final controller = TextEditingController(text: node.displayName);
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Node'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Node Name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (nextName == null || nextName.trim().isEmpty) return;
+    await _service.renamePlatformNode(
+        nodeId: node.nodeId, displayName: nextName);
+    await _loadNodes();
+  }
+
+  Future<void> _copyText(String value, String successMessage) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(successMessage)));
+  }
+
+  String _buildInstallInstruction(PlatformTokenBundle bundle) {
+    final scopes = bundle.scopes.join(', ');
+    return [
+      'Node: ${bundle.nodeName.isEmpty ? bundle.nodeId : bundle.nodeName}',
+      'Plugin ID: ${bundle.pluginId}',
+      'Base URL: ${bundle.baseUrl}',
+      'Scopes: $scopes',
+      'Token: ${bundle.token}',
+    ].join('\n');
+  }
+
+  Future<void> _generateNodeToken(PlatformNodeConfig node) async {
+    final bundle = await _service.fetchPlatformToken(nodeId: node.nodeId);
+    if (!mounted) return;
+    setState(() => _bundle = bundle);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nodes = _nodes;
+    return Scaffold(
+      appBar: AppBar(title: const Text('节点')),
+      floatingActionButton: nodes.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: _createNode,
+              icon: const Icon(Icons.add),
+              label: const Text('新增节点'),
+            )
+          : null,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : nodes.isEmpty
+              ? Center(
+                  child: FilledButton.icon(
+                    onPressed: _createNode,
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('创建第一个节点'),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    for (final node in nodes)
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      node.displayName,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Rename Node',
+                                    onPressed: () => _renameNode(node),
+                                    icon: const Icon(Icons.edit_outlined),
+                                  ),
+                                ],
+                              ),
+                              Text('plugin: ${node.pluginId}'),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: () => _copyText(
+                                        node.pluginId, 'Plugin ID copied'),
+                                    icon: const Icon(Icons.copy_outlined),
+                                    label: const Text('复制 Plugin ID'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () => _generateNodeToken(node),
+                                    icon: const Icon(Icons.vpn_key_outlined),
+                                    label: const Text('生成 Token'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (_bundle != null) ...[
+                      const SizedBox(height: 12),
+                      SelectableText(_buildInstallInstruction(_bundle!)),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _copyText(
+                          _buildInstallInstruction(_bundle!),
+                          'Install instructions copied',
+                        ),
+                        icon: const Icon(Icons.copy_all_outlined),
+                        label: const Text('复制安装信息'),
+                      ),
+                    ],
+                  ],
+                ),
+    );
+  }
+}
