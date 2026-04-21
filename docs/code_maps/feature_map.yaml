@@ -42,8 +42,9 @@ products:
           - 在 openclaw 离线后切回默认路由继续发送时，历史消息应优先按服务端 seqId（不可变插入序）渲染，后到达更新不会打乱对话先后。
           - 当多条消息 createdAt 相同（秒级碰撞）时，消息应按 seqId 稳定从旧到新渲染。
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
-          - Openclaw 异步模式下不应额外持久化 assistant 站位消息行；“已读”应由用户消息状态属性反映。
-          - user query 气泡应根据路由与回包进度显示状态：default 无标记；openclaw 待处理/拉取中显示灰色 🦞，收到回复后显示绿色 ✓；其他远端路由待处理显示灰色 ✓，收到回复后显示绿色 ✓。
+          - default 与 openclaw 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
+          - 发送后不应立即出现空 assistant 假占位；assistant 气泡仅在实际内容开始到达（SSE/sync）时出现。
+          - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，default/其他远端为第二枚 ✓，openclaw 为第二枚 🦞。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
           - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
           - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。
@@ -56,7 +57,8 @@ products:
           - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
           - 顶部标题右侧应内嵌子区切换下拉（主区/新建子区/已有子区），切换后标题子区名称同步更新。
           - 右上角应提供“子区管理”菜单，展示“分区改名（未实现）”“分区存档（未实现）”禁用项。
-          - 打开子区切换菜单与输入框配置菜单时，弹出动画应快速并呈现缩放+淡入效果。
+          - 打开右上角分区菜单与输入框配置菜单时，弹出动画应快速并呈现缩放+淡入效果。
+          - 在主区（channel 对话）打开路由菜单时，不应显示 Thread router 分组；在子区（thread 对话）应显示 Follow channel / Bricks Default / OpenClaw 三项。
           - Openclaw 异步会话空闲时，客户端应通过 SSE（`/api/chat/events/:sessionId`）保持持久推送连接，服务端将在新消息到达后实时推送事件，无需客户端反复轮询。
 
       - feature_id: model_settings

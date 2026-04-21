@@ -578,6 +578,9 @@ class _ChatScreenState extends State<ChatScreen> {
           setting.threadId == null) {
         continue;
       }
+      if (!_isThreadConversation(threadId: setting.threadId)) {
+        continue;
+      }
       routers[_subSectionKey(setting.channelId, setting.threadId!)] =
           setting.router;
     }
@@ -889,6 +892,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatRouter? _explicitThreadRouter({String? channelId, String? threadId}) {
     final resolvedChannelId = channelId ?? _activeChannelId;
     final resolvedThreadId = threadId ?? _activeSubSection;
+    if (!_isThreadConversation(threadId: resolvedThreadId)) return null;
     return _threadRouters[_subSectionKey(resolvedChannelId, resolvedThreadId)];
   }
 
@@ -910,6 +914,11 @@ class _ChatScreenState extends State<ChatScreen> {
       case ChatRouter.openclaw:
         return 'OpenClaw';
     }
+  }
+
+  bool _isThreadConversation({String? threadId}) {
+    final resolvedThreadId = threadId ?? _activeSubSection;
+    return resolvedThreadId != 'main';
   }
 
   String _threadRouterMenuLabel(ChatRouter? router) {
@@ -1034,12 +1043,15 @@ class _ChatScreenState extends State<ChatScreen> {
         unawaited(_saveChannelRouter(ChatRouter.openclaw));
         return;
       case 'thread:inherit':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(null));
         return;
       case 'thread:default':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(ChatRouter.defaultRoute));
         return;
       case 'thread:openclaw':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(ChatRouter.openclaw));
         return;
     }
@@ -1085,11 +1097,26 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  bool _hasPendingUserTasks() {
+    final assistantTaskIds = _messages
+        .where((m) => m.role == 'assistant' && m.taskId != null)
+        .map((m) => m.taskId!)
+        .toSet();
+    return _messages.any(
+      (message) =>
+          message.role == 'user' &&
+          message.taskId != null &&
+          message.taskState == ChatTaskState.accepted &&
+          !assistantTaskIds.contains(message.taskId),
+    );
+  }
+
   bool _shouldSyncActiveScope() {
     final token = _authToken;
     if (token == null || token.isEmpty) return false;
     if (_effectiveRouterForScope() == ChatRouter.openclaw) return true;
-    return _hasPendingAssistantTasks();
+    if (_isSending || _isStreaming) return true;
+    return _hasPendingAssistantTasks() || _hasPendingUserTasks();
   }
 
   void _disconnectSse() {
@@ -1347,11 +1374,8 @@ class _ChatScreenState extends State<ChatScreen> {
       role: 'user',
       content: text,
       taskId: taskId,
-      taskState: ChatTaskState.accepted,
       idempotencyKey: idempotencyKey,
       createdAt: envelope.createdAt,
-      acknowledgedAt: ack.acceptedAt,
-      checkpointCursor: ack.checkpointCursor,
       channelId: envelope.channelId,
       sessionId: envelope.sessionId,
       threadId: envelope.threadId,
@@ -1366,63 +1390,19 @@ class _ChatScreenState extends State<ChatScreen> {
       traceId: arbitrationMode ? traceId : null,
     );
     _appendMessage(userMessage);
-    _appendMessage(
-      ChatMessage(
-        messageId: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        agentId: resolvedBotId,
-        agentName: resolvedBotId,
-        isStreaming: true,
-        taskId: taskId,
-        taskState: ChatTaskState.accepted,
-        idempotencyKey: idempotencyKey,
-        createdAt: envelope.createdAt,
-        acknowledgedAt: ack.acceptedAt,
-        checkpointCursor: ack.checkpointCursor,
-        sessionId: envelope.sessionId,
-        threadId: envelope.threadId,
-        resolvedBotId: resolvedBotId,
-        resolvedSkillId: resolvedSkillId,
-        arbitrationMode: arbitrationMode,
-        fallbackToDefaultBot: arbitration.fallbackToDefaultBot,
-        tieDetected: arbitration.tieDetected,
-        tieBotIds: arbitration.tieBotIds,
-        selectedScore: arbitration.selectedScore,
-        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
-        decisionReason: arbitration.reason,
-        traceId: arbitrationMode ? traceId : null,
-      ),
-    );
 
     setState(() {
       _isSending = true;
-      _isStreaming = true;
+      _isStreaming = false;
     });
 
     final token = _authToken;
     final runtimeSettings = _settingsForAgent(agent);
     if (token == null || token.isEmpty) {
-      final updated = _updateMessageById(
-        assistantMessageId,
-        (current) {
-          return current.copyWith(
-            content: 'Error: Missing auth token',
-            isStreaming: false,
-            taskState: ChatTaskState.failed,
-          );
-        },
-        onStateUpdate: () {
-          _isSending = false;
-          _isStreaming = false;
-        },
-      );
-      if (!updated) {
-        setState(() {
-          _isSending = false;
-          _isStreaming = false;
-        });
-      }
+      setState(() {
+        _isSending = false;
+        _isStreaming = false;
+      });
       return;
     }
 
@@ -1447,33 +1427,20 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       // Ignore stale completions if stop was pressed after this request started.
       if (generation != _respondGeneration) return;
-      _updateMessageById(
+      final updated = _updateMessageById(
         userMessageId,
         (current) => current.copyWith(
-          taskState: result.taskState ?? current.taskState,
+          taskState: result.taskState ?? ChatTaskState.accepted,
           source: _sourceFromRespondRouter(result.router) ?? current.source,
+          acknowledgedAt: ack.acceptedAt,
+          checkpointCursor: ack.checkpointCursor,
         ),
-      );
-      final updated = _updateMessageById(
-        assistantMessageId,
-        (current) {
-          return current.copyWith(
-            content: result.text,
-            isStreaming: false,
-            taskState: result.taskState ??
-                (result.isAsync
-                    ? ChatTaskState.dispatched
-                    : ChatTaskState.completed),
-          );
-        },
         onStateUpdate: () {
           if (result.lastSeqId > _lastSyncedSeq) {
             _lastSyncedSeq = result.lastSeqId;
           }
-          if (result.isAsync) {
-            _isSending = false;
-            _isStreaming = false;
-          }
+          _isSending = false;
+          _isStreaming = false;
         },
       );
       if (!updated) {
@@ -1483,12 +1450,10 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         return;
       }
-      if (result.isAsync) {
-        _configureActiveScopeSync();
-        return;
-      }
-      // Backend already persisted both messages; skip redundant client-side
-      // upsert to avoid overwriting backend-only metadata (provider/model/source).
+      _configureActiveScopeSync();
+      // Backend now persists assistant responses asynchronously; skip
+      // client-side assistant placeholder/upsert and rely on SSE/sync.
+      if (result.isAsync) return;
       if (mounted) {
         await _handleProactiveResponses(text);
         if (mounted) {
@@ -1502,11 +1467,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       if (generation != _respondGeneration) return;
       final updated = _updateMessageById(
-        assistantMessageId,
+        userMessageId,
         (current) {
           return current.copyWith(
-            content: 'Error: $error',
-            isStreaming: false,
             taskState: ChatTaskState.failed,
           );
         },
@@ -1750,6 +1713,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         appBar: AppBar(
+          centerTitle: false,
+          titleSpacing: 0,
           leading: Builder(
             builder: (context) => IconButton(
               icon: const Icon(Icons.menu),
@@ -1841,41 +1806,61 @@ class _ChatScreenState extends State<ChatScreen> {
                 popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
                 tooltip: 'Router settings',
                 onSelected: _handleRouterMenuSelection,
-                itemBuilder: (context) => [
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    child: Text(
-                      'Channel router · ${_routerLabel(_channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute)}',
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'channel:default',
-                    child: Text('Bricks Default'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'channel:openclaw',
-                    child: Text('OpenClaw'),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    child: Text(
-                      'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:inherit',
-                    child: Text('Follow channel'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:default',
-                    child: Text('Bricks Default'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:openclaw',
-                    child: Text('OpenClaw'),
-                  ),
-                ],
+                itemBuilder: (context) {
+                  final isThreadConversation = _isThreadConversation();
+                  final channelRouterLabel = _routerLabel(
+                    _channelRouters[_activeChannelId] ??
+                        ChatRouter.defaultRoute,
+                  );
+                  return [
+                    if (!isThreadConversation) ...[
+                      PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text(
+                          'Channel router · $channelRouterLabel',
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'channel:default',
+                        child: Text('Bricks Default'),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'channel:openclaw',
+                        child: Text('OpenClaw'),
+                      ),
+                    ],
+                    if (isThreadConversation) ...[
+                      PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text(
+                          'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
+                        ),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'thread:inherit',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Follow channel'),
+                            Text(
+                              channelRouterLabel,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'thread:default',
+                        child: Text('Bricks Default'),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'thread:openclaw',
+                        child: Text('OpenClaw'),
+                      ),
+                    ],
+                  ];
+                },
                 icon: SizedBox.square(
                   dimension: 24,
                   child: Center(
