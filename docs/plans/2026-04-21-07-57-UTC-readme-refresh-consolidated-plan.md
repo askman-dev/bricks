@@ -14,7 +14,7 @@ The README refresh went through multiple iterations. Review feedback requested t
 
 ## Phase 2: Plan document consolidation
 - Create one consolidated README plan document capturing prior goals and current feedback.
-- Remove older split plan documents related to the same README refresh.
+- No prior split plan documents were found for this specific README refresh task; cleanup of older split documents is therefore already complete and this step is done.
 
 ## Phase 3: Verification
 - Verify diagram placement above the Packages table and readable markdown rendering.

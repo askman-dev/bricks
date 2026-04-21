@@ -14,8 +14,8 @@ The app is centered around conversation. Users primarily interact through chat t
 ### 2. Agent Core is a separate module
 `agent_core` is an independently testable module. The chat app depends on stable `agent_sdk_contract` interfaces, not on `agent_core` internals.
 
-### 3. No plugin system
-Skills, sub-agents, and filesystem-based configuration are sufficient for the current stage.
+### 3. Multi-channel, multi-partition conversation architecture
+One workspace can host multiple channels (for example: product planning, implementation, QA). Each channel can be further partitioned by context boundary to keep prompts, memory, and outputs isolated. The orchestration layer supports controlling multiple OpenClaw plugin instances so teams can route work by capability, environment, or workload.
 
 ### 4. Workspace maps to the device filesystem
 The app is local-first. Each workspace is a directory on the user's device. The default workspace is created automatically.

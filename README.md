@@ -6,7 +6,7 @@ Users interact through conversation to create, modify, and iterate on website/ap
 
 ---
 
-## Packages
+## Architecture Overview
 
 ```text
 +----------------------+      +-------------------------------+
@@ -38,6 +38,8 @@ Users interact through conversation to create, modify, and iterate on website/ap
                         | Multi-Instance OpenClaw Controller|
                         +-----------------------------------+
 ```
+
+## Packages
 
 | Package | Description |
 |---|---|
