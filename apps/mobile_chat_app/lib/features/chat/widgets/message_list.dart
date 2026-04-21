@@ -392,22 +392,29 @@ class _MessageListState extends State<MessageList> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  _messageMetaLine(msg),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onPrimary,
-                                      ),
+                                Flexible(
+                                  child: Text(
+                                    _messageMetaLine(msg),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onPrimary,
+                                        ),
+                                  ),
                                 ),
                                 if (deliveryIndicator != null) ...[
                                   const SizedBox(width: BricksSpacing.xs),
                                   _UserMessageDeliveryStatus(
                                     indicator: deliveryIndicator,
                                     messageId: msg.messageId,
+                                    foregroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimary,
                                   ),
                                 ],
                               ],
@@ -444,10 +451,12 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
   const _UserMessageDeliveryStatus({
     required this.indicator,
     required this.messageId,
+    this.foregroundColor,
   });
 
   final _UserDeliveryStatus indicator;
   final String? messageId;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -456,10 +465,10 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
       key: key,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _DeliveryStatusIcon(icon: indicator.first),
+        _DeliveryStatusIcon(icon: indicator.first, foregroundColor: foregroundColor),
         if (indicator.second != null) ...[
           const SizedBox(width: 2),
-          _DeliveryStatusIcon(icon: indicator.second!),
+          _DeliveryStatusIcon(icon: indicator.second!, foregroundColor: foregroundColor),
         ],
       ],
     );
@@ -502,9 +511,10 @@ class _UserDeliveryStatus {
 }
 
 class _DeliveryStatusIcon extends StatelessWidget {
-  const _DeliveryStatusIcon({required this.icon});
+  const _DeliveryStatusIcon({required this.icon, this.foregroundColor});
 
   final _DeliveryIconState icon;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -522,9 +532,8 @@ class _DeliveryStatusIcon extends StatelessWidget {
             '🦞',
             style: TextStyle(
               fontSize: 12,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurfaceVariant.withValues(alpha: icon.opacity),
+              color: (foregroundColor ?? Theme.of(context).colorScheme.onSurfaceVariant)
+                  .withValues(alpha: icon.opacity),
             ),
           ),
         ),
@@ -537,9 +546,11 @@ class _DeliveryStatusIcon extends StatelessWidget {
         child: Icon(
           Icons.check,
           size: 14,
-          color: icon.isCompleted
-              ? Colors.green
-              : Theme.of(context).colorScheme.outline,
+          color: foregroundColor != null
+              ? foregroundColor!.withValues(alpha: icon.isCompleted ? 1.0 : 0.6)
+              : icon.isCompleted
+                  ? Colors.green
+                  : Theme.of(context).colorScheme.outline,
         ),
       ),
     );

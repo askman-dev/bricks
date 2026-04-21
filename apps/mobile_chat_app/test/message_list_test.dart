@@ -349,7 +349,7 @@ void main() {
       expect(find.descendant(of: row, matching: find.text('🦞')), findsNothing);
     });
 
-    testWidgets('shows check + green check when default router has replied',
+    testWidgets('shows check + completed check when default router has replied',
         (tester) async {
       final user = ChatMessage(
         messageId: 'u-default-completed',
@@ -382,7 +382,11 @@ void main() {
       final icons = tester.widgetList<Icon>(
         find.descendant(of: row, matching: find.byIcon(Icons.check)),
       );
-      expect(icons.last.color, Colors.green);
+      // Completed check inside user bubble uses onPrimary (full opacity)
+      final onPrimaryColor = Theme.of(
+        tester.element(find.byKey(const ValueKey<String>('user-delivery-u-default-completed'))),
+      ).colorScheme.onPrimary;
+      expect(icons.last.color, onPrimaryColor);
     });
 
     testWidgets('shows check + lobster when openclaw reply starts',
