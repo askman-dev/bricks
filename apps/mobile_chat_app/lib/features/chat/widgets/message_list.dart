@@ -21,12 +21,6 @@ class MessageList extends StatefulWidget {
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
 
-  // A single key attached only to the focused (latest user) item so that
-  // Scrollable.ensureVisible can locate it without creating a GlobalKey for
-  // every list row.
-  final GlobalKey _focusedItemKey = GlobalKey();
-  int _focusedIndex = -1;
-
   // Persist the previous snapshot in state so comparisons work correctly even
   // when the same List instance is mutated in place (e.g. ChatScreen passes
   // _messages directly and mutates it via ..clear()..addAll / add / [i]=).
@@ -36,9 +30,8 @@ class _MessageListState extends State<MessageList> {
   @override
   void initState() {
     super.initState();
-    _focusedIndex = _focusedMessageIndex();
     _saveSnapshot();
-    _scrollToFocusedUserMessage();
+    _scrollToBottom();
   }
 
   @override
@@ -65,8 +58,7 @@ class _MessageListState extends State<MessageList> {
       _prevLength = newLength;
       _prevLastKey = newKey;
       if (!streamingProgressOnly) {
-        _focusedIndex = _focusedMessageIndex();
-        _scrollToFocusedUserMessage();
+        _scrollToBottom();
       }
     }
   }
@@ -84,34 +76,12 @@ class _MessageListState extends State<MessageList> {
     super.dispose();
   }
 
-  int _focusedMessageIndex() {
-    for (var i = widget.messages.length - 1; i >= 0; i--) {
-      if (widget.messages[i].role == 'user') return i;
-    }
-    return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
-  }
-
-  void _scrollToFocusedUserMessage() {
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
-      if (_focusedIndex < 0) return;
-
-      // First jump to bottom to ensure trailing children are laid out, then
-      // pin the focused message as the first visible item.
       final position = _scrollController.position;
       _scrollController.jumpTo(position.maxScrollExtent);
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) return;
-        final targetContext = _focusedItemKey.currentContext;
-        if (targetContext == null) return;
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: Duration.zero,
-          alignment: 0,
-        );
-      });
     });
   }
 
@@ -208,12 +178,7 @@ class _MessageListState extends State<MessageList> {
           final isUser = msg.role == 'user';
           final deliveryIndicator =
               isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
-          // Attach the focused-item key only to the target row so that
-          // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
-          // without maintaining a GlobalKey for every list item.
-          final itemKey = index == _focusedIndex ? _focusedItemKey : null;
           return Align(
-            key: itemKey,
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Column(
               crossAxisAlignment:
@@ -397,8 +362,8 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
     final statusLabel = indicator.icon == _DeliveryIcon.lobster
         ? 'Pending'
         : indicator.isCompleted
-        ? 'Delivered'
-        : 'Dispatched';
+            ? 'Delivered'
+            : 'Dispatched';
     if (indicator.icon == _DeliveryIcon.lobster) {
       return Semantics(
         label: statusLabel,
