@@ -167,9 +167,25 @@ router.get('/platform-token', async (req: AuthRequest, res: Response) => {
       node = await getPlatformNodeByPluginId(userId, queryPluginId);
     }
     if (!node && queryPluginId) {
-      node = await createPlatformNode(userId, {
-        pluginId: queryPluginId,
-      });
+      try {
+        node = await createPlatformNode(userId, {
+          pluginId: queryPluginId,
+        });
+      } catch (error) {
+        const err = error as { code?: string; message?: string };
+        const isUniqueViolation =
+          err?.code === '23505' ||
+          err?.code === 'P2002' ||
+          err?.code === 'SQLITE_CONSTRAINT' ||
+          err?.message?.toLowerCase().includes('unique') ||
+          err?.message?.toLowerCase().includes('duplicate');
+        if (!isUniqueViolation) throw error;
+        node = await getPlatformNodeByPluginId(userId, queryPluginId);
+        if (!node) {
+          res.status(409).json({ error: 'Platform node with this pluginId already exists' });
+          return;
+        }
+      }
     }
     node ??= await ensureDefaultPlatformNode(userId);
 

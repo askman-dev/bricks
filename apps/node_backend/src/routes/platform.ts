@@ -254,8 +254,8 @@ export function createPlatformRouter(options: {
           role,
           clientToken: readTrimmedString(req.body?.clientToken) ?? undefined,
           metadata: {
-            ...(await buildNodeMetadata(userId, req.platformPluginId)),
             ...(requestMetadata ?? {}),
+            ...(await buildNodeMetadata(userId, req.platformPluginId)),
           },
         });
 
@@ -293,15 +293,17 @@ export function createPlatformRouter(options: {
           req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
             ? (req.body.metadata as Record<string, unknown>)
             : undefined;
-        const mergedMetadata = {
-          ...(await buildNodeMetadata(userId, req.platformPluginId)),
-          ...(metadata ?? {}),
-        };
 
-        if (!text && Object.keys(mergedMetadata).length === 0) {
+        if (!text && !metadata) {
           sendError(res, 400, 'INVALID_PAYLOAD', 'at least one of text or metadata is required');
           return;
         }
+
+        const nodeMetadata = await buildNodeMetadata(userId, req.platformPluginId);
+        const mergedMetadata = {
+          ...(metadata ?? {}),
+          ...nodeMetadata,
+        };
 
         const result = await patchPlatformMessage({
           userId,

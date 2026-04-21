@@ -94,7 +94,7 @@ export async function renamePlatformNode(
   const updated = await pool.query<PlatformNodeRow>(
     `UPDATE platform_nodes
         SET display_name = $3,
-            updated_at = NOW()
+            updated_at = CURRENT_TIMESTAMP
       WHERE user_id = $1
         AND node_id = $2
       RETURNING node_id, display_name, plugin_id, created_at, updated_at`,
@@ -139,8 +139,10 @@ export async function ensureDefaultPlatformNode(userId: string): Promise<Platfor
   if (nodes.length > 0) {
     return nodes[0];
   }
+  const defaultPluginId =
+    process.env.BRICKS_PLATFORM_DEFAULT_PLUGIN_ID?.trim() || 'plugin_local_main';
   return createPlatformNode(userId, {
     displayName: 'openclaw 1',
-    pluginId: 'plugin_local_main',
+    pluginId: defaultPluginId,
   });
 }

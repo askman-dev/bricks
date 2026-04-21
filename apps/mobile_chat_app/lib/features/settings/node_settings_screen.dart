@@ -16,6 +16,7 @@ class NodeSettingsScreen extends StatefulWidget {
 class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
   late final LlmConfigService _service;
   bool _loading = false;
+  bool _actionLoading = false;
   PlatformTokenBundle? _bundle;
   List<PlatformNodeConfig> _nodes = const [];
 
@@ -45,8 +46,19 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
   }
 
   Future<void> _createNode() async {
-    await _service.createPlatformNode();
-    await _loadNodes();
+    if (_actionLoading) return;
+    setState(() => _actionLoading = true);
+    try {
+      await _service.createPlatformNode();
+      await _loadNodes();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to create node')),
+      );
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
+    }
   }
 
   Future<void> _renameNode(PlatformNodeConfig node) async {
@@ -72,9 +84,20 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
       ),
     );
     if (nextName == null || nextName.trim().isEmpty) return;
-    await _service.renamePlatformNode(
-        nodeId: node.nodeId, displayName: nextName);
-    await _loadNodes();
+    if (_actionLoading) return;
+    setState(() => _actionLoading = true);
+    try {
+      await _service.renamePlatformNode(
+          nodeId: node.nodeId, displayName: nextName);
+      await _loadNodes();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to rename node')),
+      );
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
+    }
   }
 
   Future<void> _copyText(String value, String successMessage) async {
@@ -96,9 +119,20 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
   }
 
   Future<void> _generateNodeToken(PlatformNodeConfig node) async {
-    final bundle = await _service.fetchPlatformToken(nodeId: node.nodeId);
-    if (!mounted) return;
-    setState(() => _bundle = bundle);
+    if (_actionLoading) return;
+    setState(() => _actionLoading = true);
+    try {
+      final bundle = await _service.fetchPlatformToken(nodeId: node.nodeId);
+      if (!mounted) return;
+      setState(() => _bundle = bundle);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to generate token')),
+      );
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
+    }
   }
 
   @override
@@ -108,7 +142,7 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
       appBar: AppBar(title: const Text('节点')),
       floatingActionButton: nodes.isNotEmpty
           ? FloatingActionButton.extended(
-              onPressed: _createNode,
+              onPressed: _actionLoading ? null : _createNode,
               icon: const Icon(Icons.add),
               label: const Text('新增节点'),
             )
@@ -118,7 +152,7 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
           : nodes.isEmpty
               ? Center(
                   child: FilledButton.icon(
-                    onPressed: _createNode,
+                    onPressed: _actionLoading ? null : _createNode,
                     icon: const Icon(Icons.add_circle_outline),
                     label: const Text('创建第一个节点'),
                   ),
@@ -145,7 +179,9 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                                   ),
                                   IconButton(
                                     tooltip: 'Rename Node',
-                                    onPressed: () => _renameNode(node),
+                                    onPressed: _actionLoading
+                                        ? null
+                                        : () => _renameNode(node),
                                     icon: const Icon(Icons.edit_outlined),
                                   ),
                                 ],
@@ -163,7 +199,9 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                                     label: const Text('复制 Plugin ID'),
                                   ),
                                   OutlinedButton.icon(
-                                    onPressed: () => _generateNodeToken(node),
+                                    onPressed: _actionLoading
+                                        ? null
+                                        : () => _generateNodeToken(node),
                                     icon: const Icon(Icons.vpn_key_outlined),
                                     label: const Text('生成 Token'),
                                   ),
