@@ -959,11 +959,6 @@ class _ChatScreenState extends State<ChatScreen> {
         router: router == ChatRouter.defaultRoute ? null : router,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Channel router set to ${_routerLabel(router)}'),
-        ),
-      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1011,13 +1006,6 @@ class _ChatScreenState extends State<ChatScreen> {
         router: router,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Thread router set to ${_threadRouterMenuLabel(router)}',
-          ),
-        ),
-      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
