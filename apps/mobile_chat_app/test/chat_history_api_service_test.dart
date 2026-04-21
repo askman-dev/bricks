@@ -237,10 +237,10 @@ void main() {
       expect(decoded['userMessage'], equals('1+3'));
       return http.Response(
         jsonEncode({
-          'text': '4',
+          'text': '',
           'lastSeqId': 12,
-          'mode': 'sync',
-          'state': 'completed',
+          'mode': 'async',
+          'state': 'accepted',
         }),
         200,
       );
@@ -259,10 +259,10 @@ void main() {
       model: 'claude-sonnet-4-5',
     );
 
-    expect(result.text, equals('4'));
+    expect(result.text, isEmpty);
     expect(result.lastSeqId, equals(12));
-    expect(result.isAsync, isFalse);
-    expect(result.taskState, ChatTaskState.completed);
+    expect(result.isAsync, isTrue);
+    expect(result.taskState, ChatTaskState.accepted);
   });
 
   test(

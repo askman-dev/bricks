@@ -193,6 +193,58 @@ describe("chat routes", () => {
     ]);
   });
 
+  it("routes default scopes to async accepted and generates reply in background", async () => {
+    resolveChatRouterMock.mockResolvedValueOnce("default");
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: "task-default-1",
+        idempotencyKey: "idem-default-1",
+        channelId: "default",
+        sessionId: "session:default:main",
+        userMessageId: "msg-user-default-1",
+        assistantMessageId: "msg-assistant-default-1",
+        userMessage: "hello default",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      mode?: string;
+      state?: string;
+      text?: string;
+      lastSeqId?: number;
+    };
+    expect(body.mode).toBe("async");
+    expect(body.state).toBe("accepted");
+    expect(body.text).toBe("");
+    expect(body.lastSeqId).toBe(7);
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-user-default-1",
+        role: "user",
+        taskState: "accepted",
+        metadata: expect.objectContaining({
+          source: "backend.respond",
+        }),
+      }),
+    ]);
+
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 0);
+    });
+    expect(generateWithUserConfigMock).toHaveBeenCalled();
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-assistant-default-1",
+        role: "assistant",
+        taskState: "completed",
+      }),
+    ]);
+  });
+
   it("supports clearing a scope setting by sending router=null", async () => {
     const response = await fetch(`${baseUrl}/api/chat/scope-settings`, {
       method: "PUT",
