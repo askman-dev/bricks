@@ -35,7 +35,9 @@ const CHAT_SYNC_WINDOW_MS = 60 * 1000;
 const CHAT_SYNC_MAX_REQUESTS_PER_WINDOW = 120;
 const CHAT_RESPOND_WINDOW_MS = 60 * 1000;
 const CHAT_RESPOND_MAX_REQUESTS_PER_WINDOW = 120;
-const CHAT_SYNC_LONG_POLL_MAX_WAIT_MS = 25000;
+// Keep long-poll waits comfortably below common serverless request limits so
+// the application returns the response before the platform times out.
+const CHAT_SYNC_LONG_POLL_MAX_WAIT_MS = 9000;
 const CHAT_SYNC_LONG_POLL_INTERVAL_MS = 500;
 
 function parseSessionId(value: unknown): string | null {
@@ -418,9 +420,15 @@ router.get(
         CHAT_SYNC_LONG_POLL_MAX_WAIT_MS,
       );
 
+      let clientDisconnected = false;
+      req.on("close", () => {
+        clientDisconnected = true;
+      });
+
       const startedAt = Date.now();
       let synced = await syncMessages(userId, sessionId, afterSeq);
       while (
+        !clientDisconnected &&
         waitMs > 0 &&
         synced.messages.length === 0 &&
         synced.lastSeqId <= afterSeq &&
@@ -430,9 +438,11 @@ router.get(
         const remaining = waitMs - elapsed;
         if (remaining <= 0) break;
         await sleep(Math.min(CHAT_SYNC_LONG_POLL_INTERVAL_MS, remaining));
+        if (clientDisconnected) break;
         synced = await syncMessages(userId, sessionId, afterSeq);
       }
 
+      if (clientDisconnected) return;
       res.json(synced);
     } catch (error) {
       console.error("Sync chat messages error:", error);

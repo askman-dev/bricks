@@ -248,8 +248,10 @@ describe("chat routes", () => {
         lastSeqId: 21,
       });
 
+    // Use waitMs larger than CHAT_SYNC_LONG_POLL_INTERVAL_MS (500 ms) so the
+    // retry is guaranteed to fire even on slow CI runners.
     const response = await fetch(
-      `${baseUrl}/api/chat/sync/${encodedSessionId}?afterSeq=20&waitMs=10`,
+      `${baseUrl}/api/chat/sync/${encodedSessionId}?afterSeq=20&waitMs=600`,
     );
 
     expect(response.status).toBe(200);

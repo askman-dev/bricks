@@ -83,7 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _syncInFlight = false;
   static const Duration _syncPollInterval = Duration(seconds: 2);
   static const Duration _syncMaxBackoff = Duration(seconds: 10);
-  static const int _syncLongPollWaitMs = 20000;
+  static const int _syncLongPollWaitMs = 8000;
   Duration _nextSyncDelay = _syncPollInterval;
   final Map<String, ChatRouter> _channelRouters = {};
   final Map<String, ChatRouter> _threadRouters = {};
