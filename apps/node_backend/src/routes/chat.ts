@@ -156,32 +156,16 @@ async function runDefaultRouterRespondAsync(params: {
     body,
   } = params;
 
-  await upsertMessages(userId, [
-    {
-      messageId: assistantMessageId,
-      taskId: acceptedTaskId,
-      channelId,
-      sessionId: acceptedSessionId,
-      threadId,
-      role: "assistant",
-      content: "",
-      taskState: "accepted",
-      checkpointCursor: null,
-      metadata: {
-        resolvedBotId,
-        resolvedSkillId,
-        source: "backend.respond",
-      },
-      createdAt: null,
-    },
-  ]);
-
-  const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
-    limit: 40,
-    maxChars: 10000,
-  });
-
+  // NOTE: This runs after the HTTP response has been sent. On Vercel Serverless
+  // Functions the runtime may freeze the invocation once the response is sent,
+  // so this work is not guaranteed to complete. A durable background job/queue
+  // (or platform-provided waitUntil) would be needed for production reliability.
   try {
+    const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
+      limit: 40,
+      maxChars: 10000,
+    });
+
     const response = await generateWithUserConfig(
       userId,
       {

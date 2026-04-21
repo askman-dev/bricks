@@ -1095,11 +1095,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool _hasPendingUserTasks() {
+    final assistantTaskIds = _messages
+        .where((m) => m.role == 'assistant' && m.taskId != null)
+        .map((m) => m.taskId!)
+        .toSet();
     return _messages.any(
       (message) =>
           message.role == 'user' &&
-          (message.taskState == ChatTaskState.accepted ||
-              message.taskState == ChatTaskState.dispatched),
+          message.taskId != null &&
+          message.taskState == ChatTaskState.accepted &&
+          !assistantTaskIds.contains(message.taskId),
     );
   }
 
@@ -1409,22 +1414,14 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       // Ignore stale completions if stop was pressed after this request started.
       if (generation != _respondGeneration) return;
-      _updateMessageById(
-        userMessageId,
-        (current) => current.copyWith(
-          taskState: result.taskState ?? current.taskState,
-          source: _sourceFromRespondRouter(result.router) ?? current.source,
-        ),
-      );
       final updated = _updateMessageById(
         userMessageId,
-        (current) {
-          return current.copyWith(
-            taskState: result.taskState ?? ChatTaskState.accepted,
-            acknowledgedAt: ack.acceptedAt,
-            checkpointCursor: ack.checkpointCursor,
-          );
-        },
+        (current) => current.copyWith(
+          taskState: result.taskState ?? ChatTaskState.accepted,
+          source: _sourceFromRespondRouter(result.router) ?? current.source,
+          acknowledgedAt: ack.acceptedAt,
+          checkpointCursor: ack.checkpointCursor,
+        ),
         onStateUpdate: () {
           if (result.lastSeqId > _lastSyncedSeq) {
             _lastSyncedSeq = result.lastSeqId;

@@ -155,6 +155,7 @@ class _MessageListState extends State<MessageList> {
     final isOpenclaw = openclawBySource || openclawByResolvedBot;
     final isGenericRemote = genericRemoteBySource;
     var hasReplyStarted = false;
+    var hasReplyCompleted = false;
     for (final candidate in allMessages) {
       if (candidate.role != 'assistant' ||
           candidate.taskId == null ||
@@ -162,13 +163,17 @@ class _MessageListState extends State<MessageList> {
         continue;
       }
       hasReplyStarted = true;
+      if (candidate.taskState == ChatTaskState.completed ||
+          candidate.content.isNotEmpty) {
+        hasReplyCompleted = true;
+      }
       break;
     }
 
     final secondIcon = hasReplyStarted
         ? (isOpenclaw
             ? _DeliveryIconState.lobster()
-            : _DeliveryIconState.check(isCompleted: true))
+            : _DeliveryIconState.check(isCompleted: hasReplyCompleted))
         : null;
     if (!isOpenclaw && !isGenericRemote && !hasReplyStarted) {
       return const _UserDeliveryStatus(first: _DeliveryIconState.check());
@@ -447,9 +452,9 @@ class _DeliveryStatusIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusLabel = icon.icon == _DeliveryIcon.lobster
-        ? 'OpenClaw replied'
+        ? 'OpenClaw reply started'
         : icon.isCompleted
-            ? 'AI replied'
+            ? 'AI reply completed'
             : 'Persisted';
     if (icon.icon == _DeliveryIcon.lobster) {
       return Semantics(
