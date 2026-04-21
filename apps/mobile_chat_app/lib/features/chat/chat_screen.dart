@@ -1133,33 +1133,33 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _sseSubscription = _chatHistoryApiService
         .listenEvents(
-          token: token,
-          sessionId: capturedSessionId,
-          afterSeq: _lastSyncedSeq,
-        )
+      token: token,
+      sessionId: capturedSessionId,
+      afterSeq: _lastSyncedSeq,
+    )
         .listen(
-          (snapshot) {
-            if (!mounted || _sessionIdForScope != capturedSessionId) return;
-            _applySseSnapshot(
-              snapshot,
-              channelId: capturedChannelId,
-              subSection: capturedSubSection,
-            );
-          },
-          onError: (Object error) {
-            debugPrint('SSE chat events error: $error');
-            if (mounted && _sessionIdForScope == capturedSessionId) {
-              Future.delayed(_sseReconnectDelay, _connectSse);
-            }
-          },
-          onDone: () {
-            if (mounted &&
-                _sessionIdForScope == capturedSessionId &&
-                _shouldSyncActiveScope()) {
-              Future.delayed(_sseReconnectDelay, _connectSse);
-            }
-          },
+      (snapshot) {
+        if (!mounted || _sessionIdForScope != capturedSessionId) return;
+        _applySseSnapshot(
+          snapshot,
+          channelId: capturedChannelId,
+          subSection: capturedSubSection,
         );
+      },
+      onError: (Object error) {
+        debugPrint('SSE chat events error: $error');
+        if (mounted && _sessionIdForScope == capturedSessionId) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
+      onDone: () {
+        if (mounted &&
+            _sessionIdForScope == capturedSessionId &&
+            _shouldSyncActiveScope()) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
+    );
   }
 
   void _configureActiveScopeSync() {
@@ -1850,32 +1850,47 @@ class _ChatScreenState extends State<ChatScreen> {
                 onSelected: _handleRouterMenuSelection,
                 itemBuilder: (context) {
                   final isThreadConversation = _isThreadConversation();
+                  final channelRouterLabel = _routerLabel(
+                    _channelRouters[_activeChannelId] ??
+                        ChatRouter.defaultRoute,
+                  );
                   return [
-                    PopupMenuItem<String>(
-                      enabled: false,
-                      child: Text(
-                        'Channel router · ${_routerLabel(_channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute)}',
+                    if (!isThreadConversation) ...[
+                      PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text(
+                          'Channel router · $channelRouterLabel',
+                        ),
                       ),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'channel:default',
-                      child: Text('Bricks Default'),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'channel:openclaw',
-                      child: Text('OpenClaw'),
-                    ),
+                      const PopupMenuItem<String>(
+                        value: 'channel:default',
+                        child: Text('Bricks Default'),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'channel:openclaw',
+                        child: Text('OpenClaw'),
+                      ),
+                    ],
                     if (isThreadConversation) ...[
-                      const PopupMenuDivider(),
                       PopupMenuItem<String>(
                         enabled: false,
                         child: Text(
                           'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
                         ),
                       ),
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'thread:inherit',
-                        child: Text('Follow channel'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Follow channel'),
+                            Text(
+                              channelRouterLabel,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
                       ),
                       const PopupMenuItem<String>(
                         value: 'thread:default',
