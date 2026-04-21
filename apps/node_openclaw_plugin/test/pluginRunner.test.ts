@@ -8,7 +8,7 @@ import {
   nextBackoffDelayMs,
   NodeOpenClawPluginRunner,
   resolveRetryDelayMs,
-  shouldBackoffPlatformError,
+  shouldBackoffRunnerError,
   shouldProcessEvent,
 } from '../src/pluginRunner.js';
 import { PlatformHttpError } from '../src/platformClient.js';
@@ -21,6 +21,14 @@ import type {
   PluginPersistentState,
   ResolveConversationResponse,
 } from '../src/types.js';
+
+function makeRetryableFetchError(
+  code = 'ENOTFOUND',
+  message = 'getaddrinfo ENOTFOUND bricks.askman.dev',
+): Error {
+  const cause = Object.assign(new Error(message), { code });
+  return Object.assign(new TypeError('fetch failed'), { cause });
+}
 
 describe('extractIncomingText', () => {
   it('returns top-level text first', () => {
@@ -171,10 +179,11 @@ describe('buildNoVisibleReplyText', () => {
 });
 
 describe('platform retry backoff helpers', () => {
-  it('treats 429 and retryable failures as backoff signals', () => {
-    expect(shouldBackoffPlatformError(new PlatformHttpError(429, 'limited'))).toBe(true);
-    expect(shouldBackoffPlatformError(new PlatformHttpError(500, 'server', undefined, true))).toBe(true);
-    expect(shouldBackoffPlatformError(new Error('boom'))).toBe(false);
+  it('treats retryable platform and network failures as backoff signals', () => {
+    expect(shouldBackoffRunnerError(new PlatformHttpError(429, 'limited'))).toBe(true);
+    expect(shouldBackoffRunnerError(new PlatformHttpError(500, 'server', undefined, true))).toBe(true);
+    expect(shouldBackoffRunnerError(makeRetryableFetchError())).toBe(true);
+    expect(shouldBackoffRunnerError(new Error('boom'))).toBe(false);
   });
 
   it('advances the capped retry ladder from the current delay', () => {
@@ -200,6 +209,8 @@ describe('platform retry backoff helpers', () => {
         2000,
       ),
     ).toBe(4000);
+
+    expect(resolveRetryDelayMs(makeRetryableFetchError(), 2000, 2000)).toBe(4000);
   });
 });
 
@@ -348,6 +359,47 @@ describe('NodeOpenClawPluginRunner', () => {
     await runner.runUntilAbort(abortController.signal);
 
     expect(getEvents).not.toHaveBeenCalled();
+  });
+
+  it('backs off and keeps running when fetch fails before any HTTP response arrives', async () => {
+    const getEvents = vi.fn<() => Promise<GetEventsResponse>>()
+      .mockRejectedValueOnce(makeRetryableFetchError())
+      .mockImplementationOnce(async () => {
+        abortController.abort();
+        return {
+          nextCursor: 'cur_1',
+          events: [],
+        };
+      });
+    const abortController = new AbortController();
+    const log = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const runner = new NodeOpenClawPluginRunner(config, {
+      client: {
+        getEvents,
+        ackEvents: vi.fn(),
+        resolveConversation: vi.fn(),
+        createMessage: vi.fn(),
+        patchMessage: vi.fn(),
+      } as never,
+      stateStore: {
+        load: vi.fn().mockResolvedValue(createDefaultState('cur_0')),
+        save: vi.fn().mockResolvedValue(undefined),
+      },
+      log,
+    });
+
+    await runner.runUntilAbort(abortController.signal);
+
+    expect(getEvents).toHaveBeenCalledTimes(2);
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('retryable platform/network failure; backing off for 2ms'),
+    );
+    expect(log.error).not.toHaveBeenCalled();
   });
 
   it('finalizes an existing placeholder when a retry yields no visible reply', async () => {
