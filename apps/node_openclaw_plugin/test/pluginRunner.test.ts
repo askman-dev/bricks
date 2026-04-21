@@ -215,8 +215,17 @@ describe('NodeOpenClawPluginRunner', () => {
     assistantName: 'Node OpenClaw Plugin',
   };
 
+  function waitForAbort(signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (signal.aborted) resolve();
+      else signal.addEventListener('abort', () => resolve(), { once: true });
+    });
+  }
+
   it('creates one placeholder and patches it with OpenClaw replies', async () => {
-    const eventStream = (async function* () {
+    const abortController = new AbortController();
+
+    const listenEvents = vi.fn(async function* () {
       yield {
         nextCursor: 'cur_1',
         events: [
@@ -238,9 +247,9 @@ describe('NodeOpenClawPluginRunner', () => {
           },
         ],
       } as GetEventsResponse;
-    })();
-
-    const listenEvents = vi.fn(() => eventStream);
+      // Block until abort to prevent hot reconnect loop
+      await waitForAbort(abortController.signal);
+    });
     const resolveConversation = vi.fn<() => Promise<ResolveConversationResponse>>().mockResolvedValue({
       conversationId: 'session:general:main',
       channelId: 'general',
@@ -253,7 +262,6 @@ describe('NodeOpenClawPluginRunner', () => {
     const ackEvents = vi.fn<() => Promise<{ ok: boolean }>>().mockResolvedValue({ ok: true });
     const save = vi.fn<(state: PluginPersistentState) => Promise<void>>().mockResolvedValue();
 
-    const abortController = new AbortController();
     const runner = new NodeOpenClawPluginRunner(config, {
       client: {
         listenEvents,
@@ -278,7 +286,7 @@ describe('NodeOpenClawPluginRunner', () => {
     });
 
     // Run briefly and abort
-    setTimeout(() => abortController.abort(), 100);
+    setTimeout(() => abortController.abort(), 200);
     await runner.runUntilAbort(abortController.signal);
 
     expect(createMessage).toHaveBeenCalledWith(
@@ -358,7 +366,9 @@ describe('NodeOpenClawPluginRunner', () => {
   });
 
   it('finalizes an existing placeholder when a retry yields no visible reply', async () => {
-    const eventStream = (async function* () {
+    const abortController = new AbortController();
+
+    const listenEvents = vi.fn(async function* () {
       yield {
         nextCursor: 'cur_2',
         events: [
@@ -380,9 +390,9 @@ describe('NodeOpenClawPluginRunner', () => {
           },
         ],
       } as GetEventsResponse;
-    })();
-
-    const listenEvents = vi.fn(() => eventStream);
+      // Block until abort to prevent hot reconnect loop
+      await waitForAbort(abortController.signal);
+    });
     const resolveConversation = vi.fn<() => Promise<ResolveConversationResponse>>().mockResolvedValue({
       conversationId: 'session:general:main',
       channelId: 'general',
@@ -393,7 +403,6 @@ describe('NodeOpenClawPluginRunner', () => {
     const ackEvents = vi.fn<() => Promise<{ ok: boolean }>>().mockResolvedValue({ ok: true });
     const save = vi.fn<(state: PluginPersistentState) => Promise<void>>().mockResolvedValue();
 
-    const abortController = new AbortController();
     const runner = new NodeOpenClawPluginRunner(config, {
       client: {
         listenEvents,
@@ -403,7 +412,12 @@ describe('NodeOpenClawPluginRunner', () => {
         patchMessage,
       } as never,
       stateStore: {
-        load: vi.fn().mockResolvedValue(createDefaultState('cur_1')),
+        load: vi.fn().mockResolvedValue({
+          ...createDefaultState('cur_1'),
+          clientTokenMessageMap: {
+            msg_assistant_retry: 'assistant_message_retry',
+          },
+        } satisfies PluginPersistentState),
         save,
       },
       dispatchBricksInboundMessage: vi.fn(async () => ({
@@ -412,15 +426,9 @@ describe('NodeOpenClawPluginRunner', () => {
         storePath: '/tmp/openclaw-sessions',
       })),
     });
-    (runner as any).state = {
-      ...createDefaultState('cur_1'),
-      clientTokenMessageMap: {
-        msg_assistant_retry: 'assistant_message_retry',
-      },
-    } satisfies PluginPersistentState;
 
     // Run briefly and abort
-    setTimeout(() => abortController.abort(), 100);
+    setTimeout(() => abortController.abort(), 200);
     await runner.runUntilAbort(abortController.signal);
 
     expect(patchMessage).toHaveBeenCalledWith(
@@ -438,26 +446,32 @@ describe('NodeOpenClawPluginRunner', () => {
   });
 
   it('reuses the last successful reply text when a retried event produces no new visible output', async () => {
-    const getEvents = vi.fn<() => Promise<GetEventsResponse>>().mockResolvedValue({
-      nextCursor: 'cur_3',
-      events: [
-        {
-          eventId: 'evt_retry_2',
-          eventType: 'message.created',
-          workspaceId: 'ws_1',
-          conversationId: 'session:general:main',
-          payload: {
-            text: 'continue',
-            sender: {
-              userId: 'user_1',
-              displayName: 'Alice',
-            },
-            metadata: {
-              pendingAssistantMessageId: 'msg_assistant_retry_existing_text',
+    const abortController = new AbortController();
+
+    const listenEvents = vi.fn(async function* () {
+      yield {
+        nextCursor: 'cur_3',
+        events: [
+          {
+            eventId: 'evt_retry_2',
+            eventType: 'message.created',
+            workspaceId: 'ws_1',
+            conversationId: 'session:general:main',
+            payload: {
+              text: 'continue',
+              sender: {
+                userId: 'user_1',
+                displayName: 'Alice',
+              },
+              metadata: {
+                pendingAssistantMessageId: 'msg_assistant_retry_existing_text',
+              },
             },
           },
-        },
-      ],
+        ],
+      } as GetEventsResponse;
+      // Block until abort to prevent hot reconnect loop
+      await waitForAbort(abortController.signal);
     });
     const resolveConversation = vi.fn<() => Promise<ResolveConversationResponse>>().mockResolvedValue({
       conversationId: 'session:general:main',
@@ -471,14 +485,22 @@ describe('NodeOpenClawPluginRunner', () => {
 
     const runner = new NodeOpenClawPluginRunner(config, {
       client: {
-        getEvents,
+        listenEvents,
         ackEvents,
         resolveConversation,
         createMessage: vi.fn(),
         patchMessage,
       } as never,
       stateStore: {
-        load: vi.fn().mockResolvedValue(createDefaultState('cur_2')),
+        load: vi.fn().mockResolvedValue({
+          ...createDefaultState('cur_2'),
+          clientTokenMessageMap: {
+            msg_assistant_retry_existing_text: 'assistant_message_existing_text',
+          },
+          clientTokenReplyTextMap: {
+            msg_assistant_retry_existing_text: 'already delivered reply',
+          },
+        } satisfies PluginPersistentState),
         save,
       },
       dispatchBricksInboundMessage: vi.fn(async () => ({
@@ -487,17 +509,9 @@ describe('NodeOpenClawPluginRunner', () => {
         storePath: '/tmp/openclaw-sessions',
       })),
     });
-    (runner as any).state = {
-      ...createDefaultState('cur_2'),
-      clientTokenMessageMap: {
-        msg_assistant_retry_existing_text: 'assistant_message_existing_text',
-      },
-      clientTokenReplyTextMap: {
-        msg_assistant_retry_existing_text: 'already delivered reply',
-      },
-    } satisfies PluginPersistentState;
 
-    await runner.tick();
+    setTimeout(() => abortController.abort(), 200);
+    await runner.runUntilAbort(abortController.signal);
 
     expect(patchMessage).toHaveBeenCalledWith(
       'assistant_message_existing_text',
@@ -512,26 +526,32 @@ describe('NodeOpenClawPluginRunner', () => {
   });
 
   it('persists reply text before a writeback failure so retries can recover the original answer', async () => {
-    const getEvents = vi.fn<() => Promise<GetEventsResponse>>().mockResolvedValue({
-      nextCursor: 'cur_4',
-      events: [
-        {
-          eventId: 'evt_retry_3',
-          eventType: 'message.created',
-          workspaceId: 'ws_1',
-          conversationId: 'session:general:main',
-          payload: {
-            text: 'original question',
-            sender: {
-              userId: 'user_1',
-              displayName: 'Alice',
-            },
-            metadata: {
-              pendingAssistantMessageId: 'msg_assistant_retry_saved_text',
+    const abortController = new AbortController();
+
+    const listenEvents = vi.fn(async function* () {
+      yield {
+        nextCursor: 'cur_4',
+        events: [
+          {
+            eventId: 'evt_retry_3',
+            eventType: 'message.created',
+            workspaceId: 'ws_1',
+            conversationId: 'session:general:main',
+            payload: {
+              text: 'original question',
+              sender: {
+                userId: 'user_1',
+                displayName: 'Alice',
+              },
+              metadata: {
+                pendingAssistantMessageId: 'msg_assistant_retry_saved_text',
+              },
             },
           },
-        },
-      ],
+        ],
+      } as GetEventsResponse;
+      // Block until abort to prevent hot reconnect loop
+      await waitForAbort(abortController.signal);
     });
     const resolveConversation = vi.fn<() => Promise<ResolveConversationResponse>>().mockResolvedValue({
       conversationId: 'session:general:main',
@@ -541,20 +561,19 @@ describe('NodeOpenClawPluginRunner', () => {
     const patchMessage = vi.fn<(messageId: string, payload: PatchMessageRequest) => Promise<{ ok: boolean }>>()
       .mockRejectedValue(new PlatformHttpError(429, 'limited', 'RATE_LIMITED', true, 120000));
     const save = vi.fn<(state: PluginPersistentState) => Promise<void>>().mockResolvedValue();
-    const initialState = createDefaultState('cur_3');
 
     const runner = new NodeOpenClawPluginRunner(config, {
       client: {
-        getEvents,
+        listenEvents,
         ackEvents: vi.fn(),
         resolveConversation,
         createMessage: vi.fn().mockResolvedValue({
           messageId: 'assistant_message_saved_text',
         } satisfies CreateMessageResponse),
         patchMessage,
-      } as never,
+      },
       stateStore: {
-        load: vi.fn().mockResolvedValue(initialState),
+        load: vi.fn().mockResolvedValue(createDefaultState('cur_3')),
         save,
       },
       dispatchBricksInboundMessage: vi.fn(async ({ deliver }) => {
@@ -567,10 +586,9 @@ describe('NodeOpenClawPluginRunner', () => {
       }),
     });
 
-    await expect(runner.tick()).rejects.toMatchObject({
-      status: 429,
-      message: 'limited',
-    });
+    // patchMessage throws 429; runner catches it, waits retryDelay (up to 120s), aborts.
+    setTimeout(() => abortController.abort(), 200);
+    await runner.runUntilAbort(abortController.signal);
 
     const savedReplyState = save.mock.calls
       .map(([state]) => state)

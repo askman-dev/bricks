@@ -213,8 +213,15 @@ export function createPlatformRouter(options: {
             cursor = response.nextCursor;
             res.write(`data: ${JSON.stringify(response)}\n\n`);
           }
-        } catch {
-          // ignore transient poll errors; client will reconnect on stream close
+        } catch (error) {
+          if (error instanceof Error && error.message === 'INVALID_CURSOR') {
+            // Non-retryable: close the SSE connection so the client can reconnect with a valid cursor.
+            cleanup();
+            res.end();
+            return;
+          }
+          console.error('[platform] SSE poll error:', error);
+          // Continue polling for transient errors; client will reconnect on stream close.
         }
         if (!disconnected) {
           pollTimer = setTimeout(poll, PLATFORM_EVENTS_POLL_INTERVAL_MS);

@@ -117,10 +117,31 @@ export class PlatformClient {
 
     if (!response.ok) {
       const statusSuffix = response.statusText ? ` ${response.statusText}` : '';
-      throw new PlatformHttpError(
-        response.status,
-        `Failed to open platform events stream: ${response.status}${statusSuffix}`,
-      );
+      const message = `Failed to open platform events stream: ${response.status}${statusSuffix}`;
+      const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'));
+      try {
+        const body = (await response.json()) as {
+          error?: { code?: string; message?: string; retryable?: boolean };
+        };
+        throw new PlatformHttpError(
+          response.status,
+          body.error?.message ?? message,
+          body.error?.code,
+          body.error?.retryable ?? (response.status === 429 || response.status >= 500),
+          retryAfterMs,
+        );
+      } catch (error) {
+        if (error instanceof PlatformHttpError) {
+          throw error;
+        }
+        throw new PlatformHttpError(
+          response.status,
+          message,
+          undefined,
+          response.status === 429 || response.status >= 500,
+          retryAfterMs,
+        );
+      }
     }
 
     if (!response.body) {
@@ -166,7 +187,13 @@ export class PlatformClient {
         }
       }
     } finally {
-      reader.releaseLock();
+      try {
+        await reader.cancel();
+      } catch {
+        // Ignore cleanup errors if the stream is already closed or aborted.
+      } finally {
+        reader.releaseLock();
+      }
     }
   }
 

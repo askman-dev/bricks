@@ -87,6 +87,7 @@ export class NodeOpenClawPluginRunner {
     this.log.info(`[node_openclaw_plugin] started with cursor: ${this.state.cursor}`);
 
     const reconnectDelayMs = 3000;
+    let currentBackoffMs = this.config.pollIntervalMs;
 
     try {
       while (!abortSignal?.aborted) {
@@ -123,16 +124,20 @@ export class NodeOpenClawPluginRunner {
             }
           }
 
-          // SSE stream closed normally, reconnect immediately
-          this.log.info('[node_openclaw_plugin] SSE stream closed, reconnecting...');
+          // SSE stream closed normally; reset backoff and delay before reconnecting to avoid a hot reconnect loop.
+          currentBackoffMs = this.config.pollIntervalMs;
+          this.log.info(
+            `[node_openclaw_plugin] SSE stream closed, reconnecting after ${reconnectDelayMs}ms...`,
+          );
+          await sleepUntilNextTick(reconnectDelayMs, abortSignal);
         } catch (error) {
           if (abortSignal?.aborted || isAbortError(error)) {
             break;
           }
 
-          const retryDelayMs = shouldBackoffPlatformError(error)
-            ? reconnectDelayMs
-            : this.config.pollIntervalMs;
+          const retryDelayMs = resolveRetryDelayMs(error, currentBackoffMs, this.config.pollIntervalMs)
+            ?? this.config.pollIntervalMs;
+          currentBackoffMs = retryDelayMs;
 
           this.log.warn(
             `[node_openclaw_plugin] SSE connection error; reconnecting after ${retryDelayMs}ms: ${formatRunnerError(error)}`,
