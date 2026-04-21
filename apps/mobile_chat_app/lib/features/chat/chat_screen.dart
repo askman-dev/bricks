@@ -581,6 +581,9 @@ class _ChatScreenState extends State<ChatScreen> {
           setting.threadId == null) {
         continue;
       }
+      if (!_isThreadConversation(threadId: setting.threadId)) {
+        continue;
+      }
       routers[_subSectionKey(setting.channelId, setting.threadId!)] =
           setting.router;
     }
@@ -892,6 +895,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatRouter? _explicitThreadRouter({String? channelId, String? threadId}) {
     final resolvedChannelId = channelId ?? _activeChannelId;
     final resolvedThreadId = threadId ?? _activeSubSection;
+    if (!_isThreadConversation(threadId: resolvedThreadId)) return null;
     return _threadRouters[_subSectionKey(resolvedChannelId, resolvedThreadId)];
   }
 
