@@ -75,6 +75,8 @@ index:
       - delivery-status
       - popup-menu
       - menu-animation
+      - long-polling (deprecated, replaced by SSE)
+      - SSE (Server-Sent Events)
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
@@ -88,6 +90,7 @@ index:
       - user 气泡投递状态若未按路由类型区分（default/openclaw/其他远端），会导致状态图标误导用户。
       - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
       - channel 会话若错误暴露 thread 路由菜单，用户可能误写 thread scope 配置并造成路由预期不一致。
+      - 长轮询 waitMs 设置过高且缺少超时保护时，可能导致连接堆积并放大服务端资源占用。
 
   - feature_id: model_settings
     capability: 模型配置读写

@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 
 interface PlatformClientLike {
-  getEvents(cursor: string, limit?: number): Promise<GetEventsResponse>;
+  listenEvents(cursor: string): AsyncGenerator<GetEventsResponse, void, undefined>;
   ackEvents(cursor: string, ackedEventIds: string[]): Promise<{ ok: boolean }>;
   resolveConversation(args: {
     conversationId?: string;
@@ -44,13 +44,23 @@ const defaultRunnerLog: RunnerLogSink = {
   error: (message) => console.error(message),
 };
 
+const RETRYABLE_NETWORK_ERROR_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENETUNREACH',
+  'ENOTFOUND',
+  'EHOSTUNREACH',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
 export class NodeOpenClawPluginRunner {
   private readonly client: PlatformClientLike;
   private readonly stateStore: StateStoreLike;
   private readonly dispatchBricksInboundMessage: typeof dispatchBricksInboundMessage;
   private readonly log: RunnerLogSink;
   private abortSignal?: AbortSignal;
-  private nextPollDelayMs: number;
   private state: PluginPersistentState;
 
   constructor(
@@ -76,7 +86,6 @@ export class NodeOpenClawPluginRunner {
       clientTokenReplyTextMap: {},
       pendingAck: null,
     };
-    this.nextPollDelayMs = config.pollIntervalMs;
   }
 
   async runForever(): Promise<void> {
@@ -88,27 +97,68 @@ export class NodeOpenClawPluginRunner {
     this.state = await this.stateStore.load();
     this.log.info(`[node_openclaw_plugin] started with cursor: ${this.state.cursor}`);
 
+    const reconnectDelayMs = 3000;
+    let currentBackoffMs = this.config.pollIntervalMs;
+
     try {
       while (!abortSignal?.aborted) {
         try {
-          await this.tick();
-          this.nextPollDelayMs = this.config.pollIntervalMs;
+          await this.flushPendingAck();
+
+          this.log.info(`[node_openclaw_plugin] connecting to SSE stream with cursor: ${this.state.cursor}`);
+          for await (const response of this.client.listenEvents(this.state.cursor)) {
+            if (abortSignal?.aborted) break;
+
+            const receivedEventIds = response.events
+              .map((event) => event.eventId)
+              .filter((eventId) => eventId.trim().length > 0);
+
+            for (const event of response.events) {
+              if (this.state.processedEventIds.includes(event.eventId)) {
+                continue;
+              }
+
+              await this.handleEvent(event);
+              this.state.processedEventIds.push(event.eventId);
+            }
+
+            // Keep in-memory array bounded to prevent unbounded growth during long runs
+            this.state.processedEventIds = this.state.processedEventIds.slice(-DEFAULT_MAX_PROCESSED_EVENTS);
+
+            if (receivedEventIds.length > 0) {
+              this.state.pendingAck = {
+                cursor: response.nextCursor,
+                eventIds: receivedEventIds,
+              };
+              await this.stateStore.save(this.state);
+              await this.flushPendingAck();
+            }
+          }
+
+          // SSE stream closed normally; reset backoff and delay before reconnecting to avoid a hot reconnect loop.
+          currentBackoffMs = this.config.pollIntervalMs;
+          this.log.info(
+            `[node_openclaw_plugin] SSE stream closed, reconnecting after ${reconnectDelayMs}ms...`,
+          );
+          await sleepUntilNextTick(reconnectDelayMs, abortSignal);
         } catch (error) {
           if (abortSignal?.aborted || isAbortError(error)) {
             break;
           }
-          const retryDelayMs = resolveRetryDelayMs(error, this.nextPollDelayMs, this.config.pollIntervalMs);
+
+          const retryDelayMs = resolveRetryDelayMs(error, currentBackoffMs, this.config.pollIntervalMs);
           if (retryDelayMs !== null) {
-            this.nextPollDelayMs = retryDelayMs;
+            currentBackoffMs = retryDelayMs;
             this.log.warn(
-              `[node_openclaw_plugin] retryable platform failure; backing off for ${retryDelayMs}ms: ${formatRunnerError(error)}`,
+              `[node_openclaw_plugin] retryable platform/network failure; backing off for ${retryDelayMs}ms: ${formatRunnerError(error)}`,
             );
           } else {
-            this.log.error(`[node_openclaw_plugin] tick failed: ${formatRunnerError(error)}`);
-            this.nextPollDelayMs = this.config.pollIntervalMs;
+            this.log.error(`[node_openclaw_plugin] SSE connection error: ${formatRunnerError(error)}`);
+            currentBackoffMs = this.config.pollIntervalMs;
           }
+
+          await sleepUntilNextTick(currentBackoffMs, abortSignal);
         }
-        await sleepUntilNextTick(this.nextPollDelayMs, abortSignal);
       }
     } finally {
       this.abortSignal = undefined;
@@ -116,40 +166,6 @@ export class NodeOpenClawPluginRunner {
         this.log.info('[node_openclaw_plugin] stopped');
       }
     }
-  }
-
-  async tick(): Promise<void> {
-    await this.flushPendingAck();
-
-    const response = await this.client.getEvents(this.state.cursor, 50);
-    const receivedEventIds = response.events
-      .map((event) => event.eventId)
-      .filter((eventId) => eventId.trim().length > 0);
-
-    for (const event of response.events) {
-      if (this.state.processedEventIds.includes(event.eventId)) {
-        continue;
-      }
-
-      await this.handleEvent(event);
-      this.state.processedEventIds.push(event.eventId);
-    }
-
-    // Keep in-memory array bounded to prevent unbounded growth during long runs
-    this.state.processedEventIds = this.state.processedEventIds.slice(-DEFAULT_MAX_PROCESSED_EVENTS);
-
-    if (receivedEventIds.length > 0) {
-      this.state.pendingAck = {
-        cursor: response.nextCursor,
-        eventIds: receivedEventIds,
-      };
-      await this.stateStore.save(this.state);
-      await this.flushPendingAck();
-      return;
-    }
-
-    this.state.cursor = response.nextCursor;
-    await this.stateStore.save(this.state);
   }
 
   private async flushPendingAck(): Promise<void> {
@@ -400,11 +416,22 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function shouldBackoffPlatformError(error: unknown): error is PlatformHttpError {
-  return error instanceof PlatformHttpError && (
-    error.status === 429
-    || error.retryable === true
-    || error.status >= 500
-  );
+  return error instanceof PlatformHttpError
+    && (
+      error.status === 429
+      || error.retryable === true
+      || error.status >= 500
+    );
+}
+
+export function shouldBackoffRunnerError(error: unknown): boolean {
+  if (error instanceof PlatformHttpError) {
+    return error.status === 429
+      || error.retryable === true
+      || error.status >= 500;
+  }
+
+  return hasRetryableNetworkCause(error);
 }
 
 export function nextBackoffDelayMs(
@@ -431,11 +458,16 @@ export function resolveRetryDelayMs(
   baseDelayMs: number,
   capDelayMs = 10_000,
 ): number | null {
-  if (!shouldBackoffPlatformError(error)) {
+  if (!shouldBackoffRunnerError(error)) {
     return null;
   }
 
-  if (typeof error.retryAfterMs === 'number' && Number.isFinite(error.retryAfterMs) && error.retryAfterMs > 0) {
+  if (
+    error instanceof PlatformHttpError
+    && typeof error.retryAfterMs === 'number'
+    && Number.isFinite(error.retryAfterMs)
+    && error.retryAfterMs > 0
+  ) {
     return Math.max(baseDelayMs, error.retryAfterMs);
   }
 
@@ -461,6 +493,33 @@ function formatErrorChain(error: Error): string {
   }
 
   return parts.join('\nCaused by: ');
+}
+
+function hasRetryableNetworkCause(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const candidate = current as {
+      code?: unknown;
+      name?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+
+    if (typeof candidate.code === 'string' && RETRYABLE_NETWORK_ERROR_CODES.has(candidate.code)) {
+      return true;
+    }
+
+    if (candidate.name === 'TypeError' && candidate.message === 'fetch failed') {
+      return true;
+    }
+
+    current = candidate.cause;
+  }
+
+  return false;
 }
 
 async function sleepUntilNextTick(delayMs: number, abortSignal?: AbortSignal): Promise<void> {
