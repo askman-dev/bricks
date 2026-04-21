@@ -107,9 +107,19 @@ class ChatHistoryApiService {
         '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
       );
 
-  Uri _syncUri(String sessionId, {required int afterSeq}) => Uri.parse(
-        '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
-      );
+  Uri _syncUri(
+    String sessionId, {
+    required int afterSeq,
+    int? waitMs,
+  }) {
+    final params = <String, String>{
+      'afterSeq': '$afterSeq',
+      if (waitMs != null && waitMs > 0) 'waitMs': '$waitMs',
+    };
+    return Uri.parse(
+      '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}',
+    ).replace(queryParameters: params);
+  }
 
   Uri get _acceptTaskUri => Uri.parse('$_base/api/chat/tasks/accept');
 
@@ -258,9 +268,10 @@ class ChatHistoryApiService {
     required String token,
     required String sessionId,
     required int afterSeq,
+    int? waitMs,
   }) async {
     final response = await _client.get(
-      _syncUri(sessionId, afterSeq: afterSeq),
+      _syncUri(sessionId, afterSeq: afterSeq, waitMs: waitMs),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {

@@ -93,6 +93,8 @@ void main() {
     final client = MockClient((request) async {
       expect(request.method, equals('GET'));
       expect(request.url.path, contains('/chat/sync/'));
+      expect(request.url.queryParameters['afterSeq'], equals('10'));
+      expect(request.url.queryParameters['waitMs'], equals('20000'));
       return http.Response(
         jsonEncode({
           'messages': [
@@ -120,6 +122,7 @@ void main() {
       token: 'token-1',
       sessionId: 'session:default:main',
       afterSeq: 10,
+      waitMs: 20000,
     );
 
     expect(snapshot.messages, hasLength(2));

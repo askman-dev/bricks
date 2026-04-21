@@ -83,6 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _syncInFlight = false;
   static const Duration _syncPollInterval = Duration(seconds: 2);
   static const Duration _syncMaxBackoff = Duration(seconds: 10);
+  static const int _syncLongPollWaitMs = 20000;
   Duration _nextSyncDelay = _syncPollInterval;
   final Map<String, ChatRouter> _channelRouters = {};
   final Map<String, ChatRouter> _threadRouters = {};
@@ -1192,6 +1193,7 @@ class _ChatScreenState extends State<ChatScreen> {
         token: token,
         sessionId: capturedSessionId,
         afterSeq: _lastSyncedSeq,
+        waitMs: _syncLongPollWaitMs,
       );
       if (!mounted || _sessionIdForScope != capturedSessionId) return;
       if (snapshot.messages.isEmpty && snapshot.lastSeqId <= _lastSyncedSeq) {
