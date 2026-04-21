@@ -73,6 +73,8 @@ index:
       - single-query commit
       - auto-scroll
       - delivery-status
+      - long-press context menu
+      - message/task diagnostics
       - popup-menu
       - header-dropdown
       - menu-animation

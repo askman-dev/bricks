@@ -349,7 +349,7 @@ void main() {
       expect(find.descendant(of: row, matching: find.text('🦞')), findsNothing);
     });
 
-    testWidgets('shows check + green check when default router has replied',
+    testWidgets('shows check + completed check when default router has replied',
         (tester) async {
       final user = ChatMessage(
         messageId: 'u-default-completed',
@@ -382,7 +382,11 @@ void main() {
       final icons = tester.widgetList<Icon>(
         find.descendant(of: row, matching: find.byIcon(Icons.check)),
       );
-      expect(icons.last.color, Colors.green);
+      // Completed check inside user bubble uses onPrimary (full opacity)
+      final onPrimaryColor = Theme.of(
+        tester.element(find.byKey(const ValueKey<String>('user-delivery-u-default-completed'))),
+      ).colorScheme.onPrimary;
+      expect(icons.last.color, onPrimaryColor);
     });
 
     testWidgets('shows check + lobster when openclaw reply starts',
@@ -433,6 +437,58 @@ void main() {
         find.descendant(of: afterReplyRow, matching: find.text('🦞')),
         findsOneWidget,
       );
+    });
+  });
+
+  group('User bubble metadata and context menu', () {
+    testWidgets('keeps user meta inside bubble and hides task id text',
+        (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-meta',
+        role: 'user',
+        content: 'hello',
+        taskId: 'task-meta',
+        taskState: ChatTaskState.accepted,
+        threadId: 'sub-123',
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('task:accepted'), findsNothing);
+      expect(find.textContaining('id:task-meta'), findsNothing);
+
+      final bubble = find.byKey(const ValueKey<String>('message-u-meta'));
+      final bubbleMeta = find.descendant(
+        of: bubble,
+        matching: find.textContaining('thread:sub-123'),
+      );
+      expect(bubbleMeta, findsOneWidget);
+    });
+
+    testWidgets('long press shows context menu with ids', (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-menu',
+        role: 'user',
+        content: 'hello menu',
+        taskId: 'task-menu',
+        taskState: ChatTaskState.accepted,
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      await tester
+          .longPress(find.byKey(const ValueKey<String>('message-u-menu')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('复制'), findsOneWidget);
+      expect(find.text('分叉（待开发）'), findsOneWidget);
+      expect(find.text('重发（待开发）'), findsOneWidget);
+      expect(find.text('message id: u-menu'), findsOneWidget);
+      expect(find.text('task id: task-menu'), findsOneWidget);
     });
   });
 }
