@@ -51,7 +51,8 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
     try {
       await _service.createPlatformNode();
       await _loadNodes();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('_createNode error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to create node')),
@@ -90,7 +91,8 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
       await _service.renamePlatformNode(
           nodeId: node.nodeId, displayName: nextName);
       await _loadNodes();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('_renameNode error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to rename node')),
@@ -125,7 +127,8 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
       final bundle = await _service.fetchPlatformToken(nodeId: node.nodeId);
       if (!mounted) return;
       setState(() => _bundle = bundle);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('_generateNodeToken error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to generate token')),
