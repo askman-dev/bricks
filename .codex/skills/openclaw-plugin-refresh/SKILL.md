@@ -61,23 +61,26 @@ Use this only when you are confident the existing install is already linked to t
 
 ## Config update path
 
-If the Bricks connection settings changed, refresh the stored channel config before restarting:
+If the Bricks connection settings changed, refresh the stored channel config before restarting.
 
-```bash
-openclaw config set channels.dev-askman-bricks.BRICKS_BASE_URL https://your-bricks-api.example.com
-openclaw config set channels.dev-askman-bricks.BRICKS_PLUGIN_ID dev-askman-bricks
-openclaw config set channels.dev-askman-bricks.BRICKS_PLATFORM_TOKEN 'your-jwt-token'
-openclaw config validate
-openclaw gateway restart
-```
-
-If the user prefers the interactive flow:
+**Preferred: use the interactive flow to avoid exposing secrets in shell history or process listings:**
 
 ```bash
 openclaw onboard
 # or
 openclaw configure
 ```
+
+If you need to set non-secret values (base URL, plugin ID) via CLI, you can use `config set` for those:
+
+```bash
+openclaw config set channels.dev-askman-bricks.BRICKS_BASE_URL https://your-bricks-api.example.com
+openclaw config set channels.dev-askman-bricks.BRICKS_PLUGIN_ID dev-askman-bricks
+openclaw config validate
+openclaw gateway restart
+```
+
+> **Security note:** Do not pass `BRICKS_PLATFORM_TOKEN` as a literal argument to `openclaw config set` — it will appear in shell history and process listings. Use `openclaw onboard` or `openclaw configure` to supply the token interactively, or export it as an environment variable if the CLI supports reading it from the environment.
 
 ## Verification
 
