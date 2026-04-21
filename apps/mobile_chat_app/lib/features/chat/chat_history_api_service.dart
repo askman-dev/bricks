@@ -92,6 +92,8 @@ class ChatHistoryApiService {
     'resolvedSkillId',
     'agentId',
     'agentName',
+    'nodeId',
+    'nodeName',
     'traceId',
     'source',
   ];
@@ -557,8 +559,13 @@ class ChatHistoryApiService {
     final metadata = (map['metadata'] is Map)
         ? Map<String, Object?>.from(map['metadata'] as Map)
         : const <String, Object?>{};
+    final metadataAgentName = metadata['nodeName'] is String
+        ? (metadata['nodeName'] as String).trim()
+        : '';
     final payload = <String, Object?>{
       ...metadata,
+      if (metadataAgentName.isNotEmpty && metadata['agentName'] == null)
+        'agentName': metadataAgentName,
       'messageId': map['messageId'],
       'seqId': map['seqId'],
       'writeSeq': map['writeSeq'],

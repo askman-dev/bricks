@@ -10,9 +10,12 @@ class _FakeLlmConfigService extends LlmConfigService {
 
   @override
   Future<PlatformTokenBundle> fetchPlatformToken({
+    String? nodeId,
     String pluginId = 'plugin_local_main',
   }) async {
     return const PlatformTokenBundle(
+      nodeId: 'node_default',
+      nodeName: 'openclaw 1',
       token: 'platform-token-123',
       pluginId: 'plugin_local_main',
       baseUrl: 'https://bricks.askman.dev',

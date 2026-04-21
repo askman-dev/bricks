@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-04-20
+last_updated: 2026-04-21
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -141,6 +141,39 @@ index:
       - token 展示与复制反馈文案不一致时，可能导致配置操作误判。
       - 安装说明模板字段缺失或格式错误会导致 OpenClaw 配置失败。
 
+  - feature_id: node_settings
+    capability: 节点管理（创建/重命名）与节点级 Token 签发
+    code_index:
+      - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
+      - apps/mobile_chat_app/lib/features/settings/node_settings_screen.dart
+      - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+      - apps/node_backend/src/routes/config.ts
+      - apps/node_backend/src/routes/platform.ts
+      - apps/node_backend/src/services/platformNodeService.ts
+      - apps/node_backend/src/db/migrations/011_create_platform_nodes.sql
+    doc_index:
+      - docs/plans/2026-04-21-00-12-UTC-multi-node-plugin-implementation.md
+    test_index:
+      - apps/mobile_chat_app/test/node_settings_screen_test.dart
+      - apps/mobile_chat_app/test/openclaw_token_settings_screen_test.dart
+      - apps/node_backend/src/routes/config.test.ts
+      - apps/node_backend/src/services/platformNodeService.test.ts
+      - apps/node_backend/src/routes/platform.test.ts
+    keywords:
+      - node
+      - platform token
+      - pluginId
+      - settings
+      - create
+      - rename
+      - nodeName
+      - nodeId
+    change_risks:
+      - 节点默认名称或唯一键策略不稳定时，可能出现重复节点或命名冲突。
+      - token 签发若未强制 nodeId/pluginId 绑定，可能导致跨节点消息隔离失效。
+      - 平台写回未注入 node metadata 时，聊天 UI 仍会回退显示 ask，导致归属不清晰。
+
   - feature_id: workspace_resources
     capability: Workspace / Projects / Skills / Resources 导航
     code_index:
@@ -193,6 +226,7 @@ index:
       - apps/node_backend/src/routes/llm.ts
       - apps/node_backend/src/routes/platform.ts
       - apps/node_backend/src/routes/config.ts
+      - apps/node_backend/src/services/platformNodeService.ts
       - apps/node_backend/src/services/chatChannelNameService.ts
       - apps/node_backend/src/middleware/platformAuth.ts
       - apps/node_backend/src/services/platformIntegrationService.ts
@@ -207,6 +241,7 @@ index:
     test_index:
       - apps/node_backend/src/routes/chat.test.ts
       - apps/node_backend/src/routes/platform.test.ts
+      - apps/node_backend/src/routes/config.test.ts
       - apps/node_backend/src/services/platformIntegrationService.test.ts
       - apps/node_openclaw_plugin/test/pluginRunner.test.ts
     keywords:
@@ -219,6 +254,8 @@ index:
       - platform events
       - openclaw
       - x-bricks-plugin-id
+      - nodeId
+      - nodeName
       - events ack
     change_risks:
       - provider 适配器接口变动导致 LLM 调用失败。

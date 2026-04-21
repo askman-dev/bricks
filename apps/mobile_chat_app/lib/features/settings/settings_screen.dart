@@ -3,6 +3,7 @@ import '../agents/agents_screen.dart';
 import '../auth/auth_service.dart';
 import '../auth/login_screen.dart';
 import 'model_settings_screen.dart';
+import 'node_settings_screen.dart';
 import 'openclaw_token_settings_screen.dart';
 
 /// Screen for managing app and agent settings.
@@ -63,6 +64,18 @@ class SettingsScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const AgentsScreen(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('节点'),
+            subtitle: const Text('管理节点与 Node Token'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const NodeSettingsScreen(),
                 ),
               );
             },

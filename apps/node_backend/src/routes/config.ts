@@ -8,6 +8,14 @@ import {
   deleteApiConfig,
 } from '../services/configService.js';
 import { issuePlatformAccessToken } from '../middleware/platformAuth.js';
+import {
+  createPlatformNode,
+  ensureDefaultPlatformNode,
+  getPlatformNodeByNodeId,
+  getPlatformNodeByPluginId,
+  listPlatformNodes,
+  renamePlatformNode,
+} from '../services/platformNodeService.js';
 
 const router = express.Router();
 const ALLOWED_PROVIDERS = new Set(['anthropic', 'google_ai_studio']);
@@ -147,11 +155,41 @@ router.get('/platform-token', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const queryPluginId = typeof req.query.pluginId === 'string' ? req.query.pluginId.trim() : '';
-    const pluginId =
-      queryPluginId ||
-      process.env.BRICKS_PLATFORM_DEFAULT_PLUGIN_ID?.trim() ||
-      'plugin_local_main';
+    const queryNodeId =
+      typeof req.query.nodeId === 'string' ? req.query.nodeId.trim() : '';
+    const queryPluginId =
+      typeof req.query.pluginId === 'string' ? req.query.pluginId.trim() : '';
+
+    let node = queryNodeId
+      ? await getPlatformNodeByNodeId(userId, queryNodeId)
+      : null;
+    if (!node && queryPluginId) {
+      node = await getPlatformNodeByPluginId(userId, queryPluginId);
+    }
+    if (!node && queryPluginId) {
+      try {
+        node = await createPlatformNode(userId, {
+          pluginId: queryPluginId,
+        });
+      } catch (error) {
+        const err = error as { code?: string; message?: string };
+        const isUniqueViolation =
+          err?.code === '23505' ||
+          err?.code === 'P2002' ||
+          err?.code === 'SQLITE_CONSTRAINT' ||
+          err?.message?.toLowerCase().includes('unique') ||
+          err?.message?.toLowerCase().includes('duplicate');
+        if (!isUniqueViolation) throw error;
+        node = await getPlatformNodeByPluginId(userId, queryPluginId);
+        if (!node) {
+          res.status(409).json({ error: 'Platform node with this pluginId already exists' });
+          return;
+        }
+      }
+    }
+    node ??= await ensureDefaultPlatformNode(userId);
+
+    const pluginId = node.pluginId;
     const scopes = (process.env.BRICKS_PLATFORM_API_SCOPES ??
             'events:read,events:ack,messages:write,conversations:read')
         .split(',')
@@ -166,6 +204,8 @@ router.get('/platform-token', async (req: AuthRequest, res: Response) => {
     });
 
     res.json({
+      nodeId: node.nodeId,
+      nodeName: node.displayName,
       token,
       pluginId,
       scopes,
@@ -174,6 +214,76 @@ router.get('/platform-token', async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     console.error('Get platform token error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/nodes', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    await ensureDefaultPlatformNode(userId);
+    const nodes = await listPlatformNodes(userId);
+    res.json({ nodes });
+  } catch (error) {
+    console.error('List platform nodes error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/nodes', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const displayName =
+      typeof req.body?.displayName === 'string'
+        ? req.body.displayName.trim()
+        : undefined;
+    const created = await createPlatformNode(userId, {
+      displayName,
+    });
+    res.status(201).json(created);
+  } catch (error) {
+    console.error('Create platform node error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/nodes/:nodeId', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const nodeId =
+      typeof req.params.nodeId === 'string' ? req.params.nodeId.trim() : '';
+    const displayName =
+      typeof req.body?.displayName === 'string'
+        ? req.body.displayName.trim()
+        : '';
+    if (!nodeId || !displayName) {
+      res.status(400).json({ error: 'nodeId and displayName are required' });
+      return;
+    }
+    const updated = await renamePlatformNode(userId, nodeId, displayName);
+    if (!updated) {
+      res.status(404).json({ error: 'Node not found' });
+      return;
+    }
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'DISPLAY_NAME_REQUIRED') {
+      res.status(400).json({ error: 'displayName is required' });
+      return;
+    }
+    console.error('Rename platform node error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
