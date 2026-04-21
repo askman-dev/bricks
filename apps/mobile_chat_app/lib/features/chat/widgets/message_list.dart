@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
@@ -119,19 +120,12 @@ class _MessageListState extends State<MessageList> {
     return DateFormat('HH:mm').format(timestamp.toLocal());
   }
 
-  String _taskLabel(ChatTaskState state) {
-    switch (state) {
-      case ChatTaskState.accepted:
-        return 'accepted';
-      case ChatTaskState.dispatched:
-        return 'dispatched';
-      case ChatTaskState.completed:
-        return 'completed';
-      case ChatTaskState.failed:
-        return 'failed';
-      case ChatTaskState.cancelled:
-        return 'cancelled';
-    }
+  String _messageMetaLine(ChatMessage message) {
+    return [
+      _formatTime(message.timestamp),
+      if (message.threadId != null) 'thread:${message.threadId}',
+      if (message.isRecovered) 'Recovered',
+    ].join(' · ');
   }
 
   _UserDeliveryStatus? _deliveryIndicatorForUserMessage(
@@ -182,6 +176,64 @@ class _MessageListState extends State<MessageList> {
       first: const _DeliveryIconState.check(),
       second: secondIcon,
     );
+  }
+
+  Future<void> _showUserMessageContextMenu({
+    required BuildContext context,
+    required Offset globalPosition,
+    required ChatMessage message,
+  }) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final result = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        const PopupMenuItem<String>(value: 'copy', child: Text('复制')),
+        const PopupMenuItem<String>(value: 'branch', child: Text('分叉（待开发）')),
+        const PopupMenuItem<String>(value: 'resend', child: Text('重发（待开发）')),
+        PopupMenuItem<String>(
+          enabled: false,
+          height: 52,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'message id: ${message.messageId ?? '-'}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+              ),
+              Text(
+                'task id: ${message.taskId ?? '-'}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!context.mounted || result == null) return;
+    switch (result) {
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: message.content));
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已复制')));
+        break;
+      case 'branch':
+      case 'resend':
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('功能待开发')));
+        break;
+    }
   }
 
   @override
@@ -244,136 +296,141 @@ class _MessageListState extends State<MessageList> {
                       ],
                     ),
                   ),
-                Container(
-                  key: ValueKey<String>(
-                    'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                  ),
-                  margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-                  padding: isUser
-                      ? const EdgeInsets.symmetric(
-                          horizontal: BricksSpacing.md,
-                          vertical: BricksSpacing.sm,
-                        )
-                      : const EdgeInsets.symmetric(
-                          horizontal: BricksSpacing.xs,
-                          vertical: BricksSpacing.xs,
-                        ),
-                  width: isUser ? null : double.infinity,
-                  constraints: isUser
-                      ? BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
-                        )
+                GestureDetector(
+                  onLongPressStart: isUser
+                      ? (details) => _showUserMessageContextMenu(
+                            context: context,
+                            globalPosition: details.globalPosition,
+                            message: msg,
+                          )
                       : null,
-                  decoration: isUser
-                      ? BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(BricksRadius.md),
-                        )
-                      : null,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (isUser)
-                        _MessageExpandToggle(
-                          key: ValueKey<String>(
-                            'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                  child: Container(
+                    key: ValueKey<String>(
+                      'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                    ),
+                    margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+                    padding: isUser
+                        ? const EdgeInsets.symmetric(
+                            horizontal: BricksSpacing.md,
+                            vertical: BricksSpacing.sm,
+                          )
+                        : const EdgeInsets.symmetric(
+                            horizontal: BricksSpacing.xs,
+                            vertical: BricksSpacing.xs,
                           ),
-                          text: msg.content,
-                          textColor: Theme.of(context).colorScheme.onPrimary,
-                        )
-                      else
-                        _AssistantMarkdownText(
-                          text: msg.content,
-                          textColor: Theme.of(context).colorScheme.onSurface,
-                          textStyle: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      if (msg.isStreaming)
-                        Padding(
-                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                          child: SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                isUser
-                                    ? Theme.of(context).colorScheme.onPrimary
-                                    : Theme.of(context).colorScheme.primary,
-                              ),
+                    width: isUser ? null : double.infinity,
+                    constraints: isUser
+                        ? BoxConstraints(
+                            maxWidth: MediaQuery.of(context).size.width * 0.75,
+                          )
+                        : null,
+                    decoration: isUser
+                        ? BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius:
+                                BorderRadius.circular(BricksRadius.md),
+                          )
+                        : null,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isUser)
+                          _MessageExpandToggle(
+                            key: ValueKey<String>(
+                              'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
                             ),
+                            text: msg.content,
+                            textColor: Theme.of(context).colorScheme.onPrimary,
+                          )
+                        else
+                          _AssistantMarkdownText(
+                            text: msg.content,
+                            textColor: Theme.of(context).colorScheme.onSurface,
+                            textStyle: Theme.of(context).textTheme.bodyMedium,
                           ),
-                        ),
-                      if (msg.taskState != null || msg.taskId != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                          child: Text(
-                            [
-                              if (msg.taskState != null)
-                                'task:${_taskLabel(msg.taskState!)}',
-                              if (msg.taskId != null) 'id:${msg.taskId}',
-                            ].join(' · '),
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: isUser
-                                      ? Theme.of(context).colorScheme.onPrimary
-                                      : Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ),
-                      if (msg.arbitrationMode && msg.resolvedBotId != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                          child: Text(
-                            msg.fallbackToDefaultBot
-                                ? 'fallback→${msg.resolvedBotId}'
-                                : 'selected→${msg.resolvedBotId}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: isUser
+                        if (msg.isStreaming)
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(top: BricksSpacing.xs),
+                            child: SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  isUser
                                       ? Theme.of(context).colorScheme.onPrimary
                                       : Theme.of(context).colorScheme.primary,
                                 ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                // Show timestamp below the bubble.
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: BricksSpacing.xs,
-                    right: BricksSpacing.xs,
-                    bottom: BricksSpacing.md,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        [
-                          _formatTime(msg.timestamp),
-                          if (msg.threadId != null) 'thread:${msg.threadId}',
-                          if (msg.isRecovered) 'Recovered',
-                        ].join(' · '),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: Theme.of(context).colorScheme.outline,
+                              ),
                             ),
-                      ),
-                      if (deliveryIndicator != null) ...[
-                        const SizedBox(width: BricksSpacing.xs),
-                        _UserMessageDeliveryStatus(
-                          indicator: deliveryIndicator,
-                          messageId: msg.messageId,
-                        ),
+                          ),
+                        if (msg.arbitrationMode && msg.resolvedBotId != null)
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(top: BricksSpacing.xs),
+                            child: Text(
+                              msg.fallbackToDefaultBot
+                                  ? 'fallback→${msg.resolvedBotId}'
+                                  : 'selected→${msg.resolvedBotId}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: isUser
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .onPrimary
+                                        : Theme.of(context).colorScheme.primary,
+                                  ),
+                            ),
+                          ),
+                        if (isUser)
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(top: BricksSpacing.xs),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _messageMetaLine(msg),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onPrimary,
+                                      ),
+                                ),
+                                if (deliveryIndicator != null) ...[
+                                  const SizedBox(width: BricksSpacing.xs),
+                                  _UserMessageDeliveryStatus(
+                                    indicator: deliveryIndicator,
+                                    messageId: msg.messageId,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
+                if (!isUser)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: BricksSpacing.xs,
+                      right: BricksSpacing.xs,
+                      bottom: BricksSpacing.md,
+                    ),
+                    child: Text(
+                      _messageMetaLine(msg),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                    ),
+                  ),
               ],
             ),
           );
@@ -467,7 +524,7 @@ class _DeliveryStatusIcon extends StatelessWidget {
               fontSize: 12,
               color: Theme.of(
                 context,
-              ).colorScheme.onSurfaceVariant.withOpacity(icon.opacity),
+              ).colorScheme.onSurfaceVariant.withValues(alpha: icon.opacity),
             ),
           ),
         ),

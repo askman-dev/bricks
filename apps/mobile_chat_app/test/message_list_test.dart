@@ -435,4 +435,56 @@ void main() {
       );
     });
   });
+
+  group('User bubble metadata and context menu', () {
+    testWidgets('keeps user meta inside bubble and hides task id text',
+        (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-meta',
+        role: 'user',
+        content: 'hello',
+        taskId: 'task-meta',
+        taskState: ChatTaskState.accepted,
+        threadId: 'sub-123',
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('task:accepted'), findsNothing);
+      expect(find.textContaining('id:task-meta'), findsNothing);
+
+      final bubble = find.byKey(const ValueKey<String>('message-u-meta'));
+      final bubbleMeta = find.descendant(
+        of: bubble,
+        matching: find.textContaining('thread:sub-123'),
+      );
+      expect(bubbleMeta, findsOneWidget);
+    });
+
+    testWidgets('long press shows context menu with ids', (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-menu',
+        role: 'user',
+        content: 'hello menu',
+        taskId: 'task-menu',
+        taskState: ChatTaskState.accepted,
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      await tester
+          .longPress(find.byKey(const ValueKey<String>('message-u-menu')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('复制'), findsOneWidget);
+      expect(find.text('分叉（待开发）'), findsOneWidget);
+      expect(find.text('重发（待开发）'), findsOneWidget);
+      expect(find.text('message id: u-menu'), findsOneWidget);
+      expect(find.text('task id: task-menu'), findsOneWidget);
+    });
+  });
 }
