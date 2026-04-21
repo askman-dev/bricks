@@ -6,44 +6,53 @@ Users interact through conversation to create, modify, and iterate on website/ap
 
 ---
 
-## Monorepo Structure
+## Architecture Overview
 
 ```text
-bricks/
-├─ apps/
-│  └─ mobile_chat_app/        # Flutter host application
-│
-├─ packages/
-│  ├─ agent_core/              # Intelligence runtime (session loop, tools, sub-agents)
-│  ├─ agent_sdk_contract/      # Stable interface layer for consumers
-│  ├─ workspace_fs/            # Filesystem mapping (workspaces, projects, resources)
-│  ├─ project_system/          # Website/app project abstraction
-│  ├─ chat_domain/             # Chat domain models (conversations, messages)
-│  ├─ platform_bridge/         # Cross-platform bridge (filesystem, WebView, sandbox)
-│  ├─ design_system/           # Shared design tokens and widgets
-│  └─ test_harness/            # Test support (fakes, fixtures, helpers)
-│
-├─ config/                     # Default configuration files
-├─ fixtures/                   # Sample workspaces, projects, and resources
-├─ docs/                       # Architecture and developer documentation
-├─ tools/                      # Developer tooling scripts
-└─ melos.yaml                  # Monorepo management
++----------------------+      +-------------------------------+
+|      Workspace       | ---> |      Channel Router Layer     |
++----------------------+      +-------------------------------+
+                                         |
+                                         v
+                 +-----------------------+-----------------------+
+                 |                       |                       |
+                 v                       v                       v
+        +----------------+      +----------------+      +----------------+
+        | Channel: Plan  |      | Channel: Build |      | Channel: QA/Ops|
+        +----------------+      +----------------+      +----------------+
+                 |                       |                       |
+                 v                       v                       v
+      +--------------------+   +--------------------+   +--------------------+
+      | Partition: Scope   |   | Partition: Backend |   | Partition: Validate|
+      +--------------------+   +--------------------+   +--------------------+
+                 |                       |                       |
+                 v                       v                       v
+   +---------------------------+ +---------------------------+ +---------------------------+
+   | OpenClaw Plugin Node P-1  | | OpenClaw Plugin Node B-1  | | OpenClaw Plugin Node Q-1  |
+   +---------------------------+ +---------------------------+ +---------------------------+
+                 |                       |                       |
+                 +-----------------------+-----------------------+
+                                         |
+                                         v
+                        +-----------------------------------+
+                        | Multi-Instance OpenClaw Controller|
+                        +-----------------------------------+
 ```
-
----
 
 ## Packages
 
 | Package | Description |
 |---|---|
-| [`agent_core`](packages/agent_core/) | Agent run loop, context management, tool execution, sub-agent registry, skills, permissions, provider abstraction, event streaming |
-| [`agent_sdk_contract`](packages/agent_sdk_contract/) | Stable interface contracts: agent client, session, event stream, tool/sub-agent/skill schemas |
-| [`workspace_fs`](packages/workspace_fs/) | Workspace discovery/creation, project & resource directories, conversations persistence, app config |
-| [`project_system`](packages/project_system/) | Website/app project schema, file layout, preview/run support, AI bridge, snapshots |
-| [`chat_domain`](packages/chat_domain/) | Conversation and message models, input composer, attachments |
-| [`platform_bridge`](packages/platform_bridge/) | Filesystem permissions, sandbox paths, local server, WebView/browser integration |
-| [`design_system`](packages/design_system/) | Shared UI tokens, theme, and reusable widgets |
-| [`test_harness`](packages/test_harness/) | Fake providers, fake filesystem, sample workspaces/projects, e2e fixtures |
+| [`agent_core`](packages/agent_core/) | Agent runtime loop, context/session orchestration, tool dispatch, skills, provider abstraction, and event streaming |
+| [`agent_sdk_contract`](packages/agent_sdk_contract/) | Stable SDK contracts between app-facing clients and the agent runtime |
+| [`bricks_ai_core`](packages/bricks_ai_core/) | Bricks AI integration layer and shared AI-facing runtime capabilities |
+| [`bricks_ai_smoke_test`](packages/bricks_ai_smoke_test/) | Smoke-test harness for validating AI integration flows end-to-end |
+| [`workspace_fs`](packages/workspace_fs/) | Local workspace/project/resource filesystem mapping and persistence |
+| [`project_system`](packages/project_system/) | Project model, file layout conventions, preview/run integration, snapshots |
+| [`chat_domain`](packages/chat_domain/) | Conversation domain models, message flow structures, and chat state abstractions |
+| [`platform_bridge`](packages/platform_bridge/) | Platform bridge for filesystem permissions, sandbox paths, local services, and browser/WebView integration |
+| [`design_system`](packages/design_system/) | Shared UI tokens, themes, and reusable components |
+| [`test_harness`](packages/test_harness/) | Test doubles, fixtures, and workspace/project test utilities |
 
 ---
 
@@ -51,25 +60,11 @@ bricks/
 
 ### Quick Setup
 
-Initialize your development environment with one command:
+Initialize your development environment:
 
 ```bash
 ./tools/init_dev_env.sh
 ```
-
-This will:
-- Check prerequisites (Flutter, Dart, Melos)
-- Set up Flutter web support
-- Bootstrap all package dependencies
-- Show next steps
-
-Or follow the manual steps below:
-
-### Prerequisites
-
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.x
-- [Melos](https://melos.invertase.dev/) (`dart pub global activate melos`)
-- [Node.js](https://nodejs.org/) ≥ 20.19.0 (for OpenSpec CLI)
 
 ### OpenSpec
 
@@ -96,46 +91,11 @@ Then start a spec-driven change by creating a new OpenSpec proposal with:
 /opsx:propose "your idea"
 ```
 
-### Bootstrap
+### Build / Test / Analyze
 
-```bash
-melos bootstrap
-```
+For build prerequisites and detailed command workflows, see [BUILD.md](BUILD.md).
 
-### Run the app
-
-```bash
-cd apps/mobile_chat_app
-flutter run
-```
-
-### Run all tests
-
-```bash
-melos test
-```
-
-Or run tests for specific package types:
-
-```bash
-# Run tests for Dart-only packages
-melos test:dart
-
-# Run tests for Flutter packages
-melos test:flutter
-```
-
-### Analyze
-
-```bash
-melos analyze
-```
-
-### Build
-
-For comprehensive build instructions, see [BUILD.md](BUILD.md).
-
-Quick build using the automated script:
+For quick automation, use:
 
 ```bash
 ./build.sh
@@ -147,10 +107,10 @@ Quick build using the automated script:
 
 See [`docs/architecture.md`](docs/architecture.md) for the full architecture design.
 
-### Core principles
+### Product architecture highlights
 
-1. **Chat is the main interaction model** – the app is centered around conversation.
-2. **Agent Core is a separate module** – the chat app depends on stable `agent_sdk_contract` interfaces, not on `agent_core` internals.
-3. **No plugin system** – skills, sub-agents, and filesystem-based configuration are sufficient.
-4. **Workspace maps directly to the device filesystem** – the app is local-first.
-5. **Projects are websites/apps** – domain-specific runtimes are content/templates, not architecture.
+1. **Multi-channel conversation architecture** – one workspace can host multiple channels (for example: product planning, implementation, QA, and operations).
+2. **Multi-partition dialogue system** – each channel can be partitioned by context boundary (task/thread/environment) to keep prompts, memory, and outputs isolated and auditable.
+3. **Multi-OpenClaw instance control** – the orchestration layer supports controlling multiple OpenClaw instances so teams can route work by capability, environment, or workload.
+4. **Agent Core is a separate module** – the chat app depends on stable `agent_sdk_contract` interfaces, not on `agent_core` internals.
+5. **Workspace maps directly to the device filesystem** – the app is local-first and keeps project artifacts transparent.
