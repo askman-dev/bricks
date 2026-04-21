@@ -293,6 +293,76 @@ describe('platform route auth and ack constraints', () => {
   });
 });
 
+describe('platform SSE events stream', () => {
+  it('returns SSE content type and streams events', async () => {
+    vi.mocked(listPlatformEvents)
+      .mockResolvedValueOnce({ nextCursor: 'cur_1', events: [] })
+      .mockResolvedValueOnce({
+        nextCursor: 'cur_2',
+        events: [
+          {
+            eventId: 'evt_sse_1',
+            eventType: 'message.created',
+            workspaceId: 'ws_1',
+            conversationId: 'conv_1',
+            payload: { text: 'hello from SSE' },
+          },
+        ],
+      });
+
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/stream?cursor=cur_0`, {
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+
+    // Read chunks until we receive a data event, then abort.
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let received = '';
+    let foundData = false;
+
+    // Poll for up to 5 seconds to let the SSE poll fire.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !foundData) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += decoder.decode(value, { stream: true });
+      if (received.includes('data:')) {
+        foundData = true;
+      }
+    }
+
+    reader.cancel();
+
+    expect(foundData).toBe(true);
+    const dataLine = received
+      .split('\n')
+      .find((l) => l.startsWith('data:'))
+      ?.replace(/^data:\s*/, '');
+    expect(dataLine).toBeDefined();
+    const parsed = JSON.parse(dataLine!) as { events?: Array<{ eventId?: string }> };
+    expect(parsed.events?.[0]?.eventId).toBe('evt_sse_1');
+  });
+
+  it('requires cursor parameter', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/stream`, {
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_CURSOR');
+  });
+});
+
 describe('platform route rate limiting', () => {
   let limitedServer: ReturnType<express.Express['listen']> | null = null;
   let limitedBaseUrl = '';

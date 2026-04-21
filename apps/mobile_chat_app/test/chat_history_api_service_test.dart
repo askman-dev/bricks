@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,18 @@ import 'package:http/testing.dart';
 import 'package:mobile_chat_app/features/chat/chat_history_api_service.dart';
 import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/chat_topology.dart';
+
+/// A minimal [http.BaseClient] whose [send] method is fully injectable for
+/// testing streaming (SSE) responses that [MockClient] cannot model.
+class _MockStreamedClient extends http.BaseClient {
+  _MockStreamedClient(this._handler);
+
+  final Future<http.StreamedResponse> Function(http.BaseRequest) _handler;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _handler(request);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -93,6 +106,8 @@ void main() {
     final client = MockClient((request) async {
       expect(request.method, equals('GET'));
       expect(request.url.path, contains('/chat/sync/'));
+      expect(request.url.queryParameters['afterSeq'], equals('10'));
+      expect(request.url.queryParameters.containsKey('waitMs'), isFalse);
       return http.Response(
         jsonEncode({
           'messages': [
@@ -452,5 +467,75 @@ void main() {
     expect(channelNames, hasLength(1));
     expect(channelNames.single.channelId, equals('channel-1'));
     expect(channelNames.single.displayName, equals('renamed-channel'));
+  });
+
+  test('listenEvents yields parsed snapshots from SSE data frames', () async {
+    final controller = StreamController<List<int>>();
+
+    final client = _MockStreamedClient((request) async {
+      expect(request.method, equals('GET'));
+      expect(request.url.path, contains('/chat/events/'));
+      expect(request.url.queryParameters['afterSeq'], equals('5'));
+      expect(request.headers['Authorization'], equals('Bearer sse-token'));
+      return http.StreamedResponse(controller.stream, 200);
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final events = service.listenEvents(
+      token: 'sse-token',
+      sessionId: 'session:default:main',
+      afterSeq: 5,
+    );
+
+    // Emit one SSE data frame via the stream controller.
+    final eventJson = jsonEncode({
+      'messages': [
+        {
+          'messageId': 'bot-1',
+          'role': 'assistant',
+          'content': 'hello from SSE',
+          'createdAt': '2026-04-21T00:00:01.000Z',
+        },
+      ],
+      'lastSeqId': 6,
+    });
+    controller.add(utf8.encode('data: $eventJson\n\n'));
+
+    final snapshot = await events.first;
+    await controller.close();
+
+    expect(snapshot.messages, hasLength(1));
+    expect(snapshot.messages.first.messageId, equals('bot-1'));
+    expect(snapshot.lastSeqId, equals(6));
+  });
+
+  test('listenEvents ignores SSE heartbeat comments', () async {
+    final controller = StreamController<List<int>>();
+
+    final client = _MockStreamedClient((request) async {
+      return http.StreamedResponse(controller.stream, 200);
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final events = service.listenEvents(
+      token: 'token-1',
+      sessionId: 'session:default:main',
+      afterSeq: 0,
+    );
+
+    // Send a heartbeat comment followed by a real data frame.
+    final eventJson = jsonEncode({
+      'messages': [
+        {'messageId': 'm-hb', 'role': 'user', 'content': 'hi'},
+      ],
+      'lastSeqId': 1,
+    });
+    controller.add(utf8.encode(': heartbeat\n\ndata: $eventJson\n\n'));
+
+    final snapshot = await events.first;
+    await controller.close();
+
+    expect(snapshot.messages.first.messageId, equals('m-hb'));
+    expect(snapshot.lastSeqId, equals(1));
   });
 }
