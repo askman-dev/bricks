@@ -926,6 +926,39 @@ class _ChatScreenState extends State<ChatScreen> {
     return _routerLabel(router);
   }
 
+  Widget _buildRouterMenuOption({
+    required BuildContext context,
+    required String label,
+    required bool selected,
+    String? sublabel,
+  }) {
+    final hintStyle = Theme.of(context).textTheme.bodySmall;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 20,
+          child: selected
+              ? const Icon(Icons.check, size: 16)
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: sublabel == null
+              ? Text(label)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(label),
+                    Text(sublabel, style: hintStyle),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
   String? _sourceFromRespondRouter(String? router) {
     if (router == null || router.isEmpty || router == 'default') return null;
     return 'backend.respond.$router';
@@ -1796,55 +1829,63 @@ class _ChatScreenState extends State<ChatScreen> {
                 onSelected: _handleRouterMenuSelection,
                 itemBuilder: (context) {
                   final isThreadConversation = _isThreadConversation();
-                  final channelRouterLabel = _routerLabel(
-                    _channelRouters[_activeChannelId] ??
-                        ChatRouter.defaultRoute,
-                  );
+                  final channelRouter = _channelRouters[_activeChannelId] ??
+                      ChatRouter.defaultRoute;
+                  final channelRouterLabel = _routerLabel(channelRouter);
+                  final explicitThreadRouter = _explicitThreadRouter();
                   return [
                     if (!isThreadConversation) ...[
                       PopupMenuItem<String>(
                         enabled: false,
-                        child: Text(
-                          'Channel router · $channelRouterLabel',
+                        child: const Text('Channel router'),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'channel:default',
+                        child: _buildRouterMenuOption(
+                          context: context,
+                          label: 'Bricks Default',
+                          selected: channelRouter == ChatRouter.defaultRoute,
                         ),
                       ),
-                      const PopupMenuItem<String>(
-                        value: 'channel:default',
-                        child: Text('Bricks Default'),
-                      ),
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'channel:openclaw',
-                        child: Text('OpenClaw'),
+                        child: _buildRouterMenuOption(
+                          context: context,
+                          label: 'OpenClaw',
+                          selected: channelRouter == ChatRouter.openclaw,
+                        ),
                       ),
                     ],
                     if (isThreadConversation) ...[
                       PopupMenuItem<String>(
                         enabled: false,
-                        child: Text(
-                          'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
-                        ),
+                        child: const Text('Thread router'),
                       ),
                       PopupMenuItem<String>(
                         value: 'thread:inherit',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('Follow channel'),
-                            Text(
-                              channelRouterLabel,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
+                        child: _buildRouterMenuOption(
+                          context: context,
+                          label: 'Follow channel',
+                          sublabel: channelRouterLabel,
+                          selected: explicitThreadRouter == null,
                         ),
                       ),
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'thread:default',
-                        child: Text('Bricks Default'),
+                        child: _buildRouterMenuOption(
+                          context: context,
+                          label: 'Bricks Default',
+                          selected:
+                              explicitThreadRouter == ChatRouter.defaultRoute,
+                        ),
                       ),
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'thread:openclaw',
-                        child: Text('OpenClaw'),
+                        child: _buildRouterMenuOption(
+                          context: context,
+                          label: 'OpenClaw',
+                          selected: explicitThreadRouter == ChatRouter.openclaw,
+                        ),
                       ),
                     ],
                   ];
