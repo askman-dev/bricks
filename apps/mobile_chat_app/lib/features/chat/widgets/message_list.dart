@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
@@ -16,17 +17,31 @@ class MessageList extends StatefulWidget {
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
 
+  /// Key attached to the last user message item so its render object can be
+  /// located after a lazy-list layout pass.
+  final GlobalKey _lastUserMsgKey = GlobalKey();
+
   // Persist the previous snapshot in state so comparisons work correctly even
   // when the same List instance is mutated in place (e.g. ChatScreen passes
   // _messages directly and mutates it via ..clear()..addAll / add / [i]=).
   int _prevLength = 0;
   _LastMessageKey? _prevLastKey;
 
+  /// Index of the last user message in [widget.messages], or null when there
+  /// are no user messages.  Updated in [initState] and [didUpdateWidget] so
+  /// that the [build] method can attach [_lastUserMsgKey] to the correct item.
+  int? _lastUserMsgIndex;
+
+  /// Gap from the viewport top where the last user message's bottom should
+  /// land after a scroll event – approximately 3 lines of text.
+  static const double _kUserMsgTopGap = 72.0;
+
   @override
   void initState() {
     super.initState();
     _saveSnapshot();
-    _scrollToBottom();
+    _updateLastUserMsgIndex();
+    _scrollToLastUserMessage();
   }
 
   @override
@@ -52,8 +67,20 @@ class _MessageListState extends State<MessageList> {
     if (newLength != _prevLength || newKey != _prevLastKey) {
       _prevLength = newLength;
       _prevLastKey = newKey;
+      _updateLastUserMsgIndex();
       if (!streamingProgressOnly) {
-        _scrollToBottom();
+        _scrollToLastUserMessage();
+      }
+    }
+  }
+
+  void _updateLastUserMsgIndex() {
+    _lastUserMsgIndex = null;
+    final messages = widget.messages;
+    for (int i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role == 'user') {
+        _lastUserMsgIndex = i;
+        break;
       }
     }
   }
@@ -71,14 +98,40 @@ class _MessageListState extends State<MessageList> {
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    // With reverse: true on the ListView, position 0 is always the visual
-    // bottom (most-recent messages). jumpTo(0) is exact and has no timing
-    // dependency on maxScrollExtent being fully computed.
+  void _scrollToLastUserMessage() {
+    // Frame 1: jump to the end of the list so ListView.builder builds the items
+    // near the last user message (lazy items near the bottom may not be
+    // materialised until scrolled into proximity).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
-      _scrollController.jumpTo(0);
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+
+      // Frame 2: after layout, [_lastUserMsgKey] is attached to the last user
+      // message render object; compute the scroll offset that places its bottom
+      // [_kUserMsgTopGap] pixels below the viewport top, giving enough vertical
+      // space for the streaming assistant reply to appear below the user bubble.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        if (_lastUserMsgIndex == null) return;
+
+        final ctx = _lastUserMsgKey.currentContext;
+        if (ctx == null) return;
+
+        final renderBox = ctx.findRenderObject() as RenderBox?;
+        if (renderBox == null || !renderBox.attached) return;
+
+        final viewport = RenderAbstractViewport.of(renderBox);
+        // Scroll offset that places the item's TOP at the viewport's TOP.
+        final revealTopOffset =
+            viewport.getOffsetToReveal(renderBox, 0.0).offset;
+        // Shift down so the item's BOTTOM lands [_kUserMsgTopGap] below the
+        // viewport top.  Clamp to the valid scroll range.
+        final targetOffset =
+            (revealTopOffset + renderBox.size.height - _kUserMsgTopGap)
+                .clamp(0.0, _scrollController.position.maxScrollExtent);
+        _scrollController.jumpTo(targetOffset);
+      });
     });
   }
 
@@ -162,20 +215,14 @@ class _MessageListState extends State<MessageList> {
     return SelectionArea(
       child: ListView.builder(
         controller: _scrollController,
-        // reverse: true makes position 0 the visual bottom (latest messages).
-        // This means new messages appear at the bottom without needing explicit
-        // scroll-to-bottom calls that depend on maxScrollExtent being accurate.
-        reverse: true,
         padding: const EdgeInsets.all(BricksSpacing.md),
         itemCount: messages.length,
         itemBuilder: (context, index) {
-          // Reverse the index so that the newest message is at the bottom
-          // (index 0 in reverse list = messages.last).
-          final msg = messages[messages.length - 1 - index];
+          final msg = messages[index];
           final isUser = msg.role == 'user';
           final deliveryIndicator =
               isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
-          return Align(
+          final Widget item = Align(
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Column(
               crossAxisAlignment:
@@ -338,6 +385,13 @@ class _MessageListState extends State<MessageList> {
               ],
             ),
           );
+          // Attach the global key to the last user message so
+          // [_scrollToLastUserMessage] can locate its render object after a
+          // layout pass.
+          if (index == _lastUserMsgIndex) {
+            return KeyedSubtree(key: _lastUserMsgKey, child: item);
+          }
+          return item;
         },
       ),
     );
