@@ -1094,11 +1094,26 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  bool _hasPendingUserTasks() {
+    final assistantTaskIds = _messages
+        .where((m) => m.role == 'assistant' && m.taskId != null)
+        .map((m) => m.taskId!)
+        .toSet();
+    return _messages.any(
+      (message) =>
+          message.role == 'user' &&
+          message.taskId != null &&
+          message.taskState == ChatTaskState.accepted &&
+          !assistantTaskIds.contains(message.taskId),
+    );
+  }
+
   bool _shouldSyncActiveScope() {
     final token = _authToken;
     if (token == null || token.isEmpty) return false;
     if (_effectiveRouterForScope() == ChatRouter.openclaw) return true;
-    return _hasPendingAssistantTasks();
+    if (_isSending || _isStreaming) return true;
+    return _hasPendingAssistantTasks() || _hasPendingUserTasks();
   }
 
   void _disconnectSse() {
@@ -1121,33 +1136,33 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _sseSubscription = _chatHistoryApiService
         .listenEvents(
-          token: token,
-          sessionId: capturedSessionId,
-          afterSeq: _lastSyncedSeq,
-        )
+      token: token,
+      sessionId: capturedSessionId,
+      afterSeq: _lastSyncedSeq,
+    )
         .listen(
-          (snapshot) {
-            if (!mounted || _sessionIdForScope != capturedSessionId) return;
-            _applySseSnapshot(
-              snapshot,
-              channelId: capturedChannelId,
-              subSection: capturedSubSection,
-            );
-          },
-          onError: (Object error) {
-            debugPrint('SSE chat events error: $error');
-            if (mounted && _sessionIdForScope == capturedSessionId) {
-              Future.delayed(_sseReconnectDelay, _connectSse);
-            }
-          },
-          onDone: () {
-            if (mounted &&
-                _sessionIdForScope == capturedSessionId &&
-                _shouldSyncActiveScope()) {
-              Future.delayed(_sseReconnectDelay, _connectSse);
-            }
-          },
+      (snapshot) {
+        if (!mounted || _sessionIdForScope != capturedSessionId) return;
+        _applySseSnapshot(
+          snapshot,
+          channelId: capturedChannelId,
+          subSection: capturedSubSection,
         );
+      },
+      onError: (Object error) {
+        debugPrint('SSE chat events error: $error');
+        if (mounted && _sessionIdForScope == capturedSessionId) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
+      onDone: () {
+        if (mounted &&
+            _sessionIdForScope == capturedSessionId &&
+            _shouldSyncActiveScope()) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
+    );
   }
 
   void _configureActiveScopeSync() {
@@ -1346,11 +1361,8 @@ class _ChatScreenState extends State<ChatScreen> {
       role: 'user',
       content: text,
       taskId: taskId,
-      taskState: ChatTaskState.accepted,
       idempotencyKey: idempotencyKey,
       createdAt: envelope.createdAt,
-      acknowledgedAt: ack.acceptedAt,
-      checkpointCursor: ack.checkpointCursor,
       channelId: envelope.channelId,
       sessionId: envelope.sessionId,
       threadId: envelope.threadId,
@@ -1365,63 +1377,19 @@ class _ChatScreenState extends State<ChatScreen> {
       traceId: arbitrationMode ? traceId : null,
     );
     _appendMessage(userMessage);
-    _appendMessage(
-      ChatMessage(
-        messageId: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        agentId: resolvedBotId,
-        agentName: resolvedBotId,
-        isStreaming: true,
-        taskId: taskId,
-        taskState: ChatTaskState.accepted,
-        idempotencyKey: idempotencyKey,
-        createdAt: envelope.createdAt,
-        acknowledgedAt: ack.acceptedAt,
-        checkpointCursor: ack.checkpointCursor,
-        sessionId: envelope.sessionId,
-        threadId: envelope.threadId,
-        resolvedBotId: resolvedBotId,
-        resolvedSkillId: resolvedSkillId,
-        arbitrationMode: arbitrationMode,
-        fallbackToDefaultBot: arbitration.fallbackToDefaultBot,
-        tieDetected: arbitration.tieDetected,
-        tieBotIds: arbitration.tieBotIds,
-        selectedScore: arbitration.selectedScore,
-        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
-        decisionReason: arbitration.reason,
-        traceId: arbitrationMode ? traceId : null,
-      ),
-    );
 
     setState(() {
       _isSending = true;
-      _isStreaming = true;
+      _isStreaming = false;
     });
 
     final token = _authToken;
     final runtimeSettings = _settingsForAgent(agent);
     if (token == null || token.isEmpty) {
-      final updated = _updateMessageById(
-        assistantMessageId,
-        (current) {
-          return current.copyWith(
-            content: 'Error: Missing auth token',
-            isStreaming: false,
-            taskState: ChatTaskState.failed,
-          );
-        },
-        onStateUpdate: () {
-          _isSending = false;
-          _isStreaming = false;
-        },
-      );
-      if (!updated) {
-        setState(() {
-          _isSending = false;
-          _isStreaming = false;
-        });
-      }
+      setState(() {
+        _isSending = false;
+        _isStreaming = false;
+      });
       return;
     }
 
@@ -1446,33 +1414,20 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       // Ignore stale completions if stop was pressed after this request started.
       if (generation != _respondGeneration) return;
-      _updateMessageById(
+      final updated = _updateMessageById(
         userMessageId,
         (current) => current.copyWith(
-          taskState: result.taskState ?? current.taskState,
+          taskState: result.taskState ?? ChatTaskState.accepted,
           source: _sourceFromRespondRouter(result.router) ?? current.source,
+          acknowledgedAt: ack.acceptedAt,
+          checkpointCursor: ack.checkpointCursor,
         ),
-      );
-      final updated = _updateMessageById(
-        assistantMessageId,
-        (current) {
-          return current.copyWith(
-            content: result.text,
-            isStreaming: false,
-            taskState: result.taskState ??
-                (result.isAsync
-                    ? ChatTaskState.dispatched
-                    : ChatTaskState.completed),
-          );
-        },
         onStateUpdate: () {
           if (result.lastSeqId > _lastSyncedSeq) {
             _lastSyncedSeq = result.lastSeqId;
           }
-          if (result.isAsync) {
-            _isSending = false;
-            _isStreaming = false;
-          }
+          _isSending = false;
+          _isStreaming = false;
         },
       );
       if (!updated) {
@@ -1482,12 +1437,10 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         return;
       }
-      if (result.isAsync) {
-        _configureActiveScopeSync();
-        return;
-      }
-      // Backend already persisted both messages; skip redundant client-side
-      // upsert to avoid overwriting backend-only metadata (provider/model/source).
+      _configureActiveScopeSync();
+      // Backend now persists assistant responses asynchronously; skip
+      // client-side assistant placeholder/upsert and rely on SSE/sync.
+      if (result.isAsync) return;
       if (mounted) {
         await _handleProactiveResponses(text);
         if (mounted) {
@@ -1501,11 +1454,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       if (generation != _respondGeneration) return;
       final updated = _updateMessageById(
-        assistantMessageId,
+        userMessageId,
         (current) {
           return current.copyWith(
-            content: 'Error: $error',
-            isStreaming: false,
             taskState: ChatTaskState.failed,
           );
         },

@@ -133,6 +133,96 @@ const respondLimiter = rateLimit({
   },
 });
 
+async function runDefaultRouterRespondAsync(params: {
+  userId: string;
+  acceptedTaskId: string;
+  acceptedSessionId: string;
+  assistantMessageId: string;
+  channelId: string;
+  threadId: string | null;
+  resolvedBotId: string | null;
+  resolvedSkillId: string | null;
+  body: Record<string, unknown>;
+}) {
+  const {
+    userId,
+    acceptedTaskId,
+    acceptedSessionId,
+    assistantMessageId,
+    channelId,
+    threadId,
+    resolvedBotId,
+    resolvedSkillId,
+    body,
+  } = params;
+
+  // NOTE: This runs after the HTTP response has been sent. On Vercel Serverless
+  // Functions the runtime may freeze the invocation once the response is sent,
+  // so this work is not guaranteed to complete. A durable background job/queue
+  // (or platform-provided waitUntil) would be needed for production reliability.
+  try {
+    const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
+      limit: 40,
+      maxChars: 10000,
+    });
+
+    const response = await generateWithUserConfig(
+      userId,
+      {
+        model: typeof body.model === "string" ? body.model : undefined,
+        configId: typeof body.configId === "string" ? body.configId : undefined,
+        messages: modelMessages,
+      },
+      parseProvider(body.provider),
+    );
+
+    await upsertMessages(userId, [
+      {
+        messageId: assistantMessageId,
+        taskId: acceptedTaskId,
+        channelId,
+        sessionId: acceptedSessionId,
+        threadId,
+        role: "assistant",
+        content: response.text,
+        taskState: "completed",
+        checkpointCursor: null,
+        metadata: {
+          resolvedBotId,
+          resolvedSkillId,
+          provider: response.provider,
+          model: response.model,
+          source: "backend.respond",
+        },
+        createdAt: null,
+      },
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await upsertMessages(userId, [
+      {
+        messageId: assistantMessageId,
+        taskId: acceptedTaskId,
+        channelId,
+        sessionId: acceptedSessionId,
+        threadId,
+        role: "assistant",
+        content: `Error: ${message}`,
+        taskState: "failed",
+        checkpointCursor: null,
+        metadata: {
+          resolvedBotId,
+          resolvedSkillId,
+          source: "backend.respond",
+          error: message,
+        },
+        createdAt: null,
+      },
+    ]);
+    console.error("Chat default async respond error:", error);
+  }
+}
+
 router.post(
   "/respond",
   respondLimiter,
@@ -232,7 +322,7 @@ router.post(
         return;
       }
 
-      await upsertMessages(userId, [
+      const persisted = await upsertMessages(userId, [
         {
           messageId: userMessageId,
           taskId: acceptedTaskId,
@@ -248,58 +338,26 @@ router.post(
         },
       ]);
 
-      const modelMessages = await listSessionMessagesForModel(
+      void runDefaultRouterRespondAsync({
         userId,
+        acceptedTaskId,
         acceptedSessionId,
-        {
-          limit: 40,
-          maxChars: 10000,
-        },
-      );
-
-      const response = await generateWithUserConfig(
-        userId,
-        {
-          model: typeof body.model === "string" ? body.model : undefined,
-          configId:
-            typeof body.configId === "string" ? body.configId : undefined,
-          messages: modelMessages,
-        },
-        parseProvider(body.provider),
-      );
-
-      const persisted = await upsertMessages(userId, [
-        {
-          messageId: assistantMessageId,
-          taskId: acceptedTaskId,
-          channelId,
-          sessionId: acceptedSessionId,
-          threadId: input.threadId,
-          role: "assistant",
-          content: response.text,
-          taskState: "completed",
-          checkpointCursor: null,
-          metadata: {
-            resolvedBotId: input.resolvedBotId,
-            resolvedSkillId: input.resolvedSkillId,
-            provider: response.provider,
-            model: response.model,
-            source: "backend.respond",
-          },
-          createdAt: null,
-        },
-      ]);
+        assistantMessageId,
+        channelId,
+        threadId: input.threadId,
+        resolvedBotId: input.resolvedBotId,
+        resolvedSkillId: input.resolvedSkillId,
+        body,
+      });
 
       res.json({
         taskId: acceptedTaskId,
         sessionId: acceptedSessionId,
         assistantMessageId,
-        text: response.text,
-        provider: response.provider,
-        model: response.model,
+        text: "",
         lastSeqId: persisted.lastSeqId,
-        state: "completed",
-        mode: "sync",
+        state: "accepted",
+        mode: "async",
         router: resolvedRouter,
       });
     } catch (error) {

@@ -304,14 +304,13 @@ void main() {
   });
 
   group('User delivery status', () {
-    testWidgets('does not show status for default router messages',
+    testWidgets('does not show status before user message is accepted',
         (tester) async {
       final user = ChatMessage(
         messageId: 'u-default',
         role: 'user',
         content: 'hello',
         taskId: 'task-default',
-        source: 'backend.respond',
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
@@ -324,42 +323,48 @@ void main() {
       );
     });
 
-    testWidgets('shows gray lobster for openclaw accepted messages',
+    testWidgets('shows one check for accepted user message before reply starts',
         (tester) async {
       final user = ChatMessage(
-        messageId: 'u-openclaw-accepted',
+        messageId: 'u-default-accepted',
         role: 'user',
         content: 'hello',
-        taskId: 'task-openclaw-accepted',
-        source: 'backend.respond.openclaw',
+        taskId: 'task-default-accepted',
+        taskState: ChatTaskState.accepted,
+        source: 'backend.respond',
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
       await tester.pumpWidget(_build([user]));
       await tester.pumpAndSettle();
 
-      final lobster = tester.widget<Text>(
-        find.byKey(
-          const ValueKey<String>('user-delivery-u-openclaw-accepted'),
-        ),
+      final row = find.byKey(
+        const ValueKey<String>('user-delivery-u-default-accepted'),
       );
-      expect(lobster.data, '🦞');
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+      );
+      expect(find.descendant(of: row, matching: find.text('🦞')), findsNothing);
     });
 
-    testWidgets('shows green check when openclaw has replied', (tester) async {
+    testWidgets('shows check + green check when default router has replied',
+        (tester) async {
       final user = ChatMessage(
-        messageId: 'u-openclaw-completed',
+        messageId: 'u-default-completed',
         role: 'user',
         content: 'hello',
-        taskId: 'task-openclaw-completed',
-        source: 'backend.respond.openclaw',
+        taskId: 'task-default-completed',
+        taskState: ChatTaskState.accepted,
+        source: 'backend.respond',
         timestamp: DateTime.utc(2026, 1, 1),
       );
       final assistant = ChatMessage(
-        messageId: 'a-openclaw-completed',
+        messageId: 'a-default-completed',
         role: 'assistant',
         content: 'done',
-        taskId: 'task-openclaw-completed',
+        taskId: 'task-default-completed',
         taskState: ChatTaskState.completed,
         timestamp: DateTime.utc(2026, 1, 1, 0, 1),
       );
@@ -367,49 +372,67 @@ void main() {
       await tester.pumpWidget(_build([user, assistant]));
       await tester.pumpAndSettle();
 
-      final icon = tester.widget<Icon>(
-        find.byKey(
-          const ValueKey<String>('user-delivery-u-openclaw-completed'),
-        ),
+      final row = find.byKey(
+        const ValueKey<String>('user-delivery-u-default-completed'),
       );
-      expect(icon.icon, Icons.check);
-      expect(icon.color, Colors.green);
+      expect(
+        find.descendant(of: row, matching: find.byIcon(Icons.check)),
+        findsNWidgets(2),
+      );
+      final icons = tester.widgetList<Icon>(
+        find.descendant(of: row, matching: find.byIcon(Icons.check)),
+      );
+      expect(icons.last.color, Colors.green);
     });
 
-    testWidgets('shows gray then green check for generic remote routes',
+    testWidgets('shows check + lobster when openclaw reply starts',
         (tester) async {
       final user = ChatMessage(
-        messageId: 'u-remote',
+        messageId: 'u-openclaw',
         role: 'user',
         content: 'hello',
-        taskId: 'task-remote',
-        source: 'backend.respond.custom-router',
+        taskId: 'task-openclaw',
+        taskState: ChatTaskState.accepted,
+        source: 'backend.respond.openclaw',
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
       await tester.pumpWidget(_build([user]));
       await tester.pumpAndSettle();
-      final beforeReply = tester.widget<Icon>(
-        find.byKey(const ValueKey<String>('user-delivery-u-remote')),
+      final beforeReplyRow = find.byKey(
+        const ValueKey<String>('user-delivery-u-openclaw'),
       );
-      expect(beforeReply.icon, Icons.check);
-      expect(beforeReply.color, isNot(Colors.green));
+      expect(
+        find.descendant(of: beforeReplyRow, matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: beforeReplyRow, matching: find.text('🦞')),
+        findsNothing,
+      );
 
       final assistant = ChatMessage(
-        messageId: 'a-remote',
+        messageId: 'a-openclaw',
         role: 'assistant',
         content: 'done',
-        taskId: 'task-remote',
-        taskState: ChatTaskState.completed,
+        taskId: 'task-openclaw',
+        taskState: ChatTaskState.accepted,
         timestamp: DateTime.utc(2026, 1, 1, 0, 1),
       );
 
       await tester.pumpWidget(_build([user, assistant]));
       await tester.pumpAndSettle();
-      final afterReply = tester.widget<Icon>(
-        find.byKey(const ValueKey<String>('user-delivery-u-remote')),
+      final afterReplyRow = find.byKey(
+        const ValueKey<String>('user-delivery-u-openclaw'),
       );
-      expect(afterReply.color, Colors.green);
+      expect(
+        find.descendant(of: afterReplyRow, matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: afterReplyRow, matching: find.text('🦞')),
+        findsOneWidget,
+      );
     });
   });
 }

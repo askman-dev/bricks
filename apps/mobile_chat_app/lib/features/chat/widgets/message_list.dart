@@ -134,10 +134,17 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
-  _UserDeliveryIndicator? _deliveryIndicatorForUserMessage(
+  _UserDeliveryStatus? _deliveryIndicatorForUserMessage(
     ChatMessage message,
     List<ChatMessage> allMessages,
   ) {
+    final persisted = message.taskState == ChatTaskState.accepted ||
+        message.taskState == ChatTaskState.dispatched ||
+        message.taskState == ChatTaskState.completed;
+    if (!persisted) {
+      return null;
+    }
+
     final source = message.source;
     final openclawBySource = source == 'backend.respond.openclaw';
     final genericRemoteBySource = source != null &&
@@ -147,40 +154,34 @@ class _MessageListState extends State<MessageList> {
         message.resolvedBotId == 'openclaw';
     final isOpenclaw = openclawBySource || openclawByResolvedBot;
     final isGenericRemote = genericRemoteBySource;
-    if (!isOpenclaw && !isGenericRemote) {
-      return null;
-    }
-
-    var hasCompletedReply = false;
-    var isDispatched = false;
+    var hasReplyStarted = false;
+    var hasReplyCompleted = false;
     for (final candidate in allMessages) {
       if (candidate.role != 'assistant' ||
           candidate.taskId == null ||
           candidate.taskId != message.taskId) {
         continue;
       }
-
+      hasReplyStarted = true;
       if (candidate.taskState == ChatTaskState.completed ||
-          (candidate.taskState == null &&
-              !candidate.isStreaming &&
-              candidate.content.trim().isNotEmpty)) {
-        hasCompletedReply = true;
+          candidate.content.isNotEmpty) {
+        hasReplyCompleted = true;
       }
-      if (candidate.taskState == ChatTaskState.dispatched) {
-        isDispatched = true;
-      }
-      if (hasCompletedReply && isDispatched) {
-        break;
-      }
-    }
-    if (isOpenclaw) {
-      if (hasCompletedReply) {
-        return const _UserDeliveryIndicator.check(isCompleted: true);
-      }
-      return _UserDeliveryIndicator.lobster(isDispatched: isDispatched);
+      break;
     }
 
-    return _UserDeliveryIndicator.check(isCompleted: hasCompletedReply);
+    final secondIcon = hasReplyStarted
+        ? (isOpenclaw
+            ? _DeliveryIconState.lobster()
+            : _DeliveryIconState.check(isCompleted: hasReplyCompleted))
+        : null;
+    if (!isOpenclaw && !isGenericRemote && !hasReplyStarted) {
+      return const _UserDeliveryStatus(first: _DeliveryIconState.check());
+    }
+    return _UserDeliveryStatus(
+      first: const _DeliveryIconState.check(),
+      second: secondIcon,
+    );
   }
 
   @override
@@ -388,30 +389,85 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
     required this.messageId,
   });
 
-  final _UserDeliveryIndicator indicator;
+  final _UserDeliveryStatus indicator;
   final String? messageId;
 
   @override
   Widget build(BuildContext context) {
     final key = ValueKey<String>('user-delivery-${messageId ?? 'unknown'}');
-    final statusLabel = indicator.icon == _DeliveryIcon.lobster
-        ? 'Pending'
-        : indicator.isCompleted
-        ? 'Delivered'
-        : 'Dispatched';
-    if (indicator.icon == _DeliveryIcon.lobster) {
+    return Row(
+      key: key,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _DeliveryStatusIcon(icon: indicator.first),
+        if (indicator.second != null) ...[
+          const SizedBox(width: 2),
+          _DeliveryStatusIcon(icon: indicator.second!),
+        ],
+      ],
+    );
+  }
+}
+
+enum _DeliveryIcon { lobster, check }
+
+class _DeliveryIconState {
+  const _DeliveryIconState._({
+    required this.icon,
+    required this.isCompleted,
+    required this.opacity,
+  });
+
+  const _DeliveryIconState.lobster({bool isDispatched = true})
+      : this._(
+          icon: _DeliveryIcon.lobster,
+          isCompleted: false,
+          opacity: isDispatched ? 0.75 : 0.45,
+        );
+
+  const _DeliveryIconState.check({bool isCompleted = false})
+      : this._(
+          icon: _DeliveryIcon.check,
+          isCompleted: isCompleted,
+          opacity: 1,
+        );
+
+  final _DeliveryIcon icon;
+  final bool isCompleted;
+  final double opacity;
+}
+
+class _UserDeliveryStatus {
+  const _UserDeliveryStatus({required this.first, this.second});
+
+  final _DeliveryIconState first;
+  final _DeliveryIconState? second;
+}
+
+class _DeliveryStatusIcon extends StatelessWidget {
+  const _DeliveryStatusIcon({required this.icon});
+
+  final _DeliveryIconState icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusLabel = icon.icon == _DeliveryIcon.lobster
+        ? 'OpenClaw reply started'
+        : icon.isCompleted
+            ? 'AI reply completed'
+            : 'Persisted';
+    if (icon.icon == _DeliveryIcon.lobster) {
       return Semantics(
         label: statusLabel,
         child: Tooltip(
           message: statusLabel,
           child: Text(
             '🦞',
-            key: key,
             style: TextStyle(
               fontSize: 12,
               color: Theme.of(
                 context,
-              ).colorScheme.onSurfaceVariant.withOpacity(indicator.opacity),
+              ).colorScheme.onSurfaceVariant.withOpacity(icon.opacity),
             ),
           ),
         ),
@@ -423,43 +479,14 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
         message: statusLabel,
         child: Icon(
           Icons.check,
-          key: key,
           size: 14,
-          color: indicator.isCompleted
+          color: icon.isCompleted
               ? Colors.green
               : Theme.of(context).colorScheme.outline,
         ),
       ),
     );
   }
-}
-
-enum _DeliveryIcon { lobster, check }
-
-class _UserDeliveryIndicator {
-  const _UserDeliveryIndicator._({
-    required this.icon,
-    required this.isCompleted,
-    required this.opacity,
-  });
-
-  const _UserDeliveryIndicator.lobster({required bool isDispatched})
-      : this._(
-          icon: _DeliveryIcon.lobster,
-          isCompleted: false,
-          opacity: isDispatched ? 0.75 : 0.45,
-        );
-
-  const _UserDeliveryIndicator.check({required bool isCompleted})
-      : this._(
-          icon: _DeliveryIcon.check,
-          isCompleted: isCompleted,
-          opacity: 1,
-        );
-
-  final _DeliveryIcon icon;
-  final bool isCompleted;
-  final double opacity;
 }
 
 class _AssistantMarkdownText extends StatelessWidget {
