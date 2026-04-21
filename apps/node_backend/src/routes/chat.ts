@@ -421,29 +421,34 @@ router.get(
       );
 
       let clientDisconnected = false;
-      req.on("close", () => {
+      const onClose = () => {
         clientDisconnected = true;
-      });
+      };
+      req.on("close", onClose);
 
-      const startedAt = Date.now();
-      let synced = await syncMessages(userId, sessionId, afterSeq);
-      while (
-        !clientDisconnected &&
-        waitMs > 0 &&
-        synced.messages.length === 0 &&
-        synced.lastSeqId <= afterSeq &&
-        Date.now() - startedAt < waitMs
-      ) {
-        const elapsed = Date.now() - startedAt;
-        const remaining = waitMs - elapsed;
-        if (remaining <= 0) break;
-        await sleep(Math.min(CHAT_SYNC_LONG_POLL_INTERVAL_MS, remaining));
-        if (clientDisconnected) break;
-        synced = await syncMessages(userId, sessionId, afterSeq);
+      try {
+        const startedAt = Date.now();
+        let synced = await syncMessages(userId, sessionId, afterSeq);
+        while (
+          !clientDisconnected &&
+          waitMs > 0 &&
+          synced.messages.length === 0 &&
+          synced.lastSeqId <= afterSeq &&
+          Date.now() - startedAt < waitMs
+        ) {
+          const elapsed = Date.now() - startedAt;
+          const remaining = waitMs - elapsed;
+          if (remaining <= 0) break;
+          await sleep(Math.min(CHAT_SYNC_LONG_POLL_INTERVAL_MS, remaining));
+          if (clientDisconnected) break;
+          synced = await syncMessages(userId, sessionId, afterSeq);
+        }
+
+        if (clientDisconnected) return;
+        res.json(synced);
+      } finally {
+        req.off("close", onClose);
       }
-
-      if (clientDisconnected) return;
-      res.json(synced);
     } catch (error) {
       console.error("Sync chat messages error:", error);
       res.status(500).json({ error: "Internal server error" });
