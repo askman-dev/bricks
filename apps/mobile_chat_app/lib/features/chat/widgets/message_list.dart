@@ -222,7 +222,112 @@ class _MessageListState extends State<MessageList> {
           final isUser = msg.role == 'user';
           final deliveryIndicator =
               isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
-          final Widget item = Align(
+          // Attach the global key to the bubble Container of the last user
+          // message so [_scrollToLastUserMessage] measures the bubble's height
+          // alone (excluding the timestamp row below) and positions the
+          // bubble's bottom at [_kUserMsgTopGap] from the viewport top.
+          final bool isLastUserMsg = isUser && index == _lastUserMsgIndex;
+          final Widget bubble = Container(
+            key: ValueKey<String>(
+              'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
+            ),
+            margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+            padding: isUser
+                ? const EdgeInsets.symmetric(
+                    horizontal: BricksSpacing.md,
+                    vertical: BricksSpacing.sm,
+                  )
+                : const EdgeInsets.symmetric(
+                    horizontal: BricksSpacing.xs,
+                    vertical: BricksSpacing.xs,
+                  ),
+            width: isUser ? null : double.infinity,
+            constraints: isUser
+                ? BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  )
+                : null,
+            decoration: isUser
+                ? BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(BricksRadius.md),
+                  )
+                : null,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isUser)
+                  _MessageExpandToggle(
+                    key: ValueKey<String>(
+                      'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                    ),
+                    text: msg.content,
+                    textColor: Theme.of(context).colorScheme.onPrimary,
+                  )
+                else
+                  _AssistantMarkdownText(
+                    text: msg.content,
+                    textColor: Theme.of(context).colorScheme.onSurface,
+                    textStyle: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                if (msg.isStreaming)
+                  Padding(
+                    padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                    child: SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isUser
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (msg.taskState != null || msg.taskId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                    child: Text(
+                      [
+                        if (msg.taskState != null)
+                          'task:${_taskLabel(msg.taskState!)}',
+                        if (msg.taskId != null) 'id:${msg.taskId}',
+                      ].join(' · '),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(
+                            color: isUser
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ),
+                if (msg.arbitrationMode && msg.resolvedBotId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                    child: Text(
+                      msg.fallbackToDefaultBot
+                          ? 'fallback→${msg.resolvedBotId}'
+                          : 'selected→${msg.resolvedBotId}',
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(
+                            color: isUser
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Theme.of(context).colorScheme.primary,
+                          ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+          return Align(
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Column(
               crossAxisAlignment:
@@ -252,106 +357,12 @@ class _MessageListState extends State<MessageList> {
                       ],
                     ),
                   ),
-                Container(
-                  key: ValueKey<String>(
-                    'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                  ),
-                  margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-                  padding: isUser
-                      ? const EdgeInsets.symmetric(
-                          horizontal: BricksSpacing.md,
-                          vertical: BricksSpacing.sm,
-                        )
-                      : const EdgeInsets.symmetric(
-                          horizontal: BricksSpacing.xs,
-                          vertical: BricksSpacing.xs,
-                        ),
-                  width: isUser ? null : double.infinity,
-                  constraints: isUser
-                      ? BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
-                        )
-                      : null,
-                  decoration: isUser
-                      ? BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(BricksRadius.md),
-                        )
-                      : null,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (isUser)
-                        _MessageExpandToggle(
-                          key: ValueKey<String>(
-                            'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                          ),
-                          text: msg.content,
-                          textColor: Theme.of(context).colorScheme.onPrimary,
-                        )
-                      else
-                        _AssistantMarkdownText(
-                          text: msg.content,
-                          textColor: Theme.of(context).colorScheme.onSurface,
-                          textStyle: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      if (msg.isStreaming)
-                        Padding(
-                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                          child: SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                isUser
-                                    ? Theme.of(context).colorScheme.onPrimary
-                                    : Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (msg.taskState != null || msg.taskId != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                          child: Text(
-                            [
-                              if (msg.taskState != null)
-                                'task:${_taskLabel(msg.taskState!)}',
-                              if (msg.taskId != null) 'id:${msg.taskId}',
-                            ].join(' · '),
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: isUser
-                                      ? Theme.of(context).colorScheme.onPrimary
-                                      : Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ),
-                      if (msg.arbitrationMode && msg.resolvedBotId != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                          child: Text(
-                            msg.fallbackToDefaultBot
-                                ? 'fallback→${msg.resolvedBotId}'
-                                : 'selected→${msg.resolvedBotId}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: isUser
-                                      ? Theme.of(context).colorScheme.onPrimary
-                                      : Theme.of(context).colorScheme.primary,
-                                ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                // Wrap the bubble with [_lastUserMsgKey] for the last user
+                // message so the scroll logic can target the bubble's
+                // render box (not the full item including timestamp).
+                isLastUserMsg
+                    ? KeyedSubtree(key: _lastUserMsgKey, child: bubble)
+                    : bubble,
                 // Show timestamp below the bubble.
                 Padding(
                   padding: const EdgeInsets.only(
@@ -385,13 +396,6 @@ class _MessageListState extends State<MessageList> {
               ],
             ),
           );
-          // Attach the global key to the last user message so
-          // [_scrollToLastUserMessage] can locate its render object after a
-          // layout pass.
-          if (index == _lastUserMsgIndex) {
-            return KeyedSubtree(key: _lastUserMsgKey, child: item);
-          }
-          return item;
         },
       ),
     );
