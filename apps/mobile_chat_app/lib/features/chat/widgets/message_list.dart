@@ -184,39 +184,17 @@ class _MessageListState extends State<MessageList> {
     required ChatMessage message,
   }) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final result = await showMenu<String>(
+    final result = await showGeneralDialog<String>(
       context: context,
-      position: RelativeRect.fromRect(
-        Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
-        Offset.zero & overlay.size,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: Duration.zero,
+      pageBuilder: (dialogContext, _, __) => _UserMessageContextMenu(
+        position: globalPosition,
+        screenSize: overlay.size,
+        message: message,
       ),
-      items: [
-        const PopupMenuItem<String>(value: 'copy', child: Text('复制')),
-        const PopupMenuItem<String>(value: 'branch', child: Text('分叉（待开发）')),
-        const PopupMenuItem<String>(value: 'resend', child: Text('重发（待开发）')),
-        PopupMenuItem<String>(
-          enabled: false,
-          height: 52,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'message id: ${message.messageId ?? '-'}',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-              ),
-              Text(
-                'task id: ${message.taskId ?? '-'}',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
     if (!context.mounted || result == null) return;
     switch (result) {
@@ -915,4 +893,120 @@ class _LastMessageKey {
         agentName,
         isRecovered,
       ]);
+}
+
+// ---------------------------------------------------------------------------
+// Context menu shown on long-press of a user bubble.
+// Uses showGeneralDialog with Duration.zero so the menu appears instantly
+// without any open/close animation.
+// ---------------------------------------------------------------------------
+
+class _UserMessageContextMenu extends StatelessWidget {
+  const _UserMessageContextMenu({
+    required this.position,
+    required this.screenSize,
+    required this.message,
+  });
+
+  final Offset position;
+  final Size screenSize;
+  final ChatMessage message;
+
+  static const double _menuWidth = 220.0;
+  static const double _itemHeight = 48.0;
+  static const double _menuEdgeMargin = 8.0;
+
+  @override
+  Widget build(BuildContext context) {
+    // Estimate clamped position; footer height is approximate (2 labelSmall lines + padding)
+    const estimatedFooterHeight = 48.0;
+    final menuHeight = _itemHeight * 3 + estimatedFooterHeight;
+
+    double left = position.dx;
+    double top = position.dy;
+    if (left + _menuWidth > screenSize.width - _menuEdgeMargin) {
+      left = screenSize.width - _menuWidth - _menuEdgeMargin;
+    }
+    if (top + menuHeight > screenSize.height - _menuEdgeMargin) {
+      top = screenSize.height - menuHeight - _menuEdgeMargin;
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            behavior: HitTestBehavior.opaque,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          width: _menuWidth,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MenuItem(label: '复制', value: 'copy'),
+                _MenuItem(label: '分叉（待开发）', value: 'branch'),
+                _MenuItem(label: '重发（待开发）', value: 'resend'),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'message id: ${message.messageId ?? '-'}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                      Text(
+                        'task id: ${message.taskId ?? '-'}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MenuItem extends StatelessWidget {
+  const _MenuItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => Navigator.of(context).pop(value),
+      child: SizedBox(
+        height: _UserMessageContextMenu._itemHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(label),
+          ),
+        ),
+      ),
+    );
+  }
 }
