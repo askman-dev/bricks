@@ -25,8 +25,9 @@ import {
   listChatChannelNames,
   upsertChatChannelName,
 } from "../services/chatChannelNameService.js";
-import { generateWithUserConfig } from "../llm/llm_service.js";
+import { streamWithUserConfig } from "../llm/llm_service.js";
 import type { LlmProvider } from "../llm/types.js";
+import { parseMaxTokens } from "./validation.js";
 
 const router = express.Router();
 router.use(authenticate);
@@ -43,6 +44,9 @@ const CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW = 10;
 const CHAT_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.
 const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
+const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
+// Minimum interval between incremental DB flushes during model streaming to avoid write amplification.
+const STREAM_FLUSH_INTERVAL_MS = 300;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -143,6 +147,7 @@ async function runDefaultRouterRespondAsync(params: {
   resolvedBotId: string | null;
   resolvedSkillId: string | null;
   body: Record<string, unknown>;
+  maxTokens: number;
 }) {
   const {
     userId,
@@ -154,6 +159,7 @@ async function runDefaultRouterRespondAsync(params: {
     resolvedBotId,
     resolvedSkillId,
     body,
+    maxTokens,
   } = params;
 
   // NOTE: This runs after the HTTP response has been sent. On Vercel Serverless
@@ -166,15 +172,87 @@ async function runDefaultRouterRespondAsync(params: {
       maxChars: 10000,
     });
 
-    const response = await generateWithUserConfig(
+    const { textStream, provider, modelId } = await streamWithUserConfig(
       userId,
       {
         model: typeof body.model === "string" ? body.model : undefined,
         configId: typeof body.configId === "string" ? body.configId : undefined,
         messages: modelMessages,
+        maxTokens,
       },
       parseProvider(body.provider),
     );
+
+    let assistantContent = "";
+    let hasAnyChunk = false;
+    let lastFlushTime = Date.now();
+    let lastFlushedContent = "";
+
+    const buildDispatchedUpsert = (content: string): MessageUpsertInput => ({
+      messageId: assistantMessageId,
+      taskId: acceptedTaskId,
+      channelId,
+      sessionId: acceptedSessionId,
+      threadId,
+      role: "assistant",
+      content,
+      taskState: "dispatched",
+      checkpointCursor: null,
+      metadata: {
+        resolvedBotId,
+        resolvedSkillId,
+        provider,
+        model: modelId,
+        source: "backend.respond.stream",
+        streamMode: "model-chunk",
+      },
+      createdAt: null,
+    });
+
+    const textStreamIterator = textStream[Symbol.asyncIterator]();
+    let streamFullyConsumed = false;
+    try {
+      while (true) {
+        const { value: chunk, done } = await textStreamIterator.next();
+        if (done) {
+          streamFullyConsumed = true;
+          break;
+        }
+
+        if (typeof chunk !== "string" || chunk.length === 0) {
+          continue;
+        }
+        hasAnyChunk = true;
+        if (assistantContent.length >= MAX_ASSISTANT_STREAM_OUTPUT_CHARS) {
+          break;
+        }
+
+        const remaining = MAX_ASSISTANT_STREAM_OUTPUT_CHARS - assistantContent.length;
+        const appendChunk = chunk.length > remaining ? chunk.slice(0, remaining) : chunk;
+        assistantContent += appendChunk;
+
+        // Flush to DB at most once per STREAM_FLUSH_INTERVAL_MS to avoid write amplification.
+        const now = Date.now();
+        if (now - lastFlushTime >= STREAM_FLUSH_INTERVAL_MS) {
+          lastFlushTime = now;
+          lastFlushedContent = assistantContent;
+          await upsertMessages(userId, [buildDispatchedUpsert(assistantContent)]);
+        }
+      }
+    } finally {
+      if (!streamFullyConsumed && typeof textStreamIterator.return === "function") {
+        try {
+          await textStreamIterator.return();
+        } catch {
+          // Ignore cleanup errors.
+        }
+      }
+    }
+
+    // Always do a final incremental flush for any content not yet persisted.
+    if (hasAnyChunk && assistantContent !== lastFlushedContent) {
+      await upsertMessages(userId, [buildDispatchedUpsert(assistantContent)]);
+    }
 
     await upsertMessages(userId, [
       {
@@ -184,15 +262,16 @@ async function runDefaultRouterRespondAsync(params: {
         sessionId: acceptedSessionId,
         threadId,
         role: "assistant",
-        content: response.text,
+        content: assistantContent,
         taskState: "completed",
         checkpointCursor: null,
         metadata: {
           resolvedBotId,
           resolvedSkillId,
-          provider: response.provider,
-          model: response.model,
-          source: "backend.respond",
+          provider,
+          model: modelId,
+          source: "backend.respond.stream",
+          streamMode: "model-chunk",
         },
         createdAt: null,
       },
@@ -244,6 +323,7 @@ router.post(
       const assistantMessageId = parseSessionId(body.assistantMessageId);
       const userMessage =
         typeof body.userMessage === "string" ? body.userMessage.trim() : "";
+      const parsedMaxTokens = parseMaxTokens(body.maxTokens);
 
       if (
         !taskId ||
@@ -258,6 +338,11 @@ router.post(
           error:
             "Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, userMessage are required",
         });
+        return;
+      }
+
+      if (!parsedMaxTokens.ok) {
+        res.status(400).json({ error: parsedMaxTokens.error });
         return;
       }
 
@@ -348,6 +433,7 @@ router.post(
         resolvedBotId: input.resolvedBotId,
         resolvedSkillId: input.resolvedSkillId,
         body,
+        maxTokens: parsedMaxTokens.value,
       });
 
       res.json({
