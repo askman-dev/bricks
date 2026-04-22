@@ -1992,7 +1992,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   activeModelLabel: _currentComposerModelLabel(),
                   slashCommands: slashCommands,
                   atActions: atActions,
-                  onAgentSelected: _selectAgent,
                   onAtActionSelected: (value) =>
                       _handleComposerAtSelection(effectiveRouter, value),
                   onOpenModelSelection: _openRuntimeModelConfigDialog,
