@@ -89,7 +89,15 @@ class _ChatScreenState extends State<ChatScreen> {
   int _respondGeneration = 0;
   int _idCounter = 0;
 
-  static const List<String> _openClawSlashCommands = <String>[];
+  static const List<String> _openClawSlashCommands = <String>[
+    '/help',
+    '/commands',
+    '/status',
+    '/new',
+    '/model',
+    '/tools',
+    '/btw',
+  ];
 
   @override
   void initState() {
@@ -976,11 +984,40 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  List<ComposerAtAction> _composerAtActions(ChatRouter router) {
+    if (router == ChatRouter.openclaw) {
+      return const <ComposerAtAction>[
+        ComposerAtAction(
+          value: '__openclaw_todo__',
+          label: '待实现',
+          enabled: false,
+        ),
+      ];
+    }
+    if (router == ChatRouter.defaultRoute) {
+      return _agents
+          .map(
+            (agent) => ComposerAtAction(
+              value: agent.name,
+              label: agent.name,
+            ),
+          )
+          .toList();
+    }
+    return const <ComposerAtAction>[];
+  }
+
+  void _handleComposerAtSelection(ChatRouter router, String value) {
+    if (router != ChatRouter.defaultRoute) return;
+    final agent = _findAgent(value);
+    if (agent == null) return;
+    _selectAgent(agent);
+  }
+
   bool _isThreadConversation({String? threadId}) {
     final resolvedThreadId = threadId ?? _activeSubSection;
     return resolvedThreadId != 'main';
   }
-
 
   Widget _buildRouterMenuOption({
     required BuildContext context,
@@ -1861,6 +1898,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 final slashCommands = effectiveRouter == ChatRouter.openclaw
                     ? _openClawSlashCommands
                     : const <String>[];
+                final atActions = _composerAtActions(effectiveRouter);
                 return ComposerBar(
                   activeAgent: _activeAgent,
                   agents: _agents,
@@ -1949,19 +1987,13 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     ),
-                    if (effectiveRouter == ChatRouter.defaultRoute)
-                      const Text(
-                        '@',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
                   ],
                   showComposerConfigMenu: showComposerConfigMenu,
                   activeModelLabel: _currentComposerModelLabel(),
                   slashCommands: slashCommands,
-                  onAgentSelected: _selectAgent,
+                  atActions: atActions,
+                  onAtActionSelected: (value) =>
+                      _handleComposerAtSelection(effectiveRouter, value),
                   onOpenModelSelection: _openRuntimeModelConfigDialog,
                   onShowInfo: _showDebugInfoDialog,
                   onSend: _isSending ? null : _sendMessage,

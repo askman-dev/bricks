@@ -12,7 +12,9 @@ Widget _buildBar(
         List<Widget> leadingActions = const [],
         bool showComposerConfigMenu = true,
         String? activeModelLabel,
-        List<String> slashCommands = const []}) =>
+        List<String> slashCommands = const [],
+        List<ComposerAtAction> atActions = const [],
+        void Function(String value)? onAtActionSelected}) =>
     MaterialApp(
       home: Scaffold(
         body: Column(
@@ -24,6 +26,8 @@ Widget _buildBar(
               showComposerConfigMenu: showComposerConfigMenu,
               activeModelLabel: activeModelLabel,
               slashCommands: slashCommands,
+              atActions: atActions,
+              onAtActionSelected: onAtActionSelected,
               onOpenModelSelection: onOpenModelSelection,
               onShowInfo: onShowInfo,
             ),
@@ -186,6 +190,52 @@ void main() {
 
       final textField = tester.widget<TextField>(find.byType(TextField));
       expect(textField.controller?.text, '/status ');
+    });
+
+    testWidgets('selecting @ action triggers callback', (tester) async {
+      String? selected;
+      await tester.pumpWidget(
+        _buildBar(
+          atActions: const [
+            ComposerAtAction(value: 'Planner', label: 'Planner'),
+          ],
+          onAtActionSelected: (value) => selected = value,
+        ),
+      );
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<String>>(
+        find.byType(PopupMenuButton<String>),
+      );
+      button.onSelected?.call('Planner');
+      await tester.pump();
+
+      expect(selected, 'Planner');
+    });
+
+    testWidgets('@ menu supports disabled placeholder item', (tester) async {
+      await tester.pumpWidget(
+        _buildBar(
+          atActions: const [
+            ComposerAtAction(
+              value: '__todo__',
+              label: '待实现',
+              enabled: false,
+            ),
+          ],
+        ),
+      );
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<String>>(
+        find.byType(PopupMenuButton<String>),
+      );
+      final items = button.itemBuilder(
+        tester.element(find.byType(PopupMenuButton<String>)),
+      );
+      final placeholder = items.whereType<PopupMenuItem<String>>().single;
+      expect(placeholder.enabled, isFalse);
+      expect((placeholder.child as Text).data, '待实现');
     });
   });
 

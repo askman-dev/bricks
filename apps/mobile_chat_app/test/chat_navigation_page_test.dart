@@ -56,6 +56,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Current Chat'), findsOneWidget);
+      expect(find.text('Skills'), findsOneWidget);
+      expect(find.text('待实现'), findsOneWidget);
       expect(find.text('Agents'), findsOneWidget);
       expect(find.text('在设置中新建 Agents'), findsOneWidget);
       expect(find.text('频道'), findsOneWidget);
@@ -110,6 +112,17 @@ void main() {
       await tester.tap(find.text('Agents'));
       await tester.pumpAndSettle();
       expect(find.text('在设置中新建 Agents'), findsOneWidget);
+    });
+
+    testWidgets('tapping Skills title toggles section collapse',
+        (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      expect(find.text('待实现'), findsOneWidget);
+      await tester.tap(find.text('Skills'));
+      await tester.pumpAndSettle();
+      expect(find.text('待实现'), findsNothing);
     });
 
     testWidgets('tapping 频道 title toggles section collapse', (tester) async {
