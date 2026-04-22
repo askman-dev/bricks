@@ -45,6 +45,7 @@ products:
           - default 与 openclaw 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
           - 发送后不应立即出现空 assistant 假占位；assistant 气泡仅在实际内容开始到达（SSE/sync）时出现。
           - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，default/其他远端为第二枚 ✓，openclaw 为第二枚 🦞。
+          - user query 的时间/线程与投递状态应显示在气泡内；长按气泡可弹出“复制/分叉（待开发）/重发（待开发）”菜单，并在底部显示 message id 与 task id。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
           - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
           - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。
