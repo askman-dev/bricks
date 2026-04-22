@@ -34,23 +34,6 @@ Users interact through conversation to create, modify, and iterate on website/ap
    +--------------------+                                   +---------------------+
 ```
 
-## Packages
-
-| Package | Description |
-|---|---|
-| [`agent_core`](packages/agent_core/) | Agent runtime loop, context/session orchestration, tool dispatch, skills, provider abstraction, and event streaming |
-| [`agent_sdk_contract`](packages/agent_sdk_contract/) | Stable SDK contracts between app-facing clients and the agent runtime |
-| [`bricks_ai_core`](packages/bricks_ai_core/) | Bricks AI integration layer and shared AI-facing runtime capabilities |
-| [`bricks_ai_smoke_test`](packages/bricks_ai_smoke_test/) | Smoke-test harness for validating AI integration flows end-to-end |
-| [`workspace_fs`](packages/workspace_fs/) | Local workspace/project/resource filesystem mapping and persistence |
-| [`project_system`](packages/project_system/) | Project model, file layout conventions, preview/run integration, snapshots |
-| [`chat_domain`](packages/chat_domain/) | Conversation domain models, message flow structures, and chat state abstractions |
-| [`platform_bridge`](packages/platform_bridge/) | Platform bridge for filesystem permissions, sandbox paths, local services, and browser/WebView integration |
-| [`design_system`](packages/design_system/) | Shared UI tokens, themes, and reusable components |
-| [`test_harness`](packages/test_harness/) | Test doubles, fixtures, and workspace/project test utilities |
-
----
-
 ## Getting Started
 
 ### Quick Setup
