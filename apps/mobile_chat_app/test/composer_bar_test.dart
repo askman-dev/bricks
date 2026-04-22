@@ -1,4 +1,3 @@
-import 'package:chat_domain/chat_domain.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/chat/widgets/composer_bar.dart';
@@ -239,37 +238,14 @@ void main() {
     });
   });
 
-  group('ComposerBar – @mention suggestions', () {
-    final agents = [
-      AgentDefinition(
-        name: 'my-agent',
-        description: 'A test agent',
-        model: 'sonnet',
-        systemPrompt: 'You are helpful.',
-      ),
-    ];
-
-    testWidgets('typing @ shows agent suggestion', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ComposerBar(
-              agents: agents,
-              // onSend must be non-null to enable the TextField.
-              onSend: (_) {},
-            ),
-          ),
-        ),
-      );
+  group('ComposerBar – input copy', () {
+    testWidgets('input area does not show @ prefix/hint', (tester) async {
+      await tester.pumpWidget(_buildBar());
       await tester.pump();
 
-      // Focus the TextField then type the trigger character.
-      await tester.tap(find.byType(TextField));
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), '@');
-      await tester.pump();
-
-      expect(find.text('@my-agent'), findsOneWidget);
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.decoration?.hintText, 'Ask Bricks to create something…');
+      expect(textField.decoration?.prefixIcon, isNull);
     });
   });
 }

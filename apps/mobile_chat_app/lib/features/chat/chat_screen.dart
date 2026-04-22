@@ -981,11 +981,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return resolvedThreadId != 'main';
   }
 
-  String _threadRouterMenuLabel(ChatRouter? router) {
-    if (router == null) return 'Follow channel';
-    return _routerLabel(router);
-  }
-
   Widget _buildRouterMenuOption({
     required BuildContext context,
     required String label,
@@ -1660,41 +1655,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {});
   }
 
-  PreferredSizeWidget _buildActiveAgentsIndicator() {
-    final active = _participantManager.participants.active;
-    if (active.isEmpty) {
-      return const PreferredSize(
-        preferredSize: Size.fromHeight(0),
-        child: SizedBox.shrink(),
-      );
-    }
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(44),
-      child: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(
-          left: BricksSpacing.md,
-          bottom: BricksSpacing.xs,
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: active.map((p) {
-              final pct = (p.probability * 100).round();
-              return Padding(
-                padding: const EdgeInsets.only(right: BricksSpacing.xs),
-                child: Chip(
-                  avatar: const Icon(Icons.smart_toy_outlined, size: 16),
-                  label: Text('${p.agentName} • $pct%'),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _showDebugInfoDialog() async {
     final activeParticipants = _participantManager.participants.active;
     final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
@@ -1744,7 +1704,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final activeAgentName = _activeAgent?.name;
     String activeChannelName = '频道';
     for (final item in _channels) {
       if (item.id == _activeChannelId) {
@@ -1888,7 +1847,6 @@ class _ChatScreenState extends State<ChatScreen> {
               icon: const Icon(Icons.more_vert),
             ),
           ],
-          bottom: _buildActiveAgentsIndicator(),
         ),
         body: Column(
           children: [
@@ -1990,6 +1948,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     ),
+                    if (effectiveRouter == ChatRouter.defaultRoute)
+                      const Text(
+                        '@',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                   ],
                   showComposerConfigMenu: showComposerConfigMenu,
                   activeModelLabel: _currentComposerModelLabel(),
