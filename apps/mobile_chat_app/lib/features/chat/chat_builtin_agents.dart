@@ -8,12 +8,8 @@ import 'package:chat_domain/chat_domain.dart';
 class ChatBuiltInAgents {
   ChatBuiltInAgents._();
 
-  static const Set<String> ids = {
-    'doc-writer',
-    'easy-qa',
-    'survey-designer',
-    'kids-workbook',
-  };
+  static Set<String> get ids =>
+      definitions().map((d) => d.name).toSet();
 
   static List<AgentDefinition> definitions() => [
         AgentDefinition(

@@ -185,7 +185,10 @@ class _ChatScreenState extends State<ChatScreen> {
           restoredLastSubSectionByChannel[resolvedActiveChannel] ?? 'main';
       setState(() {
         _agents = mergedDefinitions;
-        _builtInAgentNames = ChatBuiltInAgents.ids;
+        _builtInAgentNames = mergedDefinitions
+            .map((d) => d.name)
+            .where(ChatBuiltInAgents.ids.contains)
+            .toSet();
         _activeAgent ??=
             mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
         _loadingAgents = false;
@@ -264,14 +267,18 @@ class _ChatScreenState extends State<ChatScreen> {
   List<AgentDefinition> _mergeWithBuiltInAgents(
     List<AgentDefinition> customDefinitions,
   ) {
-    final merged = <String, AgentDefinition>{};
+    final customNames =
+        customDefinitions.map((definition) => definition.name).toSet();
+    final merged = <AgentDefinition>[];
+
     for (final builtIn in ChatBuiltInAgents.definitions()) {
-      merged[builtIn.name] = builtIn;
+      if (!customNames.contains(builtIn.name)) {
+        merged.add(builtIn);
+      }
     }
-    for (final custom in customDefinitions) {
-      merged[custom.name] = custom;
-    }
-    return merged.values.toList(growable: false);
+
+    merged.addAll(customDefinitions);
+    return List<AgentDefinition>.unmodifiable(merged);
   }
 
   Future<void> _openAgentsScreen() async {
@@ -287,6 +294,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     setState(() {
       _agents = mergedDefinitions;
+      _builtInAgentNames = mergedDefinitions
+          .map((d) => d.name)
+          .where(ChatBuiltInAgents.ids.contains)
+          .toSet();
       _activeAgent ??=
           mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
     });

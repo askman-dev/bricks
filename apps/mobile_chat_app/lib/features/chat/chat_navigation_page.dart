@@ -194,19 +194,23 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
             )
           else
             ...agents.map(
-              (agent) => ListTile(
-                leading: const Icon(Icons.smart_toy_outlined),
-                title: Text(agent.name),
-                subtitle: Text(
-                  agent.description ??
-                      (agent.isBuiltIn ? '内建 Agent' : '自定义 Agent'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: agent.isBuiltIn
-                    ? const Icon(Icons.lock_outline, size: 18)
-                    : null,
-              ),
+              (agent) {
+                final desc = agent.description?.trim();
+                return ListTile(
+                  leading: const Icon(Icons.smart_toy_outlined),
+                  title: Text(agent.name),
+                  subtitle: Text(
+                    desc == null || desc.isEmpty
+                        ? (agent.isBuiltIn ? '内建 Agent' : '自定义 Agent')
+                        : desc,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: agent.isBuiltIn
+                      ? const Icon(Icons.lock_outline, size: 18)
+                      : null,
+                );
+              },
             ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
