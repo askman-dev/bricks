@@ -3,7 +3,7 @@ import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
 /// Actions available in the composer popup menu.
-enum ComposerMenuAction { newContext, model, agents, info }
+enum ComposerMenuAction { model, info }
 
 /// The input composer bar at the bottom of the chat screen.
 class ComposerBar extends StatefulWidget {
@@ -11,7 +11,10 @@ class ComposerBar extends StatefulWidget {
     super.key,
     required this.agents,
     this.activeAgent,
-    this.routerAction,
+    this.leadingActions = const [],
+    this.showComposerConfigMenu = true,
+    this.activeModelLabel,
+    this.slashCommands = const [],
     this.onSend,
     this.onAgentSelected,
     this.onOpenModelSelection,
@@ -26,8 +29,17 @@ class ComposerBar extends StatefulWidget {
   /// The agent currently selected for replies.
   final AgentDefinition? activeAgent;
 
-  /// Optional router switch action displayed before composer action buttons.
-  final Widget? routerAction;
+  /// Optional actions displayed before composer action buttons.
+  final List<Widget> leadingActions;
+
+  /// Whether to show the composer configuration menu.
+  final bool showComposerConfigMenu;
+
+  /// Display label for the currently active model.
+  final String? activeModelLabel;
+
+  /// Optional slash commands to insert into the input.
+  final List<String> slashCommands;
 
   /// Called when the user submits a message. Null while a send is in progress.
   final void Function(String text)? onSend;
@@ -139,6 +151,16 @@ class _ComposerBarState extends State<ComposerBar>
     _hideMentions();
   }
 
+  void _insertSlashCommand(String command) {
+    final trimmed = command.trim();
+    if (trimmed.isEmpty) return;
+    final text = '$trimmed ';
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
   @override
   void dispose() {
     _spinController.dispose();
@@ -198,52 +220,87 @@ class _ComposerBarState extends State<ComposerBar>
                     padding: const EdgeInsets.only(right: BricksSpacing.xs),
                     child: Row(
                       children: [
-                        if (widget.routerAction != null) ...[
-                          widget.routerAction!,
+                        if (widget.leadingActions.isNotEmpty) ...[
+                          ...widget.leadingActions.expand(
+                            (action) => [
+                              action,
+                              const SizedBox(width: BricksSpacing.xs),
+                            ],
+                          ),
+                        ],
+                        if (widget.slashCommands.isNotEmpty) ...[
+                          PopupMenuButton<String>(
+                            popUpAnimationStyle:
+                                BricksTheme.menuPopupAnimationStyle,
+                            tooltip: 'Slash commands',
+                            enabled: !widget.isStreaming,
+                            onSelected: _insertSlashCommand,
+                            itemBuilder: (context) => widget.slashCommands
+                                .map(
+                                  (command) => PopupMenuItem<String>(
+                                    value: command,
+                                    child: Text(command),
+                                  ),
+                                )
+                                .toList(),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: BricksSpacing.sm,
+                                vertical: BricksSpacing.xs,
+                              ),
+                              child: Text(
+                                '/',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
                           const SizedBox(width: BricksSpacing.xs),
                         ],
-                        PopupMenuButton<ComposerMenuAction>(
-                          popUpAnimationStyle:
-                              BricksTheme.menuPopupAnimationStyle,
-                          tooltip: 'Composer actions',
-                          enabled: !widget.isStreaming,
-                          icon: const Icon(Icons.tune),
-                          onSelected: (action) {
-                            switch (action) {
-                              case ComposerMenuAction.newContext:
-                                // TODO: implement new context action.
-                                break;
-                              case ComposerMenuAction.model:
-                                widget.onOpenModelSelection?.call();
-                                break;
-                              case ComposerMenuAction.agents:
-                                // TODO: implement agents action.
-                                break;
-                              case ComposerMenuAction.info:
-                                widget.onShowInfo?.call();
-                                break;
-                            }
-                          },
-                          itemBuilder: (context) => const [
-                            PopupMenuItem<ComposerMenuAction>(
-                              value: ComposerMenuAction.newContext,
-                              child: Text('新上下文'),
-                            ),
-                            PopupMenuDivider(),
-                            PopupMenuItem<ComposerMenuAction>(
-                              value: ComposerMenuAction.model,
-                              child: Text('模型'),
-                            ),
-                            PopupMenuItem<ComposerMenuAction>(
-                              value: ComposerMenuAction.agents,
-                              child: Text('Agents'),
-                            ),
-                            PopupMenuItem<ComposerMenuAction>(
-                              value: ComposerMenuAction.info,
-                              child: Text('信息'),
-                            ),
-                          ],
-                        ),
+                        if (widget.showComposerConfigMenu)
+                          PopupMenuButton<ComposerMenuAction>(
+                            popUpAnimationStyle:
+                                BricksTheme.menuPopupAnimationStyle,
+                            tooltip: 'Composer actions',
+                            enabled: !widget.isStreaming,
+                            icon: const Icon(Icons.tune),
+                            onSelected: (action) {
+                              switch (action) {
+                                case ComposerMenuAction.model:
+                                  widget.onOpenModelSelection?.call();
+                                  break;
+                                case ComposerMenuAction.info:
+                                  widget.onShowInfo?.call();
+                                  break;
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem<ComposerMenuAction>(
+                                value: ComposerMenuAction.model,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text('模型'),
+                                    if ((widget.activeModelLabel ?? '')
+                                        .isNotEmpty)
+                                      Text(
+                                        widget.activeModelLabel!,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem<ComposerMenuAction>(
+                                value: ComposerMenuAction.info,
+                                child: Text('信息'),
+                              ),
+                            ],
+                          ),
                         const Spacer(),
                         if (widget.isStreaming)
                           RotationTransition(
