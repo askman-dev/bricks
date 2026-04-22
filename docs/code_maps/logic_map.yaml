@@ -37,6 +37,9 @@ index:
       - apps/mobile_chat_app/lib/features/chat/chat_arbitration.dart
       - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
       - apps/mobile_chat_app/lib/features/chat/chat_task_protocol.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_builtin_agents.dart
+      - apps/mobile_chat_app/lib/features/agents/agents_screen.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
       - apps/mobile_chat_app/lib/features/chat/chat_message_sort.dart
       - apps/node_backend/src/services/chatChannelNameService.ts
@@ -56,6 +59,7 @@ index:
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
       - apps/mobile_chat_app/test/chat_message_sort_test.dart
       - apps/mobile_chat_app/test/chat_navigation_page_test.dart
+      - apps/mobile_chat_app/test/chat_builtin_agents_test.dart
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/composer_bar_test.dart
       - apps/node_backend/src/routes/chat.test.ts
@@ -82,6 +86,12 @@ index:
       - route-aware composer actions
       - long-polling (deprecated, replaced by SSE)
       - SSE (Server-Sent Events)
+      - built-in agents
+      - BOT
+      - system prompt
+      - manage agents
+      - agent prompt detail
+      - route-bound @ marker
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
@@ -100,6 +110,9 @@ index:
       - channel 会话若错误暴露 thread 路由菜单，用户可能误写 thread scope 配置并造成路由预期不一致。
       - 若未按路由动态切换输入框左下角动作按钮，可能出现默认路由缺少模型入口或 OpenClaw 无法快捷注入斜杠命令的问题。
       - 长轮询 waitMs 设置过高且缺少超时保护时，可能导致连接堆积并放大服务端资源占用。
+      - 内建 Agent 与自定义 Agent 合并策略若处理不当，可能导致同名覆盖异常或列表顺序不稳定。
+      - 若将 `@` 提及能力从输入框迁移到路由指示时未同步文案/可见性规则，用户可能误解当前路由状态。
+      - Agent 详情页“修改配置/发起对话”回调若未正确关闭抽屉与路由跳转，可能出现重复页面栈或会话 Agent 未更新。
 
   - feature_id: model_settings
     capability: 模型配置读写

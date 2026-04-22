@@ -11,6 +11,7 @@ import 'chat_history_api_service.dart';
 import 'chat_message_sort.dart';
 
 import '../auth/auth_service.dart';
+import '../agents/agents_screen.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../../services/agents_repository_factory.dart';
@@ -19,6 +20,7 @@ import 'chat_bot_registry.dart';
 import 'chat_task_protocol.dart';
 import 'chat_topology.dart';
 import 'chat_message.dart';
+import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
@@ -38,17 +40,6 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  static const List<String> _openClawSlashCommands = [
-    '/help',
-    '/status',
-    '/tools',
-    '/model',
-    '/usage full',
-    '/plugins list',
-    '/config show',
-    '/mcp show',
-  ];
-
   final List<ChatMessage> _messages = [];
   bool _isSending = false;
   bool _isStreaming = false;
@@ -68,6 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   List<AgentDefinition> _agents = [];
+  Set<String> _builtInAgentNames = const {};
   AgentDefinition? _activeAgent;
   final LlmConfigService _llmConfigService = const LlmConfigService();
   List<LlmConfig> _llmConfigs = const [];
@@ -97,6 +89,8 @@ class _ChatScreenState extends State<ChatScreen> {
   int _respondGeneration = 0;
   int _idCounter = 0;
 
+  static const List<String> _openClawSlashCommands = <String>[];
+
   @override
   void initState() {
     super.initState();
@@ -123,7 +117,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final repo = await repoFuture;
       final llmConfigs = await llmConfigsFuture;
       final authToken = await tokenFuture;
-      final definitions = await _readAgentDefinitions(repo);
+      final customDefinitions = await _readAgentDefinitions(repo);
+      final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
       List<ChatChannelNameSetting> channelNames = const [];
@@ -171,7 +166,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
       );
       if (!mounted) return;
-      _syncParticipants(definitions);
+      _syncParticipants(mergedDefinitions);
       final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
       final restoredNamedChannels = _applyPersistedChannelNames(
         channels: restoredChannels,
@@ -191,8 +186,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final restoredActiveSubSection =
           restoredLastSubSectionByChannel[resolvedActiveChannel] ?? 'main';
       setState(() {
-        _agents = definitions;
-        _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
+        _agents = mergedDefinitions;
+        _builtInAgentNames = mergedDefinitions
+            .map((d) => d.name)
+            .where(ChatBuiltInAgents.ids.contains)
+            .toSet();
+        _activeAgent ??=
+            mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
         _loadingAgents = false;
         _llmConfigs = llmConfigs;
         _sessionConfigSlotId ??=
@@ -264,6 +264,45 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     }
+  }
+
+  List<AgentDefinition> _mergeWithBuiltInAgents(
+    List<AgentDefinition> customDefinitions,
+  ) {
+    final customNames =
+        customDefinitions.map((definition) => definition.name).toSet();
+    final merged = <AgentDefinition>[];
+
+    for (final builtIn in ChatBuiltInAgents.definitions()) {
+      if (!customNames.contains(builtIn.name)) {
+        merged.add(builtIn);
+      }
+    }
+
+    merged.addAll(customDefinitions);
+    return List<AgentDefinition>.unmodifiable(merged);
+  }
+
+  Future<void> _openAgentsScreen() async {
+    final result = await Navigator.of(context).push<AgentDefinition>(
+      MaterialPageRoute<AgentDefinition>(
+        builder: (_) => const AgentsScreen(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final repo = await createAgentsRepository();
+    final customDefinitions = await _readAgentDefinitions(repo);
+    final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
+    if (!mounted) return;
+    setState(() {
+      _agents = mergedDefinitions;
+      _builtInAgentNames = mergedDefinitions
+          .map((d) => d.name)
+          .where(ChatBuiltInAgents.ids.contains)
+          .toSet();
+      _activeAgent ??=
+          mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
+    });
   }
 
   void _selectAgent(AgentDefinition agent) {
@@ -439,6 +478,16 @@ class _ChatScreenState extends State<ChatScreen> {
     ).showSnackBar(SnackBar(content: Text('Session now uses $selectedModel')));
   }
 
+  String _currentComposerModelLabel() {
+    if (_effectiveRouterForScope() == ChatRouter.openclaw) {
+      return 'OpenClaw';
+    }
+    final selectedConfig = _activeLlmConfig;
+    return _sessionModelOverride ??
+        selectedConfig?.defaultModel ??
+        _resolveModelId(_activeAgent?.model);
+  }
+
   String _resolveModelId(String? model) {
     switch (model) {
       case 'gemini-flash':
@@ -453,10 +502,6 @@ class _ChatScreenState extends State<ChatScreen> {
       default:
         return model ?? 'claude-sonnet-4-5';
     }
-  }
-
-  String _currentComposerModelLabel() {
-    return _settingsForAgent(_activeAgent).model;
   }
 
   String _newId(String prefix) {
@@ -1611,41 +1656,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {});
   }
 
-  PreferredSizeWidget _buildActiveAgentsIndicator() {
-    final active = _participantManager.participants.active;
-    if (active.isEmpty) {
-      return const PreferredSize(
-        preferredSize: Size.fromHeight(0),
-        child: SizedBox.shrink(),
-      );
-    }
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(44),
-      child: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(
-          left: BricksSpacing.md,
-          bottom: BricksSpacing.xs,
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: active.map((p) {
-              final pct = (p.probability * 100).round();
-              return Padding(
-                padding: const EdgeInsets.only(right: BricksSpacing.xs),
-                child: Chip(
-                  avatar: const Icon(Icons.smart_toy_outlined, size: 16),
-                  label: Text('${p.agentName} • $pct%'),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _showDebugInfoDialog() async {
     final activeParticipants = _participantManager.participants.active;
     final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
@@ -1710,8 +1720,15 @@ class _ChatScreenState extends State<ChatScreen> {
           child: SafeArea(
             child: ChatNavigationPage(
               agents: _agents
-                  .map((agent) => ChatAgentItem(name: agent.name))
-                  .toList(),
+                  .map<ChatAgentItem>(
+                    (agent) => ChatAgentItem(
+                      name: agent.name,
+                      prompt: agent.systemPrompt,
+                      description: agent.description,
+                      isBuiltIn: _builtInAgentNames.contains(agent.name),
+                    ),
+                  )
+                  .toList(growable: false),
               channels: _channels
                   .map(
                     (item) => ChatChannelItem(
@@ -1737,6 +1754,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     break;
                   case ChatNavigationAction.createChannel:
                     _createChannel();
+                    break;
+                  case ChatNavigationAction.manageAgents:
+                    _openAgentsScreen();
                     break;
                 }
               },
@@ -1828,7 +1848,6 @@ class _ChatScreenState extends State<ChatScreen> {
               icon: const Icon(Icons.more_vert),
             ),
           ],
-          bottom: _buildActiveAgentsIndicator(),
         ),
         body: Column(
           children: [
@@ -1930,6 +1949,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     ),
+                    if (effectiveRouter == ChatRouter.defaultRoute)
+                      const Text(
+                        '@',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                   ],
                   showComposerConfigMenu: showComposerConfigMenu,
                   activeModelLabel: _currentComposerModelLabel(),
