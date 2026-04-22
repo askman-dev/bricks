@@ -16,6 +16,10 @@
 - When users ask how to apply newly pulled local code under `apps/node_openclaw_plugin` to their local OpenClaw install, use the `openclaw-plugin-refresh` skill first.
 - The repository skill lives at `.codex/skills/openclaw-plugin-refresh/SKILL.md` and covers rebuild, linked reinstall, gateway restart, and log verification.
 
+## OpenClaw plugin publishing
+- When users ask how to prepare `apps/node_openclaw_plugin` for external public release to OpenClaw users, use the `openclaw-plugin-publish-prep` skill first.
+- The repository skill lives at `.codex/skills/openclaw-plugin-publish-prep/SKILL.md` and captures locked release decisions, release-prep scope, a PRD-style prompt, and the manual publish handoff.
+
 ## GitHub webhook / Cloudflare worker
 - When working on Copilot PR automation that must avoid GitHub Actions approval gates, use the `github-webhook-cloudflare-worker` skill first.
 - The repository's external webhook worker source lives in `.github/cloudflare/` and is managed as a Wrangler project.
