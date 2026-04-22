@@ -19,7 +19,7 @@ const DEFAULT_PLATFORM_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_PLATFORM_READ_LIMIT_MAX = 300;
 const DEFAULT_PLATFORM_WRITE_LIMIT_MAX = 600;
 const DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX = 10;
-const PLATFORM_MESSAGE_TEXT_MAX_CHARS = 120 * 1024;
+const PLATFORM_MESSAGE_TEXT_MAX_BYTES = 120 * 1024;
 // Interval between each poll of listPlatformEvents while an SSE connection is open.
 const PLATFORM_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.
@@ -56,8 +56,8 @@ function readTrimmedString(input: unknown): string | null {
 }
 
 function validateMessageTextLength(text: string): string | null {
-  if (text.length > PLATFORM_MESSAGE_TEXT_MAX_CHARS) {
-    return `text/content must be ${PLATFORM_MESSAGE_TEXT_MAX_CHARS} characters or fewer`;
+  if (Buffer.byteLength(text, 'utf8') > PLATFORM_MESSAGE_TEXT_MAX_BYTES) {
+    return `text/content must be ${PLATFORM_MESSAGE_TEXT_MAX_BYTES} bytes (UTF-8) or fewer`;
   }
   return null;
 }

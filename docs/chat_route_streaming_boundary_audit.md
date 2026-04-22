@@ -9,8 +9,8 @@
 | `POST /api/chat/respond` | 快速 ack（异步） | 通过既有 SSE 间接实现 | assistant 同一消息增量修订 | 默认模型调用 1024，未统一校验请求里的 `maxTokens` | 新增 `maxTokens` 校验并透传；default router 改为模型流式落库 |
 | `GET /api/chat/sync/:sessionId` | 轮询 JSON | 间接是（靠客户端轮询） | message 级 | 无内容长度边界 | 不变（由写入路径边界控制） |
 | `GET /api/chat/events/:sessionId` | SSE（服务端轮询 DB） | 是 | message 批次级（每秒 poll） | 无内容长度边界 | 不变（由写入路径边界控制） |
-| `POST /api/v1/platform/messages` | 一次性 JSON（写入） | 否（写接口） | N/A | 文本长度无上限 | 新增 text/content 长度上限 120K 字符 |
-| `PATCH /api/v1/platform/messages/:messageId` | 一次性 JSON（更新） | 否（写接口） | N/A | 文本长度无上限 | 新增 text 长度上限 120K 字符 |
+| `POST /api/v1/platform/messages` | 一次性 JSON（写入） | 否（写接口） | N/A | 文本长度无上限 | 新增 text/content 长度上限 120K 字节（UTF-8）|
+| `PATCH /api/v1/platform/messages/:messageId` | 一次性 JSON（更新） | 否（写接口） | N/A | 文本长度无上限 | 新增 text 长度上限 120K 字节（UTF-8）|
 | `GET /api/v1/platform/events/stream` | SSE（服务端轮询 DB） | 是（给插件侧） | event 批次级 | 事件 limit 最大 200（拉取接口） | 不变（内容长度受消息写入边界影响） |
 
 ## 分路由说明
@@ -53,10 +53,10 @@
 - `maxTokens` 统一约束：
   - 默认值：120K
   - 上限：120K
-  - 적용到：`/api/llm/chat`、`/api/llm/chat/stream`、`/api/chat/respond`（default router 异步生成）
+  - 应用到：`/api/llm/chat`、`/api/llm/chat/stream`、`/api/chat/respond`（default router 异步生成）
 - 平台消息文本长度：
-  - 上限：120K 字符
-  - 적용到：`POST /api/v1/platform/messages`、`PATCH /api/v1/platform/messages/:messageId`
+  - 上限：120K 字节（UTF-8）
+  - 应用到：`POST /api/v1/platform/messages`、`PATCH /api/v1/platform/messages/:messageId`
 
 ## 仍可增强的点（后续）
 

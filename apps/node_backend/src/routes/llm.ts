@@ -2,12 +2,11 @@ import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { generateWithUserConfig, streamWithUserConfig } from '../llm/llm_service.js';
 import { LlmProvider, UnifiedChatRequest } from '../llm/types.js';
+import { parseMaxTokens } from './validation.js';
 
 const router = express.Router();
 const SUPPORTED_PROVIDERS = new Set<LlmProvider>(['anthropic', 'google_ai_studio']);
 const VALID_ROLES = new Set(['system', 'user', 'assistant']);
-const DEFAULT_MAX_OUTPUT_TOKENS = 120 * 1024;
-const MAX_OUTPUT_TOKENS_UPPER_BOUND = 120 * 1024;
 
 function validateMessages(
   messages: unknown
@@ -204,22 +203,6 @@ function parseProvider(value: unknown): LlmProvider | null {
     return value as LlmProvider;
   }
   return null;
-}
-
-function parseMaxTokens(value: unknown): { ok: true; value: number } | { ok: false; error: string } {
-  if (value === undefined || value === null) {
-    return { ok: true, value: DEFAULT_MAX_OUTPUT_TOKENS };
-  }
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-    return { ok: false, error: 'maxTokens must be a positive integer' };
-  }
-  if (value > MAX_OUTPUT_TOKENS_UPPER_BOUND) {
-    return {
-      ok: false,
-      error: `maxTokens must be <= ${MAX_OUTPUT_TOKENS_UPPER_BOUND}`,
-    };
-  }
-  return { ok: true, value };
 }
 
 export default router;

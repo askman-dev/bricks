@@ -27,6 +27,7 @@ import {
 } from "../services/chatChannelNameService.js";
 import { streamWithUserConfig } from "../llm/llm_service.js";
 import type { LlmProvider } from "../llm/types.js";
+import { parseMaxTokens } from "./validation.js";
 
 const router = express.Router();
 router.use(authenticate);
@@ -43,9 +44,9 @@ const CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW = 10;
 const CHAT_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.
 const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
-const DEFAULT_MAX_OUTPUT_TOKENS = 120 * 1024;
-const MAX_OUTPUT_TOKENS_UPPER_BOUND = 120 * 1024;
 const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
+// Minimum interval between incremental DB flushes during model streaming to avoid write amplification.
+const STREAM_FLUSH_INTERVAL_MS = 300;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -65,22 +66,6 @@ function parseProvider(value: unknown): LlmProvider | undefined {
   if (value === "anthropic" || value === "google_ai_studio") return value;
   if (value === "gemini") return "google_ai_studio";
   return undefined;
-}
-
-function parseMaxTokens(value: unknown): { ok: true; value: number } | { ok: false; error: string } {
-  if (value === undefined || value === null) {
-    return { ok: true, value: DEFAULT_MAX_OUTPUT_TOKENS };
-  }
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    return { ok: false, error: "maxTokens must be a positive integer" };
-  }
-  if (value > MAX_OUTPUT_TOKENS_UPPER_BOUND) {
-    return {
-      ok: false,
-      error: `maxTokens must be <= ${MAX_OUTPUT_TOKENS_UPPER_BOUND}`,
-    };
-  }
-  return { ok: true, value };
 }
 
 function parseChatRouter(value: unknown): ChatRouter | null {
@@ -200,66 +185,73 @@ async function runDefaultRouterRespondAsync(params: {
 
     let assistantContent = "";
     let hasAnyChunk = false;
-    for await (const chunk of textStream) {
-      if (typeof chunk !== "string" || chunk.length === 0) {
-        continue;
-      }
-      hasAnyChunk = true;
-      if (assistantContent.length >= MAX_ASSISTANT_STREAM_OUTPUT_CHARS) {
-        break;
-      }
+    let lastFlushTime = Date.now();
+    let lastFlushedContent = "";
 
-      const remaining = MAX_ASSISTANT_STREAM_OUTPUT_CHARS - assistantContent.length;
-      const appendChunk = chunk.length > remaining ? chunk.slice(0, remaining) : chunk;
-      assistantContent += appendChunk;
+    const buildDispatchedUpsert = (content: string): MessageUpsertInput => ({
+      messageId: assistantMessageId,
+      taskId: acceptedTaskId,
+      channelId,
+      sessionId: acceptedSessionId,
+      threadId,
+      role: "assistant",
+      content,
+      taskState: "dispatched",
+      checkpointCursor: null,
+      metadata: {
+        resolvedBotId,
+        resolvedSkillId,
+        provider,
+        model: modelId,
+        source: "backend.respond.stream",
+        streamMode: "model-chunk",
+      },
+      createdAt: null,
+    });
 
-      await upsertMessages(userId, [
-        {
-          messageId: assistantMessageId,
-          taskId: acceptedTaskId,
-          channelId,
-          sessionId: acceptedSessionId,
-          threadId,
-          role: "assistant",
-          content: assistantContent,
-          taskState: "dispatched",
-          checkpointCursor: null,
-          metadata: {
-            resolvedBotId,
-            resolvedSkillId,
-            provider,
-            model: modelId,
-            source: "backend.respond.stream",
-            streamMode: "model-chunk",
-          },
-          createdAt: null,
-        },
-      ]);
+    const textStreamIterator = textStream[Symbol.asyncIterator]();
+    let streamFullyConsumed = false;
+    try {
+      while (true) {
+        const { value: chunk, done } = await textStreamIterator.next();
+        if (done) {
+          streamFullyConsumed = true;
+          break;
+        }
+
+        if (typeof chunk !== "string" || chunk.length === 0) {
+          continue;
+        }
+        hasAnyChunk = true;
+        if (assistantContent.length >= MAX_ASSISTANT_STREAM_OUTPUT_CHARS) {
+          break;
+        }
+
+        const remaining = MAX_ASSISTANT_STREAM_OUTPUT_CHARS - assistantContent.length;
+        const appendChunk = chunk.length > remaining ? chunk.slice(0, remaining) : chunk;
+        assistantContent += appendChunk;
+
+        // Flush to DB at most once per STREAM_FLUSH_INTERVAL_MS to avoid write amplification.
+        const now = Date.now();
+        if (now - lastFlushTime >= STREAM_FLUSH_INTERVAL_MS) {
+          lastFlushTime = now;
+          lastFlushedContent = assistantContent;
+          await upsertMessages(userId, [buildDispatchedUpsert(assistantContent)]);
+        }
+      }
+    } finally {
+      if (!streamFullyConsumed && typeof textStreamIterator.return === "function") {
+        try {
+          await textStreamIterator.return();
+        } catch {
+          // Ignore cleanup errors.
+        }
+      }
     }
 
-    if (!hasAnyChunk) {
-      await upsertMessages(userId, [
-        {
-          messageId: assistantMessageId,
-          taskId: acceptedTaskId,
-          channelId,
-          sessionId: acceptedSessionId,
-          threadId,
-          role: "assistant",
-          content: "",
-          taskState: "dispatched",
-          checkpointCursor: null,
-          metadata: {
-            resolvedBotId,
-            resolvedSkillId,
-            provider,
-            model: modelId,
-            source: "backend.respond.stream",
-            streamMode: "model-chunk",
-          },
-          createdAt: null,
-        },
-      ]);
+    // Always do a final incremental flush for any content not yet persisted.
+    if (!hasAnyChunk || assistantContent !== lastFlushedContent) {
+      await upsertMessages(userId, [buildDispatchedUpsert(assistantContent)]);
     }
 
     await upsertMessages(userId, [
