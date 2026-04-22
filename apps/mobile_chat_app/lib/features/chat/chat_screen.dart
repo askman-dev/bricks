@@ -1848,8 +1848,6 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Expanded(child: MessageList(messages: _messages)),
             ComposerBar(
-              activeAgent: _activeAgent,
-              agents: _agents,
               showRouteAtMarker:
                   _effectiveRouterForScope() == ChatRouter.defaultRoute,
               routerAction: PopupMenuButton<String>(
@@ -1932,7 +1930,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               ),
-              onAgentSelected: _selectAgent,
               onOpenModelSelection: _openRuntimeModelConfigDialog,
               onShowInfo: _showDebugInfoDialog,
               onSend: _isSending ? null : _sendMessage,

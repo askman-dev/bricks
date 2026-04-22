@@ -312,7 +312,8 @@ class _AgentPromptPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final prompt = agent.prompt.trim().isEmpty ? '（未配置 Prompt）' : agent.prompt;
+    final trimmedPrompt = agent.prompt.trim();
+    final prompt = trimmedPrompt.isEmpty ? '（未配置 Prompt）' : trimmedPrompt;
     return Scaffold(
       appBar: AppBar(title: Text(agent.name)),
       body: Padding(

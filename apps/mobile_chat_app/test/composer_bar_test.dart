@@ -17,7 +17,6 @@ Widget _buildBar(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ComposerBar(
-              agents: const [],
               routerAction: routerAction,
               showRouteAtMarker: showRouteAtMarker,
               onOpenModelSelection: onOpenModelSelection,
@@ -125,7 +124,6 @@ void main() {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ComposerBar(
-                  agents: const [],
                   isStreaming: true,
                   onOpenModelSelection: () => called = true,
                 ),
@@ -184,7 +182,6 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: ComposerBar(
-              agents: const [],
               isStreaming: true,
             ),
           ),
@@ -203,7 +200,6 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: ComposerBar(
-              agents: const [],
               onSend: (text) => sent = text,
             ),
           ),

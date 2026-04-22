@@ -1,4 +1,3 @@
-import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
@@ -9,23 +8,14 @@ enum ComposerMenuAction { newContext, model, agents, info }
 class ComposerBar extends StatefulWidget {
   const ComposerBar({
     super.key,
-    required this.agents,
-    this.activeAgent,
     this.routerAction,
     this.showRouteAtMarker = false,
     this.onSend,
-    this.onAgentSelected,
     this.onOpenModelSelection,
     this.onShowInfo,
     this.onStop,
     this.isStreaming = false,
   });
-
-  /// Available agents for @mention selection.
-  final List<AgentDefinition> agents;
-
-  /// The agent currently selected for replies.
-  final AgentDefinition? activeAgent;
 
   /// Optional router switch action displayed before composer action buttons.
   final Widget? routerAction;
@@ -33,9 +23,6 @@ class ComposerBar extends StatefulWidget {
 
   /// Called when the user submits a message. Null while a send is in progress.
   final void Function(String text)? onSend;
-
-  /// Called when the user picks an agent from the @ menu.
-  final void Function(AgentDefinition agent)? onAgentSelected;
 
   /// Opens runtime model selection UI.
   final VoidCallback? onOpenModelSelection;
