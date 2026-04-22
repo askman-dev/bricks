@@ -238,9 +238,11 @@ index:
       - return_to
       - jwt
       - token
+      - rate-limit
     change_risks:
       - OAuth state 校验逻辑变动可能导致回调失效。
       - return_to 校验规则变动可能引入开放重定向漏洞。
+      - 认证路由限流策略过严会导致正常登录流程误触发 429。
 
   - feature_id: backend_chat_llm
     capability: 后端聊天与 LLM 路由
@@ -271,6 +273,9 @@ index:
       - chat
       - llm
       - provider
+      - rate-limit
+      - throttling
+      - 429
       - stream
       - anthropic
       - google

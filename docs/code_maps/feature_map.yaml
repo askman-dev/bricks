@@ -186,6 +186,8 @@ products:
           - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
           - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
           - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'
+          - '高频访问 `/api/config?category=llm` 不应因应用层全局 IP 限流触发 429。'
+          - '`/api/config` 写操作在同一用户维度超过每分钟预算时返回 429。'
 
   - product_id: node_openclaw_plugin
     name: Node OpenClaw Plugin

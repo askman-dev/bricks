@@ -1,4 +1,5 @@
 import express, { Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   createApiConfig,
@@ -19,6 +20,8 @@ import {
 
 const router = express.Router();
 const ALLOWED_PROVIDERS = new Set(['anthropic', 'google_ai_studio']);
+const CONFIG_WRITE_WINDOW_MS = 60 * 1000;
+const CONFIG_WRITE_MAX_REQUESTS_PER_WINDOW = 60;
 
 function maskApiKey(value: string): string {
   if (!value) return value;
@@ -64,11 +67,27 @@ function normalizeIsDefaultValue(
 // All routes require authentication
 router.use(authenticate);
 
+const configWriteLimiter = rateLimit({
+  windowMs: CONFIG_WRITE_WINDOW_MS,
+  max: CONFIG_WRITE_MAX_REQUESTS_PER_WINDOW,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId = (req as AuthRequest).userId;
+    return typeof userId === 'string' && userId.trim().length > 0
+      ? `user:${userId}`
+      : `ip:${req.ip ?? req.socket.remoteAddress ?? 'unknown'}`;
+  },
+  message: {
+    error: 'Too many config write requests, please try again later.',
+  },
+});
+
 /**
  * POST /config
  * Create a new API configuration
  */
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', configWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
 
@@ -234,7 +253,7 @@ router.get('/nodes', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/nodes', async (req: AuthRequest, res: Response) => {
+router.post('/nodes', configWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
@@ -255,7 +274,7 @@ router.post('/nodes', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.patch('/nodes/:nodeId', async (req: AuthRequest, res: Response) => {
+router.patch('/nodes/:nodeId', configWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
@@ -321,7 +340,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
  * PUT /config/:id
  * Update an API configuration
  */
-router.put('/:id', async (req: AuthRequest, res: Response) => {
+router.put('/:id', configWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
 
@@ -396,7 +415,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
  * DELETE /config/:id
  * Delete an API configuration
  */
-router.delete('/:id', async (req: AuthRequest, res: Response) => {
+router.delete('/:id', configWriteLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
 
