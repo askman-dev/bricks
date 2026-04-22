@@ -159,6 +159,7 @@ class _ComposerBarState extends State<ComposerBar>
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
+    _hideMentions();
   }
 
   @override

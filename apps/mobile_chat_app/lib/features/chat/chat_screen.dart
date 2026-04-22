@@ -456,10 +456,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _currentComposerModelLabel() {
-    final selectedConfig = _activeLlmConfig;
-    return _sessionModelOverride ??
-        selectedConfig?.defaultModel ??
-        _resolveModelId(_activeAgent?.model);
+    return _settingsForAgent(_activeAgent).model;
   }
 
   String _newId(String prefix) {
