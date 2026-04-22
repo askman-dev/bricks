@@ -11,6 +11,7 @@ import 'chat_history_api_service.dart';
 import 'chat_message_sort.dart';
 
 import '../auth/auth_service.dart';
+import '../agents/agents_screen.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../../services/agents_repository_factory.dart';
@@ -19,6 +20,7 @@ import 'chat_bot_registry.dart';
 import 'chat_task_protocol.dart';
 import 'chat_topology.dart';
 import 'chat_message.dart';
+import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
@@ -57,6 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   List<AgentDefinition> _agents = [];
+  Set<String> _builtInAgentNames = const {};
   AgentDefinition? _activeAgent;
   final LlmConfigService _llmConfigService = const LlmConfigService();
   List<LlmConfig> _llmConfigs = const [];
@@ -112,7 +115,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final repo = await repoFuture;
       final llmConfigs = await llmConfigsFuture;
       final authToken = await tokenFuture;
-      final definitions = await _readAgentDefinitions(repo);
+      final customDefinitions = await _readAgentDefinitions(repo);
+      final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
       List<ChatChannelNameSetting> channelNames = const [];
@@ -160,7 +164,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
       );
       if (!mounted) return;
-      _syncParticipants(definitions);
+      _syncParticipants(mergedDefinitions);
       final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
       final restoredNamedChannels = _applyPersistedChannelNames(
         channels: restoredChannels,
@@ -180,8 +184,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final restoredActiveSubSection =
           restoredLastSubSectionByChannel[resolvedActiveChannel] ?? 'main';
       setState(() {
-        _agents = definitions;
-        _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
+        _agents = mergedDefinitions;
+        _builtInAgentNames = ChatBuiltInAgents.ids;
+        _activeAgent ??=
+            mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
         _loadingAgents = false;
         _llmConfigs = llmConfigs;
         _sessionConfigSlotId ??=
@@ -253,6 +259,37 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     }
+  }
+
+  List<AgentDefinition> _mergeWithBuiltInAgents(
+    List<AgentDefinition> customDefinitions,
+  ) {
+    final merged = <String, AgentDefinition>{};
+    for (final builtIn in ChatBuiltInAgents.definitions()) {
+      merged[builtIn.name] = builtIn;
+    }
+    for (final custom in customDefinitions) {
+      merged[custom.name] = custom;
+    }
+    return merged.values.toList(growable: false);
+  }
+
+  Future<void> _openAgentsScreen() async {
+    final result = await Navigator.of(context).push<AgentDefinition>(
+      MaterialPageRoute<AgentDefinition>(
+        builder: (_) => const AgentsScreen(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final repo = await createAgentsRepository();
+    final customDefinitions = await _readAgentDefinitions(repo);
+    final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
+    if (!mounted) return;
+    setState(() {
+      _agents = mergedDefinitions;
+      _activeAgent ??=
+          mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
+    });
   }
 
   void _selectAgent(AgentDefinition agent) {
@@ -1700,7 +1737,13 @@ class _ChatScreenState extends State<ChatScreen> {
           child: SafeArea(
             child: ChatNavigationPage(
               agents: _agents
-                  .map((agent) => ChatAgentItem(name: agent.name))
+                  .map(
+                    (agent) => ChatAgentItem(
+                      name: agent.name,
+                      description: agent.description,
+                      isBuiltIn: _builtInAgentNames.contains(agent.name),
+                    ),
+                  )
                   .toList(),
               channels: _channels
                   .map(
@@ -1727,6 +1770,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     break;
                   case ChatNavigationAction.createChannel:
                     _createChannel();
+                    break;
+                  case ChatNavigationAction.manageAgents:
+                    _openAgentsScreen();
                     break;
                 }
               },

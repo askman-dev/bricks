@@ -67,13 +67,12 @@ void main() {
       expect(find.text('Settings'), findsNothing);
     });
 
-    testWidgets('shows existing agents when agents list is not empty',
-        (tester) async {
+    testWidgets('shows existing agents and source labels', (tester) async {
       await tester.pumpWidget(
         _buildPage(
           agents: const [
-            ChatAgentItem(name: 'Planner'),
-            ChatAgentItem(name: 'Reviewer'),
+            ChatAgentItem(name: 'Planner', isBuiltIn: true),
+            ChatAgentItem(name: 'Reviewer', description: 'Custom reviewer'),
           ],
         ),
       );
@@ -81,6 +80,8 @@ void main() {
 
       expect(find.text('Planner'), findsOneWidget);
       expect(find.text('Reviewer'), findsOneWidget);
+      expect(find.text('内建 Agent'), findsOneWidget);
+      expect(find.text('Custom reviewer'), findsOneWidget);
       expect(find.text('在设置中新建 Agents'), findsNothing);
     });
 
@@ -117,44 +118,17 @@ void main() {
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
 
-    testWidgets(
-        'tapping 配置 in an open drawer shows 未开发的功能 toast and closes drawer',
-        (tester) async {
-      final scaffoldKey = GlobalKey<ScaffoldState>();
-
+    testWidgets('tapping 配置 fires manageAgents action', (tester) async {
+      ChatNavigationAction? received;
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            key: scaffoldKey,
-            drawer: Drawer(
-              child: ChatNavigationPage(
-                onActionSelected: (_) {},
-                agents: const [],
-                channels: const [
-                  ChatChannelItem(
-                    id: 'default',
-                    name: '默认频道',
-                    isDefault: true,
-                  ),
-                ],
-                selectedChannelId: 'default',
-              ),
-            ),
-            body: const SizedBox.shrink(),
-          ),
-        ),
+        _buildPage(onActionSelected: (action) => received = action),
       );
       await tester.pumpAndSettle();
-
-      scaffoldKey.currentState!.openDrawer();
-      await tester.pumpAndSettle();
-      expect(scaffoldKey.currentState!.isDrawerOpen, isTrue);
 
       await tester.tap(find.text('配置'));
       await tester.pumpAndSettle();
 
-      expect(find.text('未开发的功能'), findsOneWidget);
-      expect(scaffoldKey.currentState!.isDrawerOpen, isFalse);
+      expect(received, ChatNavigationAction.manageAgents);
     });
 
     testWidgets('tapping 新建频道 fires createChannel action', (tester) async {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Actions that can be triggered from the chat navigation page.
-enum ChatNavigationAction { appSettings, sessions, createChannel }
+enum ChatNavigationAction { appSettings, sessions, createChannel, manageAgents }
 
 enum ChatChannelMenuAction { rename, archive }
 
@@ -18,9 +18,15 @@ class ChatChannelItem {
 }
 
 class ChatAgentItem {
-  const ChatAgentItem({required this.name});
+  const ChatAgentItem({
+    required this.name,
+    this.description,
+    this.isBuiltIn = false,
+  });
 
   final String name;
+  final String? description;
+  final bool isBuiltIn;
 }
 
 /// Navigation content for chat-related routes, intended for use in a
@@ -60,18 +66,6 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
   void _selectAction(BuildContext context, ChatNavigationAction action) {
     _closeNavigation(context);
     widget.onActionSelected(action);
-  }
-
-  void _showNotImplementedToast() {
-    final messenger = ScaffoldMessenger.of(context);
-    Scaffold.of(context).closeDrawer();
-    messenger.hideCurrentSnackBar();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        const SnackBar(content: Text('未开发的功能')),
-      );
-    });
   }
 
   Future<void> _showChannelMenu(ChatChannelItem channel) async {
@@ -183,7 +177,10 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
                 ),
               ),
               TextButton.icon(
-                onPressed: _showNotImplementedToast,
+                onPressed: () => _selectAction(
+                  context,
+                  ChatNavigationAction.manageAgents,
+                ),
                 icon: const Icon(Icons.settings_outlined, size: 18),
                 label: const Text('配置'),
               ),
@@ -200,6 +197,15 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
               (agent) => ListTile(
                 leading: const Icon(Icons.smart_toy_outlined),
                 title: Text(agent.name),
+                subtitle: Text(
+                  agent.description ??
+                      (agent.isBuiltIn ? '内建 Agent' : '自定义 Agent'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: agent.isBuiltIn
+                    ? const Icon(Icons.lock_outline, size: 18)
+                    : null,
               ),
             ),
         Padding(
