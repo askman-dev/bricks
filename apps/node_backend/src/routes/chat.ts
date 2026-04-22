@@ -25,7 +25,7 @@ import {
   listChatChannelNames,
   upsertChatChannelName,
 } from "../services/chatChannelNameService.js";
-import { generateWithUserConfig } from "../llm/llm_service.js";
+import { streamWithUserConfig } from "../llm/llm_service.js";
 import type { LlmProvider } from "../llm/types.js";
 
 const router = express.Router();
@@ -43,8 +43,9 @@ const CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW = 10;
 const CHAT_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.
 const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
-const MAX_OUTPUT_TOKENS_UPPER_BOUND = 4096;
+const DEFAULT_MAX_OUTPUT_TOKENS = 120 * 1024;
+const MAX_OUTPUT_TOKENS_UPPER_BOUND = 120 * 1024;
+const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -186,7 +187,7 @@ async function runDefaultRouterRespondAsync(params: {
       maxChars: 10000,
     });
 
-    const response = await generateWithUserConfig(
+    const { textStream, provider, modelId } = await streamWithUserConfig(
       userId,
       {
         model: typeof body.model === "string" ? body.model : undefined,
@@ -197,6 +198,70 @@ async function runDefaultRouterRespondAsync(params: {
       parseProvider(body.provider),
     );
 
+    let assistantContent = "";
+    let hasAnyChunk = false;
+    for await (const chunk of textStream) {
+      if (typeof chunk !== "string" || chunk.length === 0) {
+        continue;
+      }
+      hasAnyChunk = true;
+      if (assistantContent.length >= MAX_ASSISTANT_STREAM_OUTPUT_CHARS) {
+        break;
+      }
+
+      const remaining = MAX_ASSISTANT_STREAM_OUTPUT_CHARS - assistantContent.length;
+      const appendChunk = chunk.length > remaining ? chunk.slice(0, remaining) : chunk;
+      assistantContent += appendChunk;
+
+      await upsertMessages(userId, [
+        {
+          messageId: assistantMessageId,
+          taskId: acceptedTaskId,
+          channelId,
+          sessionId: acceptedSessionId,
+          threadId,
+          role: "assistant",
+          content: assistantContent,
+          taskState: "dispatched",
+          checkpointCursor: null,
+          metadata: {
+            resolvedBotId,
+            resolvedSkillId,
+            provider,
+            model: modelId,
+            source: "backend.respond.stream",
+            streamMode: "model-chunk",
+          },
+          createdAt: null,
+        },
+      ]);
+    }
+
+    if (!hasAnyChunk) {
+      await upsertMessages(userId, [
+        {
+          messageId: assistantMessageId,
+          taskId: acceptedTaskId,
+          channelId,
+          sessionId: acceptedSessionId,
+          threadId,
+          role: "assistant",
+          content: "",
+          taskState: "dispatched",
+          checkpointCursor: null,
+          metadata: {
+            resolvedBotId,
+            resolvedSkillId,
+            provider,
+            model: modelId,
+            source: "backend.respond.stream",
+            streamMode: "model-chunk",
+          },
+          createdAt: null,
+        },
+      ]);
+    }
+
     await upsertMessages(userId, [
       {
         messageId: assistantMessageId,
@@ -205,15 +270,16 @@ async function runDefaultRouterRespondAsync(params: {
         sessionId: acceptedSessionId,
         threadId,
         role: "assistant",
-        content: response.text,
+        content: assistantContent,
         taskState: "completed",
         checkpointCursor: null,
         metadata: {
           resolvedBotId,
           resolvedSkillId,
-          provider: response.provider,
-          model: response.model,
-          source: "backend.respond",
+          provider,
+          model: modelId,
+          source: "backend.respond.stream",
+          streamMode: "model-chunk",
         },
         createdAt: null,
       },

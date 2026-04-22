@@ -38,7 +38,7 @@ beforeAll(async () => {
   process.env.JWT_SECRET = 'test-jwt-secret';
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '2mb' }));
   const platformModule = await import('./platform.js');
   createPlatformRouter = platformModule.createPlatformRouter;
   const { default: platformRoutes } = platformModule;
@@ -314,7 +314,7 @@ describe('platform route auth and ack constraints', () => {
         userId: 'user-123',
         conversationId: 'conv-1',
         channelId: 'ch-1',
-        text: 'x'.repeat(12001),
+        text: 'x'.repeat(120 * 1024 + 1),
       }),
     });
 
@@ -335,7 +335,7 @@ describe('platform route auth and ack constraints', () => {
       },
       body: JSON.stringify({
         userId: 'user-123',
-        text: 'x'.repeat(12001),
+        text: 'x'.repeat(120 * 1024 + 1),
       }),
     });
 
@@ -422,7 +422,7 @@ describe('platform route rate limiting', () => {
 
   beforeAll(async () => {
     const app = express();
-    app.use(express.json());
+    app.use(express.json({ limit: '2mb' }));
     app.use(
       '/api/v1/platform',
       createPlatformRouter({

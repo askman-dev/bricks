@@ -19,7 +19,7 @@ const DEFAULT_PLATFORM_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_PLATFORM_READ_LIMIT_MAX = 300;
 const DEFAULT_PLATFORM_WRITE_LIMIT_MAX = 600;
 const DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX = 10;
-const PLATFORM_MESSAGE_TEXT_MAX_CHARS = 12000;
+const PLATFORM_MESSAGE_TEXT_MAX_CHARS = 120 * 1024;
 // Interval between each poll of listPlatformEvents while an SSE connection is open.
 const PLATFORM_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.

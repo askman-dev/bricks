@@ -6,8 +6,8 @@ import { LlmProvider, UnifiedChatRequest } from '../llm/types.js';
 const router = express.Router();
 const SUPPORTED_PROVIDERS = new Set<LlmProvider>(['anthropic', 'google_ai_studio']);
 const VALID_ROLES = new Set(['system', 'user', 'assistant']);
-const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
-const MAX_OUTPUT_TOKENS_UPPER_BOUND = 4096;
+const DEFAULT_MAX_OUTPUT_TOKENS = 120 * 1024;
+const MAX_OUTPUT_TOKENS_UPPER_BOUND = 120 * 1024;
 
 function validateMessages(
   messages: unknown

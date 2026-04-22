@@ -22,7 +22,7 @@ const {
   listChatChannelNamesMock,
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
-  generateWithUserConfigMock,
+  streamWithUserConfigMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -53,10 +53,13 @@ const {
     updatedAt: "2026-04-18T08:00:00.000Z",
   })),
   deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
-  generateWithUserConfigMock: vi.fn(async () => ({
-    text: "sync reply",
+  streamWithUserConfigMock: vi.fn(async () => ({
+    textStream: (async function* () {
+      yield "sync ";
+      yield "reply";
+    })(),
     provider: "anthropic",
-    model: "claude-sonnet-4-5",
+    modelId: "claude-sonnet-4-5",
   })),
 }));
 
@@ -84,7 +87,7 @@ vi.mock("../services/chatChannelNameService.js", () => ({
 }));
 
 vi.mock("../llm/llm_service.js", () => ({
-  generateWithUserConfig: generateWithUserConfigMock,
+  streamWithUserConfig: streamWithUserConfigMock,
 }));
 
 vi.mock("../middleware/auth.js", () => ({
@@ -148,7 +151,7 @@ describe("chat routes", () => {
     listChatChannelNamesMock.mockClear();
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
-    generateWithUserConfigMock.mockClear();
+    streamWithUserConfigMock.mockClear();
   });
 
   it("routes OpenClaw scopes to async pending dispatch", async () => {
@@ -179,7 +182,7 @@ describe("chat routes", () => {
     expect(body.state).toBe("accepted");
     expect(body.text).toBe("");
     expect(body.lastSeqId).toBe(7);
-    expect(generateWithUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-user-1",
@@ -235,12 +238,19 @@ describe("chat routes", () => {
     await new Promise<void>((resolve) => {
       setTimeout(() => resolve(), 0);
     });
-    expect(generateWithUserConfigMock).toHaveBeenCalled();
+    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-assistant-default-1",
+        taskState: "dispatched",
+      }),
+    ]);
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-assistant-default-1",
         role: "assistant",
         taskState: "completed",
+        content: "sync reply",
       }),
     ]);
   });
@@ -259,14 +269,14 @@ describe("chat routes", () => {
         userMessageId: "msg-user-default-2",
         assistantMessageId: "msg-assistant-default-2",
         userMessage: "hello default",
-        maxTokens: 99999,
+        maxTokens: 999999,
       }),
     });
 
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error?: string };
     expect(body.error).toContain("maxTokens");
-    expect(generateWithUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
   });
 
   it("supports clearing a scope setting by sending router=null", async () => {
