@@ -245,6 +245,30 @@ describe("chat routes", () => {
     ]);
   });
 
+  it("rejects respond payload when maxTokens exceeds upper bound", async () => {
+    resolveChatRouterMock.mockResolvedValueOnce("default");
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: "task-default-2",
+        idempotencyKey: "idem-default-2",
+        channelId: "default",
+        sessionId: "session:default:main",
+        userMessageId: "msg-user-default-2",
+        assistantMessageId: "msg-assistant-default-2",
+        userMessage: "hello default",
+        maxTokens: 99999,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: string };
+    expect(body.error).toContain("maxTokens");
+    expect(generateWithUserConfigMock).not.toHaveBeenCalled();
+  });
+
   it("supports clearing a scope setting by sending router=null", async () => {
     const response = await fetch(`${baseUrl}/api/chat/scope-settings`, {
       method: "PUT",

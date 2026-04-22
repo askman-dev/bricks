@@ -6,6 +6,8 @@ import { LlmProvider, UnifiedChatRequest } from '../llm/types.js';
 const router = express.Router();
 const SUPPORTED_PROVIDERS = new Set<LlmProvider>(['anthropic', 'google_ai_studio']);
 const VALID_ROLES = new Set(['system', 'user', 'assistant']);
+const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const MAX_OUTPUT_TOKENS_UPPER_BOUND = 4096;
 
 function validateMessages(
   messages: unknown
@@ -83,6 +85,11 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
 
     const { provider, model, configId, messages, temperature, maxTokens } =
       req.body ?? {};
+    const parsedMaxTokens = parseMaxTokens(maxTokens);
+    if (!parsedMaxTokens.ok) {
+      res.status(400).json({ error: parsedMaxTokens.error });
+      return;
+    }
     const preferredProvider = parseProvider(provider);
     if (provider !== undefined && !preferredProvider) {
       res.status(400).json({ error: 'Invalid provider' });
@@ -102,7 +109,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
         configId: typeof configId === 'string' ? configId : undefined,
         messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
-        maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
+        maxTokens: parsedMaxTokens.value,
       },
       preferredProvider ?? undefined
     );
@@ -135,6 +142,11 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
 
     const { provider, model, configId, messages, temperature, maxTokens } =
       req.body ?? {};
+    const parsedMaxTokens = parseMaxTokens(maxTokens);
+    if (!parsedMaxTokens.ok) {
+      res.status(400).json({ error: parsedMaxTokens.error });
+      return;
+    }
     const preferredProvider = parseProvider(provider);
     if (provider !== undefined && !preferredProvider) {
       res.status(400).json({ error: 'Invalid provider' });
@@ -154,7 +166,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
         configId: typeof configId === 'string' ? configId : undefined,
         messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
-        maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
+        maxTokens: parsedMaxTokens.value,
       },
       preferredProvider ?? undefined
     );
@@ -192,6 +204,22 @@ function parseProvider(value: unknown): LlmProvider | null {
     return value as LlmProvider;
   }
   return null;
+}
+
+function parseMaxTokens(value: unknown): { ok: true; value: number } | { ok: false; error: string } {
+  if (value === undefined || value === null) {
+    return { ok: true, value: DEFAULT_MAX_OUTPUT_TOKENS };
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    return { ok: false, error: 'maxTokens must be a positive integer' };
+  }
+  if (value > MAX_OUTPUT_TOKENS_UPPER_BOUND) {
+    return {
+      ok: false,
+      error: `maxTokens must be <= ${MAX_OUTPUT_TOKENS_UPPER_BOUND}`,
+    };
+  }
+  return { ok: true, value };
 }
 
 export default router;

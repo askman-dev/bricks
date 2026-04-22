@@ -43,6 +43,8 @@ const CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW = 10;
 const CHAT_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.
 const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const MAX_OUTPUT_TOKENS_UPPER_BOUND = 4096;
 
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -62,6 +64,22 @@ function parseProvider(value: unknown): LlmProvider | undefined {
   if (value === "anthropic" || value === "google_ai_studio") return value;
   if (value === "gemini") return "google_ai_studio";
   return undefined;
+}
+
+function parseMaxTokens(value: unknown): { ok: true; value: number } | { ok: false; error: string } {
+  if (value === undefined || value === null) {
+    return { ok: true, value: DEFAULT_MAX_OUTPUT_TOKENS };
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    return { ok: false, error: "maxTokens must be a positive integer" };
+  }
+  if (value > MAX_OUTPUT_TOKENS_UPPER_BOUND) {
+    return {
+      ok: false,
+      error: `maxTokens must be <= ${MAX_OUTPUT_TOKENS_UPPER_BOUND}`,
+    };
+  }
+  return { ok: true, value };
 }
 
 function parseChatRouter(value: unknown): ChatRouter | null {
@@ -143,6 +161,7 @@ async function runDefaultRouterRespondAsync(params: {
   resolvedBotId: string | null;
   resolvedSkillId: string | null;
   body: Record<string, unknown>;
+  maxTokens: number;
 }) {
   const {
     userId,
@@ -154,6 +173,7 @@ async function runDefaultRouterRespondAsync(params: {
     resolvedBotId,
     resolvedSkillId,
     body,
+    maxTokens,
   } = params;
 
   // NOTE: This runs after the HTTP response has been sent. On Vercel Serverless
@@ -172,6 +192,7 @@ async function runDefaultRouterRespondAsync(params: {
         model: typeof body.model === "string" ? body.model : undefined,
         configId: typeof body.configId === "string" ? body.configId : undefined,
         messages: modelMessages,
+        maxTokens,
       },
       parseProvider(body.provider),
     );
@@ -244,6 +265,7 @@ router.post(
       const assistantMessageId = parseSessionId(body.assistantMessageId);
       const userMessage =
         typeof body.userMessage === "string" ? body.userMessage.trim() : "";
+      const parsedMaxTokens = parseMaxTokens(body.maxTokens);
 
       if (
         !taskId ||
@@ -258,6 +280,11 @@ router.post(
           error:
             "Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, userMessage are required",
         });
+        return;
+      }
+
+      if (!parsedMaxTokens.ok) {
+        res.status(400).json({ error: parsedMaxTokens.error });
         return;
       }
 
@@ -348,6 +375,7 @@ router.post(
         resolvedBotId: input.resolvedBotId,
         resolvedSkillId: input.resolvedSkillId,
         body,
+        maxTokens: parsedMaxTokens.value,
       });
 
       res.json({
