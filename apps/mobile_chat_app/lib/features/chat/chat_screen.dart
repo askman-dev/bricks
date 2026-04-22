@@ -85,6 +85,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, ChatRouter> _threadRouters = {};
   int _respondGeneration = 0;
   int _idCounter = 0;
+  bool _isApplyingModel = false;
 
   @override
   void initState() {
@@ -311,121 +312,6 @@ class _ChatScreenState extends State<ChatScreen> {
       await session.dispose();
     }
     _sessions.clear();
-  }
-
-  Future<void> _openRuntimeModelConfigDialog() async {
-    if (_llmConfigs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No model configuration found')),
-      );
-      return;
-    }
-
-    var selectedSlot = _sessionConfigSlotId ??
-        _llmConfigs
-            .firstWhere((c) => c.isDefault, orElse: () => _llmConfigs.first)
-            .slotId;
-    var selectedConfig = _llmConfigs.firstWhere(
-      (cfg) => cfg.slotId == selectedSlot,
-    );
-    var selectedModel = _sessionModelOverride ?? selectedConfig.defaultModel;
-
-    final applied = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            selectedConfig = _llmConfigs.firstWhere(
-              (cfg) => cfg.slotId == selectedSlot,
-              orElse: () => _llmConfigs.first,
-            );
-            final models = selectedConfig.models.isNotEmpty
-                ? selectedConfig.models
-                : <String>[selectedConfig.defaultModel];
-            if (!models.contains(selectedModel)) {
-              selectedModel = models.first;
-            }
-            return AlertDialog(
-              title: const Text('Session model'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedSlot,
-                    decoration: const InputDecoration(
-                      labelText: 'Configuration',
-                    ),
-                    items: _llmConfigs
-                        .map(
-                          (cfg) => DropdownMenuItem<String>(
-                            value: cfg.slotId,
-                            child: Text(
-                              cfg.isDefault
-                                  ? '${cfg.slotId} (default)'
-                                  : cfg.slotId,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() {
-                        selectedSlot = value;
-                        final cfg = _llmConfigs.firstWhere(
-                          (item) => item.slotId == value,
-                          orElse: () => _llmConfigs.first,
-                        );
-                        selectedModel = cfg.defaultModel;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: BricksSpacing.sm),
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedModel,
-                    decoration: const InputDecoration(labelText: 'Model'),
-                    items: models
-                        .map(
-                          (model) => DropdownMenuItem<String>(
-                            value: model,
-                            child: Text(model),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() => selectedModel = value);
-                    },
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Apply'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (applied != true || !mounted) return;
-    await _resetSessions();
-    if (!mounted) return;
-    setState(() {
-      _sessionConfigSlotId = selectedSlot;
-      _sessionModelOverride = selectedModel;
-      _isSending = false;
-      _isStreaming = false;
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Session now uses $selectedModel')));
   }
 
   String _resolveModelId(String? model) {
@@ -1090,20 +976,26 @@ class _ChatScreenState extends State<ChatScreen> {
     required String slotId,
     required String model,
   }) async {
+    if (_isApplyingModel) return;
     final previousSlot = _sessionConfigSlotId;
     final previousModel = _sessionModelOverride;
     if (previousSlot == slotId && previousModel == model) return;
-    await _resetSessions();
-    if (!mounted) return;
-    setState(() {
-      _sessionConfigSlotId = slotId;
-      _sessionModelOverride = model;
-      _isSending = false;
-      _isStreaming = false;
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Session now uses $model')));
+    _isApplyingModel = true;
+    try {
+      await _resetSessions();
+      if (!mounted) return;
+      setState(() {
+        _sessionConfigSlotId = slotId;
+        _sessionModelOverride = model;
+        _isSending = false;
+        _isStreaming = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Session now uses $model ($slotId)')),
+      );
+    } finally {
+      _isApplyingModel = false;
+    }
   }
 
   List<({String slotId, String model})> _configuredModelOptions() {
