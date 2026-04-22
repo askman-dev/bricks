@@ -89,6 +89,8 @@ class _ChatScreenState extends State<ChatScreen> {
   int _respondGeneration = 0;
   int _idCounter = 0;
 
+  static const List<String> _openClawSlashCommands = <String>[];
+
   @override
   void initState() {
     super.initState();
@@ -474,6 +476,16 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Session now uses $selectedModel')));
+  }
+
+  String _currentComposerModelLabel() {
+    if (_effectiveRouterForScope() == ChatRouter.openclaw) {
+      return 'OpenClaw';
+    }
+    final selectedConfig = _activeLlmConfig;
+    return _sessionModelOverride ??
+        selectedConfig?.defaultModel ??
+        _resolveModelId(_activeAgent?.model);
   }
 
   String _resolveModelId(String? model) {
@@ -1748,14 +1760,15 @@ class _ChatScreenState extends State<ChatScreen> {
           child: SafeArea(
             child: ChatNavigationPage(
               agents: _agents
-                  .map(
+                  .map<ChatAgentItem>(
                     (agent) => ChatAgentItem(
                       name: agent.name,
+                      prompt: agent.systemPrompt,
                       description: agent.description,
                       isBuiltIn: _builtInAgentNames.contains(agent.name),
                     ),
                   )
-                  .toList(),
+                  .toList(growable: false),
               channels: _channels
                   .map(
                     (item) => ChatChannelItem(
