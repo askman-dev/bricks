@@ -250,7 +250,7 @@ async function runDefaultRouterRespondAsync(params: {
     }
 
     // Always do a final incremental flush for any content not yet persisted.
-    if (!hasAnyChunk || assistantContent !== lastFlushedContent) {
+    if (hasAnyChunk && assistantContent !== lastFlushedContent) {
       await upsertMessages(userId, [buildDispatchedUpsert(assistantContent)]);
     }
 
