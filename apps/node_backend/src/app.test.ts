@@ -91,57 +91,15 @@ afterAll(async () => {
 });
 
 describe('app rate limiting', () => {
-  it('skips the generic api limiter for chat sync polling', async () => {
-    for (let i = 0; i < 110; i += 1) {
-      const response = await fetch(
-        `${baseUrl}/api/chat/sync/${encodeURIComponent('session:default:main')}?afterSeq=${i}`,
-      );
-      expect(response.status).toBe(200);
-    }
+  it('keeps auth routes reachable through /api/auth mount', async () => {
+    const response = await fetch(`${baseUrl}/api/auth/noop`);
+    expect(response.status).toBe(200);
   });
 
-  it('applies the generic api limiter to platform routes like other api routes', async () => {
-    // Platform routes no longer bypass the generic IP limiter; verify a small
-    // batch of requests still succeeds (the IP budget has not been exhausted yet).
-    for (let i = 0; i < 5; i += 1) {
-      const response = await fetch(`${baseUrl}/api/v1/platform/noop`, {
-        headers: {
-          Authorization: 'Bearer test-platform-key',
-          'X-Bricks-Plugin-Id': 'plugin_local_main',
-        },
-      });
+  it('does not apply a coarse global limiter to non-auth api routes', async () => {
+    for (let i = 0; i < 130; i += 1) {
+      const response = await fetch(`${baseUrl}/api/config/noop`);
       expect(response.status).toBe(200);
     }
-  });
-
-  it('skips the generic api limiter for authenticated chat respond requests', async () => {
-    for (let i = 0; i < 110; i += 1) {
-      const response = await fetch(`${baseUrl}/api/chat/respond`, {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer test-user-token',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          taskId: `task-${i}`,
-          idempotencyKey: `idem-${i}`,
-          channelId: 'default',
-          sessionId: 'session:default:main',
-          userMessageId: `msg-user-${i}`,
-          assistantMessageId: `msg-assistant-${i}`,
-          userMessage: 'hello',
-        }),
-      });
-      expect(response.status).toBe(200);
-    }
-  });
-
-  it('still applies the generic api limiter to non-sync api routes', async () => {
-    let response: globalThis.Response | null = null;
-    for (let i = 0; i < 101; i += 1) {
-      response = await fetch(`${baseUrl}/api/config/noop`);
-    }
-
-    expect(response?.status).toBe(429);
   });
 });

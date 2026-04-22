@@ -1,12 +1,30 @@
 import { randomBytes } from 'node:crypto';
 import express, { Request, Response } from 'express';
 import axios from 'axios';
+import rateLimit from 'express-rate-limit';
 import { findOrCreateUserByOAuth } from '../services/userService.js';
 import { generateToken, authenticate, AuthRequest } from '../middleware/auth.js';
 import { isAllowedReturnTo } from './auth_return_to.js';
 import { storeOAuthState, consumeOAuthState } from '../services/oauthStateService.js';
 
 const router = express.Router();
+const AUTH_ANONYMOUS_WINDOW_MS = 60 * 1000;
+const AUTH_ANONYMOUS_MAX_REQUESTS_PER_WINDOW = 30;
+
+const anonymousAuthLimiter = rateLimit({
+  windowMs: AUTH_ANONYMOUS_WINDOW_MS,
+  max: AUTH_ANONYMOUS_MAX_REQUESTS_PER_WINDOW,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    const authHeader = req.header('Authorization');
+    return Boolean(authHeader?.startsWith('Bearer '));
+  },
+  message: {
+    error: 'Too many anonymous auth requests from this IP, please try again later.',
+  },
+});
+router.use(anonymousAuthLimiter);
 
 interface GitHubUser {
   id: number;
