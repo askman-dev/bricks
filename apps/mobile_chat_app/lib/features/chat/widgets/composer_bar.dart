@@ -5,6 +5,18 @@ import 'package:flutter/material.dart';
 /// Actions available in the composer popup menu.
 enum ComposerMenuAction { model, info }
 
+class ComposerAtAction {
+  const ComposerAtAction({
+    required this.value,
+    required this.label,
+    this.enabled = true,
+  });
+
+  final String value;
+  final String label;
+  final bool enabled;
+}
+
 /// The input composer bar at the bottom of the chat screen.
 class ComposerBar extends StatefulWidget {
   const ComposerBar({
@@ -15,8 +27,10 @@ class ComposerBar extends StatefulWidget {
     this.showComposerConfigMenu = true,
     this.activeModelLabel,
     this.slashCommands = const [],
+    this.atActions = const [],
     this.onSend,
     this.onAgentSelected,
+    this.onAtActionSelected,
     this.onOpenModelSelection,
     this.onShowInfo,
     this.onStop,
@@ -41,11 +55,17 @@ class ComposerBar extends StatefulWidget {
   /// Optional slash commands to insert into the input.
   final List<String> slashCommands;
 
+  /// Optional @ actions shown next to route/slash controls.
+  final List<ComposerAtAction> atActions;
+
   /// Called when the user submits a message. Null while a send is in progress.
   final void Function(String text)? onSend;
 
   /// Called when the user picks an agent from the @ menu.
   final void Function(AgentDefinition agent)? onAgentSelected;
+
+  /// Called when the user picks an item from the @ menu.
+  final void Function(String value)? onAtActionSelected;
 
   /// Opens runtime model selection UI.
   final VoidCallback? onOpenModelSelection;
@@ -175,6 +195,39 @@ class _ComposerBarState extends State<ComposerBar>
                               ),
                               child: Text(
                                 '/',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: BricksSpacing.xs),
+                        ],
+                        if (widget.atActions.isNotEmpty) ...[
+                          PopupMenuButton<String>(
+                            popUpAnimationStyle:
+                                BricksTheme.menuPopupAnimationStyle,
+                            tooltip: 'Mention actions',
+                            enabled: !widget.isStreaming,
+                            onSelected: (value) =>
+                                widget.onAtActionSelected?.call(value),
+                            itemBuilder: (context) => widget.atActions
+                                .map(
+                                  (action) => PopupMenuItem<String>(
+                                    value: action.value,
+                                    enabled: action.enabled,
+                                    child: Text(action.label),
+                                  ),
+                                )
+                                .toList(),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: BricksSpacing.sm,
+                                vertical: BricksSpacing.xs,
+                              ),
+                              child: Text(
+                                '@',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,

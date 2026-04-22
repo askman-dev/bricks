@@ -91,7 +91,8 @@ index:
       - system prompt
       - manage agents
       - agent prompt detail
-      - route-bound @ marker
+      - route-bound @ menu
+      - skills group placeholder
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
@@ -111,7 +112,8 @@ index:
       - 若未按路由动态切换输入框左下角动作按钮，可能出现默认路由缺少模型入口或 OpenClaw 无法快捷注入斜杠命令的问题。
       - 长轮询 waitMs 设置过高且缺少超时保护时，可能导致连接堆积并放大服务端资源占用。
       - 内建 Agent 与自定义 Agent 合并策略若处理不当，可能导致同名覆盖异常或列表顺序不稳定。
-      - 若将 `@` 提及能力从输入框迁移到路由指示时未同步文案/可见性规则，用户可能误解当前路由状态。
+      - 若将 `@` 提及能力从输入框迁移到路由指示后未保持可点击与菜单项一致性，用户可能误解当前路由状态或无法切换目标 Agent。
+      - 若侧边栏 Skills 分组默认折叠状态或空态文案不稳定，可能与后续真实技能列表接入产生认知偏差。
       - Agent 详情页“修改配置/发起对话”回调若未正确关闭抽屉与路由跳转，可能出现重复页面栈或会话 Agent 未更新。
 
   - feature_id: model_settings

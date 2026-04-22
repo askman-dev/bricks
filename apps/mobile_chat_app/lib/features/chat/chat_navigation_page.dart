@@ -60,6 +60,7 @@ class ChatNavigationPage extends StatefulWidget {
 }
 
 class _ChatNavigationPageState extends State<ChatNavigationPage> {
+  bool _skillsExpanded = true;
   bool _agentsExpanded = true;
   bool _channelsExpanded = true;
 
@@ -171,6 +172,41 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
           subtitle: Text('You are here'),
         ),
         const Divider(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () =>
+                      setState(() => _skillsExpanded = !_skillsExpanded),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _skillsExpanded
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Skills',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_skillsExpanded)
+          const ListTile(
+            title: Text('待实现'),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: Row(
