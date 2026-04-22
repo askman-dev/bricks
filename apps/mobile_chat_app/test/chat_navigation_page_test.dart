@@ -6,6 +6,7 @@ Widget _buildPage({
   ValueChanged<ChatNavigationAction>? onActionSelected,
   ValueChanged<String>? onChannelRename,
   ValueChanged<String>? onChannelArchive,
+  ValueChanged<String>? onAgentSelected,
   List<ChatAgentItem> agents = const [],
 }) =>
     MaterialApp(
@@ -18,6 +19,7 @@ Widget _buildPage({
             ChatChannelItem(id: 'project', name: '项目频道'),
           ],
           selectedChannelId: 'default',
+          onAgentSelected: onAgentSelected,
           onChannelRename: onChannelRename,
           onChannelArchive: onChannelArchive,
         ),
@@ -71,8 +73,13 @@ void main() {
       await tester.pumpWidget(
         _buildPage(
           agents: const [
-            ChatAgentItem(name: 'Planner', isBuiltIn: true),
-            ChatAgentItem(name: 'Reviewer', description: 'Custom reviewer'),
+            ChatAgentItem(
+                name: 'Planner', prompt: 'Built-in prompt', isBuiltIn: true),
+            ChatAgentItem(
+              name: 'Reviewer',
+              prompt: 'Review prompt',
+              description: 'Custom reviewer',
+            ),
           ],
         ),
       );
@@ -118,17 +125,54 @@ void main() {
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
 
-    testWidgets('tapping 配置 fires manageAgents action', (tester) async {
+    testWidgets('agents section no longer shows group 配置 button',
+        (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      expect(find.text('配置'), findsNothing);
+    });
+
+    testWidgets('agent prompt page 修改配置 fires manageAgents action',
+        (tester) async {
       ChatNavigationAction? received;
       await tester.pumpWidget(
-        _buildPage(onActionSelected: (action) => received = action),
+        _buildPage(
+          onActionSelected: (action) => received = action,
+          agents: const [
+            ChatAgentItem(name: 'Planner', prompt: 'You are planner'),
+          ],
+        ),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('配置'));
+      await tester.tap(find.text('Planner'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('修改配置'));
       await tester.pumpAndSettle();
 
       expect(received, ChatNavigationAction.manageAgents);
+    });
+
+    testWidgets('agent prompt page 发起对话 triggers onAgentSelected',
+        (tester) async {
+      String? selectedAgent;
+      await tester.pumpWidget(
+        _buildPage(
+          onAgentSelected: (name) => selectedAgent = name,
+          agents: const [
+            ChatAgentItem(name: 'Reviewer', prompt: 'Review things'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Reviewer'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('发起对话'));
+      await tester.pumpAndSettle();
+
+      expect(selectedAgent, 'Reviewer');
     });
 
     testWidgets('tapping 新建频道 fires createChannel action', (tester) async {

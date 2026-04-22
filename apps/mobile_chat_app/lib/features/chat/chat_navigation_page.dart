@@ -20,11 +20,13 @@ class ChatChannelItem {
 class ChatAgentItem {
   const ChatAgentItem({
     required this.name,
+    required this.prompt,
     this.description,
     this.isBuiltIn = false,
   });
 
   final String name;
+  final String prompt;
   final String? description;
   final bool isBuiltIn;
 }
@@ -39,6 +41,7 @@ class ChatNavigationPage extends StatefulWidget {
     required this.channels,
     required this.selectedChannelId,
     this.onChannelSelected,
+    this.onAgentSelected,
     this.onChannelRename,
     this.onChannelArchive,
   });
@@ -48,6 +51,7 @@ class ChatNavigationPage extends StatefulWidget {
   final List<ChatChannelItem> channels;
   final String selectedChannelId;
   final ValueChanged<String>? onChannelSelected;
+  final ValueChanged<String>? onAgentSelected;
   final ValueChanged<String>? onChannelRename;
   final ValueChanged<String>? onChannelArchive;
 
@@ -100,6 +104,25 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
         widget.onChannelArchive?.call(channel.id);
         break;
     }
+  }
+
+  Future<void> _showAgentPrompt(ChatAgentItem agent) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _AgentPromptPage(
+          agent: agent,
+          onOpenConfig: () {
+            Navigator.of(context).pop();
+            _selectAction(context, ChatNavigationAction.manageAgents);
+          },
+          onStartConversation: () {
+            Navigator.of(context).pop();
+            _closeNavigation(context);
+            widget.onAgentSelected?.call(agent.name);
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -176,14 +199,6 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
                   ),
                 ),
               ),
-              TextButton.icon(
-                onPressed: () => _selectAction(
-                  context,
-                  ChatNavigationAction.manageAgents,
-                ),
-                icon: const Icon(Icons.settings_outlined, size: 18),
-                label: const Text('配置'),
-              ),
             ],
           ),
         ),
@@ -209,6 +224,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
                   trailing: agent.isBuiltIn
                       ? const Icon(Icons.lock_outline, size: 18)
                       : null,
+                  onTap: () => _showAgentPrompt(agent),
                 );
               },
             ),
@@ -279,6 +295,59 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
             }),
         const SizedBox(height: 24),
       ],
+    );
+  }
+}
+
+class _AgentPromptPage extends StatelessWidget {
+  const _AgentPromptPage({
+    required this.agent,
+    required this.onOpenConfig,
+    required this.onStartConversation,
+  });
+
+  final ChatAgentItem agent;
+  final VoidCallback onOpenConfig;
+  final VoidCallback onStartConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final prompt = agent.prompt.trim().isEmpty ? '（未配置 Prompt）' : agent.prompt;
+    return Scaffold(
+      appBar: AppBar(title: Text(agent.name)),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Prompt', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Expanded(
+              child: SingleChildScrollView(
+                child: SelectableText(prompt),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onOpenConfig,
+                    child: const Text('修改配置'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onStartConversation,
+                    child: const Text('发起对话'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

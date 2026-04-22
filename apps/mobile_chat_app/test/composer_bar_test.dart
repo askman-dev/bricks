@@ -1,4 +1,3 @@
-import 'package:chat_domain/chat_domain.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/chat/widgets/composer_bar.dart';
@@ -10,7 +9,8 @@ const _settle = Duration(milliseconds: 300);
 Widget _buildBar(
         {VoidCallback? onOpenModelSelection,
         VoidCallback? onShowInfo,
-        Widget? routerAction}) =>
+        Widget? routerAction,
+        bool showRouteAtMarker = false}) =>
     MaterialApp(
       home: Scaffold(
         body: Column(
@@ -19,6 +19,7 @@ Widget _buildBar(
             ComposerBar(
               agents: const [],
               routerAction: routerAction,
+              showRouteAtMarker: showRouteAtMarker,
               onOpenModelSelection: onOpenModelSelection,
               onShowInfo: onShowInfo,
             ),
@@ -157,8 +158,7 @@ void main() {
       await tester.pump();
 
       final routerActionFinder = find.byTooltip('Router settings');
-      final menuButtonFinder =
-          find.byType(PopupMenuButton<ComposerMenuAction>);
+      final menuButtonFinder = find.byType(PopupMenuButton<ComposerMenuAction>);
 
       expect(routerActionFinder, findsOneWidget);
       expect(menuButtonFinder, findsOneWidget);
@@ -219,37 +219,28 @@ void main() {
     });
   });
 
-  group('ComposerBar – @mention suggestions', () {
-    final agents = [
-      AgentDefinition(
-        name: 'my-agent',
-        description: 'A test agent',
-        model: 'sonnet',
-        systemPrompt: 'You are helpful.',
-      ),
-    ];
-
-    testWidgets('typing @ shows agent suggestion', (tester) async {
+  group('ComposerBar – route marker', () {
+    testWidgets('shows @ marker when enabled', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ComposerBar(
-              agents: agents,
-              // onSend must be non-null to enable the TextField.
-              onSend: (_) {},
-            ),
+        _buildBar(
+          showRouteAtMarker: true,
+          routerAction: const IconButton(
+            onPressed: null,
+            tooltip: 'Router settings',
+            icon: Icon(Icons.alt_route),
           ),
         ),
       );
       await tester.pump();
 
-      // Focus the TextField then type the trigger character.
-      await tester.tap(find.byType(TextField));
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), '@');
+      expect(find.text('@'), findsOneWidget);
+    });
+
+    testWidgets('hides @ marker when disabled', (tester) async {
+      await tester.pumpWidget(_buildBar(showRouteAtMarker: false));
       await tester.pump();
 
-      expect(find.text('@my-agent'), findsOneWidget);
+      expect(find.text('@'), findsNothing);
     });
   });
 }
