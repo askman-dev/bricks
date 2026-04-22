@@ -61,10 +61,18 @@ class ComposerBar extends StatefulWidget {
   /// Called when the user submits a message. Null while a send is in progress.
   final void Function(String text)? onSend;
 
-  /// Called when the user picks an agent from the @ menu.
+  /// Legacy callback for agent selection.
+  ///
+  /// The current @ menu dispatches selections via [onAtActionSelected].
+  /// Prefer [onAtActionSelected] for handling @ menu actions.
+  @Deprecated(
+    'ComposerBar no longer invokes onAgentSelected from the @ menu. '
+    'Use onAtActionSelected instead.',
+  )
   final void Function(AgentDefinition agent)? onAgentSelected;
 
-  /// Called when the user picks an item from the @ menu.
+  /// Called when the user picks an item from the @ menu, including
+  /// agent-backed @ actions.
   final void Function(String value)? onAtActionSelected;
 
   /// Opens runtime model selection UI.
