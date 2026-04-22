@@ -1,4 +1,5 @@
 import express, { Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { generateWithUserConfig, streamWithUserConfig } from '../llm/llm_service.js';
 import { LlmProvider, UnifiedChatRequest } from '../llm/types.js';
@@ -7,6 +8,18 @@ import { parseMaxTokens } from './validation.js';
 const router = express.Router();
 const SUPPORTED_PROVIDERS = new Set<LlmProvider>(['anthropic', 'google_ai_studio']);
 const VALID_ROLES = new Set(['system', 'user', 'assistant']);
+
+const LLM_WINDOW_MS = 60 * 1000;
+const LLM_MAX_REQUESTS_PER_WINDOW = 60;
+
+const llmLimiter = rateLimit({
+  windowMs: LLM_WINDOW_MS,
+  max: LLM_MAX_REQUESTS_PER_WINDOW,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: AuthRequest) => (req.userId ?? req.ip ?? 'unknown'),
+  message: { error: 'Too many LLM requests, please try again later.' },
+});
 
 function validateMessages(
   messages: unknown
@@ -29,6 +42,7 @@ function validateMessages(
 }
 
 router.use(authenticate);
+router.use(llmLimiter);
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {

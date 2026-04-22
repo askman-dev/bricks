@@ -158,4 +158,31 @@ describe('config node routes', () => {
     expect(body.nodeName).toBe('openclaw 2');
     expect(body.pluginId).toBe('plugin_node_2');
   });
+
+  it('does not rate limit config GET reads at app layer', async () => {
+    for (let i = 0; i < 100; i += 1) {
+      const response = await fetch(`${baseUrl}/api/config?category=llm`);
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('rate limits config writes per authenticated user after minute budget is exhausted', async () => {
+    let limited: globalThis.Response | null = null;
+    for (let i = 0; i < 80; i += 1) {
+      const response = await fetch(`${baseUrl}/api/config/nodes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: `node-${i}` }),
+      });
+      if (response.status === 429) {
+        limited = response;
+        break;
+      }
+    }
+
+    expect(limited?.status).toBe(429);
+    const body = (await limited!.json()) as { error?: string };
+    expect(body.error).toContain('Too many config write requests');
+  });
+
 });
