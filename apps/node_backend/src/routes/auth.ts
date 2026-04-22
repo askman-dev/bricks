@@ -16,10 +16,6 @@ const anonymousAuthLimiter = rateLimit({
   max: AUTH_ANONYMOUS_MAX_REQUESTS_PER_WINDOW,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    const authHeader = req.header('Authorization');
-    return Boolean(authHeader?.startsWith('Bearer '));
-  },
   message: {
     error: 'Too many anonymous auth requests from this IP, please try again later.',
   },

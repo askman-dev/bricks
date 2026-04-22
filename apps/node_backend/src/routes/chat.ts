@@ -39,7 +39,7 @@ const CHAT_RESPOND_MAX_REQUESTS_PER_WINDOW = 120;
 // SSE events endpoint: limit how many new SSE connections can be opened per
 // user/session per minute to prevent connection floods.
 const CHAT_EVENTS_WINDOW_MS = 60 * 1000;
-const CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW = 120;
+const CHAT_EVENTS_MAX_CONNECTIONS_PER_WINDOW = 10;
 // Interval between each poll of syncMessages while an SSE connection is open.
 const CHAT_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.

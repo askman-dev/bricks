@@ -16,9 +16,9 @@ import {
 import { getPlatformNodeByPluginId } from '../services/platformNodeService.js';
 
 const DEFAULT_PLATFORM_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const DEFAULT_PLATFORM_READ_LIMIT_MAX = 120;
-const DEFAULT_PLATFORM_WRITE_LIMIT_MAX = 120;
-const DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX = 120;
+const DEFAULT_PLATFORM_READ_LIMIT_MAX = 300;
+const DEFAULT_PLATFORM_WRITE_LIMIT_MAX = 600;
+const DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX = 10;
 const PLATFORM_MESSAGE_TEXT_MAX_BYTES = 120 * 1024;
 // Interval between each poll of listPlatformEvents while an SSE connection is open.
 const PLATFORM_EVENTS_POLL_INTERVAL_MS = 1000;
