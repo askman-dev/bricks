@@ -1056,6 +1056,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _handleRouterMenuSelection(String value) {
+    if (value.startsWith('model:')) {
+      final segments = value.split(':');
+      if (segments.length < 3) return;
+      final slotId = segments[1];
+      final model = segments.sublist(2).join(':');
+      unawaited(_applyRouterMenuModelSelection(slotId: slotId, model: model));
+      return;
+    }
     switch (value) {
       case 'channel:default':
         unawaited(_saveChannelRouter(ChatRouter.defaultRoute));
@@ -1076,6 +1084,42 @@ class _ChatScreenState extends State<ChatScreen> {
         unawaited(_saveThreadRouter(ChatRouter.openclaw));
         return;
     }
+  }
+
+  Future<void> _applyRouterMenuModelSelection({
+    required String slotId,
+    required String model,
+  }) async {
+    final previousSlot = _sessionConfigSlotId;
+    final previousModel = _sessionModelOverride;
+    if (previousSlot == slotId && previousModel == model) return;
+    await _resetSessions();
+    if (!mounted) return;
+    setState(() {
+      _sessionConfigSlotId = slotId;
+      _sessionModelOverride = model;
+      _isSending = false;
+      _isStreaming = false;
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Session now uses $model')));
+  }
+
+  List<({String slotId, String model})> _configuredModelOptions() {
+    final options = <({String slotId, String model})>[];
+    final seenKeys = <String>{};
+    for (final config in _llmConfigs) {
+      final models = config.models.isNotEmpty
+          ? config.models
+          : <String>[config.defaultModel];
+      for (final model in models) {
+        final key = '${config.slotId}::$model';
+        if (!seenKeys.add(key)) continue;
+        options.add((slotId: config.slotId, model: model));
+      }
+    }
+    return options;
   }
 
   void _updateSubSectionLastMessageAtFromMessages({
@@ -1803,6 +1847,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       const SnackBar(content: Text('功能暂未实现')),
                     );
                     break;
+                  case '__info__':
+                    _showDebugInfoDialog();
+                    break;
                 }
               },
               itemBuilder: (context) => [
@@ -1813,6 +1860,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 const PopupMenuItem<String>(
                   value: '__archive__',
                   child: Text('分区存档（未实现）'),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: '__info__',
+                  child: Text('信息'),
                 ),
               ],
               icon: const Icon(Icons.more_vert),
@@ -1836,6 +1888,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ChatRouter.defaultRoute;
                   final channelRouterLabel = _routerLabel(channelRouter);
                   final explicitThreadRouter = _explicitThreadRouter();
+                  final modelOptions = _configuredModelOptions();
                   return [
                     if (!isThreadConversation) ...[
                       PopupMenuItem<String>(
@@ -1891,6 +1944,25 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     ],
+                    if (modelOptions.isNotEmpty) ...[
+                      const PopupMenuDivider(),
+                      const PopupMenuItem<String>(
+                        enabled: false,
+                        child: Text('模型'),
+                      ),
+                      ...modelOptions.map(
+                        (option) => PopupMenuItem<String>(
+                          value: 'model:${option.slotId}:${option.model}',
+                          child: _buildRouterMenuOption(
+                            context: context,
+                            label: option.model,
+                            sublabel: option.slotId,
+                            selected: _sessionConfigSlotId == option.slotId &&
+                                _sessionModelOverride == option.model,
+                          ),
+                        ),
+                      ),
+                    ],
                   ];
                 },
                 icon: SizedBox.square(
@@ -1907,8 +1979,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               onAgentSelected: _selectAgent,
-              onOpenModelSelection: _openRuntimeModelConfigDialog,
-              onShowInfo: _showDebugInfoDialog,
               onSend: _isSending ? null : _sendMessage,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,

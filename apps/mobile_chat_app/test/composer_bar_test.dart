@@ -7,11 +7,7 @@ import 'package:mobile_chat_app/features/chat/widgets/composer_bar.dart';
 // duration instead of pumpAndSettle() to avoid timeouts.
 const _settle = Duration(milliseconds: 300);
 
-Widget _buildBar(
-        {VoidCallback? onOpenModelSelection,
-        VoidCallback? onShowInfo,
-        Widget? routerAction}) =>
-    MaterialApp(
+Widget _buildBar({Widget? routerAction}) => MaterialApp(
       home: Scaffold(
         body: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -19,8 +15,6 @@ Widget _buildBar(
             ComposerBar(
               agents: const [],
               routerAction: routerAction,
-              onOpenModelSelection: onOpenModelSelection,
-              onShowInfo: onShowInfo,
             ),
           ],
         ),
@@ -29,26 +23,6 @@ Widget _buildBar(
 
 void main() {
   group('ComposerBar – popup menu', () {
-    testWidgets('selecting model action triggers onOpenModelSelection',
-        (tester) async {
-      var called = false;
-
-      await tester.pumpWidget(_buildBar(onOpenModelSelection: () {
-        called = true;
-      }));
-      await tester.pump();
-
-      // Retrieve the PopupMenuButton and invoke its onSelected handler directly
-      // to avoid popup-positioning issues in the headless test environment.
-      final button = tester.widget<PopupMenuButton<ComposerMenuAction>>(
-        find.byType(PopupMenuButton<ComposerMenuAction>),
-      );
-      button.onSelected?.call(ComposerMenuAction.model);
-      await tester.pump();
-
-      expect(called, isTrue);
-    });
-
     testWidgets('selecting newContext action does not throw', (tester) async {
       await tester.pumpWidget(_buildBar());
       await tester.pump();
@@ -73,21 +47,6 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('selecting info action triggers onShowInfo', (tester) async {
-      var called = false;
-
-      await tester.pumpWidget(_buildBar(onShowInfo: () => called = true));
-      await tester.pump();
-
-      final button = tester.widget<PopupMenuButton<ComposerMenuAction>>(
-        find.byType(PopupMenuButton<ComposerMenuAction>),
-      );
-      button.onSelected?.call(ComposerMenuAction.info);
-      await tester.pump();
-
-      expect(called, isTrue);
-    });
-
     testWidgets('popup menu items are present in the menu builder',
         (tester) async {
       await tester.pumpWidget(_buildBar());
@@ -108,15 +67,11 @@ void main() {
           values,
           containsAll([
             ComposerMenuAction.newContext,
-            ComposerMenuAction.model,
             ComposerMenuAction.agents,
-            ComposerMenuAction.info,
           ]));
     });
 
     testWidgets('popup menu is disabled while streaming', (tester) async {
-      var called = false;
-
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -126,7 +81,6 @@ void main() {
                 ComposerBar(
                   agents: const [],
                   isStreaming: true,
-                  onOpenModelSelection: () => called = true,
                 ),
               ],
             ),
@@ -140,7 +94,6 @@ void main() {
         find.byType(PopupMenuButton<ComposerMenuAction>),
       );
       expect(button.enabled, isFalse);
-      expect(called, isFalse);
     });
 
     testWidgets('renders optional router action before composer menu button',
@@ -157,8 +110,7 @@ void main() {
       await tester.pump();
 
       final routerActionFinder = find.byTooltip('Router settings');
-      final menuButtonFinder =
-          find.byType(PopupMenuButton<ComposerMenuAction>);
+      final menuButtonFinder = find.byType(PopupMenuButton<ComposerMenuAction>);
 
       expect(routerActionFinder, findsOneWidget);
       expect(menuButtonFinder, findsOneWidget);
