@@ -66,9 +66,6 @@ class ComposerBar extends StatefulWidget {
 class _ComposerBarState extends State<ComposerBar>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
-  String _mentionQuery = '';
-  int _mentionStart = -1;
-  bool _showMentions = false;
   late AnimationController _spinController;
 
   @override
@@ -85,70 +82,6 @@ class _ComposerBarState extends State<ComposerBar>
     if (text.isEmpty || widget.onSend == null) return;
     widget.onSend!(text);
     _controller.clear();
-    _hideMentions();
-  }
-
-  void _hideMentions() {
-    setState(() {
-      _mentionQuery = '';
-      _mentionStart = -1;
-      _showMentions = false;
-    });
-  }
-
-  void _handleChanged(String value) {
-    final cursor = _controller.selection.baseOffset;
-    if (cursor <= 0) {
-      _hideMentions();
-      return;
-    }
-
-    final beforeCursor = value.substring(0, cursor);
-    final atIndex = beforeCursor.lastIndexOf('@');
-    if (atIndex == -1) {
-      _hideMentions();
-      return;
-    }
-
-    final afterAt = beforeCursor.substring(atIndex + 1);
-    if (afterAt.contains(RegExp(r'\s'))) {
-      _hideMentions();
-      return;
-    }
-
-    setState(() {
-      _mentionStart = atIndex;
-      _mentionQuery = afterAt;
-      _showMentions = true;
-    });
-  }
-
-  List<AgentDefinition> get _filteredAgents {
-    if (_mentionQuery.isEmpty) return widget.agents;
-    final query = _mentionQuery.toLowerCase();
-    return widget.agents.where((agent) {
-      return agent.name.toLowerCase().contains(query) ||
-          agent.description.toLowerCase().contains(query);
-    }).toList();
-  }
-
-  void _insertAgentMention(AgentDefinition agent) {
-    final cursor = _controller.selection.baseOffset;
-    if (_mentionStart < 0 || cursor < 0) return;
-    final text = _controller.text;
-    final replacement = '@${agent.name} ';
-    final updated = text.replaceRange(_mentionStart, cursor, replacement);
-    final newCursor = _mentionStart + replacement.length;
-    _controller.value = TextEditingValue(
-      text: updated,
-      selection: TextSelection.collapsed(offset: newCursor),
-    );
-  }
-
-  void _selectAgent(AgentDefinition agent) {
-    widget.onAgentSelected?.call(agent);
-    _insertAgentMention(agent);
-    _hideMentions();
   }
 
   void _insertSlashCommand(String command) {
@@ -159,7 +92,6 @@ class _ComposerBarState extends State<ComposerBar>
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
-    _hideMentions();
   }
 
   @override
@@ -172,8 +104,6 @@ class _ComposerBarState extends State<ComposerBar>
   @override
   Widget build(BuildContext context) {
     final isSending = widget.onSend == null;
-    final hintAgent = widget.activeAgent?.name;
-    final filtered = _filteredAgents;
 
     return SafeArea(
       child: Padding(
@@ -200,16 +130,10 @@ class _ComposerBarState extends State<ComposerBar>
                     minLines: 1,
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _submit(),
-                    onChanged: _handleChanged,
-                    decoration: InputDecoration(
-                      hintText: hintAgent == null
-                          ? 'Ask Bricks to create something…'
-                          : 'Ask @$hintAgent to create something…',
-                      prefixIcon: widget.activeAgent != null
-                          ? const Icon(Icons.alternate_email_outlined)
-                          : null,
+                    decoration: const InputDecoration(
+                      hintText: 'Ask Bricks to create something…',
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.fromLTRB(
+                      contentPadding: EdgeInsets.fromLTRB(
                         BricksSpacing.md,
                         BricksSpacing.sm,
                         BricksSpacing.md,
@@ -343,42 +267,6 @@ class _ComposerBarState extends State<ComposerBar>
                 ],
               ),
             ),
-            if (_showMentions && filtered.isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(top: BricksSpacing.xs),
-                padding: const EdgeInsets.symmetric(
-                  vertical: BricksSpacing.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(BricksRadius.md),
-                  boxShadow: const [
-                    BoxShadow(
-                      blurRadius: 6,
-                      offset: Offset(0, 2),
-                      color: Colors.black26,
-                    ),
-                  ],
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
-                constraints: const BoxConstraints(maxHeight: 200),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final agent = filtered[index];
-                    return ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.smart_toy_outlined),
-                      title: Text('@${agent.name}'),
-                      subtitle: Text(agent.description),
-                      onTap: () => _selectAgent(agent),
-                    );
-                  },
-                ),
-              ),
           ],
         ),
       ),
