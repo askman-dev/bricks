@@ -8,6 +8,7 @@ import {
   ackPlatformEvents,
   listPlatformEvents,
   createPlatformMessage,
+  patchPlatformMessage,
 } from '../services/platformIntegrationService.js';
 
 vi.mock('../services/platformIntegrationService.js', () => ({
@@ -37,7 +38,7 @@ beforeAll(async () => {
   process.env.JWT_SECRET = 'test-jwt-secret';
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '2mb' }));
   const platformModule = await import('./platform.js');
   createPlatformRouter = platformModule.createPlatformRouter;
   const { default: platformRoutes } = platformModule;
@@ -299,6 +300,50 @@ describe('platform route auth and ack constraints', () => {
       expect.objectContaining({ userId: 'user-123' }),
     );
   });
+
+  it('rejects oversized text in POST /messages', async () => {
+    vi.mocked(createPlatformMessage).mockClear();
+    const response = await fetch(`${baseUrl}/api/v1/platform/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({
+        userId: 'user-123',
+        conversationId: 'conv-1',
+        channelId: 'ch-1',
+        text: 'x'.repeat(120 * 1024 + 1),
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_PAYLOAD');
+    expect(vi.mocked(createPlatformMessage)).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized text in PATCH /messages/:messageId', async () => {
+    vi.mocked(patchPlatformMessage).mockClear();
+    const response = await fetch(`${baseUrl}/api/v1/platform/messages/msg-1`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({
+        userId: 'user-123',
+        text: 'x'.repeat(120 * 1024 + 1),
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_PAYLOAD');
+    expect(vi.mocked(patchPlatformMessage)).not.toHaveBeenCalled();
+  });
 });
 
 describe('platform SSE events stream', () => {
@@ -377,7 +422,7 @@ describe('platform route rate limiting', () => {
 
   beforeAll(async () => {
     const app = express();
-    app.use(express.json());
+    app.use(express.json({ limit: '2mb' }));
     app.use(
       '/api/v1/platform',
       createPlatformRouter({

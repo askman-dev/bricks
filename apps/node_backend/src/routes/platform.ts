@@ -19,6 +19,7 @@ const DEFAULT_PLATFORM_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_PLATFORM_READ_LIMIT_MAX = 300;
 const DEFAULT_PLATFORM_WRITE_LIMIT_MAX = 600;
 const DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX = 10;
+const PLATFORM_MESSAGE_TEXT_MAX_BYTES = 120 * 1024;
 // Interval between each poll of listPlatformEvents while an SSE connection is open.
 const PLATFORM_EVENTS_POLL_INTERVAL_MS = 1000;
 // Interval between keep-alive heartbeat comments sent over the SSE stream.
@@ -52,6 +53,13 @@ function readTrimmedString(input: unknown): string | null {
   if (typeof input !== 'string') return null;
   const trimmed = input.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function validateMessageTextLength(text: string): string | null {
+  if (Buffer.byteLength(text, 'utf8') > PLATFORM_MESSAGE_TEXT_MAX_BYTES) {
+    return `text/content must be ${PLATFORM_MESSAGE_TEXT_MAX_BYTES} bytes (UTF-8) or fewer`;
+  }
+  return null;
 }
 
 /**
@@ -342,6 +350,12 @@ export function createPlatformRouter(options: {
           return;
         }
 
+        const textLengthError = validateMessageTextLength(text);
+        if (textLengthError) {
+          sendError(res, 400, 'INVALID_PAYLOAD', textLengthError);
+          return;
+        }
+
         const requestMetadata =
           req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
             ? (req.body.metadata as Record<string, unknown>)
@@ -399,6 +413,14 @@ export function createPlatformRouter(options: {
         if (!text && !metadata) {
           sendError(res, 400, 'INVALID_PAYLOAD', 'at least one of text or metadata is required');
           return;
+        }
+
+        if (text) {
+          const textLengthError = validateMessageTextLength(text);
+          if (textLengthError) {
+            sendError(res, 400, 'INVALID_PAYLOAD', textLengthError);
+            return;
+          }
         }
 
         const nodeMetadata = await buildNodeMetadata(userId, req.platformPluginId);

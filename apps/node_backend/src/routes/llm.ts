@@ -2,6 +2,7 @@ import express, { Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { generateWithUserConfig, streamWithUserConfig } from '../llm/llm_service.js';
 import { LlmProvider, UnifiedChatRequest } from '../llm/types.js';
+import { parseMaxTokens } from './validation.js';
 
 const router = express.Router();
 const SUPPORTED_PROVIDERS = new Set<LlmProvider>(['anthropic', 'google_ai_studio']);
@@ -83,6 +84,11 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
 
     const { provider, model, configId, messages, temperature, maxTokens } =
       req.body ?? {};
+    const parsedMaxTokens = parseMaxTokens(maxTokens);
+    if (!parsedMaxTokens.ok) {
+      res.status(400).json({ error: parsedMaxTokens.error });
+      return;
+    }
     const preferredProvider = parseProvider(provider);
     if (provider !== undefined && !preferredProvider) {
       res.status(400).json({ error: 'Invalid provider' });
@@ -102,7 +108,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
         configId: typeof configId === 'string' ? configId : undefined,
         messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
-        maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
+        maxTokens: parsedMaxTokens.value,
       },
       preferredProvider ?? undefined
     );
@@ -135,6 +141,11 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
 
     const { provider, model, configId, messages, temperature, maxTokens } =
       req.body ?? {};
+    const parsedMaxTokens = parseMaxTokens(maxTokens);
+    if (!parsedMaxTokens.ok) {
+      res.status(400).json({ error: parsedMaxTokens.error });
+      return;
+    }
     const preferredProvider = parseProvider(provider);
     if (provider !== undefined && !preferredProvider) {
       res.status(400).json({ error: 'Invalid provider' });
@@ -154,7 +165,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
         configId: typeof configId === 'string' ? configId : undefined,
         messages: result.normalized,
         temperature: typeof temperature === 'number' ? temperature : undefined,
-        maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
+        maxTokens: parsedMaxTokens.value,
       },
       preferredProvider ?? undefined
     );

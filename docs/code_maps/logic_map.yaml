@@ -82,6 +82,8 @@ index:
       - popup-menu
       - header-dropdown
       - menu-animation
+      - slash-commands
+      - route-aware composer actions
       - long-polling (deprecated, replaced by SSE)
       - SSE (Server-Sent Events)
       - built-in agents
@@ -106,6 +108,7 @@ index:
       - 若前端继续渲染空 assistant 占位，用户会误判 AI 已开始回复并干扰两段状态图标语义。
       - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
       - channel 会话若错误暴露 thread 路由菜单，用户可能误写 thread scope 配置并造成路由预期不一致。
+      - 若未按路由动态切换输入框左下角动作按钮，可能出现默认路由缺少模型入口或 OpenClaw 无法快捷注入斜杠命令的问题。
       - 长轮询 waitMs 设置过高且缺少超时保护时，可能导致连接堆积并放大服务端资源占用。
       - 内建 Agent 与自定义 Agent 合并策略若处理不当，可能导致同名覆盖异常或列表顺序不稳定。
       - 若将 `@` 提及能力从输入框迁移到路由指示时未同步文案/可见性规则，用户可能误解当前路由状态。
