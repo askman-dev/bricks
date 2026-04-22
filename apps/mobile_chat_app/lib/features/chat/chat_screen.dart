@@ -921,10 +921,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return resolvedThreadId != 'main';
   }
 
-  String _threadRouterMenuLabel(ChatRouter? router) {
-    if (router == null) return 'Follow channel';
-    return _routerLabel(router);
-  }
 
   String? _sourceFromRespondRouter(String? router) {
     if (router == null || router.isEmpty || router == 'default') return null;
@@ -1014,7 +1010,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Thread router set to ${_threadRouterMenuLabel(router)}',
+            'Thread router set to ${router == null ? 'Follow channel' : _routerLabel(router)}',
           ),
         ),
       );
@@ -1811,6 +1807,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     _channelRouters[_activeChannelId] ??
                         ChatRouter.defaultRoute,
                   );
+                  final explicitThreadRouter = _explicitThreadRouter();
+                  final threadRouterLabel = explicitThreadRouter == null
+                      ? 'Follow channel'
+                      : _routerLabel(explicitThreadRouter);
                   return [
                     if (!isThreadConversation) ...[
                       PopupMenuItem<String>(
@@ -1832,7 +1832,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       PopupMenuItem<String>(
                         enabled: false,
                         child: Text(
-                          'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
+                          'Thread router · $threadRouterLabel',
                         ),
                       ),
                       PopupMenuItem<String>(
