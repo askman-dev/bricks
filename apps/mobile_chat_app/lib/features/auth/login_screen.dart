@@ -91,7 +91,16 @@ class _GitHubSignInButtonState extends State<_GitHubSignInButton> {
       if (token != null) {
         await AuthService.saveToken(token);
         widget.onSuccess();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('GitHub sign-in was not completed.')),
+        );
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

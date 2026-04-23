@@ -4,6 +4,10 @@ interface ReturnToValidationOptions {
   allowedReturnOrigins?: string;
 }
 
+const ALLOWED_NATIVE_RETURN_TARGETS = new Set([
+  'bricks://auth/github/callback',
+]);
+
 export function isAllowedReturnTo(
   rawReturnTo: string,
   options: ReturnToValidationOptions = {}
@@ -18,6 +22,10 @@ export function isAllowedReturnTo(
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const callbackUrl = options.callbackUrl;
   const allowedReturnOrigins = options.allowedReturnOrigins ?? '';
+
+  if (ALLOWED_NATIVE_RETURN_TARGETS.has(parsed.href)) {
+    return true;
+  }
 
   const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
   if (isLocalhost) {
