@@ -27,6 +27,14 @@
     "extensions": [
       "./dist/openclawExtension.js"
     ],
+    "compat": {
+      "pluginApi": ">=2026.4.15",
+      "minGatewayVersion": ">=2026.4.15"
+    },
+    "build": {
+      "openclawVersion": "2026.4.15",
+      "pluginSdkVersion": "2026.4.15"
+    },
     "setupEntry": "./dist/openclawSetupEntry.js",
     "channel": {
       "id": "dev-askman-bricks",

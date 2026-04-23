@@ -62,6 +62,21 @@ openclaw gateway restart
 If you changed channel credentials or endpoint, re-run `openclaw configure` (or
 `openclaw config set ...`) and then restart gateway.
 
+## ClawHub packaging metadata
+
+ClawHub publish validation requires OpenClaw package metadata in
+`package.json` under the `openclaw.compat` and `openclaw.build` keys. This
+package now declares:
+
+- `openclaw.compat.pluginApi`
+- `openclaw.compat.minGatewayVersion`
+- `openclaw.build.openclawVersion`
+- `openclaw.build.pluginSdkVersion`
+
+If you rebuild a release archive after changing package metadata, regenerate the
+package artifact from the current plugin directory so the updated `package.json`
+is included.
+
 ## Runtime behavior summary
 
 When OpenClaw gateway starts/restarts, the plugin runner is host-managed:
