@@ -91,6 +91,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Node: openclaw 1'), findsOneWidget);
-    expect(find.textContaining('Token: token-123'), findsOneWidget);
+    expect(find.textContaining('"channels"'), findsOneWidget);
+    expect(find.textContaining('- token: token-123'), findsOneWidget);
   });
 }

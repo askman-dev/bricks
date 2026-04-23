@@ -111,13 +111,32 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
 
   String _buildInstallInstruction(PlatformTokenBundle bundle) {
     final scopes = bundle.scopes.join(', ');
-    return [
-      'Node: ${bundle.nodeName.isEmpty ? bundle.nodeId : bundle.nodeName}',
-      'Plugin ID: ${bundle.pluginId}',
-      'Base URL: ${bundle.baseUrl}',
-      'Scopes: $scopes',
-      'Token: ${bundle.token}',
-    ].join('\n');
+    final nodeName =
+        bundle.nodeName.isEmpty ? bundle.nodeId : bundle.nodeName;
+    final buffer = StringBuffer()
+      ..writeln('Node: $nodeName')
+      ..writeln()
+      ..writeln('Send this to OpenClaw plugin setup.')
+      ..writeln(
+        'You can also paste this JSON into ~/.openclaw/openclaw.json (replace <CHANNEL_ID>):',
+      )
+      ..writeln()
+      ..writeln('{')
+      ..writeln('  "channels": {')
+      ..writeln('    "<CHANNEL_ID>": {')
+      ..writeln('      "BRICKS_BASE_URL": "${bundle.baseUrl}",')
+      ..writeln('      "BRICKS_PLUGIN_ID": "${bundle.pluginId}",')
+      ..writeln('      "BRICKS_PLATFORM_TOKEN": "${bundle.token}"')
+      ..writeln('    }')
+      ..writeln('  }')
+      ..writeln('}')
+      ..writeln()
+      ..writeln('Parameters:')
+      ..writeln('- pluginId: ${bundle.pluginId}')
+      ..writeln('- url: ${bundle.baseUrl}')
+      ..writeln('- scopes: $scopes')
+      ..write('- token: ${bundle.token}');
+    return buffer.toString();
   }
 
   Future<void> _generateNodeToken(PlatformNodeConfig node) async {
