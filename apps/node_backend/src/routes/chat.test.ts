@@ -23,7 +23,6 @@ const {
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
   streamWithUserConfigMock,
-  ensureDefaultPlatformNodeMock,
   getPlatformNodeByNodeIdMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
@@ -74,16 +73,16 @@ const {
     provider: "anthropic",
     modelId: "claude-sonnet-4-5",
   })),
-  ensureDefaultPlatformNodeMock: vi.fn(async () => ({
-    nodeId: "node-default",
-    displayName: "openclaw 1",
-    pluginId: "plugin_local_main",
-  })),
-  getPlatformNodeByNodeIdMock: vi.fn(async (_userId: string, nodeId: string) => ({
-    nodeId,
-    displayName: nodeId === "node-2" ? "openclaw 2" : "openclaw 1",
-    pluginId: nodeId === "node-2" ? "plugin_node_2" : "plugin_local_main",
-  })),
+  getPlatformNodeByNodeIdMock: vi.fn(
+    async (
+      _userId: string,
+      nodeId: string,
+    ): Promise<{ nodeId: string; displayName: string; pluginId: string } | null> => ({
+      nodeId,
+      displayName: nodeId === "node-2" ? "openclaw 2" : "openclaw 1",
+      pluginId: nodeId === "node-2" ? "plugin_node_2" : "plugin_local_main",
+    }),
+  ),
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -104,7 +103,6 @@ vi.mock("../services/chatRouterService.js", () => ({
 }));
 
 vi.mock("../services/platformNodeService.js", () => ({
-  ensureDefaultPlatformNode: ensureDefaultPlatformNodeMock,
   getPlatformNodeByNodeId: getPlatformNodeByNodeIdMock,
 }));
 
@@ -184,12 +182,6 @@ describe("chat routes", () => {
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
     streamWithUserConfigMock.mockClear();
-    ensureDefaultPlatformNodeMock.mockReset();
-    ensureDefaultPlatformNodeMock.mockResolvedValue({
-      nodeId: "node-default",
-      displayName: "openclaw 1",
-      pluginId: "plugin_local_main",
-    });
     getPlatformNodeByNodeIdMock.mockReset();
     getPlatformNodeByNodeIdMock.mockImplementation(
       async (_userId: string, nodeId: string) => ({
@@ -246,6 +238,53 @@ describe("chat routes", () => {
         }),
       }),
     ]);
+  });
+
+  it("falls back to Bricks Default when a saved OpenClaw node no longer exists", async () => {
+    resolveChatScopeRoutingMock.mockResolvedValueOnce({
+      router: "openclaw",
+      nodeId: "deleted-node",
+    });
+    getPlatformNodeByNodeIdMock.mockResolvedValueOnce(null);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: "task-fallback-1",
+        idempotencyKey: "idem-fallback-1",
+        channelId: "default",
+        sessionId: "session:default:main",
+        userMessageId: "msg-user-fallback-1",
+        assistantMessageId: "msg-assistant-fallback-1",
+        userMessage: "fallback to default",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-user-fallback-1",
+        metadata: expect.objectContaining({
+          source: "backend.respond",
+        }),
+      }),
+    ]);
+    expect(upsertMessagesMock).not.toHaveBeenCalledWith(
+      "user-123",
+      expect.arrayContaining([
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            targetNodeId: expect.anything(),
+          }),
+        }),
+      ]),
+    );
+
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 0);
+    });
+    expect(streamWithUserConfigMock).toHaveBeenCalled();
   });
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
@@ -417,6 +456,23 @@ describe("chat routes", () => {
       router: "openclaw",
       nodeId: "node-2",
     });
+  });
+
+  it("rejects saving an OpenClaw scope setting without nodeId", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/scope-settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scopeType: "channel",
+        channelId: "default",
+        router: "openclaw",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: string };
+    expect(body.error).toContain("nodeId is required");
+    expect(upsertChatScopeSettingMock).not.toHaveBeenCalled();
   });
 
   it("rate limits sync polling per user and session after 120 requests per minute", async () => {

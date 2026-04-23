@@ -1012,15 +1012,52 @@ class _ChatScreenState extends State<ChatScreen> {
     return _threadRouters[_subSectionKey(resolvedChannelId, resolvedThreadId)];
   }
 
+  bool _isKnownPlatformNodeId(String? nodeId) {
+    final normalized = _normalizeNodeId(nodeId);
+    if (normalized == null) return false;
+    for (final node in _platformNodes) {
+      if (_normalizeNodeId(node.nodeId) == normalized) return true;
+    }
+    return false;
+  }
+
+  ChatRouter _effectiveChannelRouter({String? channelId}) {
+    final resolvedChannelId = channelId ?? _activeChannelId;
+    final router =
+        _channelRouters[resolvedChannelId] ?? ChatRouter.defaultRoute;
+    if (router != ChatRouter.openclaw) return router;
+    return _isKnownPlatformNodeId(_channelNodeIds[resolvedChannelId])
+        ? ChatRouter.openclaw
+        : ChatRouter.defaultRoute;
+  }
+
+  ChatRouter? _effectiveExplicitThreadRouter({
+    String? channelId,
+    String? threadId,
+  }) {
+    final router = _explicitThreadRouter(
+      channelId: channelId,
+      threadId: threadId,
+    );
+    if (router != ChatRouter.openclaw) return router;
+    return _isKnownPlatformNodeId(
+      _explicitThreadNodeId(
+        channelId: channelId,
+        threadId: threadId,
+      ),
+    )
+        ? ChatRouter.openclaw
+        : ChatRouter.defaultRoute;
+  }
+
   ChatRouter _effectiveRouterForScope({String? channelId, String? threadId}) {
     final resolvedChannelId = channelId ?? _activeChannelId;
     final resolvedThreadId = threadId ?? _activeSubSection;
-    return _explicitThreadRouter(
+    return _effectiveExplicitThreadRouter(
           channelId: resolvedChannelId,
           threadId: resolvedThreadId,
         ) ??
-        _channelRouters[resolvedChannelId] ??
-        ChatRouter.defaultRoute;
+        _effectiveChannelRouter(channelId: resolvedChannelId);
   }
 
   String? _explicitThreadNodeId({String? channelId, String? threadId}) {
@@ -1040,20 +1077,42 @@ class _ChatScreenState extends State<ChatScreen> {
         ChatRouter.openclaw) {
       return null;
     }
-    return _explicitThreadNodeId(
+    if (_effectiveExplicitThreadRouter(
           channelId: resolvedChannelId,
           threadId: resolvedThreadId,
-        ) ??
-        _channelNodeIds[resolvedChannelId];
+        ) ==
+        ChatRouter.openclaw) {
+      return _normalizeNodeId(
+        _explicitThreadNodeId(
+          channelId: resolvedChannelId,
+          threadId: resolvedThreadId,
+        ),
+      );
+    }
+    return _normalizeNodeId(_channelNodeIds[resolvedChannelId]);
+  }
+
+  String? _normalizeNodeId(String? nodeId) {
+    final trimmed = nodeId?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
+  String _platformNodeLabel(PlatformNodeConfig node) {
+    final trimmed = node.displayName.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    return _normalizeNodeId(node.nodeId) ?? 'OpenClaw';
   }
 
   String _nodeLabel(String? nodeId) {
-    final trimmed = nodeId?.trim();
-    if (trimmed == null || trimmed.isEmpty) return 'Default node';
+    final trimmed = _normalizeNodeId(nodeId);
+    if (trimmed == null) return 'OpenClaw';
     for (final node in _platformNodes) {
-      if (node.nodeId == trimmed) return node.displayName;
+      if (_normalizeNodeId(node.nodeId) == trimmed) {
+        return _platformNodeLabel(node);
+      }
     }
-    return trimmed;
+    return 'OpenClaw';
   }
 
   String _routerLabel(ChatRouter router) {
@@ -1150,13 +1209,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final channelId = _activeChannelId;
     final previous = _channelRouters[channelId];
     final previousNodeId = _channelNodeIds[channelId];
-    final normalizedNodeId = nodeId?.trim();
+    final normalizedNodeId = _normalizeNodeId(nodeId);
+    final effectiveRouter =
+        router == ChatRouter.openclaw && normalizedNodeId == null
+            ? ChatRouter.defaultRoute
+            : router;
     setState(() {
-      if (router == ChatRouter.defaultRoute) {
+      if (effectiveRouter == ChatRouter.defaultRoute) {
         _channelRouters.remove(channelId);
         _channelNodeIds.remove(channelId);
       } else {
-        _channelRouters[channelId] = router;
+        _channelRouters[channelId] = effectiveRouter;
         if (normalizedNodeId == null || normalizedNodeId.isEmpty) {
           _channelNodeIds.remove(channelId);
         } else {
@@ -1171,8 +1234,10 @@ class _ChatScreenState extends State<ChatScreen> {
         token: token,
         scopeType: ChatScopeType.channel,
         channelId: channelId,
-        router: router == ChatRouter.defaultRoute ? null : router,
-        nodeId: router == ChatRouter.openclaw ? normalizedNodeId : null,
+        router:
+            effectiveRouter == ChatRouter.defaultRoute ? null : effectiveRouter,
+        nodeId:
+            effectiveRouter == ChatRouter.openclaw ? normalizedNodeId : null,
       );
       if (!mounted) return;
     } catch (error) {
@@ -1210,13 +1275,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final key = _subSectionKey(channelId, threadId);
     final previous = _threadRouters[key];
     final previousNodeId = _threadNodeIds[key];
-    final normalizedNodeId = nodeId?.trim();
+    final normalizedNodeId = _normalizeNodeId(nodeId);
+    final effectiveRouter =
+        router == ChatRouter.openclaw && normalizedNodeId == null
+            ? ChatRouter.defaultRoute
+            : router;
     setState(() {
-      if (router == null) {
+      if (effectiveRouter == null) {
         _threadRouters.remove(key);
         _threadNodeIds.remove(key);
       } else {
-        _threadRouters[key] = router;
+        _threadRouters[key] = effectiveRouter;
         if (normalizedNodeId == null || normalizedNodeId.isEmpty) {
           _threadNodeIds.remove(key);
         } else {
@@ -1232,8 +1301,9 @@ class _ChatScreenState extends State<ChatScreen> {
         scopeType: ChatScopeType.thread,
         channelId: channelId,
         threadId: threadId,
-        router: router,
-        nodeId: router == ChatRouter.openclaw ? normalizedNodeId : null,
+        router: effectiveRouter,
+        nodeId:
+            effectiveRouter == ChatRouter.openclaw ? normalizedNodeId : null,
       );
       if (!mounted) return;
     } catch (error) {
@@ -1281,9 +1351,6 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'channel:default':
         unawaited(_saveChannelRouter(ChatRouter.defaultRoute));
         return;
-      case 'channel:openclaw':
-        unawaited(_saveChannelRouter(ChatRouter.openclaw));
-        return;
       case 'thread:inherit':
         if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(null));
@@ -1291,10 +1358,6 @@ class _ChatScreenState extends State<ChatScreen> {
       case 'thread:default':
         if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(ChatRouter.defaultRoute));
-        return;
-      case 'thread:openclaw':
-        if (!_isThreadConversation()) return;
-        unawaited(_saveThreadRouter(ChatRouter.openclaw));
         return;
     }
   }
@@ -2060,13 +2123,22 @@ class _ChatScreenState extends State<ChatScreen> {
                       onSelected: _handleRouterMenuSelection,
                       itemBuilder: (context) {
                         final isThreadConversation = _isThreadConversation();
-                        final channelRouter =
-                            _channelRouters[_activeChannelId] ??
-                                ChatRouter.defaultRoute;
-                        final channelNodeId = _channelNodeIds[_activeChannelId];
+                        final channelRouter = _effectiveChannelRouter(
+                          channelId: _activeChannelId,
+                        );
+                        final channelNodeId =
+                            channelRouter == ChatRouter.openclaw
+                                ? _normalizeNodeId(
+                                    _channelNodeIds[_activeChannelId],
+                                  )
+                                : null;
                         final channelRouterLabel = _routerLabel(channelRouter);
-                        final explicitThreadRouter = _explicitThreadRouter();
-                        final explicitThreadNodeId = _explicitThreadNodeId();
+                        final explicitThreadRouter =
+                            _effectiveExplicitThreadRouter();
+                        final explicitThreadNodeId =
+                            explicitThreadRouter == ChatRouter.openclaw
+                                ? _normalizeNodeId(_explicitThreadNodeId())
+                                : null;
                         return [
                           if (!isThreadConversation) ...[
                             PopupMenuItem<String>(
@@ -2082,28 +2154,17 @@ class _ChatScreenState extends State<ChatScreen> {
                                     channelRouter == ChatRouter.defaultRoute,
                               ),
                             ),
-                            PopupMenuItem<String>(
-                              value: 'channel:openclaw',
-                              child: _buildRouterMenuOption(
-                                context: context,
-                                label: 'OpenClaw',
-                                sublabel: 'Default node',
-                                selected:
-                                    channelRouter == ChatRouter.openclaw &&
-                                        (channelNodeId == null ||
-                                            channelNodeId.isEmpty),
-                              ),
-                            ),
                             ..._platformNodes.map(
                               (node) => PopupMenuItem<String>(
                                 value: 'channel:openclaw:${node.nodeId}',
                                 child: _buildRouterMenuOption(
                                   context: context,
-                                  label: 'OpenClaw',
-                                  sublabel: node.displayName,
+                                  label: _platformNodeLabel(node),
+                                  sublabel: 'OpenClaw',
                                   selected:
                                       channelRouter == ChatRouter.openclaw &&
-                                          channelNodeId == node.nodeId,
+                                          channelNodeId ==
+                                              _normalizeNodeId(node.nodeId),
                                 ),
                               ),
                             ),
@@ -2119,7 +2180,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 context: context,
                                 label: 'Follow channel',
                                 sublabel: channelRouter == ChatRouter.openclaw
-                                    ? '$channelRouterLabel · ${_nodeLabel(channelNodeId)}'
+                                    ? '${_nodeLabel(channelNodeId)} · $channelRouterLabel'
                                     : channelRouterLabel,
                                 selected: explicitThreadRouter == null,
                               ),
@@ -2133,28 +2194,17 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ChatRouter.defaultRoute,
                               ),
                             ),
-                            PopupMenuItem<String>(
-                              value: 'thread:openclaw',
-                              child: _buildRouterMenuOption(
-                                context: context,
-                                label: 'OpenClaw',
-                                sublabel: 'Default node',
-                                selected: explicitThreadRouter ==
-                                        ChatRouter.openclaw &&
-                                    (explicitThreadNodeId == null ||
-                                        explicitThreadNodeId.isEmpty),
-                              ),
-                            ),
                             ..._platformNodes.map(
                               (node) => PopupMenuItem<String>(
                                 value: 'thread:openclaw:${node.nodeId}',
                                 child: _buildRouterMenuOption(
                                   context: context,
-                                  label: 'OpenClaw',
-                                  sublabel: node.displayName,
+                                  label: _platformNodeLabel(node),
+                                  sublabel: 'OpenClaw',
                                   selected: explicitThreadRouter ==
                                           ChatRouter.openclaw &&
-                                      explicitThreadNodeId == node.nodeId,
+                                      explicitThreadNodeId ==
+                                          _normalizeNodeId(node.nodeId),
                                 ),
                               ),
                             ),

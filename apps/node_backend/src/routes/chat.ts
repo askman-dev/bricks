@@ -26,7 +26,6 @@ import {
   upsertChatChannelName,
 } from "../services/chatChannelNameService.js";
 import {
-  ensureDefaultPlatformNode,
   getPlatformNodeByNodeId,
 } from "../services/platformNodeService.js";
 import { streamWithUserConfig } from "../llm/llm_service.js";
@@ -364,15 +363,26 @@ router.post(
         channelId,
         threadId,
       });
-      const resolvedRouter = resolvedRouting.router;
-      const targetNode =
-        resolvedRouter === CHAT_ROUTER_OPENCLAW
-          ? requestedNodeId
-            ? await getPlatformNodeByNodeId(userId, requestedNodeId)
-            : resolvedRouting.nodeId
-              ? await getPlatformNodeByNodeId(userId, resolvedRouting.nodeId)
-              : await ensureDefaultPlatformNode(userId)
-          : null;
+      let resolvedRouter = resolvedRouting.router;
+      let targetNode = null;
+      if (resolvedRouter === CHAT_ROUTER_OPENCLAW) {
+        if (requestedNodeId) {
+          targetNode = await getPlatformNodeByNodeId(userId, requestedNodeId);
+          if (!targetNode) {
+            res.status(400).json({
+              error: "Invalid payload: nodeId must reference an existing platform node",
+            });
+            return;
+          }
+        } else if (resolvedRouting.nodeId) {
+          targetNode = await getPlatformNodeByNodeId(userId, resolvedRouting.nodeId);
+          if (!targetNode) {
+            resolvedRouter = CHAT_ROUTER_DEFAULT;
+          }
+        } else {
+          resolvedRouter = CHAT_ROUTER_DEFAULT;
+        }
+      }
       if (resolvedRouter === CHAT_ROUTER_OPENCLAW && !targetNode) {
         res.status(400).json({
           error: "Invalid payload: nodeId must reference an existing platform node",
@@ -848,7 +858,13 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    if (routerValue === CHAT_ROUTER_OPENCLAW && nodeId) {
+    if (routerValue === CHAT_ROUTER_OPENCLAW) {
+      if (!nodeId) {
+        res.status(400).json({
+          error: "Invalid payload: nodeId is required for openclaw router",
+        });
+        return;
+      }
       const node = await getPlatformNodeByNodeId(userId, nodeId);
       if (!node) {
         res.status(400).json({
