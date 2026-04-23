@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-22
+last_updated: 2026-04-23
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -108,6 +108,9 @@ products:
           - Add-node action is displayed in the AppBar top-right using icon + text.
           - When no node exists, the page shows a "Create First Node" button.
           - Each node supports rename, plugin-id copy, and token generation for OpenClaw installation.
+          - 节点创建后可展示默认名称（openclaw 1 / openclaw 2 ...）并支持重命名。
+          - 每个节点可复制 plugin id，可为该节点生成 token 与只写入 `channels.dev-askman-bricks` 的 OpenClaw CLI 配置命令。
+          - 点击“复制 OpenClaw 命令”后，剪贴板内容可直接粘贴到 shell 执行，并包含 base URL / plugin id / platform token / validate / gateway restart / inspect。
           - 使用指定 nodeId 请求 platform-token 时，返回 payload 包含 nodeId / nodeName / pluginId / token。
 
       - feature_id: workspace_resources

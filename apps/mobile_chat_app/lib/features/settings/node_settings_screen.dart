@@ -109,37 +109,21 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
         .showSnackBar(SnackBar(content: Text(successMessage)));
   }
 
-  String _buildInstallInstruction(PlatformTokenBundle bundle) {
-    final scopes = bundle.scopes.join(', ');
-    final nodeName =
-        bundle.nodeName.isEmpty ? bundle.nodeId : bundle.nodeName;
-    final buffer = StringBuffer()
-      ..writeln('Node: $nodeName')
-      ..writeln()
-      ..writeln('Send this to OpenClaw plugin setup.')
-      ..writeln(
-        'You can also paste this JSON into ~/.openclaw/openclaw.json',
-      )
-      ..writeln(
-        '(replace <CHANNEL_ID> with a unique name for this connection, e.g. "my-channel"):',
-      )
-      ..writeln()
-      ..writeln('{')
-      ..writeln('  "channels": {')
-      ..writeln('    "<CHANNEL_ID>": {')
-      ..writeln('      "BRICKS_BASE_URL": "${bundle.baseUrl}",')
-      ..writeln('      "BRICKS_PLUGIN_ID": "${bundle.pluginId}",')
-      ..writeln('      "BRICKS_PLATFORM_TOKEN": "${bundle.token}"')
-      ..writeln('    }')
-      ..writeln('  }')
-      ..writeln('}')
-      ..writeln()
-      ..writeln('Parameters:')
-      ..writeln('- pluginId: ${bundle.pluginId}')
-      ..writeln('- url: ${bundle.baseUrl}')
-      ..writeln('- scopes: $scopes')
-      ..write('- token: ${bundle.token}');
-    return buffer.toString();
+  String _shellQuote(String value) {
+    if (value.isEmpty) return "''";
+    return "'${value.replaceAll("'", "'\"'\"'")}'";
+  }
+
+  String _buildOpenClawCommands(PlatformTokenBundle bundle) {
+    return [
+      'openclaw config set channels.dev-askman-bricks.BRICKS_BASE_URL ${_shellQuote(bundle.baseUrl)}',
+      'openclaw config set channels.dev-askman-bricks.BRICKS_PLUGIN_ID ${_shellQuote(bundle.pluginId)}',
+      'openclaw config set channels.dev-askman-bricks.BRICKS_PLATFORM_TOKEN ${_shellQuote(bundle.token)}',
+      '',
+      'openclaw config validate',
+      'openclaw gateway restart',
+      'openclaw plugins inspect dev-askman-bricks',
+    ].join('\n');
   }
 
   Future<void> _generateNodeToken(PlatformNodeConfig node) async {
@@ -241,15 +225,15 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                       ),
                     if (_bundle != null) ...[
                       const SizedBox(height: 12),
-                      SelectableText(_buildInstallInstruction(_bundle!)),
+                      SelectableText(_buildOpenClawCommands(_bundle!)),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
                         onPressed: () => _copyText(
-                          _buildInstallInstruction(_bundle!),
-                          'Install instructions copied',
+                          _buildOpenClawCommands(_bundle!),
+                          'OpenClaw commands copied',
                         ),
                         icon: const Icon(Icons.copy_all_outlined),
-                        label: const Text('Copy Install Instructions'),
+                        label: const Text('Copy OpenClaw Commands'),
                       ),
                     ],
                   ],
