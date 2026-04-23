@@ -118,7 +118,10 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
       ..writeln()
       ..writeln('Send this to OpenClaw plugin setup.')
       ..writeln(
-        'You can also paste this JSON into ~/.openclaw/openclaw.json (replace <CHANNEL_ID>):',
+        'You can also paste this JSON into ~/.openclaw/openclaw.json',
+      )
+      ..writeln(
+        '(replace <CHANNEL_ID> with a unique name for this connection, e.g. "my-channel"):',
       )
       ..writeln()
       ..writeln('{')
