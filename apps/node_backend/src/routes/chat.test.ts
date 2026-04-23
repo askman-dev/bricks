@@ -16,13 +16,15 @@ const {
   upsertMessagesMock,
   listUserScopesMock,
   listChatScopeSettingsMock,
-  resolveChatRouterMock,
+  resolveChatScopeRoutingMock,
   upsertChatScopeSettingMock,
   deleteChatScopeSettingMock,
   listChatChannelNamesMock,
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
   streamWithUserConfigMock,
+  ensureDefaultPlatformNodeMock,
+  getPlatformNodeByNodeIdMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -31,16 +33,27 @@ const {
     acceptedAt: "2026-04-17T07:00:00.000Z",
   })),
   listSessionMessagesForModelMock: vi.fn(async () => []),
-  syncMessagesMock: vi.fn(async () => ({ messages: [], lastSeqId: 0 })),
+  syncMessagesMock: vi.fn(
+    async (): Promise<{ messages: Array<Record<string, unknown>>; lastSeqId: number }> => ({
+      messages: [],
+      lastSeqId: 0,
+    }),
+  ),
   upsertMessagesMock: vi.fn(async () => ({ lastSeqId: 7 })),
   listUserScopesMock: vi.fn(async () => []),
   listChatScopeSettingsMock: vi.fn(async () => []),
-  resolveChatRouterMock: vi.fn(async () => "default"),
+  resolveChatScopeRoutingMock: vi.fn(
+    async (): Promise<{ router: "default" | "openclaw"; nodeId: string | null }> => ({
+      router: "default",
+      nodeId: null,
+    }),
+  ),
   upsertChatScopeSettingMock: vi.fn(async () => ({
     scopeType: "channel",
     channelId: "default",
     threadId: null,
     router: "openclaw",
+    nodeId: "node-default",
     createdAt: "2026-04-17T07:00:00.000Z",
     updatedAt: "2026-04-17T07:00:00.000Z",
   })),
@@ -61,6 +74,16 @@ const {
     provider: "anthropic",
     modelId: "claude-sonnet-4-5",
   })),
+  ensureDefaultPlatformNodeMock: vi.fn(async () => ({
+    nodeId: "node-default",
+    displayName: "openclaw 1",
+    pluginId: "plugin_local_main",
+  })),
+  getPlatformNodeByNodeIdMock: vi.fn(async (_userId: string, nodeId: string) => ({
+    nodeId,
+    displayName: nodeId === "node-2" ? "openclaw 2" : "openclaw 1",
+    pluginId: nodeId === "node-2" ? "plugin_node_2" : "plugin_local_main",
+  })),
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -76,8 +99,13 @@ vi.mock("../services/chatRouterService.js", () => ({
   CHAT_ROUTER_OPENCLAW: "openclaw",
   deleteChatScopeSetting: deleteChatScopeSettingMock,
   listChatScopeSettings: listChatScopeSettingsMock,
-  resolveChatRouter: resolveChatRouterMock,
+  resolveChatScopeRouting: resolveChatScopeRoutingMock,
   upsertChatScopeSetting: upsertChatScopeSettingMock,
+}));
+
+vi.mock("../services/platformNodeService.js", () => ({
+  ensureDefaultPlatformNode: ensureDefaultPlatformNodeMock,
+  getPlatformNodeByNodeId: getPlatformNodeByNodeIdMock,
 }));
 
 vi.mock("../services/chatChannelNameService.js", () => ({
@@ -145,17 +173,38 @@ describe("chat routes", () => {
     upsertMessagesMock.mockClear();
     listUserScopesMock.mockClear();
     listChatScopeSettingsMock.mockClear();
-    resolveChatRouterMock.mockClear();
+    resolveChatScopeRoutingMock.mockReset();
+    resolveChatScopeRoutingMock.mockResolvedValue({
+      router: "default",
+      nodeId: null,
+    });
     upsertChatScopeSettingMock.mockClear();
     deleteChatScopeSettingMock.mockClear();
     listChatChannelNamesMock.mockClear();
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
     streamWithUserConfigMock.mockClear();
+    ensureDefaultPlatformNodeMock.mockReset();
+    ensureDefaultPlatformNodeMock.mockResolvedValue({
+      nodeId: "node-default",
+      displayName: "openclaw 1",
+      pluginId: "plugin_local_main",
+    });
+    getPlatformNodeByNodeIdMock.mockReset();
+    getPlatformNodeByNodeIdMock.mockImplementation(
+      async (_userId: string, nodeId: string) => ({
+        nodeId,
+        displayName: nodeId === "node-2" ? "openclaw 2" : "openclaw 1",
+        pluginId: nodeId === "node-2" ? "plugin_node_2" : "plugin_local_main",
+      }),
+    );
   });
 
   it("routes OpenClaw scopes to async pending dispatch", async () => {
-    resolveChatRouterMock.mockResolvedValueOnce("openclaw");
+    resolveChatScopeRoutingMock.mockResolvedValueOnce({
+      router: "openclaw",
+      nodeId: "node-default",
+    });
 
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: "POST",
@@ -190,6 +239,9 @@ describe("chat routes", () => {
         taskState: "accepted",
         metadata: expect.objectContaining({
           source: "backend.respond.openclaw",
+          targetNodeId: "node-default",
+          targetNodeName: "openclaw 1",
+          targetPluginId: "plugin_local_main",
           pendingAssistantMessageId: "msg-assistant-1",
         }),
       }),
@@ -197,7 +249,10 @@ describe("chat routes", () => {
   });
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
-    resolveChatRouterMock.mockResolvedValueOnce("default");
+    resolveChatScopeRoutingMock.mockResolvedValueOnce({
+      router: "default",
+      nodeId: null,
+    });
 
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: "POST",
@@ -256,7 +311,10 @@ describe("chat routes", () => {
   });
 
   it("rejects respond payload when maxTokens exceeds upper bound", async () => {
-    resolveChatRouterMock.mockResolvedValueOnce("default");
+    resolveChatScopeRoutingMock.mockResolvedValueOnce({
+      router: "default",
+      nodeId: null,
+    });
 
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: "POST",
@@ -279,6 +337,45 @@ describe("chat routes", () => {
     expect(streamWithUserConfigMock).not.toHaveBeenCalled();
   });
 
+  it("prefers an explicitly requested OpenClaw node", async () => {
+    resolveChatScopeRoutingMock.mockResolvedValueOnce({
+      router: "openclaw",
+      nodeId: "node-default",
+    });
+    getPlatformNodeByNodeIdMock.mockResolvedValueOnce({
+      nodeId: "node-2",
+      displayName: "openclaw 2",
+      pluginId: "plugin_node_2",
+    });
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: "task-node-2",
+        idempotencyKey: "idem-node-2",
+        channelId: "default",
+        sessionId: "session:default:main",
+        userMessageId: "msg-user-node-2",
+        assistantMessageId: "msg-assistant-node-2",
+        userMessage: "route to node 2",
+        nodeId: "node-2",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-user-node-2",
+        metadata: expect.objectContaining({
+          targetNodeId: "node-2",
+          targetNodeName: "openclaw 2",
+          targetPluginId: "plugin_node_2",
+        }),
+      }),
+    ]);
+  });
+
   it("supports clearing a scope setting by sending router=null", async () => {
     const response = await fetch(`${baseUrl}/api/chat/scope-settings`, {
       method: "PUT",
@@ -296,6 +393,29 @@ describe("chat routes", () => {
       scopeType: "thread",
       channelId: "default",
       threadId: "main",
+    });
+  });
+
+  it("persists nodeId when saving an OpenClaw scope setting", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/scope-settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scopeType: "channel",
+        channelId: "default",
+        router: "openclaw",
+        nodeId: "node-2",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(getPlatformNodeByNodeIdMock).toHaveBeenCalledWith("user-123", "node-2");
+    expect(upsertChatScopeSettingMock).toHaveBeenCalledWith("user-123", {
+      scopeType: "channel",
+      channelId: "default",
+      threadId: null,
+      router: "openclaw",
+      nodeId: "node-2",
     });
   });
 
@@ -377,7 +497,10 @@ describe("chat routes", () => {
   });
 
   it("rate limits respond requests per user and session after 120 requests per minute", async () => {
-    resolveChatRouterMock.mockResolvedValue("openclaw");
+    resolveChatScopeRoutingMock.mockResolvedValue({
+      router: "openclaw",
+      nodeId: "node-default",
+    });
 
     const sendRespond = async (sessionId: string, suffix: string) =>
       fetch(`${baseUrl}/api/chat/respond`, {

@@ -16,6 +16,7 @@ import {
   deleteChatScopeSetting,
   listChatScopeSettings,
   normalizeChatThreadId,
+  resolveChatScopeRouting,
   resolveChatRouter,
   upsertChatScopeSetting,
 } from './chatRouterService.js';
@@ -40,6 +41,7 @@ describe('chatRouterService', () => {
           channel_id: 'default',
           thread_id: '',
           router: 'openclaw',
+          node_id: 'node_default',
           created_at: '2026-04-17T07:00:00.000Z',
           updated_at: '2026-04-17T07:05:00.000Z',
         },
@@ -55,6 +57,7 @@ describe('chatRouterService', () => {
         channelId: 'default',
         threadId: null,
         router: 'openclaw',
+        nodeId: 'node_default',
         createdAt: '2026-04-17T07:00:00.000Z',
         updatedAt: '2026-04-17T07:05:00.000Z',
       },
@@ -69,6 +72,7 @@ describe('chatRouterService', () => {
           channel_id: 'default',
           thread_id: 'main',
           router: 'default',
+          node_id: 'node_default',
           created_at: '2026-04-17T07:00:00.000Z',
           updated_at: '2026-04-17T07:05:00.000Z',
         },
@@ -81,12 +85,14 @@ describe('chatRouterService', () => {
       channelId: 'default',
       threadId: null,
       router: 'default',
+      nodeId: 'node_default',
     });
 
     expect(setting.threadId).toBe('main');
+    expect(setting.nodeId).toBe('node_default');
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO chat_scope_settings'),
-      ['u-1', 'thread', 'default', 'main', 'default'],
+      ['u-1', 'thread', 'default', 'main', 'default', 'node_default'],
     );
   });
 
@@ -115,5 +121,22 @@ describe('chatRouterService', () => {
     });
 
     expect(router).toBe(CHAT_ROUTER_DEFAULT);
+  });
+
+  it('resolves router and node id together for scope routing', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [{ router: 'openclaw', node_id: 'node_default' }],
+      rowCount: 1,
+    });
+
+    const routing = await resolveChatScopeRouting('u-1', {
+      channelId: 'default',
+      threadId: 'main',
+    });
+
+    expect(routing).toEqual({
+      router: 'openclaw',
+      nodeId: 'node_default',
+    });
   });
 });

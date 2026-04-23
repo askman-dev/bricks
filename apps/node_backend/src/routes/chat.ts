@@ -15,7 +15,7 @@ import {
   CHAT_ROUTER_OPENCLAW,
   deleteChatScopeSetting,
   listChatScopeSettings,
-  resolveChatRouter,
+  resolveChatScopeRouting,
   type ChatRouter,
   type ChatScopeType,
   upsertChatScopeSetting,
@@ -25,6 +25,10 @@ import {
   listChatChannelNames,
   upsertChatChannelName,
 } from "../services/chatChannelNameService.js";
+import {
+  ensureDefaultPlatformNode,
+  getPlatformNodeByNodeId,
+} from "../services/platformNodeService.js";
 import { streamWithUserConfig } from "../llm/llm_service.js";
 import type { LlmProvider } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
@@ -355,10 +359,26 @@ router.post(
         resolvedBotId: parseSessionId(body.resolvedBotId),
         resolvedSkillId: parseSessionId(body.resolvedSkillId),
       };
-      const resolvedRouter = await resolveChatRouter(userId, {
+      const requestedNodeId = parseSessionId(body.nodeId);
+      const resolvedRouting = await resolveChatScopeRouting(userId, {
         channelId,
         threadId,
       });
+      const resolvedRouter = resolvedRouting.router;
+      const targetNode =
+        resolvedRouter === CHAT_ROUTER_OPENCLAW
+          ? requestedNodeId
+            ? await getPlatformNodeByNodeId(userId, requestedNodeId)
+            : resolvedRouting.nodeId
+              ? await getPlatformNodeByNodeId(userId, resolvedRouting.nodeId)
+              : await ensureDefaultPlatformNode(userId)
+          : null;
+      if (resolvedRouter === CHAT_ROUTER_OPENCLAW && !targetNode) {
+        res.status(400).json({
+          error: "Invalid payload: nodeId must reference an existing platform node",
+        });
+        return;
+      }
       const acceptedTask = await acceptTask(userId, input);
       const acceptedTaskId = acceptedTask.taskId;
       const acceptedSessionId = acceptedTask.sessionId;
@@ -370,6 +390,9 @@ router.post(
           resolvedRouter === CHAT_ROUTER_OPENCLAW
             ? "backend.respond.openclaw"
             : "backend.respond",
+        targetNodeId: targetNode?.nodeId,
+        targetNodeName: targetNode?.displayName,
+        targetPluginId: targetNode?.pluginId,
         pendingAssistantMessageId:
           resolvedRouter === CHAT_ROUTER_OPENCLAW
             ? assistantMessageId
@@ -797,6 +820,7 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
     const scopeType = parseScopeType(body.scopeType);
     const channelId = parseSessionId(body.channelId);
     const threadId = parseSessionId(body.threadId);
+    const nodeId = parseSessionId(body.nodeId);
     const routerValue =
       body.router === null || body.router === undefined
         ? null
@@ -824,6 +848,16 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    if (routerValue === CHAT_ROUTER_OPENCLAW && nodeId) {
+      const node = await getPlatformNodeByNodeId(userId, nodeId);
+      if (!node) {
+        res.status(400).json({
+          error: "Invalid payload: nodeId must reference an existing platform node",
+        });
+        return;
+      }
+    }
+
     if (routerValue == null) {
       const deleted = await deleteChatScopeSetting(userId, {
         scopeType,
@@ -839,6 +873,7 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       channelId,
       threadId,
       router: routerValue,
+      nodeId: routerValue === CHAT_ROUTER_OPENCLAW ? nodeId : null,
     });
     res.json({ setting });
   } catch (error) {

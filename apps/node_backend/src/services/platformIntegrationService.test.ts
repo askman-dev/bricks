@@ -56,13 +56,19 @@ describe('platformIntegrationService', () => {
       rowCount: 1,
     });
 
-    const response = await listPlatformEvents({ cursor: 'cur_0', userId: 'u-1' });
+    const response = await listPlatformEvents({
+      cursor: 'cur_0',
+      userId: 'u-1',
+      pluginId: 'plugin_local_main',
+    });
 
     expect(response.nextCursor).toBe('cur_5');
     expect(response.events).toHaveLength(1);
     expect(response.events[0].payload.metadata).toMatchObject({
       pendingAssistantMessageId: 'msg-assistant-1',
     });
+    const [, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(params).toContain('%"targetPluginId":"plugin_local_main"%');
   });
 
   it('marks assistant creates as dispatched', async () => {
@@ -123,6 +129,35 @@ describe('platformIntegrationService', () => {
         }),
       ]),
     );
+  });
+
+  it('rejects assistant patches from a different plugin scope', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          message_id: 'msg-assistant-1',
+          user_id: 'u-1',
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'assistant',
+          content: 'processing',
+          metadata: JSON.stringify({ pluginId: 'plugin_local_main' }),
+          created_at: '2026-04-17T07:00:00.000Z',
+          updated_at: '2026-04-17T07:00:01.000Z',
+        },
+      ],
+      rowCount: 1,
+    });
+
+    await expect(
+      patchPlatformMessage({
+        userId: 'u-1',
+        messageId: 'msg-assistant-1',
+        text: 'done',
+        pluginId: 'plugin_other',
+      }),
+    ).rejects.toThrow('PLUGIN_OWNERSHIP_MISMATCH');
   });
 
   it('ack marks user message as completed and records plugin read marker', async () => {
