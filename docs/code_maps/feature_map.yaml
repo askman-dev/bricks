@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-22
+last_updated: 2026-04-23
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -108,7 +108,7 @@ products:
 
       - feature_id: node_settings
         name: 节点（Node）管理与节点级 Token
-        user_value: 用户可管理多个节点（本地/云端运行时），并为指定节点生成专属 Token 与安装信息。
+        user_value: 用户可管理多个节点（本地/云端运行时），并为指定节点生成专属 Token 与可直接执行的 OpenClaw 配置命令。
         entry_paths:
           - screen: SettingsScreen
             route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
@@ -124,7 +124,8 @@ products:
           - 设置页可看到“节点”入口并进入节点列表页面。
           - 当节点列表为空时，显示“创建第一个节点”按钮并可创建节点。
           - 节点创建后可展示默认名称（openclaw 1 / openclaw 2 ...）并支持重命名。
-          - 每个节点可复制 plugin id，可为该节点生成 token 与安装说明。
+          - 每个节点可复制 plugin id，可为该节点生成 token 与只写入 `channels.dev-askman-bricks` 的 OpenClaw CLI 配置命令。
+          - 点击“复制 OpenClaw 命令”后，剪贴板内容可直接粘贴到 shell 执行，并包含 base URL / plugin id / platform token / validate / gateway restart / inspect。
           - 使用指定 nodeId 请求 platform-token 时，返回 payload 包含 nodeId / nodeName / pluginId / token。
 
       - feature_id: workspace_resources

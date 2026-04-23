@@ -109,14 +109,20 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
         .showSnackBar(SnackBar(content: Text(successMessage)));
   }
 
-  String _buildInstallInstruction(PlatformTokenBundle bundle) {
-    final scopes = bundle.scopes.join(', ');
+  String _shellQuote(String value) {
+    if (value.isEmpty) return "''";
+    return "'${value.replaceAll("'", "'\"'\"'")}'";
+  }
+
+  String _buildOpenClawCommands(PlatformTokenBundle bundle) {
     return [
-      'Node: ${bundle.nodeName.isEmpty ? bundle.nodeId : bundle.nodeName}',
-      'Plugin ID: ${bundle.pluginId}',
-      'Base URL: ${bundle.baseUrl}',
-      'Scopes: $scopes',
-      'Token: ${bundle.token}',
+      'openclaw config set channels.dev-askman-bricks.BRICKS_BASE_URL ${_shellQuote(bundle.baseUrl)}',
+      'openclaw config set channels.dev-askman-bricks.BRICKS_PLUGIN_ID ${_shellQuote(bundle.pluginId)}',
+      'openclaw config set channels.dev-askman-bricks.BRICKS_PLATFORM_TOKEN ${_shellQuote(bundle.token)}',
+      '',
+      'openclaw config validate',
+      'openclaw gateway restart',
+      'openclaw plugins inspect dev-askman-bricks',
     ].join('\n');
   }
 
@@ -216,15 +222,15 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                       ),
                     if (_bundle != null) ...[
                       const SizedBox(height: 12),
-                      SelectableText(_buildInstallInstruction(_bundle!)),
+                      SelectableText(_buildOpenClawCommands(_bundle!)),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
                         onPressed: () => _copyText(
-                          _buildInstallInstruction(_bundle!),
-                          'Install instructions copied',
+                          _buildOpenClawCommands(_bundle!),
+                          'OpenClaw commands copied',
                         ),
                         icon: const Icon(Icons.copy_all_outlined),
-                        label: const Text('复制安装信息'),
+                        label: const Text('复制 OpenClaw 命令'),
                       ),
                     ],
                   ],
