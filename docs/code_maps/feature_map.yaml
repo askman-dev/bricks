@@ -89,26 +89,9 @@ products:
           - 点击 Base URL 右侧复制按钮后可复制 API URL。
           - 点击 API Key 右侧复制按钮时，非空 key 可被复制，空值会提示不可复制。
 
-      - feature_id: openclaw_token_settings
-        name: OpenClaw Token 配置
-        user_value: 用户可在设置页生成 Openclaw Token，并复制插件安装说明用于 OpenClaw 对接。
-        entry_paths:
-          - screen: SettingsScreen
-            route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
-          - screen: OpenclawTokenSettingsScreen
-            route_hint: apps/mobile_chat_app/lib/features/settings/openclaw_token_settings_screen.dart
-          - service: LlmConfigService.fetchPlatformToken
-            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
-        smoke_checks:
-          - 在设置页可看到并进入 “Openclaw Token” 设置项。
-          - 点击 “Openclaw Token” 按钮后可生成 token 信息。
-          - 生成后可复制 Openclaw Token 到剪贴板。
-          - 生成后页面会显示包含 pluginId / URL / scopes / token 的安装说明。
-          - 点击 “Copy Install Instructions” 可一键复制完整安装说明文本。
-
       - feature_id: node_settings
-        name: 节点（Node）管理与节点级 Token
-        user_value: 用户可管理多个节点（本地/云端运行时），并为指定节点生成专属 Token 与安装信息。
+        name: Node management and node-scoped token
+        user_value: Users can manage nodes and generate reusable OpenClaw installation tokens from each node entry.
         entry_paths:
           - screen: SettingsScreen
             route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
@@ -121,10 +104,10 @@ products:
           - route: /api/config/platform-token?nodeId=...
             route_hint: apps/node_backend/src/routes/config.ts
         smoke_checks:
-          - 设置页可看到“节点”入口并进入节点列表页面。
-          - 当节点列表为空时，显示“创建第一个节点”按钮并可创建节点。
-          - 节点创建后可展示默认名称（openclaw 1 / openclaw 2 ...）并支持重命名。
-          - 每个节点可复制 plugin id，可为该节点生成 token 与安装说明。
+          - Settings shows a single "Node Management" entry and no separate Openclaw Token entry.
+          - Add-node action is displayed in the AppBar top-right using icon + text.
+          - When no node exists, the page shows a "Create First Node" button.
+          - Each node supports rename, plugin-id copy, and token generation for OpenClaw installation.
           - 使用指定 nodeId 请求 platform-token 时，返回 payload 包含 nodeId / nodeName / pluginId / token。
 
       - feature_id: workspace_resources

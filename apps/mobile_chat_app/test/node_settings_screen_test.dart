@@ -76,7 +76,7 @@ void main() {
         .pumpWidget(MaterialApp(home: NodeSettingsScreen(service: service)));
     await tester.pumpAndSettle();
 
-    expect(find.text('创建第一个节点'), findsOneWidget);
+    expect(find.text('Create First Node'), findsOneWidget);
   });
 
   testWidgets('renders node and can generate token instructions',
@@ -87,7 +87,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('openclaw 1'), findsOneWidget);
-    await tester.tap(find.widgetWithText(OutlinedButton, '生成 Token'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Generate Token'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Node: openclaw 1'), findsOneWidget);

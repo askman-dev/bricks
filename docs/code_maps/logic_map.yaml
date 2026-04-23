@@ -143,31 +143,8 @@ index:
       - 字段格式变化导致保存后读取失败。
       - 后端默认模型与前端选择策略不一致。
 
-  - feature_id: openclaw_token_settings
-    capability: 设置页 Openclaw Token 生成、安装说明展示与复制
-    code_index:
-      - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
-      - apps/mobile_chat_app/lib/features/settings/openclaw_token_settings_screen.dart
-      - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
-      - apps/node_backend/src/routes/config.ts
-    doc_index:
-      - docs/openclaw_pull_only_integration_dev_doc.md
-    test_index:
-      - apps/mobile_chat_app/test/openclaw_token_settings_screen_test.dart
-    keywords:
-      - settings
-      - openclaw token
-      - platform token
-      - copy
-      - install instructions
-      - openclaw.json
-    change_risks:
-      - 设置入口位置变化后，用户可能无法在预期页面找到 token 生成功能。
-      - token 展示与复制反馈文案不一致时，可能导致配置操作误判。
-      - 安装说明模板字段缺失或格式错误会导致 OpenClaw 配置失败。
-
   - feature_id: node_settings
-    capability: 节点管理（创建/重命名）与节点级 Token 签发
+    capability: Node management (create/rename) and node-scoped token issuance
     code_index:
       - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
       - apps/mobile_chat_app/lib/features/settings/node_settings_screen.dart
@@ -181,7 +158,6 @@ index:
       - docs/plans/2026-04-21-00-12-UTC-multi-node-plugin-implementation.md
     test_index:
       - apps/mobile_chat_app/test/node_settings_screen_test.dart
-      - apps/mobile_chat_app/test/openclaw_token_settings_screen_test.dart
       - apps/node_backend/src/routes/config.test.ts
       - apps/node_backend/src/services/platformNodeService.test.ts
       - apps/node_backend/src/routes/platform.test.ts
