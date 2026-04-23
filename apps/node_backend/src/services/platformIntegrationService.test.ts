@@ -68,7 +68,7 @@ describe('platformIntegrationService', () => {
       pendingAssistantMessageId: 'msg-assistant-1',
     });
     const [, params] = queryMock.mock.calls[0] as [string, unknown[]];
-    expect(params).toContain('%"targetPluginId":"plugin_local_main"%');
+    expect(params).toContain('plugin_local_main');
   });
 
   it('marks assistant creates as dispatched', async () => {

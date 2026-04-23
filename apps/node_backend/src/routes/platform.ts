@@ -372,9 +372,9 @@ export function createPlatformRouter(options: {
           role,
           clientToken: readTrimmedString(req.body?.clientToken) ?? undefined,
           metadata: {
-            pluginId: req.platformPluginId,
             ...(requestMetadata ?? {}),
             ...(await buildNodeMetadata(userId, req.platformPluginId)),
+            pluginId: req.platformPluginId,
           },
         });
 
@@ -428,9 +428,9 @@ export function createPlatformRouter(options: {
 
         const nodeMetadata = await buildNodeMetadata(userId, req.platformPluginId);
         const mergedMetadata = {
-          pluginId: req.platformPluginId,
           ...(metadata ?? {}),
           ...nodeMetadata,
+          pluginId: req.platformPluginId,
         };
 
         const result = await patchPlatformMessage({

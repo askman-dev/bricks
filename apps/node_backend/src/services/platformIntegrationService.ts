@@ -109,7 +109,9 @@ export async function listPlatformEvents(params: {
   const userFilter = appendUserIdFilter(params.userId, queryParams);
   const pluginId = params.pluginId?.trim();
   const targetPluginFilter = pluginId
-    ? ` AND CAST(msg.metadata AS TEXT) LIKE $${queryParams.push(`%"targetPluginId":"${pluginId}"%`)}`
+    ? pool.dialect === 'turso'
+      ? ` AND json_extract(msg.metadata, '$.targetPluginId') = $${queryParams.push(pluginId)}`
+      : ` AND msg.metadata->>'targetPluginId' = $${queryParams.push(pluginId)}`
     : '';
   const result = await pool.query<ChatMessageEventRow>(
     `${baseSelect}
@@ -329,8 +331,8 @@ export async function patchPlatformMessage(input: {
 
   const mergedMetadata = {
     ...existingMetadata,
-    ...(inputPluginId ? { pluginId: inputPluginId } : {}),
     ...(input.metadata ?? {}),
+    ...(inputPluginId ? { pluginId: inputPluginId } : {}),
     source: 'platform.messages.patch',
   };
 
