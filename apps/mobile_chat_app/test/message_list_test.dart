@@ -23,18 +23,28 @@ Widget _build(List<ChatMessage> messages) => MaterialApp(
       ),
     );
 
+void _expectNearBottom(ScrollableState scrollable) {
+  // With the "last user message near top" scroll strategy, the computed offset
+  // for the 41-short-message fixture (last user at index 39, one message after)
+  // is clamped to maxScrollExtent.  A fixed pixel tolerance is more stable
+  // than a percentage threshold.
+  expect(
+    scrollable.position.pixels,
+    closeTo(scrollable.position.maxScrollExtent, 24.0),
+  );
+}
+
 void main() {
   group('MessageList auto scroll', () {
-    testWidgets('focuses latest user message on first render', (tester) async {
+    testWidgets('scrolls to bottom on first render', (tester) async {
       await tester.pumpWidget(_build(_messages('initial', 41)));
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
-      expect(scrollable.position.pixels,
-          lessThan(scrollable.position.maxScrollExtent));
+      _expectNearBottom(scrollable);
     });
 
-    testWidgets('re-focuses latest user message when list content changes',
+    testWidgets('re-scrolls to bottom when list content changes',
         (tester) async {
       await tester.pumpWidget(_build(_messages('before', 41)));
       await tester.pumpAndSettle();
@@ -47,11 +57,11 @@ void main() {
       await tester.pumpWidget(_build(_messages('after', 41)));
       await tester.pumpAndSettle();
 
-      expect(scrollable.position.pixels, greaterThan(0));
+      _expectNearBottom(scrollable);
     });
 
     testWidgets(
-        're-focuses latest user message when rebuilt with same mutated list instance',
+        're-scrolls to bottom when rebuilt with same mutated list instance',
         (tester) async {
       final messages = _messages('before', 41);
       late StateSetter setState;
@@ -84,7 +94,7 @@ void main() {
       setState(() {});
       await tester.pumpAndSettle();
 
-      expect(scrollable.position.pixels, greaterThan(0));
+      _expectNearBottom(scrollable);
     });
   });
 
@@ -123,6 +133,42 @@ void main() {
         isStreaming: true,
       );
       await tester.pumpWidget(_build([userMsg, updatedMsg]));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(scrollable.position.pixels, positionBefore);
+    });
+
+    testWidgets(
+        'does not scroll when a new streaming assistant message is added',
+        (tester) async {
+      final userMsg = ChatMessage(
+        messageId: 'u-stream',
+        role: 'user',
+        content: 'hello',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      // Load with only the user message so the list has a stable scroll
+      // position before streaming starts.
+      await tester.pumpWidget(_build([userMsg]));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final positionBefore = scrollable.position.pixels;
+
+      // A new streaming assistant message appears — the list should NOT
+      // auto-scroll while output is actively streaming.
+      final streamingMsg = ChatMessage(
+        messageId: 'a-stream',
+        role: 'assistant',
+        content: '',
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+        isStreaming: true,
+      );
+      await tester.pumpWidget(_build([userMsg, streamingMsg]));
       await tester.pump();
       await tester.pump();
       await tester.pump();
