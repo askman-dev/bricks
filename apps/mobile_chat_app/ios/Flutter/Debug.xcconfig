@@ -1,0 +1,5 @@
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
+#include "Generated.xcconfig"
+APP_BUNDLE_IDENTIFIER = dev.askman.bricks.mobileChatApp
+APP_DEVELOPMENT_TEAM =
+#include? "Local.xcconfig"
