@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-04-22
+last_updated: 2026-04-23
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -167,7 +167,7 @@ index:
       - 安装说明模板字段缺失或格式错误会导致 OpenClaw 配置失败。
 
   - feature_id: node_settings
-    capability: 节点管理（创建/重命名）与节点级 Token 签发
+    capability: 节点管理（创建/重命名）、节点级 Token 签发与 OpenClaw 命令复制
     code_index:
       - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
       - apps/mobile_chat_app/lib/features/settings/node_settings_screen.dart
@@ -189,6 +189,8 @@ index:
       - node
       - platform token
       - pluginId
+      - openclaw config set
+      - clipboard commands
       - settings
       - create
       - rename
@@ -198,6 +200,8 @@ index:
       - 节点默认名称或唯一键策略不稳定时，可能出现重复节点或命名冲突。
       - token 签发若未强制 nodeId/pluginId 绑定，可能导致跨节点消息隔离失效。
       - 平台写回未注入 node metadata 时，聊天 UI 仍会回退显示 ask，导致归属不清晰。
+      - 复制命令若未使用 shell-safe quoting，base URL、plugin id 或 token 中的特殊字符可能导致用户粘贴执行失败。
+      - 若命令错误使用全局 `openclaw configure`，用户可能被迫修改与 Bricks 插件无关的 OpenClaw 配置。
 
   - feature_id: workspace_resources
     capability: Workspace / Projects / Skills / Resources 导航
