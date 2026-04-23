@@ -6,15 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../settings/llm_config_service.dart';
 import 'oauth_callback.dart';
 
-class GitHubOAuthException implements Exception {
-  const GitHubOAuthException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
-}
-
 const _loginTimeout = Duration(minutes: 5);
 
 Future<String?> performGitHubOAuth() async {
@@ -24,10 +15,17 @@ Future<String?> performGitHubOAuth() async {
   late final StreamSubscription<Uri> subscription;
   subscription = appLinks.uriLinkStream.listen(
     (uri) {
-      final token = extractOAuthTokenFromUri(uri);
-      if (token != null && !completer.isCompleted) {
-        completer.complete(token);
+      if (completer.isCompleted || !isNativeOAuthCallback(uri)) {
+        return;
       }
+
+      final token = extractOAuthTokenFromUri(uri);
+      if (token != null) {
+        completer.complete(token);
+        return;
+      }
+
+      completer.complete(null);
     },
     onError: (Object error) {
       if (!completer.isCompleted) {

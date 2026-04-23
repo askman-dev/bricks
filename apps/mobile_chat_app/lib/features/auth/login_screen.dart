@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../chat/chat_screen.dart';
 import 'auth_service.dart';
 import 'github_oauth.dart';
+import 'oauth_callback.dart';
 
 /// Login screen with GitHub and Apple sign-in options.
 ///
@@ -98,8 +99,11 @@ class _GitHubSignInButtonState extends State<_GitHubSignInButton> {
       }
     } catch (e) {
       if (!mounted) return;
+      final message = e is GitHubOAuthException
+          ? e.message
+          : 'GitHub sign-in failed. Please try again.';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);

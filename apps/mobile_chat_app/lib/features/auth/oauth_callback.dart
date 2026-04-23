@@ -4,6 +4,15 @@ const nativeOAuthCallbackPath = '/github/callback';
 const nativeOAuthCallbackUri = 'bricks://auth/github/callback';
 const oauthTokenParameter = 'auth_token';
 
+class GitHubOAuthException implements Exception {
+  const GitHubOAuthException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 bool isNativeOAuthCallback(Uri uri) {
   return uri.scheme == nativeOAuthCallbackScheme &&
       uri.host == nativeOAuthCallbackHost &&

@@ -12,7 +12,9 @@ void main() {
 
     test('uses localhost for non-web non-release test builds', () {
       expect(
-          LlmConfigService.resolveBaseUrl(), equals('http://localhost:3000'));
+        LlmConfigService.resolveBaseUrl(),
+        equals('http://localhost:3000'),
+      );
     });
   });
 }
