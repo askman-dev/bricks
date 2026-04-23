@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../settings/llm_config_service.dart';
@@ -91,6 +92,8 @@ class ChatHistoryApiService {
     'resolvedSkillId',
     'agentId',
     'agentName',
+    'nodeId',
+    'nodeName',
     'traceId',
     'source',
   ];
@@ -107,8 +110,17 @@ class ChatHistoryApiService {
         '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
       );
 
-  Uri _syncUri(String sessionId, {required int afterSeq}) => Uri.parse(
+  Uri _syncUri(
+    String sessionId, {
+    required int afterSeq,
+  }) =>
+      Uri.parse(
         '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
+      );
+
+  Uri _eventsUri(String sessionId, {required int afterSeq}) =>
+      Uri.parse(
+        '$_base/api/chat/events/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
       );
 
   Uri get _acceptTaskUri => Uri.parse('$_base/api/chat/tasks/accept');
@@ -283,6 +295,82 @@ class ChatHistoryApiService {
       lastSeqId: (map['lastSeqId'] as num?)?.toInt() ?? afterSeq,
       latestCheckpointCursor: null,
     );
+  }
+
+  /// Opens a persistent SSE connection to `GET /api/chat/events/:sessionId`
+  /// and yields a [ChatHistorySnapshot] each time the server pushes new
+  /// messages.  The stream completes when the underlying HTTP connection
+  /// closes; callers are responsible for reconnecting as needed.
+  Stream<ChatHistorySnapshot> listenEvents({
+    required String token,
+    required String sessionId,
+    required int afterSeq,
+  }) async* {
+    final request =
+        http.Request('GET', _eventsUri(sessionId, afterSeq: afterSeq));
+    request.headers['Authorization'] = 'Bearer $token';
+    request.headers['Accept'] = 'text/event-stream';
+    request.headers['Cache-Control'] = 'no-cache';
+
+    final response = await _client.send(request);
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to open chat events stream (${response.statusCode})',
+      );
+    }
+
+    var partial = '';
+    String? pendingData;
+
+    await for (final chunk in response.stream.transform(utf8.decoder)) {
+      partial += chunk;
+
+      // Extract all complete lines (split on \n; trimRight removes any \r).
+      final parts = partial.split('\n');
+      partial = parts.removeLast(); // last part may be incomplete
+
+      for (final rawLine in parts) {
+        final line = rawLine.trimRight();
+
+        if (line.isEmpty) {
+          // Empty line signals end of one SSE event – dispatch it.
+          if (pendingData != null) {
+            try {
+              final raw = jsonDecode(pendingData);
+              if (raw is Map) {
+                final map = Map<String, dynamic>.from(raw);
+                final messages = ((map['messages'] as List?) ?? const [])
+                    .whereType<Map>()
+                    .map((item) => Map<String, Object?>.from(item))
+                    .map(_messageFromServerMap)
+                    .toList();
+                messages.sort(compareChatMessagesByCreatedTime);
+                final resolvedSeqId =
+                    (map['lastSeqId'] as num?)?.toInt();
+                if (resolvedSeqId == null) {
+                  debugPrint(
+                    'listenEvents: SSE event missing lastSeqId, '
+                    'falling back to afterSeq=$afterSeq',
+                  );
+                }
+                yield ChatHistorySnapshot(
+                  messages: messages,
+                  lastSeqId: resolvedSeqId ?? afterSeq,
+                );
+              }
+            } catch (e) {
+              debugPrint('listenEvents: failed to parse SSE event: $e');
+            }
+            pendingData = null;
+          }
+        } else if (line.startsWith('data: ')) {
+          pendingData = line.substring(6);
+        } else if (line.startsWith('data:')) {
+          pendingData = line.substring(5);
+        }
+        // Lines starting with ':' are SSE comments (e.g. heartbeats); ignore.
+      }
+    }
   }
 
   Future<ChatRespondResult> respond({
@@ -471,8 +559,13 @@ class ChatHistoryApiService {
     final metadata = (map['metadata'] is Map)
         ? Map<String, Object?>.from(map['metadata'] as Map)
         : const <String, Object?>{};
+    final metadataAgentName = metadata['nodeName'] is String
+        ? (metadata['nodeName'] as String).trim()
+        : '';
     final payload = <String, Object?>{
       ...metadata,
+      if (metadataAgentName.isNotEmpty && metadata['agentName'] == null)
+        'agentName': metadataAgentName,
       'messageId': map['messageId'],
       'seqId': map['seqId'],
       'writeSeq': map['writeSeq'],

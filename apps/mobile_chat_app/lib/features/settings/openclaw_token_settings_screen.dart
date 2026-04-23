@@ -126,6 +126,9 @@ class _OpenclawTokenSettingsScreenState
           ),
           if (bundle != null && installInstruction != null) ...[
             const SizedBox(height: 12),
+            if (bundle.nodeName.trim().isNotEmpty)
+              Text('Node: ${bundle.nodeName}'),
+            if (bundle.nodeName.trim().isNotEmpty) const SizedBox(height: 6),
             Text('Plugin ID: ${bundle.pluginId}'),
             const SizedBox(height: 6),
             Text('Base URL: ${bundle.baseUrl}'),

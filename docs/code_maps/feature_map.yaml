@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-20
+last_updated: 2026-04-22
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -42,8 +42,10 @@ products:
           - 在 openclaw 离线后切回默认路由继续发送时，历史消息应优先按服务端 seqId（不可变插入序）渲染，后到达更新不会打乱对话先后。
           - 当多条消息 createdAt 相同（秒级碰撞）时，消息应按 seqId 稳定从旧到新渲染。
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
-          - Openclaw 异步模式下不应额外持久化 assistant 站位消息行；“已读”应由用户消息状态属性反映。
-          - user query 气泡应根据路由与回包进度显示状态：default 无标记；openclaw 待处理/拉取中显示灰色 🦞，收到回复后显示绿色 ✓；其他远端路由待处理显示灰色 ✓，收到回复后显示绿色 ✓。
+          - default 与 openclaw 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
+          - 发送后不应立即出现空 assistant 假占位；assistant 气泡仅在实际内容开始到达（SSE/sync）时出现。
+          - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，default/其他远端为第二枚 ✓，openclaw 为第二枚 🦞。
+          - user query 的时间/线程与投递状态应显示在气泡内；长按气泡可弹出“复制/分叉（待开发）/重发（待开发）”菜单，并在底部显示 message id 与 task id。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
           - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
           - 打开或切换到已有历史的会话后，列表按“最新 user 消息优先”定位而非强制到底部。
@@ -53,8 +55,25 @@ products:
           - 长按频道改名后刷新页面，频道名称应保持为用户设置值（由数据库映射恢复）。
           - 顶部标题显示当前频道名且左对齐。
           - 切换 Agent 后仍可继续会话。
+          - 首次安装且未创建自定义 Agent 时，侧边栏 Agents 分组应默认显示内建 Agent 列表（不为空）。
+          - 侧边栏应在 Agents 分组上方显示 Skills 分组；当前内容为空并显示“待实现”占位。
+          - 侧边栏 Agents 列表中，内建 Agent 需显示只读标识，自定义 Agent 可显示自定义描述。
+          - 侧边栏 Agents 分组标题右侧不应出现“配置”按钮。
+          - 点击任一侧边栏 Agent 后应进入 Prompt 详情页，且底部应提供“修改配置”“发起对话”两个按钮。
+          - 在 Prompt 详情页点击“修改配置”后，应进入 Agent 管理流程。
+          - 在 Prompt 详情页点击“发起对话”后，应将该 Agent 设为当前会话 Agent。
+          - 输入框不再支持 `@agent` 文本补全；当路由为默认路由时，`@` 按钮显示在路由按钮右侧、配置按钮左侧，点击后下拉展示与侧边栏 Agents 分组一致的 Agent 列表。
+          - 当路由为 OpenClaw 时，`@` 按钮同样可点击并弹出下拉菜单；当前菜单内容为“待实现”占位。
+          - 对话页顶部不再显示横向“参与者/Agent 概率”指示条。
           - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
+          - 当路由为默认路由时，输入框左下角应显示配置按钮，且“模型”项副标题展示当前生效模型名。
+          - 当路由为 OpenClaw 时，输入框左下角应额外出现 `/` 斜杠命令按钮，选择命令后应自动填充到输入框。
+          - 未来新增的非默认且非 OpenClaw 路由在未适配前，默认不显示配置按钮。
+          - 顶部标题右侧应内嵌子区切换下拉（主区/新建子区/已有子区），切换后标题子区名称同步更新。
+          - 右上角应提供“子区管理”菜单，展示“分区改名（未实现）”“分区存档（未实现）”禁用项。
           - 打开右上角分区菜单与输入框配置菜单时，弹出动画应快速并呈现缩放+淡入效果。
+          - 在主区（channel 对话）打开路由菜单时，不应显示 Thread router 分组；在子区（thread 对话）应显示 Follow channel / Bricks Default / OpenClaw 三项。
+          - Openclaw 异步会话空闲时，客户端应通过 SSE（`/api/chat/events/:sessionId`）保持持久推送连接，服务端将在新消息到达后实时推送事件，无需客户端反复轮询。
 
       - feature_id: model_settings
         name: 模型与提供商配置
@@ -86,6 +105,27 @@ products:
           - 生成后可复制 Openclaw Token 到剪贴板。
           - 生成后页面会显示包含 pluginId / URL / scopes / token 的安装说明。
           - 点击 “Copy Install Instructions” 可一键复制完整安装说明文本。
+
+      - feature_id: node_settings
+        name: 节点（Node）管理与节点级 Token
+        user_value: 用户可管理多个节点（本地/云端运行时），并为指定节点生成专属 Token 与安装信息。
+        entry_paths:
+          - screen: SettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
+          - screen: NodeSettingsScreen
+            route_hint: apps/mobile_chat_app/lib/features/settings/node_settings_screen.dart
+          - service: LlmConfigService.fetchPlatformNodes/createPlatformNode/renamePlatformNode/fetchPlatformToken(nodeId)
+            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+          - route: /api/config/nodes
+            route_hint: apps/node_backend/src/routes/config.ts
+          - route: /api/config/platform-token?nodeId=...
+            route_hint: apps/node_backend/src/routes/config.ts
+        smoke_checks:
+          - 设置页可看到“节点”入口并进入节点列表页面。
+          - 当节点列表为空时，显示“创建第一个节点”按钮并可创建节点。
+          - 节点创建后可展示默认名称（openclaw 1 / openclaw 2 ...）并支持重命名。
+          - 每个节点可复制 plugin id，可为该节点生成 token 与安装说明。
+          - 使用指定 nodeId 请求 platform-token 时，返回 payload 包含 nodeId / nodeName / pluginId / token。
 
       - feature_id: workspace_resources
         name: Workspace / Projects / Skills / Resources 管理
@@ -143,9 +183,13 @@ products:
         smoke_checks:
           - 调用 chat 接口时返回结构化响应。
           - provider 配置缺失时给出明确错误。
-          - 使用 API Key + X-Bricks-Plugin-Id 可访问 `/api/v1/platform/events` 并获取 `nextCursor`。
-          - `/api/v1/platform/events/ack` 禁止 body 中传 `pluginId`，合法 ACK 可重复调用并返回成功。
-          - 调用 `/api/chat/channel-names` 可保存并读取每个用户的频道自定义名称。
+          - '使用 API Key + X-Bricks-Plugin-Id 可访问 /api/v1/platform/events 并获取 nextCursor。'
+          - '/api/v1/platform/events/ack 禁止 body 中传 pluginId，合法 ACK 可重复调用并返回成功。'
+          - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
+          - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
+          - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'
+          - '高频访问 `/api/config?category=llm` 不应因应用层全局 IP 限流触发 429。'
+          - '`/api/config` 写操作在同一用户维度超过每分钟预算时返回 429。'
 
   - product_id: node_openclaw_plugin
     name: Node OpenClaw Plugin

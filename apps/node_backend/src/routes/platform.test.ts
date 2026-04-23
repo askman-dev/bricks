@@ -8,6 +8,7 @@ import {
   ackPlatformEvents,
   listPlatformEvents,
   createPlatformMessage,
+  patchPlatformMessage,
 } from '../services/platformIntegrationService.js';
 
 vi.mock('../services/platformIntegrationService.js', () => ({
@@ -17,6 +18,14 @@ vi.mock('../services/platformIntegrationService.js', () => ({
   createPlatformMessage: vi.fn(async () => ({ messageId: 'msg_test', conversationId: 'conv_1', revision: 1 })),
   patchPlatformMessage: vi.fn(),
   resolveConversation: vi.fn(),
+}));
+
+vi.mock('../services/platformNodeService.js', () => ({
+  getPlatformNodeByPluginId: vi.fn(async () => ({
+    nodeId: 'node_default',
+    displayName: 'openclaw 1',
+    pluginId: 'plugin_local_main',
+  })),
 }));
 
 let server: ReturnType<express.Express['listen']> | null = null;
@@ -29,7 +38,7 @@ beforeAll(async () => {
   process.env.JWT_SECRET = 'test-jwt-secret';
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '2mb' }));
   const platformModule = await import('./platform.js');
   createPlatformRouter = platformModule.createPlatformRouter;
   const { default: platformRoutes } = platformModule;
@@ -291,6 +300,120 @@ describe('platform route auth and ack constraints', () => {
       expect.objectContaining({ userId: 'user-123' }),
     );
   });
+
+  it('rejects oversized text in POST /messages', async () => {
+    vi.mocked(createPlatformMessage).mockClear();
+    const response = await fetch(`${baseUrl}/api/v1/platform/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({
+        userId: 'user-123',
+        conversationId: 'conv-1',
+        channelId: 'ch-1',
+        text: 'x'.repeat(120 * 1024 + 1),
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_PAYLOAD');
+    expect(vi.mocked(createPlatformMessage)).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized text in PATCH /messages/:messageId', async () => {
+    vi.mocked(patchPlatformMessage).mockClear();
+    const response = await fetch(`${baseUrl}/api/v1/platform/messages/msg-1`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'Content-Type': 'application/json',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+      body: JSON.stringify({
+        userId: 'user-123',
+        text: 'x'.repeat(120 * 1024 + 1),
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_PAYLOAD');
+    expect(vi.mocked(patchPlatformMessage)).not.toHaveBeenCalled();
+  });
+});
+
+describe('platform SSE events stream', () => {
+  it('returns SSE content type and streams events', async () => {
+    vi.mocked(listPlatformEvents)
+      .mockResolvedValueOnce({ nextCursor: 'cur_1', events: [] })
+      .mockResolvedValueOnce({
+        nextCursor: 'cur_2',
+        events: [
+          {
+            eventId: 'evt_sse_1',
+            eventType: 'message.created',
+            workspaceId: 'ws_1',
+            conversationId: 'conv_1',
+            payload: { text: 'hello from SSE' },
+          },
+        ],
+      });
+
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/stream?cursor=cur_0`, {
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+
+    // Read chunks until we receive a data event, then abort.
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let received = '';
+    let foundData = false;
+
+    // Poll for up to 5 seconds to let the SSE poll fire.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !foundData) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += decoder.decode(value, { stream: true });
+      if (received.includes('data:')) {
+        foundData = true;
+      }
+    }
+
+    reader.cancel();
+
+    expect(foundData).toBe(true);
+    const dataLine = received
+      .split('\n')
+      .find((l) => l.startsWith('data:'))
+      ?.replace(/^data:\s*/, '');
+    expect(dataLine).toBeDefined();
+    const parsed = JSON.parse(dataLine!) as { events?: Array<{ eventId?: string }> };
+    expect(parsed.events?.[0]?.eventId).toBe('evt_sse_1');
+  });
+
+  it('requires cursor parameter', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/platform/events/stream`, {
+      headers: {
+        Authorization: 'Bearer test-platform-key',
+        'X-Bricks-Plugin-Id': 'plugin_local_main',
+      },
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_CURSOR');
+  });
 });
 
 describe('platform route rate limiting', () => {
@@ -299,7 +422,7 @@ describe('platform route rate limiting', () => {
 
   beforeAll(async () => {
     const app = express();
-    app.use(express.json());
+    app.use(express.json({ limit: '2mb' }));
     app.use(
       '/api/v1/platform',
       createPlatformRouter({

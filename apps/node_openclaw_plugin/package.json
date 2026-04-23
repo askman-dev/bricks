@@ -1,7 +1,6 @@
 {
-  "name": "@bricks/node-openclaw-plugin",
+  "name": "@askman-dev/bricks-openclaw-plugin",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Reference pull-only OpenClaw plugin runtime for Bricks platform APIs",
   "main": "dist/index.js",
@@ -42,8 +41,32 @@
       ]
     },
     "install": {
-      "localPath": "apps/node_openclaw_plugin",
-      "defaultChoice": "local"
+      "defaultChoice": "package"
     }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/askman-dev/bricks.git",
+    "directory": "apps/node_openclaw_plugin"
+  },
+  "homepage": "https://github.com/askman-dev/bricks/tree/main/apps/node_openclaw_plugin",
+  "bugs": {
+    "url": "https://github.com/askman-dev/bricks/issues"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "bricks",
+    "channel"
+  ],
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./dist/index.js"
   }
 }

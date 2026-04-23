@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Actions that can be triggered from the chat navigation page.
-enum ChatNavigationAction { appSettings, sessions, createChannel }
+enum ChatNavigationAction { appSettings, sessions, createChannel, manageAgents }
 
 enum ChatChannelMenuAction { rename, archive }
 
@@ -18,9 +18,17 @@ class ChatChannelItem {
 }
 
 class ChatAgentItem {
-  const ChatAgentItem({required this.name});
+  const ChatAgentItem({
+    required this.name,
+    required this.prompt,
+    this.description,
+    this.isBuiltIn = false,
+  });
 
   final String name;
+  final String prompt;
+  final String? description;
+  final bool isBuiltIn;
 }
 
 /// Navigation content for chat-related routes, intended for use in a
@@ -33,6 +41,7 @@ class ChatNavigationPage extends StatefulWidget {
     required this.channels,
     required this.selectedChannelId,
     this.onChannelSelected,
+    this.onAgentSelected,
     this.onChannelRename,
     this.onChannelArchive,
   });
@@ -42,6 +51,7 @@ class ChatNavigationPage extends StatefulWidget {
   final List<ChatChannelItem> channels;
   final String selectedChannelId;
   final ValueChanged<String>? onChannelSelected;
+  final ValueChanged<String>? onAgentSelected;
   final ValueChanged<String>? onChannelRename;
   final ValueChanged<String>? onChannelArchive;
 
@@ -50,6 +60,7 @@ class ChatNavigationPage extends StatefulWidget {
 }
 
 class _ChatNavigationPageState extends State<ChatNavigationPage> {
+  bool _skillsExpanded = true;
   bool _agentsExpanded = true;
   bool _channelsExpanded = true;
 
@@ -60,18 +71,6 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
   void _selectAction(BuildContext context, ChatNavigationAction action) {
     _closeNavigation(context);
     widget.onActionSelected(action);
-  }
-
-  void _showNotImplementedToast() {
-    final messenger = ScaffoldMessenger.of(context);
-    Scaffold.of(context).closeDrawer();
-    messenger.hideCurrentSnackBar();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        const SnackBar(content: Text('未开发的功能')),
-      );
-    });
   }
 
   Future<void> _showChannelMenu(ChatChannelItem channel) async {
@@ -106,6 +105,25 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
         widget.onChannelArchive?.call(channel.id);
         break;
     }
+  }
+
+  Future<void> _showAgentPrompt(ChatAgentItem agent) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _AgentPromptPage(
+          agent: agent,
+          onOpenConfig: () {
+            Navigator.of(context).pop();
+            _selectAction(context, ChatNavigationAction.manageAgents);
+          },
+          onStartConversation: () {
+            Navigator.of(context).pop();
+            _closeNavigation(context);
+            widget.onAgentSelected?.call(agent.name);
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -161,6 +179,41 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
               Expanded(
                 child: InkWell(
                   onTap: () =>
+                      setState(() => _skillsExpanded = !_skillsExpanded),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _skillsExpanded
+                              ? Icons.expand_more
+                              : Icons.chevron_right,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Skills',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_skillsExpanded)
+          const ListTile(
+            title: Text('待实现'),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () =>
                       setState(() => _agentsExpanded = !_agentsExpanded),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -182,11 +235,6 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
                   ),
                 ),
               ),
-              TextButton.icon(
-                onPressed: _showNotImplementedToast,
-                icon: const Icon(Icons.settings_outlined, size: 18),
-                label: const Text('配置'),
-              ),
             ],
           ),
         ),
@@ -197,10 +245,24 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
             )
           else
             ...agents.map(
-              (agent) => ListTile(
-                leading: const Icon(Icons.smart_toy_outlined),
-                title: Text(agent.name),
-              ),
+              (agent) {
+                final desc = agent.description?.trim();
+                return ListTile(
+                  leading: const Icon(Icons.smart_toy_outlined),
+                  title: Text(agent.name),
+                  subtitle: Text(
+                    desc == null || desc.isEmpty
+                        ? (agent.isBuiltIn ? '内建 Agent' : '自定义 Agent')
+                        : desc,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: agent.isBuiltIn
+                      ? const Icon(Icons.lock_outline, size: 18)
+                      : null,
+                  onTap: () => _showAgentPrompt(agent),
+                );
+              },
             ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -269,6 +331,60 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
             }),
         const SizedBox(height: 24),
       ],
+    );
+  }
+}
+
+class _AgentPromptPage extends StatelessWidget {
+  const _AgentPromptPage({
+    required this.agent,
+    required this.onOpenConfig,
+    required this.onStartConversation,
+  });
+
+  final ChatAgentItem agent;
+  final VoidCallback onOpenConfig;
+  final VoidCallback onStartConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedPrompt = agent.prompt.trim();
+    final prompt = trimmedPrompt.isEmpty ? '（未配置 Prompt）' : trimmedPrompt;
+    return Scaffold(
+      appBar: AppBar(title: Text(agent.name)),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Prompt', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Expanded(
+              child: SingleChildScrollView(
+                child: SelectableText(prompt),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onOpenConfig,
+                    child: const Text('修改配置'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onStartConversation,
+                    child: const Text('发起对话'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

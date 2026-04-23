@@ -24,9 +24,10 @@ Widget _build(List<ChatMessage> messages) => MaterialApp(
     );
 
 void _expectNearBottom(ScrollableState scrollable) {
-  // With the "last user message near top" scroll, the computed offset for the
-  // 41-short-message test fixture (last user msg at index 39, only one message
-  // after) is clamped to maxScrollExtent.
+  // With the "last user message near top" scroll strategy, the computed offset
+  // for the 41-short-message fixture (last user at index 39, one message after)
+  // is clamped to maxScrollExtent.  A fixed pixel tolerance is more stable
+  // than a percentage threshold.
   expect(
     scrollable.position.pixels,
     closeTo(scrollable.position.maxScrollExtent, 24.0),
@@ -132,6 +133,42 @@ void main() {
         isStreaming: true,
       );
       await tester.pumpWidget(_build([userMsg, updatedMsg]));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(scrollable.position.pixels, positionBefore);
+    });
+
+    testWidgets(
+        'does not scroll when a new streaming assistant message is added',
+        (tester) async {
+      final userMsg = ChatMessage(
+        messageId: 'u-stream',
+        role: 'user',
+        content: 'hello',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      // Load with only the user message so the list has a stable scroll
+      // position before streaming starts.
+      await tester.pumpWidget(_build([userMsg]));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final positionBefore = scrollable.position.pixels;
+
+      // A new streaming assistant message appears — the list should NOT
+      // auto-scroll while output is actively streaming.
+      final streamingMsg = ChatMessage(
+        messageId: 'a-stream',
+        role: 'assistant',
+        content: '',
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+        isStreaming: true,
+      );
+      await tester.pumpWidget(_build([userMsg, streamingMsg]));
       await tester.pump();
       await tester.pump();
       await tester.pump();
@@ -313,14 +350,13 @@ void main() {
   });
 
   group('User delivery status', () {
-    testWidgets('does not show status for default router messages',
+    testWidgets('does not show status before user message is accepted',
         (tester) async {
       final user = ChatMessage(
         messageId: 'u-default',
         role: 'user',
         content: 'hello',
         taskId: 'task-default',
-        source: 'backend.respond',
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
@@ -333,42 +369,48 @@ void main() {
       );
     });
 
-    testWidgets('shows gray lobster for openclaw accepted messages',
+    testWidgets('shows one check for accepted user message before reply starts',
         (tester) async {
       final user = ChatMessage(
-        messageId: 'u-openclaw-accepted',
+        messageId: 'u-default-accepted',
         role: 'user',
         content: 'hello',
-        taskId: 'task-openclaw-accepted',
-        source: 'backend.respond.openclaw',
+        taskId: 'task-default-accepted',
+        taskState: ChatTaskState.accepted,
+        source: 'backend.respond',
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
       await tester.pumpWidget(_build([user]));
       await tester.pumpAndSettle();
 
-      final lobster = tester.widget<Text>(
-        find.byKey(
-          const ValueKey<String>('user-delivery-u-openclaw-accepted'),
-        ),
+      final row = find.byKey(
+        const ValueKey<String>('user-delivery-u-default-accepted'),
       );
-      expect(lobster.data, '🦞');
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+      );
+      expect(find.descendant(of: row, matching: find.text('🦞')), findsNothing);
     });
 
-    testWidgets('shows green check when openclaw has replied', (tester) async {
+    testWidgets('shows check + completed check when default router has replied',
+        (tester) async {
       final user = ChatMessage(
-        messageId: 'u-openclaw-completed',
+        messageId: 'u-default-completed',
         role: 'user',
         content: 'hello',
-        taskId: 'task-openclaw-completed',
-        source: 'backend.respond.openclaw',
+        taskId: 'task-default-completed',
+        taskState: ChatTaskState.accepted,
+        source: 'backend.respond',
         timestamp: DateTime.utc(2026, 1, 1),
       );
       final assistant = ChatMessage(
-        messageId: 'a-openclaw-completed',
+        messageId: 'a-default-completed',
         role: 'assistant',
         content: 'done',
-        taskId: 'task-openclaw-completed',
+        taskId: 'task-default-completed',
         taskState: ChatTaskState.completed,
         timestamp: DateTime.utc(2026, 1, 1, 0, 1),
       );
@@ -376,49 +418,123 @@ void main() {
       await tester.pumpWidget(_build([user, assistant]));
       await tester.pumpAndSettle();
 
-      final icon = tester.widget<Icon>(
-        find.byKey(
-          const ValueKey<String>('user-delivery-u-openclaw-completed'),
-        ),
+      final row = find.byKey(
+        const ValueKey<String>('user-delivery-u-default-completed'),
       );
-      expect(icon.icon, Icons.check);
-      expect(icon.color, Colors.green);
+      expect(
+        find.descendant(of: row, matching: find.byIcon(Icons.check)),
+        findsNWidgets(2),
+      );
+      final icons = tester.widgetList<Icon>(
+        find.descendant(of: row, matching: find.byIcon(Icons.check)),
+      );
+      // Completed check inside user bubble uses onPrimary (full opacity)
+      final onPrimaryColor = Theme.of(
+        tester.element(find.byKey(const ValueKey<String>('user-delivery-u-default-completed'))),
+      ).colorScheme.onPrimary;
+      expect(icons.last.color, onPrimaryColor);
     });
 
-    testWidgets('shows gray then green check for generic remote routes',
+    testWidgets('shows check + lobster when openclaw reply starts',
         (tester) async {
       final user = ChatMessage(
-        messageId: 'u-remote',
+        messageId: 'u-openclaw',
         role: 'user',
         content: 'hello',
-        taskId: 'task-remote',
-        source: 'backend.respond.custom-router',
+        taskId: 'task-openclaw',
+        taskState: ChatTaskState.accepted,
+        source: 'backend.respond.openclaw',
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
       await tester.pumpWidget(_build([user]));
       await tester.pumpAndSettle();
-      final beforeReply = tester.widget<Icon>(
-        find.byKey(const ValueKey<String>('user-delivery-u-remote')),
+      final beforeReplyRow = find.byKey(
+        const ValueKey<String>('user-delivery-u-openclaw'),
       );
-      expect(beforeReply.icon, Icons.check);
-      expect(beforeReply.color, isNot(Colors.green));
+      expect(
+        find.descendant(of: beforeReplyRow, matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: beforeReplyRow, matching: find.text('🦞')),
+        findsNothing,
+      );
 
       final assistant = ChatMessage(
-        messageId: 'a-remote',
+        messageId: 'a-openclaw',
         role: 'assistant',
         content: 'done',
-        taskId: 'task-remote',
-        taskState: ChatTaskState.completed,
+        taskId: 'task-openclaw',
+        taskState: ChatTaskState.accepted,
         timestamp: DateTime.utc(2026, 1, 1, 0, 1),
       );
 
       await tester.pumpWidget(_build([user, assistant]));
       await tester.pumpAndSettle();
-      final afterReply = tester.widget<Icon>(
-        find.byKey(const ValueKey<String>('user-delivery-u-remote')),
+      final afterReplyRow = find.byKey(
+        const ValueKey<String>('user-delivery-u-openclaw'),
       );
-      expect(afterReply.color, Colors.green);
+      expect(
+        find.descendant(of: afterReplyRow, matching: find.byIcon(Icons.check)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: afterReplyRow, matching: find.text('🦞')),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('User bubble metadata and context menu', () {
+    testWidgets('keeps user meta inside bubble and hides task id text',
+        (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-meta',
+        role: 'user',
+        content: 'hello',
+        taskId: 'task-meta',
+        taskState: ChatTaskState.accepted,
+        threadId: 'sub-123',
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('task:accepted'), findsNothing);
+      expect(find.textContaining('id:task-meta'), findsNothing);
+
+      final bubble = find.byKey(const ValueKey<String>('message-u-meta'));
+      final bubbleMeta = find.descendant(
+        of: bubble,
+        matching: find.textContaining('thread:sub-123'),
+      );
+      expect(bubbleMeta, findsOneWidget);
+    });
+
+    testWidgets('long press shows context menu with ids', (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-menu',
+        role: 'user',
+        content: 'hello menu',
+        taskId: 'task-menu',
+        taskState: ChatTaskState.accepted,
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+      );
+
+      await tester.pumpWidget(_build([user]));
+      await tester.pumpAndSettle();
+
+      await tester
+          .longPress(find.byKey(const ValueKey<String>('message-u-menu')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('复制'), findsOneWidget);
+      expect(find.text('分叉（待开发）'), findsOneWidget);
+      expect(find.text('重发（待开发）'), findsOneWidget);
+      expect(find.text('message id: u-menu'), findsOneWidget);
+      expect(find.text('task id: task-menu'), findsOneWidget);
     });
   });
 }

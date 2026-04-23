@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
@@ -17,8 +18,9 @@ class MessageList extends StatefulWidget {
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
 
-  /// Key attached to the last user message item so its render object can be
-  /// located after a lazy-list layout pass.
+  /// Key attached to the bubble widget of the last user message so that
+  /// [_scrollToLastUserMessage] can locate its render object after a layout
+  /// pass and position it precisely.
   final GlobalKey _lastUserMsgKey = GlobalKey();
 
   // Persist the previous snapshot in state so comparisons work correctly even
@@ -33,7 +35,7 @@ class _MessageListState extends State<MessageList> {
   int? _lastUserMsgIndex;
 
   /// Gap from the viewport top where the last user message's bottom should
-  /// land after a scroll event – approximately 3 lines of text.
+  /// land after a scroll event – approximately 3 lines of text (72 px).
   static const double _kUserMsgTopGap = 72.0;
 
   @override
@@ -68,7 +70,10 @@ class _MessageListState extends State<MessageList> {
       _prevLength = newLength;
       _prevLastKey = newKey;
       _updateLastUserMsgIndex();
-      if (!streamingProgressOnly) {
+      // Skip scroll when a streaming update is in progress: either it is a
+      // pure streaming-delta on the same tail message, or the tail is still
+      // actively streaming (which means the assistant reply just started).
+      if (!streamingProgressOnly && !isStreamingTail) {
         _scrollToLastUserMessage();
       }
     }
@@ -99,9 +104,9 @@ class _MessageListState extends State<MessageList> {
   }
 
   void _scrollToLastUserMessage() {
-    // Frame 1: jump to the end of the list so ListView.builder builds the items
-    // near the last user message (lazy items near the bottom may not be
-    // materialised until scrolled into proximity).
+    // Frame 1: jump to the end of the list so ListView.builder builds the
+    // items near the last user message (lazy items near the bottom may not
+    // be materialised until scrolled into proximity).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
@@ -109,8 +114,8 @@ class _MessageListState extends State<MessageList> {
 
       // Frame 2: after layout, [_lastUserMsgKey] is attached to the last user
       // message render object; compute the scroll offset that places its bottom
-      // [_kUserMsgTopGap] pixels below the viewport top, giving enough vertical
-      // space for the streaming assistant reply to appear below the user bubble.
+      // [_kUserMsgTopGap] pixels from the viewport top, giving room for the
+      // streaming assistant reply to appear below the user bubble.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
         if (_lastUserMsgIndex == null) return;
@@ -139,25 +144,25 @@ class _MessageListState extends State<MessageList> {
     return DateFormat('HH:mm').format(timestamp.toLocal());
   }
 
-  String _taskLabel(ChatTaskState state) {
-    switch (state) {
-      case ChatTaskState.accepted:
-        return 'accepted';
-      case ChatTaskState.dispatched:
-        return 'dispatched';
-      case ChatTaskState.completed:
-        return 'completed';
-      case ChatTaskState.failed:
-        return 'failed';
-      case ChatTaskState.cancelled:
-        return 'cancelled';
-    }
+  String _messageMetaLine(ChatMessage message) {
+    return [
+      _formatTime(message.timestamp),
+      if (message.threadId != null) 'thread:${message.threadId}',
+      if (message.isRecovered) 'Recovered',
+    ].join(' · ');
   }
 
-  _UserDeliveryIndicator? _deliveryIndicatorForUserMessage(
+  _UserDeliveryStatus? _deliveryIndicatorForUserMessage(
     ChatMessage message,
     List<ChatMessage> allMessages,
   ) {
+    final persisted = message.taskState == ChatTaskState.accepted ||
+        message.taskState == ChatTaskState.dispatched ||
+        message.taskState == ChatTaskState.completed;
+    if (!persisted) {
+      return null;
+    }
+
     final source = message.source;
     final openclawBySource = source == 'backend.respond.openclaw';
     final genericRemoteBySource = source != null &&
@@ -167,40 +172,70 @@ class _MessageListState extends State<MessageList> {
         message.resolvedBotId == 'openclaw';
     final isOpenclaw = openclawBySource || openclawByResolvedBot;
     final isGenericRemote = genericRemoteBySource;
-    if (!isOpenclaw && !isGenericRemote) {
-      return null;
-    }
-
-    var hasCompletedReply = false;
-    var isDispatched = false;
+    var hasReplyStarted = false;
+    var hasReplyCompleted = false;
     for (final candidate in allMessages) {
       if (candidate.role != 'assistant' ||
           candidate.taskId == null ||
           candidate.taskId != message.taskId) {
         continue;
       }
-
+      hasReplyStarted = true;
       if (candidate.taskState == ChatTaskState.completed ||
-          (candidate.taskState == null &&
-              !candidate.isStreaming &&
-              candidate.content.trim().isNotEmpty)) {
-        hasCompletedReply = true;
+          candidate.content.isNotEmpty) {
+        hasReplyCompleted = true;
       }
-      if (candidate.taskState == ChatTaskState.dispatched) {
-        isDispatched = true;
-      }
-      if (hasCompletedReply && isDispatched) {
-        break;
-      }
-    }
-    if (isOpenclaw) {
-      if (hasCompletedReply) {
-        return const _UserDeliveryIndicator.check(isCompleted: true);
-      }
-      return _UserDeliveryIndicator.lobster(isDispatched: isDispatched);
+      break;
     }
 
-    return _UserDeliveryIndicator.check(isCompleted: hasCompletedReply);
+    final secondIcon = hasReplyStarted
+        ? (isOpenclaw
+            ? _DeliveryIconState.lobster()
+            : _DeliveryIconState.check(isCompleted: hasReplyCompleted))
+        : null;
+    if (!isOpenclaw && !isGenericRemote && !hasReplyStarted) {
+      return const _UserDeliveryStatus(first: _DeliveryIconState.check());
+    }
+    return _UserDeliveryStatus(
+      first: const _DeliveryIconState.check(),
+      second: secondIcon,
+    );
+  }
+
+  Future<void> _showUserMessageContextMenu({
+    required BuildContext context,
+    required Offset globalPosition,
+    required ChatMessage message,
+  }) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final result = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: Duration.zero,
+      pageBuilder: (dialogContext, _, __) => _UserMessageContextMenu(
+        position: globalPosition,
+        screenSize: overlay.size,
+        message: message,
+      ),
+    );
+    if (!context.mounted || result == null) return;
+    switch (result) {
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: message.content));
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已复制')));
+        break;
+      case 'branch':
+      case 'resend':
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('功能待开发')));
+        break;
+    }
   }
 
   @override
@@ -222,109 +257,129 @@ class _MessageListState extends State<MessageList> {
           final isUser = msg.role == 'user';
           final deliveryIndicator =
               isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
-          // Attach the global key to the bubble Container of the last user
-          // message so [_scrollToLastUserMessage] measures the bubble's height
-          // alone (excluding the timestamp row below) and positions the
-          // bubble's bottom at [_kUserMsgTopGap] from the viewport top.
+          // Attach [_lastUserMsgKey] to the bubble GestureDetector of the last
+          // user message so [_scrollToLastUserMessage] can measure the bubble
+          // height precisely and position it correctly.
           final bool isLastUserMsg = isUser && index == _lastUserMsgIndex;
-          final Widget bubble = Container(
-            key: ValueKey<String>(
-              'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
-            ),
-            margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-            padding: isUser
-                ? const EdgeInsets.symmetric(
-                    horizontal: BricksSpacing.md,
-                    vertical: BricksSpacing.sm,
-                  )
-                : const EdgeInsets.symmetric(
-                    horizontal: BricksSpacing.xs,
-                    vertical: BricksSpacing.xs,
-                  ),
-            width: isUser ? null : double.infinity,
-            constraints: isUser
-                ? BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.75,
-                  )
+          final Widget bubbleWidget = GestureDetector(
+            onLongPressStart: isUser
+                ? (details) => _showUserMessageContextMenu(
+                      context: context,
+                      globalPosition: details.globalPosition,
+                      message: msg,
+                    )
                 : null,
-            decoration: isUser
-                ? BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    borderRadius: BorderRadius.circular(BricksRadius.md),
-                  )
-                : null,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (isUser)
-                  _MessageExpandToggle(
-                    key: ValueKey<String>(
-                      'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+            child: Container(
+              key: ValueKey<String>(
+                'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
+              ),
+              margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+              padding: isUser
+                  ? const EdgeInsets.symmetric(
+                      horizontal: BricksSpacing.md,
+                      vertical: BricksSpacing.sm,
+                    )
+                  : const EdgeInsets.symmetric(
+                      horizontal: BricksSpacing.xs,
+                      vertical: BricksSpacing.xs,
                     ),
-                    text: msg.content,
-                    textColor: Theme.of(context).colorScheme.onPrimary,
-                  )
-                else
-                  _AssistantMarkdownText(
-                    text: msg.content,
-                    textColor: Theme.of(context).colorScheme.onSurface,
-                    textStyle: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                if (msg.isStreaming)
-                  Padding(
-                    padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                    child: SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          isUser
-                              ? Theme.of(context).colorScheme.onPrimary
-                              : Theme.of(context).colorScheme.primary,
-                        ),
+              width: isUser ? null : double.infinity,
+              constraints: isUser
+                  ? BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    )
+                  : null,
+              decoration: isUser
+                  ? BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(BricksRadius.md),
+                    )
+                  : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isUser)
+                    _MessageExpandToggle(
+                      key: ValueKey<String>(
+                        'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
                       ),
+                      text: msg.content,
+                      textColor: Theme.of(context).colorScheme.onPrimary,
+                    )
+                  else
+                    _AssistantMarkdownText(
+                      text: msg.content,
+                      textColor: Theme.of(context).colorScheme.onSurface,
+                      textStyle: Theme.of(context).textTheme.bodyMedium,
                     ),
-                  ),
-                if (msg.taskState != null || msg.taskId != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                    child: Text(
-                      [
-                        if (msg.taskState != null)
-                          'task:${_taskLabel(msg.taskState!)}',
-                        if (msg.taskId != null) 'id:${msg.taskId}',
-                      ].join(' · '),
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall
-                          ?.copyWith(
-                            color: isUser
-                                ? Theme.of(context).colorScheme.onPrimary
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ),
-                if (msg.arbitrationMode && msg.resolvedBotId != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                    child: Text(
-                      msg.fallbackToDefaultBot
-                          ? 'fallback→${msg.resolvedBotId}'
-                          : 'selected→${msg.resolvedBotId}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall
-                          ?.copyWith(
-                            color: isUser
+                  if (msg.isStreaming)
+                    Padding(
+                      padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                      child: SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            isUser
                                 ? Theme.of(context).colorScheme.onPrimary
                                 : Theme.of(context).colorScheme.primary,
                           ),
+                        ),
+                      ),
                     ),
-                  ),
-              ],
+                  if (msg.arbitrationMode && msg.resolvedBotId != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                      child: Text(
+                        msg.fallbackToDefaultBot
+                            ? 'fallback→${msg.resolvedBotId}'
+                            : 'selected→${msg.resolvedBotId}',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(
+                              color: isUser
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                    ),
+                  if (isUser)
+                    Padding(
+                      padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _messageMetaLine(msg),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimary,
+                                  ),
+                            ),
+                          ),
+                          if (deliveryIndicator != null) ...[
+                            const SizedBox(width: BricksSpacing.xs),
+                            _UserMessageDeliveryStatus(
+                              indicator: deliveryIndicator,
+                              messageId: msg.messageId,
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.onPrimary,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
           );
           return Align(
@@ -357,42 +412,25 @@ class _MessageListState extends State<MessageList> {
                       ],
                     ),
                   ),
-                // Wrap the bubble with [_lastUserMsgKey] for the last user
-                // message so the scroll logic can target the bubble's
-                // render box (not the full item including timestamp).
+                // Wrap with [_lastUserMsgKey] for the last user message so the
+                // scroll logic can target this render box.
                 isLastUserMsg
-                    ? KeyedSubtree(key: _lastUserMsgKey, child: bubble)
-                    : bubble,
-                // Show timestamp below the bubble.
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: BricksSpacing.xs,
-                    right: BricksSpacing.xs,
-                    bottom: BricksSpacing.md,
+                    ? KeyedSubtree(key: _lastUserMsgKey, child: bubbleWidget)
+                    : bubbleWidget,
+                if (!isUser)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: BricksSpacing.xs,
+                      right: BricksSpacing.xs,
+                      bottom: BricksSpacing.md,
+                    ),
+                    child: Text(
+                      _messageMetaLine(msg),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                    ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        [
-                          _formatTime(msg.timestamp),
-                          if (msg.threadId != null) 'thread:${msg.threadId}',
-                          if (msg.isRecovered) 'Recovered',
-                        ].join(' · '),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: Theme.of(context).colorScheme.outline,
-                            ),
-                      ),
-                      if (deliveryIndicator != null) ...[
-                        const SizedBox(width: BricksSpacing.xs),
-                        _UserMessageDeliveryStatus(
-                          indicator: deliveryIndicator,
-                          messageId: msg.messageId,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
               ],
             ),
           );
@@ -406,32 +444,89 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
   const _UserMessageDeliveryStatus({
     required this.indicator,
     required this.messageId,
+    this.foregroundColor,
   });
 
-  final _UserDeliveryIndicator indicator;
+  final _UserDeliveryStatus indicator;
   final String? messageId;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
     final key = ValueKey<String>('user-delivery-${messageId ?? 'unknown'}');
-    final statusLabel = indicator.icon == _DeliveryIcon.lobster
-        ? 'Pending'
-        : indicator.isCompleted
-            ? 'Delivered'
-            : 'Dispatched';
-    if (indicator.icon == _DeliveryIcon.lobster) {
+    return Row(
+      key: key,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _DeliveryStatusIcon(icon: indicator.first, foregroundColor: foregroundColor),
+        if (indicator.second != null) ...[
+          const SizedBox(width: 2),
+          _DeliveryStatusIcon(icon: indicator.second!, foregroundColor: foregroundColor),
+        ],
+      ],
+    );
+  }
+}
+
+enum _DeliveryIcon { lobster, check }
+
+class _DeliveryIconState {
+  const _DeliveryIconState._({
+    required this.icon,
+    required this.isCompleted,
+    required this.opacity,
+  });
+
+  const _DeliveryIconState.lobster({bool isDispatched = true})
+      : this._(
+          icon: _DeliveryIcon.lobster,
+          isCompleted: false,
+          opacity: isDispatched ? 0.75 : 0.45,
+        );
+
+  const _DeliveryIconState.check({bool isCompleted = false})
+      : this._(
+          icon: _DeliveryIcon.check,
+          isCompleted: isCompleted,
+          opacity: 1,
+        );
+
+  final _DeliveryIcon icon;
+  final bool isCompleted;
+  final double opacity;
+}
+
+class _UserDeliveryStatus {
+  const _UserDeliveryStatus({required this.first, this.second});
+
+  final _DeliveryIconState first;
+  final _DeliveryIconState? second;
+}
+
+class _DeliveryStatusIcon extends StatelessWidget {
+  const _DeliveryStatusIcon({required this.icon, this.foregroundColor});
+
+  final _DeliveryIconState icon;
+  final Color? foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusLabel = icon.icon == _DeliveryIcon.lobster
+        ? 'OpenClaw reply started'
+        : icon.isCompleted
+            ? 'AI reply completed'
+            : 'Persisted';
+    if (icon.icon == _DeliveryIcon.lobster) {
       return Semantics(
         label: statusLabel,
         child: Tooltip(
           message: statusLabel,
           child: Text(
             '🦞',
-            key: key,
             style: TextStyle(
               fontSize: 12,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurfaceVariant.withOpacity(indicator.opacity),
+              color: (foregroundColor ?? Theme.of(context).colorScheme.onSurfaceVariant)
+                  .withValues(alpha: icon.opacity),
             ),
           ),
         ),
@@ -443,43 +538,16 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
         message: statusLabel,
         child: Icon(
           Icons.check,
-          key: key,
           size: 14,
-          color: indicator.isCompleted
-              ? Colors.green
-              : Theme.of(context).colorScheme.outline,
+          color: foregroundColor != null
+              ? foregroundColor!.withValues(alpha: icon.isCompleted ? 1.0 : 0.6)
+              : icon.isCompleted
+                  ? Colors.green
+                  : Theme.of(context).colorScheme.outline,
         ),
       ),
     );
   }
-}
-
-enum _DeliveryIcon { lobster, check }
-
-class _UserDeliveryIndicator {
-  const _UserDeliveryIndicator._({
-    required this.icon,
-    required this.isCompleted,
-    required this.opacity,
-  });
-
-  const _UserDeliveryIndicator.lobster({required bool isDispatched})
-      : this._(
-          icon: _DeliveryIcon.lobster,
-          isCompleted: false,
-          opacity: isDispatched ? 0.75 : 0.45,
-        );
-
-  const _UserDeliveryIndicator.check({required bool isCompleted})
-      : this._(
-          icon: _DeliveryIcon.check,
-          isCompleted: isCompleted,
-          opacity: 1,
-        );
-
-  final _DeliveryIcon icon;
-  final bool isCompleted;
-  final double opacity;
 }
 
 class _AssistantMarkdownText extends StatelessWidget {
@@ -840,4 +908,120 @@ class _LastMessageKey {
         agentName,
         isRecovered,
       ]);
+}
+
+// ---------------------------------------------------------------------------
+// Context menu shown on long-press of a user bubble.
+// Uses showGeneralDialog with Duration.zero so the menu appears instantly
+// without any open/close animation.
+// ---------------------------------------------------------------------------
+
+class _UserMessageContextMenu extends StatelessWidget {
+  const _UserMessageContextMenu({
+    required this.position,
+    required this.screenSize,
+    required this.message,
+  });
+
+  final Offset position;
+  final Size screenSize;
+  final ChatMessage message;
+
+  static const double _menuWidth = 220.0;
+  static const double _itemHeight = 48.0;
+  static const double _menuEdgeMargin = 8.0;
+
+  @override
+  Widget build(BuildContext context) {
+    // Estimate clamped position; footer height is approximate (2 labelSmall lines + padding)
+    const estimatedFooterHeight = 48.0;
+    final menuHeight = _itemHeight * 3 + estimatedFooterHeight;
+
+    double left = position.dx;
+    double top = position.dy;
+    if (left + _menuWidth > screenSize.width - _menuEdgeMargin) {
+      left = screenSize.width - _menuWidth - _menuEdgeMargin;
+    }
+    if (top + menuHeight > screenSize.height - _menuEdgeMargin) {
+      top = screenSize.height - menuHeight - _menuEdgeMargin;
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            behavior: HitTestBehavior.opaque,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          width: _menuWidth,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MenuItem(label: '复制', value: 'copy'),
+                _MenuItem(label: '分叉（待开发）', value: 'branch'),
+                _MenuItem(label: '重发（待开发）', value: 'resend'),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'message id: ${message.messageId ?? '-'}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                      Text(
+                        'task id: ${message.taskId ?? '-'}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MenuItem extends StatelessWidget {
+  const _MenuItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => Navigator.of(context).pop(value),
+      child: SizedBox(
+        height: _UserMessageContextMenu._itemHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(label),
+          ),
+        ),
+      ),
+    );
+  }
 }

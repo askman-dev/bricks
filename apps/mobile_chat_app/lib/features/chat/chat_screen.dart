@@ -11,6 +11,7 @@ import 'chat_history_api_service.dart';
 import 'chat_message_sort.dart';
 
 import '../auth/auth_service.dart';
+import '../agents/agents_screen.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../../services/agents_repository_factory.dart';
@@ -19,6 +20,7 @@ import 'chat_bot_registry.dart';
 import 'chat_task_protocol.dart';
 import 'chat_topology.dart';
 import 'chat_message.dart';
+import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
@@ -57,6 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   List<AgentDefinition> _agents = [];
+  Set<String> _builtInAgentNames = const {};
   AgentDefinition? _activeAgent;
   final LlmConfigService _llmConfigService = const LlmConfigService();
   List<LlmConfig> _llmConfigs = const [];
@@ -79,15 +82,22 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
-  Timer? _syncTimer;
-  bool _syncInFlight = false;
-  static const Duration _syncPollInterval = Duration(seconds: 2);
-  static const Duration _syncMaxBackoff = Duration(seconds: 10);
-  Duration _nextSyncDelay = _syncPollInterval;
+  StreamSubscription<ChatHistorySnapshot>? _sseSubscription;
+  static const Duration _sseReconnectDelay = Duration(seconds: 3);
   final Map<String, ChatRouter> _channelRouters = {};
   final Map<String, ChatRouter> _threadRouters = {};
   int _respondGeneration = 0;
   int _idCounter = 0;
+
+  static const List<String> _openClawSlashCommands = <String>[
+    '/help',
+    '/commands',
+    '/status',
+    '/new',
+    '/model',
+    '/tools',
+    '/btw',
+  ];
 
   @override
   void initState() {
@@ -97,7 +107,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _cancelSyncPolling(resetDelay: false);
+    _disconnectSse();
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
@@ -115,7 +125,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final repo = await repoFuture;
       final llmConfigs = await llmConfigsFuture;
       final authToken = await tokenFuture;
-      final definitions = await _readAgentDefinitions(repo);
+      final customDefinitions = await _readAgentDefinitions(repo);
+      final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
       List<ChatChannelNameSetting> channelNames = const [];
@@ -163,7 +174,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
       );
       if (!mounted) return;
-      _syncParticipants(definitions);
+      _syncParticipants(mergedDefinitions);
       final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
       final restoredNamedChannels = _applyPersistedChannelNames(
         channels: restoredChannels,
@@ -183,8 +194,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final restoredActiveSubSection =
           restoredLastSubSectionByChannel[resolvedActiveChannel] ?? 'main';
       setState(() {
-        _agents = definitions;
-        _activeAgent ??= definitions.isNotEmpty ? definitions.first : null;
+        _agents = mergedDefinitions;
+        _builtInAgentNames = mergedDefinitions
+            .map((d) => d.name)
+            .where(ChatBuiltInAgents.ids.contains)
+            .toSet();
+        _activeAgent ??=
+            mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
         _loadingAgents = false;
         _llmConfigs = llmConfigs;
         _sessionConfigSlotId ??=
@@ -256,6 +272,45 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     }
+  }
+
+  List<AgentDefinition> _mergeWithBuiltInAgents(
+    List<AgentDefinition> customDefinitions,
+  ) {
+    final customNames =
+        customDefinitions.map((definition) => definition.name).toSet();
+    final merged = <AgentDefinition>[];
+
+    for (final builtIn in ChatBuiltInAgents.definitions()) {
+      if (!customNames.contains(builtIn.name)) {
+        merged.add(builtIn);
+      }
+    }
+
+    merged.addAll(customDefinitions);
+    return List<AgentDefinition>.unmodifiable(merged);
+  }
+
+  Future<void> _openAgentsScreen() async {
+    final result = await Navigator.of(context).push<AgentDefinition>(
+      MaterialPageRoute<AgentDefinition>(
+        builder: (_) => const AgentsScreen(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final repo = await createAgentsRepository();
+    final customDefinitions = await _readAgentDefinitions(repo);
+    final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
+    if (!mounted) return;
+    setState(() {
+      _agents = mergedDefinitions;
+      _builtInAgentNames = mergedDefinitions
+          .map((d) => d.name)
+          .where(ChatBuiltInAgents.ids.contains)
+          .toSet();
+      _activeAgent ??=
+          mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
+    });
   }
 
   void _selectAgent(AgentDefinition agent) {
@@ -431,6 +486,16 @@ class _ChatScreenState extends State<ChatScreen> {
     ).showSnackBar(SnackBar(content: Text('Session now uses $selectedModel')));
   }
 
+  String _currentComposerModelLabel() {
+    if (_effectiveRouterForScope() == ChatRouter.openclaw) {
+      return 'OpenClaw';
+    }
+    final selectedConfig = _activeLlmConfig;
+    return _sessionModelOverride ??
+        selectedConfig?.defaultModel ??
+        _resolveModelId(_activeAgent?.model);
+  }
+
   String _resolveModelId(String? model) {
     switch (model) {
       case 'gemini-flash':
@@ -579,6 +644,9 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final setting in settings) {
       if (setting.scopeType != ChatScopeType.thread ||
           setting.threadId == null) {
+        continue;
+      }
+      if (!_isThreadConversation(threadId: setting.threadId)) {
         continue;
       }
       routers[_subSectionKey(setting.channelId, setting.threadId!)] =
@@ -792,7 +860,7 @@ class _ChatScreenState extends State<ChatScreen> {
         (remembered != null && sections.any((s) => s.id == remembered))
             ? remembered
             : 'main';
-    _cancelSyncPolling();
+    _disconnectSse();
     setState(() {
       _activeChannelId = resolvedChannelId;
       _activeSubSection = restoredSubSection;
@@ -853,7 +921,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final capturedChannelId = _activeChannelId;
     final capturedSubSection = _activeSubSection;
     final capturedSessionId = _sessionIdForScope;
-    _cancelSyncPolling();
+    _disconnectSse();
 
     bool _isScopeStale() => _sessionIdForScope != capturedSessionId;
 
@@ -892,6 +960,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatRouter? _explicitThreadRouter({String? channelId, String? threadId}) {
     final resolvedChannelId = channelId ?? _activeChannelId;
     final resolvedThreadId = threadId ?? _activeSubSection;
+    if (!_isThreadConversation(threadId: resolvedThreadId)) return null;
     return _threadRouters[_subSectionKey(resolvedChannelId, resolvedThreadId)];
   }
 
@@ -915,23 +984,77 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  String _threadRouterMenuLabel(ChatRouter? router) {
-    if (router == null) return 'Follow channel';
-    return _routerLabel(router);
+  List<ComposerAtAction> _composerAtActions(ChatRouter router) {
+    if (router == ChatRouter.openclaw) {
+      return const <ComposerAtAction>[
+        ComposerAtAction(
+          value: '__openclaw_todo__',
+          label: '待实现',
+          enabled: false,
+        ),
+      ];
+    }
+    if (router == ChatRouter.defaultRoute) {
+      return _agents
+          .map(
+            (agent) => ComposerAtAction(
+              value: agent.name,
+              label: agent.name,
+            ),
+          )
+          .toList();
+    }
+    return const <ComposerAtAction>[];
+  }
+
+  void _handleComposerAtSelection(ChatRouter router, String value) {
+    if (router != ChatRouter.defaultRoute) return;
+    final agent = _findAgent(value);
+    if (agent == null) return;
+    _selectAgent(agent);
+  }
+
+  bool _isThreadConversation({String? threadId}) {
+    final resolvedThreadId = threadId ?? _activeSubSection;
+    return resolvedThreadId != 'main';
+  }
+
+  Widget _buildRouterMenuOption({
+    required BuildContext context,
+    required String label,
+    required bool selected,
+    String? sublabel,
+  }) {
+    final hintStyle = Theme.of(context).textTheme.bodySmall;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 20,
+          child: selected
+              ? const Icon(Icons.check, size: 16)
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: sublabel == null
+              ? Text(label)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(label),
+                    Text(sublabel, style: hintStyle),
+                  ],
+                ),
+        ),
+      ],
+    );
   }
 
   String? _sourceFromRespondRouter(String? router) {
     if (router == null || router.isEmpty || router == 'default') return null;
     return 'backend.respond.$router';
-  }
-
-  String _activeRouterSummary() {
-    final effective = _routerLabel(_effectiveRouterForScope());
-    final channel = _routerLabel(
-      _channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute,
-    );
-    final thread = _threadRouterMenuLabel(_explicitThreadRouter());
-    return 'Router: $effective · Channel $channel · Thread $thread';
   }
 
   Future<void> _saveChannelRouter(ChatRouter router) async {
@@ -962,11 +1085,6 @@ class _ChatScreenState extends State<ChatScreen> {
         router: router == ChatRouter.defaultRoute ? null : router,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Channel router set to ${_routerLabel(router)}'),
-        ),
-      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1014,13 +1132,6 @@ class _ChatScreenState extends State<ChatScreen> {
         router: router,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Thread router set to ${_threadRouterMenuLabel(router)}',
-          ),
-        ),
-      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1046,12 +1157,15 @@ class _ChatScreenState extends State<ChatScreen> {
         unawaited(_saveChannelRouter(ChatRouter.openclaw));
         return;
       case 'thread:inherit':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(null));
         return;
       case 'thread:default':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(ChatRouter.defaultRoute));
         return;
       case 'thread:openclaw':
+        if (!_isThreadConversation()) return;
         unawaited(_saveThreadRouter(ChatRouter.openclaw));
         return;
     }
@@ -1097,50 +1211,83 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  bool _hasPendingUserTasks() {
+    final assistantTaskIds = _messages
+        .where((m) => m.role == 'assistant' && m.taskId != null)
+        .map((m) => m.taskId!)
+        .toSet();
+    return _messages.any(
+      (message) =>
+          message.role == 'user' &&
+          message.taskId != null &&
+          message.taskState == ChatTaskState.accepted &&
+          !assistantTaskIds.contains(message.taskId),
+    );
+  }
+
   bool _shouldSyncActiveScope() {
     final token = _authToken;
     if (token == null || token.isEmpty) return false;
     if (_effectiveRouterForScope() == ChatRouter.openclaw) return true;
-    return _hasPendingAssistantTasks();
+    if (_isSending || _isStreaming) return true;
+    return _hasPendingAssistantTasks() || _hasPendingUserTasks();
   }
 
-  void _cancelSyncPolling({bool resetDelay = true}) {
-    _syncTimer?.cancel();
-    _syncTimer = null;
-    if (resetDelay) {
-      _nextSyncDelay = _syncPollInterval;
-    }
+  void _disconnectSse() {
+    _sseSubscription?.cancel();
+    _sseSubscription = null;
   }
 
-  void _scheduleSync(Duration delay) {
-    if (_syncTimer != null || _syncInFlight || !_shouldSyncActiveScope()) {
-      return;
-    }
+  /// Starts (or restarts) the SSE connection for the active scope.
+  /// Disconnects any existing connection first.  If [_shouldSyncActiveScope]
+  /// returns false the connection is only torn down.
+  void _connectSse() {
+    _disconnectSse();
+    if (!_shouldSyncActiveScope()) return;
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
 
-    _syncTimer = Timer(delay, () {
-      _syncTimer = null;
-      if (_syncInFlight || !_shouldSyncActiveScope()) {
-        return;
-      }
-      unawaited(_syncActiveScope());
-    });
-  }
+    final capturedSessionId = _sessionIdForScope;
+    final capturedChannelId = _activeChannelId;
+    final capturedSubSection = _activeSubSection;
 
-  void _increaseSyncBackoff() {
-    final doubledMilliseconds = _nextSyncDelay.inMilliseconds * 2;
-    final cappedMilliseconds = doubledMilliseconds.clamp(
-      _syncPollInterval.inMilliseconds,
-      _syncMaxBackoff.inMilliseconds,
+    _sseSubscription = _chatHistoryApiService
+        .listenEvents(
+      token: token,
+      sessionId: capturedSessionId,
+      afterSeq: _lastSyncedSeq,
+    )
+        .listen(
+      (snapshot) {
+        if (!mounted || _sessionIdForScope != capturedSessionId) return;
+        _applySseSnapshot(
+          snapshot,
+          channelId: capturedChannelId,
+          subSection: capturedSubSection,
+        );
+      },
+      onError: (Object error) {
+        debugPrint('SSE chat events error: $error');
+        if (mounted && _sessionIdForScope == capturedSessionId) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
+      onDone: () {
+        if (mounted &&
+            _sessionIdForScope == capturedSessionId &&
+            _shouldSyncActiveScope()) {
+          Future.delayed(_sseReconnectDelay, _connectSse);
+        }
+      },
     );
-    _nextSyncDelay = Duration(milliseconds: cappedMilliseconds);
   }
 
-  void _configureActiveScopeSync({bool triggerNow = true}) {
+  void _configureActiveScopeSync() {
     if (!_shouldSyncActiveScope()) {
-      _cancelSyncPolling();
+      _disconnectSse();
       return;
     }
-    _scheduleSync(triggerNow ? Duration.zero : _nextSyncDelay);
+    _connectSse();
   }
 
   List<ChatMessage> _mergeSyncedMessages(
@@ -1177,53 +1324,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return merged;
   }
 
-  Future<void> _syncActiveScope() async {
-    if (_syncInFlight) return;
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
-
-    final capturedSessionId = _sessionIdForScope;
-    final capturedChannelId = _activeChannelId;
-    final capturedSubSection = _activeSubSection;
-    _syncInFlight = true;
-    var syncFailed = false;
-    try {
-      final snapshot = await _chatHistoryApiService.sync(
-        token: token,
-        sessionId: capturedSessionId,
-        afterSeq: _lastSyncedSeq,
-      );
-      if (!mounted || _sessionIdForScope != capturedSessionId) return;
-      if (snapshot.messages.isEmpty && snapshot.lastSeqId <= _lastSyncedSeq) {
-        return;
-      }
-      final merged = _mergeSyncedMessages(_messages, snapshot.messages);
-      setState(() {
-        _messages
-          ..clear()
-          ..addAll(merged);
-        if (snapshot.lastSeqId > _lastSyncedSeq) {
-          _lastSyncedSeq = snapshot.lastSeqId;
-        }
-      });
-      _updateSubSectionLastMessageAtFromMessages(
-        channelId: capturedChannelId,
-        subSection: capturedSubSection,
-      );
-    } catch (error) {
-      syncFailed = true;
-      debugPrint('chat scope sync failed: $error');
-    } finally {
-      _syncInFlight = false;
-      if (mounted && _sessionIdForScope == capturedSessionId) {
-        if (syncFailed) {
-          _increaseSyncBackoff();
-        } else {
-          _nextSyncDelay = _syncPollInterval;
-        }
-        _configureActiveScopeSync(triggerNow: false);
-      }
+  void _applySseSnapshot(
+    ChatHistorySnapshot snapshot, {
+    required String channelId,
+    required String subSection,
+  }) {
+    if (snapshot.messages.isEmpty && snapshot.lastSeqId <= _lastSyncedSeq) {
+      return;
     }
+    final merged = _mergeSyncedMessages(_messages, snapshot.messages);
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll(merged);
+      if (snapshot.lastSeqId > _lastSyncedSeq) {
+        _lastSyncedSeq = snapshot.lastSeqId;
+      }
+    });
+    _updateSubSectionLastMessageAtFromMessages(
+      channelId: channelId,
+      subSection: subSection,
+    );
   }
 
   void _createSubSection() {
@@ -1247,6 +1368,16 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _configureActiveScopeSync();
+  }
+
+  void _switchToSubSection(String subSectionId) {
+    setState(() {
+      _activeSubSection = subSectionId;
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
+    });
+    unawaited(_loadMessagesForActiveScope());
   }
 
   Future<AgentSession> _sessionForAgent(AgentDefinition? agent) async {
@@ -1357,11 +1488,8 @@ class _ChatScreenState extends State<ChatScreen> {
       role: 'user',
       content: text,
       taskId: taskId,
-      taskState: ChatTaskState.accepted,
       idempotencyKey: idempotencyKey,
       createdAt: envelope.createdAt,
-      acknowledgedAt: ack.acceptedAt,
-      checkpointCursor: ack.checkpointCursor,
       channelId: envelope.channelId,
       sessionId: envelope.sessionId,
       threadId: envelope.threadId,
@@ -1376,63 +1504,19 @@ class _ChatScreenState extends State<ChatScreen> {
       traceId: arbitrationMode ? traceId : null,
     );
     _appendMessage(userMessage);
-    _appendMessage(
-      ChatMessage(
-        messageId: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        agentId: resolvedBotId,
-        agentName: resolvedBotId,
-        isStreaming: true,
-        taskId: taskId,
-        taskState: ChatTaskState.accepted,
-        idempotencyKey: idempotencyKey,
-        createdAt: envelope.createdAt,
-        acknowledgedAt: ack.acceptedAt,
-        checkpointCursor: ack.checkpointCursor,
-        sessionId: envelope.sessionId,
-        threadId: envelope.threadId,
-        resolvedBotId: resolvedBotId,
-        resolvedSkillId: resolvedSkillId,
-        arbitrationMode: arbitrationMode,
-        fallbackToDefaultBot: arbitration.fallbackToDefaultBot,
-        tieDetected: arbitration.tieDetected,
-        tieBotIds: arbitration.tieBotIds,
-        selectedScore: arbitration.selectedScore,
-        candidateScoreSummary: scoreSummary.isEmpty ? null : scoreSummary,
-        decisionReason: arbitration.reason,
-        traceId: arbitrationMode ? traceId : null,
-      ),
-    );
 
     setState(() {
       _isSending = true;
-      _isStreaming = true;
+      _isStreaming = false;
     });
 
     final token = _authToken;
     final runtimeSettings = _settingsForAgent(agent);
     if (token == null || token.isEmpty) {
-      final updated = _updateMessageById(
-        assistantMessageId,
-        (current) {
-          return current.copyWith(
-            content: 'Error: Missing auth token',
-            isStreaming: false,
-            taskState: ChatTaskState.failed,
-          );
-        },
-        onStateUpdate: () {
-          _isSending = false;
-          _isStreaming = false;
-        },
-      );
-      if (!updated) {
-        setState(() {
-          _isSending = false;
-          _isStreaming = false;
-        });
-      }
+      setState(() {
+        _isSending = false;
+        _isStreaming = false;
+      });
       return;
     }
 
@@ -1457,33 +1541,20 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       // Ignore stale completions if stop was pressed after this request started.
       if (generation != _respondGeneration) return;
-      _updateMessageById(
+      final updated = _updateMessageById(
         userMessageId,
         (current) => current.copyWith(
-          taskState: result.taskState ?? current.taskState,
+          taskState: result.taskState ?? ChatTaskState.accepted,
           source: _sourceFromRespondRouter(result.router) ?? current.source,
+          acknowledgedAt: ack.acceptedAt,
+          checkpointCursor: ack.checkpointCursor,
         ),
-      );
-      final updated = _updateMessageById(
-        assistantMessageId,
-        (current) {
-          return current.copyWith(
-            content: result.text,
-            isStreaming: false,
-            taskState: result.taskState ??
-                (result.isAsync
-                    ? ChatTaskState.dispatched
-                    : ChatTaskState.completed),
-          );
-        },
         onStateUpdate: () {
           if (result.lastSeqId > _lastSyncedSeq) {
             _lastSyncedSeq = result.lastSeqId;
           }
-          if (result.isAsync) {
-            _isSending = false;
-            _isStreaming = false;
-          }
+          _isSending = false;
+          _isStreaming = false;
         },
       );
       if (!updated) {
@@ -1493,12 +1564,10 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         return;
       }
-      if (result.isAsync) {
-        _configureActiveScopeSync();
-        return;
-      }
-      // Backend already persisted both messages; skip redundant client-side
-      // upsert to avoid overwriting backend-only metadata (provider/model/source).
+      _configureActiveScopeSync();
+      // Backend now persists assistant responses asynchronously; skip
+      // client-side assistant placeholder/upsert and rely on SSE/sync.
+      if (result.isAsync) return;
       if (mounted) {
         await _handleProactiveResponses(text);
         if (mounted) {
@@ -1512,11 +1581,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       if (generation != _respondGeneration) return;
       final updated = _updateMessageById(
-        assistantMessageId,
+        userMessageId,
         (current) {
           return current.copyWith(
-            content: 'Error: $error',
-            isStreaming: false,
             taskState: ChatTaskState.failed,
           );
         },
@@ -1626,41 +1693,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {});
   }
 
-  PreferredSizeWidget _buildActiveAgentsIndicator() {
-    final active = _participantManager.participants.active;
-    if (active.isEmpty) {
-      return const PreferredSize(
-        preferredSize: Size.fromHeight(0),
-        child: SizedBox.shrink(),
-      );
-    }
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(44),
-      child: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(
-          left: BricksSpacing.md,
-          bottom: BricksSpacing.xs,
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: active.map((p) {
-              final pct = (p.probability * 100).round();
-              return Padding(
-                padding: const EdgeInsets.only(right: BricksSpacing.xs),
-                child: Chip(
-                  avatar: const Icon(Icons.smart_toy_outlined, size: 16),
-                  label: Text('${p.agentName} • $pct%'),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _showDebugInfoDialog() async {
     final activeParticipants = _participantManager.participants.active;
     final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
@@ -1710,7 +1742,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final activeAgentName = _activeAgent?.name;
     String activeChannelName = '频道';
     for (final item in _channels) {
       if (item.id == _activeChannelId) {
@@ -1726,8 +1757,15 @@ class _ChatScreenState extends State<ChatScreen> {
           child: SafeArea(
             child: ChatNavigationPage(
               agents: _agents
-                  .map((agent) => ChatAgentItem(name: agent.name))
-                  .toList(),
+                  .map<ChatAgentItem>(
+                    (agent) => ChatAgentItem(
+                      name: agent.name,
+                      prompt: agent.systemPrompt,
+                      description: agent.description,
+                      isBuiltIn: _builtInAgentNames.contains(agent.name),
+                    ),
+                  )
+                  .toList(growable: false),
               channels: _channels
                   .map(
                     (item) => ChatChannelItem(
@@ -1754,12 +1792,20 @@ class _ChatScreenState extends State<ChatScreen> {
                   case ChatNavigationAction.createChannel:
                     _createChannel();
                     break;
+                  case ChatNavigationAction.manageAgents:
+                    _openAgentsScreen();
+                    break;
                 }
               },
             ),
           ),
         ),
         appBar: AppBar(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          centerTitle: false,
+          titleSpacing: 0,
           leading: Builder(
             builder: (context) => IconButton(
               icon: const Icon(Icons.menu),
@@ -1767,140 +1813,194 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () => Scaffold.of(context).openDrawer(),
             ),
           ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(activeChannelName),
-              if (activeAgentName != null)
-                Text(
-                  'Responding as @$activeAgentName',
-                  style: Theme.of(context).textTheme.labelSmall,
+          title: PopupMenuButton<String>(
+            popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
+            tooltip: '切换子区',
+            onSelected: (value) {
+              if (value == '__new__') {
+                _createSubSection();
+                unawaited(_loadMessagesForActiveScope());
+                return;
+              }
+              _switchToSubSection(value);
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem<String>(
+                value: 'main',
+                child: Text('回到主区'),
+              ),
+              const PopupMenuItem<String>(
+                value: '__new__',
+                child: Text('新建子区'),
+              ),
+              const PopupMenuDivider(),
+              ..._activeSubSections.map(
+                (item) => PopupMenuItem<String>(
+                  value: item.id,
+                  child: Text(item.name),
                 ),
-              Text(
-                _activeRouterSummary(),
-                style: Theme.of(context).textTheme.labelSmall,
               ),
             ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    _activeSubSection == 'main'
+                        ? activeChannelName
+                        : (_subSectionNameById(_activeSubSection) ??
+                            _activeSubSection),
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                const Icon(Icons.arrow_drop_down),
+              ],
+            ),
           ),
           actions: [
             PopupMenuButton<String>(
               popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-              tooltip: 'Sub sections',
+              tooltip: '子区管理',
               onSelected: (value) {
-                if (value == '__new__') {
-                  _createSubSection();
-                  unawaited(_loadMessagesForActiveScope());
-                } else {
-                  _cancelSyncPolling();
-                  setState(() {
-                    _activeSubSection = value;
-                    _messages.clear();
-                    _latestCheckpointCursor = null;
-                    _lastSyncedSeq = 0;
-                  });
-                  unawaited(_loadMessagesForActiveScope());
+                switch (value) {
+                  case '__rename__':
+                  case '__archive__':
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('功能暂未实现')),
+                    );
+                    break;
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem<String>(value: 'main', child: Text('回到主区')),
                 const PopupMenuItem<String>(
-                  value: '__new__',
-                  child: Text('新建子区'),
+                  value: '__rename__',
+                  child: Text('分区改名（未实现）'),
                 ),
-                const PopupMenuDivider(),
-                ..._activeSubSections.map(
-                  (item) => PopupMenuItem<String>(
-                    value: item.id,
-                    child: Text(item.name),
-                  ),
+                const PopupMenuItem<String>(
+                  value: '__archive__',
+                  child: Text('分区存档（未实现）'),
                 ),
               ],
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: BricksSpacing.md,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.splitscreen_outlined),
-                    const SizedBox(width: BricksSpacing.xs),
-                    Text(
-                      _activeSubSection == 'main'
-                          ? '主区'
-                          : (_subSectionNameById(_activeSubSection) ??
-                              _activeSubSection),
-                    ),
-                    const Icon(Icons.arrow_drop_down),
-                  ],
-                ),
-              ),
+              icon: const Icon(Icons.more_vert),
             ),
           ],
-          bottom: _buildActiveAgentsIndicator(),
         ),
         body: Column(
           children: [
             Expanded(child: MessageList(messages: _messages)),
-            ComposerBar(
-              activeAgent: _activeAgent,
-              agents: _agents,
-              routerAction: PopupMenuButton<String>(
-                popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-                tooltip: 'Router settings',
-                onSelected: _handleRouterMenuSelection,
-                itemBuilder: (context) => [
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    child: Text(
-                      'Channel router · ${_routerLabel(_channelRouters[_activeChannelId] ?? ChatRouter.defaultRoute)}',
+            Builder(
+              builder: (context) {
+                final effectiveRouter = _effectiveRouterForScope();
+                final showComposerConfigMenu =
+                    effectiveRouter == ChatRouter.defaultRoute ||
+                        effectiveRouter == ChatRouter.openclaw;
+                final slashCommands = effectiveRouter == ChatRouter.openclaw
+                    ? _openClawSlashCommands
+                    : const <String>[];
+                final atActions = _composerAtActions(effectiveRouter);
+                return ComposerBar(
+                  activeAgent: _activeAgent,
+                  agents: _agents,
+                  leadingActions: [
+                    PopupMenuButton<String>(
+                      popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
+                      tooltip: 'Router settings',
+                      onSelected: _handleRouterMenuSelection,
+                      itemBuilder: (context) {
+                        final isThreadConversation = _isThreadConversation();
+                        final channelRouter =
+                            _channelRouters[_activeChannelId] ??
+                                ChatRouter.defaultRoute;
+                        final channelRouterLabel = _routerLabel(channelRouter);
+                        final explicitThreadRouter = _explicitThreadRouter();
+                        return [
+                          if (!isThreadConversation) ...[
+                            PopupMenuItem<String>(
+                              enabled: false,
+                              child: const Text('Channel router'),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'channel:default',
+                              child: _buildRouterMenuOption(
+                                context: context,
+                                label: 'Bricks Default',
+                                selected:
+                                    channelRouter == ChatRouter.defaultRoute,
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'channel:openclaw',
+                              child: _buildRouterMenuOption(
+                                context: context,
+                                label: 'OpenClaw',
+                                selected: channelRouter == ChatRouter.openclaw,
+                              ),
+                            ),
+                          ],
+                          if (isThreadConversation) ...[
+                            PopupMenuItem<String>(
+                              enabled: false,
+                              child: const Text('Thread router'),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'thread:inherit',
+                              child: _buildRouterMenuOption(
+                                context: context,
+                                label: 'Follow channel',
+                                sublabel: channelRouterLabel,
+                                selected: explicitThreadRouter == null,
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'thread:default',
+                              child: _buildRouterMenuOption(
+                                context: context,
+                                label: 'Bricks Default',
+                                selected: explicitThreadRouter ==
+                                    ChatRouter.defaultRoute,
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'thread:openclaw',
+                              child: _buildRouterMenuOption(
+                                context: context,
+                                label: 'OpenClaw',
+                                selected:
+                                    explicitThreadRouter == ChatRouter.openclaw,
+                              ),
+                            ),
+                          ],
+                        ];
+                      },
+                      icon: SizedBox.square(
+                        dimension: 24,
+                        child: Center(
+                          child:
+                              _effectiveRouterForScope() == ChatRouter.openclaw
+                                  ? const Text(
+                                      '🦞',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 18, height: 1),
+                                    )
+                                  : const Icon(Icons.alt_route, size: 20),
+                        ),
+                      ),
                     ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'channel:default',
-                    child: Text('Bricks Default'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'channel:openclaw',
-                    child: Text('OpenClaw'),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    child: Text(
-                      'Thread router · ${_threadRouterMenuLabel(_explicitThreadRouter())}',
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:inherit',
-                    child: Text('Follow channel'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:default',
-                    child: Text('Bricks Default'),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'thread:openclaw',
-                    child: Text('OpenClaw'),
-                  ),
-                ],
-                icon: SizedBox.square(
-                  dimension: 24,
-                  child: Center(
-                    child: _effectiveRouterForScope() == ChatRouter.openclaw
-                        ? const Text(
-                            '🦞',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 18, height: 1),
-                          )
-                        : const Icon(Icons.alt_route, size: 20),
-                  ),
-                ),
-              ),
-              onAgentSelected: _selectAgent,
-              onOpenModelSelection: _openRuntimeModelConfigDialog,
-              onShowInfo: _showDebugInfoDialog,
-              onSend: _isSending ? null : _sendMessage,
-              onStop: _stopStreaming,
-              isStreaming: _isStreaming,
+                  ],
+                  showComposerConfigMenu: showComposerConfigMenu,
+                  activeModelLabel: _currentComposerModelLabel(),
+                  slashCommands: slashCommands,
+                  atActions: atActions,
+                  onAtActionSelected: (value) =>
+                      _handleComposerAtSelection(effectiveRouter, value),
+                  onOpenModelSelection: _openRuntimeModelConfigDialog,
+                  onShowInfo: _showDebugInfoDialog,
+                  onSend: _isSending ? null : _sendMessage,
+                  onStop: _stopStreaming,
+                  isStreaming: _isStreaming,
+                );
+              },
             ),
           ],
         ),

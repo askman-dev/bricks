@@ -13,15 +13,23 @@ import {
   patchPlatformMessage,
   resolveConversation,
 } from '../services/platformIntegrationService.js';
+import { getPlatformNodeByPluginId } from '../services/platformNodeService.js';
 
 const DEFAULT_PLATFORM_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_PLATFORM_READ_LIMIT_MAX = 300;
 const DEFAULT_PLATFORM_WRITE_LIMIT_MAX = 600;
+const DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX = 10;
+const PLATFORM_MESSAGE_TEXT_MAX_BYTES = 120 * 1024;
+// Interval between each poll of listPlatformEvents while an SSE connection is open.
+const PLATFORM_EVENTS_POLL_INTERVAL_MS = 1000;
+// Interval between keep-alive heartbeat comments sent over the SSE stream.
+const PLATFORM_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
 
 interface PlatformRateLimitOptions {
   windowMs?: number;
   readMax?: number;
   writeMax?: number;
+  eventsStreamMax?: number;
 }
 
 function requestId(): string {
@@ -45,6 +53,13 @@ function readTrimmedString(input: unknown): string | null {
   if (typeof input !== 'string') return null;
   const trimmed = input.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function validateMessageTextLength(text: string): string | null {
+  if (Buffer.byteLength(text, 'utf8') > PLATFORM_MESSAGE_TEXT_MAX_BYTES) {
+    return `text/content must be ${PLATFORM_MESSAGE_TEXT_MAX_BYTES} bytes (UTF-8) or fewer`;
+  }
+  return null;
 }
 
 /**
@@ -74,6 +89,20 @@ function platformLimiterKey(req: PlatformAuthRequest): string {
     || req.socket.remoteAddress
     || 'unknown-client';
   return `${pluginId}:${scopedIdentity}`;
+}
+
+async function buildNodeMetadata(
+  userId: string,
+  pluginId: string | undefined,
+): Promise<Record<string, unknown>> {
+  const plugin = pluginId?.trim();
+  if (!plugin) return {};
+  const node = await getPlatformNodeByPluginId(userId, plugin);
+  if (!node) return {};
+  return {
+    nodeId: node.nodeId,
+    nodeName: node.displayName,
+  };
 }
 
 function resolveRetryAfterSeconds(
@@ -123,6 +152,11 @@ export function createPlatformRouter(options: {
     max: options.rateLimit?.writeMax ?? DEFAULT_PLATFORM_WRITE_LIMIT_MAX,
     message: 'Too many platform write requests, please try again later.',
   });
+  const eventsStreamLimiter = createPlatformLimiter({
+    windowMs,
+    max: options.rateLimit?.eventsStreamMax ?? DEFAULT_PLATFORM_EVENTS_STREAM_LIMIT_MAX,
+    message: 'Too many platform SSE connection attempts, please try again later.',
+  });
 
   router.get('/events', readLimiter, requirePlatformScope('events:read'), async (req: Request, res: Response) => {
     try {
@@ -154,6 +188,73 @@ export function createPlatformRouter(options: {
       sendError(res, 500, 'INTERNAL_ERROR', 'internal server error', true);
     }
   });
+
+  router.get(
+    '/events/stream',
+    eventsStreamLimiter,
+    requirePlatformScope('events:read'),
+    (req: Request, res: Response) => {
+      const platformReq = req as PlatformAuthRequest;
+      const cursorParam = readTrimmedString(req.query.cursor);
+      if (!cursorParam) {
+        sendError(res, 400, 'INVALID_CURSOR', 'cursor query parameter is required');
+        return;
+      }
+
+      let cursor = cursorParam;
+      const userId = platformReq.platformUserId;
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      let disconnected = false;
+      let pollTimer: ReturnType<typeof setTimeout> | null = null;
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+      const cleanup = () => {
+        disconnected = true;
+        if (pollTimer !== null) clearTimeout(pollTimer);
+        if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
+      };
+
+      req.on('close', cleanup);
+
+      heartbeatTimer = setInterval(() => {
+        if (!disconnected) res.write(': heartbeat\n\n');
+      }, PLATFORM_EVENTS_HEARTBEAT_INTERVAL_MS);
+
+      const poll = async () => {
+        if (disconnected) return;
+        try {
+          const response = await listPlatformEvents({
+            cursor,
+            limit: 50,
+            userId,
+          });
+          if (!disconnected && response.events.length > 0) {
+            cursor = response.nextCursor;
+            res.write(`data: ${JSON.stringify(response)}\n\n`);
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message === 'INVALID_CURSOR') {
+            // Non-retryable: close the SSE connection so the client can reconnect with a valid cursor.
+            cleanup();
+            res.end();
+            return;
+          }
+          console.error('[platform] SSE poll error:', error);
+          // Continue polling for transient errors; client will reconnect on stream close.
+        }
+        if (!disconnected) {
+          pollTimer = setTimeout(poll, PLATFORM_EVENTS_POLL_INTERVAL_MS);
+        }
+      };
+
+      pollTimer = setTimeout(poll, 0);
+    },
+  );
 
   router.post(
     '/events/ack',
@@ -249,6 +350,17 @@ export function createPlatformRouter(options: {
           return;
         }
 
+        const textLengthError = validateMessageTextLength(text);
+        if (textLengthError) {
+          sendError(res, 400, 'INVALID_PAYLOAD', textLengthError);
+          return;
+        }
+
+        const requestMetadata =
+          req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
+            ? (req.body.metadata as Record<string, unknown>)
+            : undefined;
+
         const result = await createPlatformMessage({
           userId,
           conversationId,
@@ -257,10 +369,10 @@ export function createPlatformRouter(options: {
           text,
           role,
           clientToken: readTrimmedString(req.body?.clientToken) ?? undefined,
-          metadata:
-            req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
-              ? (req.body.metadata as Record<string, unknown>)
-              : undefined,
+          metadata: {
+            ...(requestMetadata ?? {}),
+            ...(await buildNodeMetadata(userId, req.platformPluginId)),
+          },
         });
 
         res.status(200).json(result);
@@ -303,7 +415,26 @@ export function createPlatformRouter(options: {
           return;
         }
 
-        const result = await patchPlatformMessage({ userId, messageId, text: text ?? undefined, metadata });
+        if (text) {
+          const textLengthError = validateMessageTextLength(text);
+          if (textLengthError) {
+            sendError(res, 400, 'INVALID_PAYLOAD', textLengthError);
+            return;
+          }
+        }
+
+        const nodeMetadata = await buildNodeMetadata(userId, req.platformPluginId);
+        const mergedMetadata = {
+          ...(metadata ?? {}),
+          ...nodeMetadata,
+        };
+
+        const result = await patchPlatformMessage({
+          userId,
+          messageId,
+          text: text ?? undefined,
+          metadata: mergedMetadata,
+        });
         if (!result) {
           sendError(res, 404, 'MESSAGE_NOT_FOUND', 'message not found');
           return;

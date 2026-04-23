@@ -205,7 +205,102 @@ class LlmConfigService {
     }
   }
 
+  Future<List<PlatformNodeConfig>> fetchPlatformNodes() async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.get(
+      _buildUri('/api/config/nodes'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to fetch platform nodes (${response.statusCode})');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) return const [];
+    final map = Map<String, dynamic>.from(decoded);
+    final nodesRaw = map['nodes'];
+    if (nodesRaw is! List) return const [];
+    return nodesRaw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map(
+          (item) => PlatformNodeConfig(
+            nodeId: (item['nodeId'] as String?) ?? '',
+            displayName: (item['displayName'] as String?) ?? '',
+            pluginId: (item['pluginId'] as String?) ?? '',
+          ),
+        )
+        .where((node) => node.nodeId.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<PlatformNodeConfig> createPlatformNode({String? displayName}) async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.post(
+      _buildUri('/api/config/nodes'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        if (displayName != null) 'displayName': displayName.trim(),
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw Exception(
+          'Failed to create platform node (${response.statusCode})');
+    }
+    final raw = jsonDecode(response.body);
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    return PlatformNodeConfig(
+      nodeId: (map['nodeId'] as String?) ?? '',
+      displayName: (map['displayName'] as String?) ?? '',
+      pluginId: (map['pluginId'] as String?) ?? '',
+    );
+  }
+
+  Future<PlatformNodeConfig> renamePlatformNode({
+    required String nodeId,
+    required String displayName,
+  }) async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.patch(
+      _buildUri('/api/config/nodes/${Uri.encodeComponent(nodeId)}'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'displayName': displayName.trim()}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to rename platform node (${response.statusCode})');
+    }
+    final raw = jsonDecode(response.body);
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    return PlatformNodeConfig(
+      nodeId: (map['nodeId'] as String?) ?? nodeId,
+      displayName: (map['displayName'] as String?) ?? displayName,
+      pluginId: (map['pluginId'] as String?) ?? '',
+    );
+  }
+
   Future<PlatformTokenBundle> fetchPlatformToken({
+    String? nodeId,
     String pluginId = 'plugin_local_main',
   }) async {
     final token = await AuthService.getToken();
@@ -214,7 +309,10 @@ class LlmConfigService {
     }
 
     final response = await http.get(
-      _buildUri('/api/config/platform-token', {'pluginId': pluginId}),
+      _buildUri('/api/config/platform-token', {
+        if (nodeId != null && nodeId.trim().isNotEmpty) 'nodeId': nodeId.trim(),
+        if (nodeId == null || nodeId.trim().isEmpty) 'pluginId': pluginId,
+      }),
       headers: {
         'Authorization': 'Bearer $token',
       },
@@ -242,6 +340,8 @@ class LlmConfigService {
     final rawBaseUrl = (map['baseUrl'] as String?)?.trim();
 
     return PlatformTokenBundle(
+      nodeId: (map['nodeId'] as String?) ?? nodeId ?? '',
+      nodeName: (map['nodeName'] as String?) ?? '',
       token: (map['token'] as String?) ?? '',
       pluginId: (map['pluginId'] as String?) ?? pluginId,
       baseUrl: rawBaseUrl != null && rawBaseUrl.isNotEmpty
@@ -363,6 +463,8 @@ class LlmConfigService {
 
 class PlatformTokenBundle {
   const PlatformTokenBundle({
+    required this.nodeId,
+    required this.nodeName,
     required this.token,
     required this.pluginId,
     required this.baseUrl,
@@ -370,9 +472,23 @@ class PlatformTokenBundle {
     required this.expiresIn,
   });
 
+  final String nodeId;
+  final String nodeName;
   final String token;
   final String pluginId;
   final String baseUrl;
   final List<String> scopes;
   final String expiresIn;
+}
+
+class PlatformNodeConfig {
+  const PlatformNodeConfig({
+    required this.nodeId,
+    required this.displayName,
+    required this.pluginId,
+  });
+
+  final String nodeId;
+  final String displayName;
+  final String pluginId;
 }

@@ -1,4 +1,3 @@
-import 'package:chat_domain/chat_domain.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/chat/widgets/composer_bar.dart';
@@ -10,7 +9,12 @@ const _settle = Duration(milliseconds: 300);
 Widget _buildBar(
         {VoidCallback? onOpenModelSelection,
         VoidCallback? onShowInfo,
-        Widget? routerAction}) =>
+        List<Widget> leadingActions = const [],
+        bool showComposerConfigMenu = true,
+        String? activeModelLabel,
+        List<String> slashCommands = const [],
+        List<ComposerAtAction> atActions = const [],
+        void Function(String value)? onAtActionSelected}) =>
     MaterialApp(
       home: Scaffold(
         body: Column(
@@ -18,7 +22,12 @@ Widget _buildBar(
           children: [
             ComposerBar(
               agents: const [],
-              routerAction: routerAction,
+              leadingActions: leadingActions,
+              showComposerConfigMenu: showComposerConfigMenu,
+              activeModelLabel: activeModelLabel,
+              slashCommands: slashCommands,
+              atActions: atActions,
+              onAtActionSelected: onAtActionSelected,
               onOpenModelSelection: onOpenModelSelection,
               onShowInfo: onShowInfo,
             ),
@@ -47,30 +56,6 @@ void main() {
       await tester.pump();
 
       expect(called, isTrue);
-    });
-
-    testWidgets('selecting newContext action does not throw', (tester) async {
-      await tester.pumpWidget(_buildBar());
-      await tester.pump();
-
-      final button = tester.widget<PopupMenuButton<ComposerMenuAction>>(
-        find.byType(PopupMenuButton<ComposerMenuAction>),
-      );
-      // No exception — action is a no-op for now.
-      button.onSelected?.call(ComposerMenuAction.newContext);
-      await tester.pump();
-    });
-
-    testWidgets('selecting agents action does not throw', (tester) async {
-      await tester.pumpWidget(_buildBar());
-      await tester.pump();
-
-      final button = tester.widget<PopupMenuButton<ComposerMenuAction>>(
-        find.byType(PopupMenuButton<ComposerMenuAction>),
-      );
-      // No exception — action is a no-op for now.
-      button.onSelected?.call(ComposerMenuAction.agents);
-      await tester.pump();
     });
 
     testWidgets('selecting info action triggers onShowInfo', (tester) async {
@@ -107,9 +92,7 @@ void main() {
       expect(
           values,
           containsAll([
-            ComposerMenuAction.newContext,
             ComposerMenuAction.model,
-            ComposerMenuAction.agents,
             ComposerMenuAction.info,
           ]));
     });
@@ -143,22 +126,23 @@ void main() {
       expect(called, isFalse);
     });
 
-    testWidgets('renders optional router action before composer menu button',
+    testWidgets('renders optional leading action before composer menu button',
         (tester) async {
       await tester.pumpWidget(
         _buildBar(
-          routerAction: const IconButton(
-            onPressed: null,
-            tooltip: 'Router settings',
-            icon: Icon(Icons.alt_route),
-          ),
+          leadingActions: const [
+            IconButton(
+              onPressed: null,
+              tooltip: 'Router settings',
+              icon: Icon(Icons.alt_route),
+            ),
+          ],
         ),
       );
       await tester.pump();
 
       final routerActionFinder = find.byTooltip('Router settings');
-      final menuButtonFinder =
-          find.byType(PopupMenuButton<ComposerMenuAction>);
+      final menuButtonFinder = find.byType(PopupMenuButton<ComposerMenuAction>);
 
       expect(routerActionFinder, findsOneWidget);
       expect(menuButtonFinder, findsOneWidget);
@@ -167,6 +151,91 @@ void main() {
       final menuButtonPosition = tester.getTopLeft(menuButtonFinder);
 
       expect(routerActionPosition.dx, lessThan(menuButtonPosition.dx));
+    });
+
+    testWidgets('hides composer menu when disabled', (tester) async {
+      await tester.pumpWidget(_buildBar(showComposerConfigMenu: false));
+      await tester.pump();
+
+      expect(find.byType(PopupMenuButton<ComposerMenuAction>), findsNothing);
+    });
+
+    testWidgets('shows active model label under model item', (tester) async {
+      await tester.pumpWidget(_buildBar(activeModelLabel: 'claude-sonnet-4-5'));
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<ComposerMenuAction>>(
+        find.byType(PopupMenuButton<ComposerMenuAction>),
+      );
+      final items = button.itemBuilder(
+        tester.element(find.byType(PopupMenuButton<ComposerMenuAction>)),
+      );
+      final modelItem = items
+          .whereType<PopupMenuItem<ComposerMenuAction>>()
+          .firstWhere((item) => item.value == ComposerMenuAction.model);
+      final content = modelItem.child! as Column;
+      expect((content.children[0] as Text).data, '模型');
+      expect((content.children[1] as Text).data, 'claude-sonnet-4-5');
+    });
+
+    testWidgets('selecting slash command fills input', (tester) async {
+      await tester.pumpWidget(_buildBar(slashCommands: const ['/status']));
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<String>>(
+        find.byType(PopupMenuButton<String>),
+      );
+      button.onSelected?.call('/status');
+      await tester.pump();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, '/status ');
+    });
+
+    testWidgets('selecting @ action triggers callback', (tester) async {
+      String? selected;
+      await tester.pumpWidget(
+        _buildBar(
+          atActions: const [
+            ComposerAtAction(value: 'Planner', label: 'Planner'),
+          ],
+          onAtActionSelected: (value) => selected = value,
+        ),
+      );
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<String>>(
+        find.byType(PopupMenuButton<String>),
+      );
+      button.onSelected?.call('Planner');
+      await tester.pump();
+
+      expect(selected, 'Planner');
+    });
+
+    testWidgets('@ menu supports disabled placeholder item', (tester) async {
+      await tester.pumpWidget(
+        _buildBar(
+          atActions: const [
+            ComposerAtAction(
+              value: '__todo__',
+              label: '待实现',
+              enabled: false,
+            ),
+          ],
+        ),
+      );
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<String>>(
+        find.byType(PopupMenuButton<String>),
+      );
+      final items = button.itemBuilder(
+        tester.element(find.byType(PopupMenuButton<String>)),
+      );
+      final placeholder = items.whereType<PopupMenuItem<String>>().single;
+      expect(placeholder.enabled, isFalse);
+      expect((placeholder.child as Text).data, '待实现');
     });
   });
 
@@ -219,37 +288,14 @@ void main() {
     });
   });
 
-  group('ComposerBar – @mention suggestions', () {
-    final agents = [
-      AgentDefinition(
-        name: 'my-agent',
-        description: 'A test agent',
-        model: 'sonnet',
-        systemPrompt: 'You are helpful.',
-      ),
-    ];
-
-    testWidgets('typing @ shows agent suggestion', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ComposerBar(
-              agents: agents,
-              // onSend must be non-null to enable the TextField.
-              onSend: (_) {},
-            ),
-          ),
-        ),
-      );
+  group('ComposerBar – input copy', () {
+    testWidgets('input area does not show @ prefix/hint', (tester) async {
+      await tester.pumpWidget(_buildBar());
       await tester.pump();
 
-      // Focus the TextField then type the trigger character.
-      await tester.tap(find.byType(TextField));
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), '@');
-      await tester.pump();
-
-      expect(find.text('@my-agent'), findsOneWidget);
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.decoration?.hintText, 'Ask Bricks to create something…');
+      expect(textField.decoration?.prefixIcon, isNull);
     });
   });
 }
