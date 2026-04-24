@@ -1198,11 +1198,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (parts.length < 3 || parts[1] != node.nodeId) return;
       final agentId = parts.sublist(2).join(':');
       final agents = _openClawAgentsByNodeId[node.nodeId] ?? const [];
-      final selected = agents.where((agent) => agent.agentId == agentId);
-      if (selected.isEmpty) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Mentioned ${selected.first.displayName}')),
-      );
+      if (agents.every((agent) => agent.agentId != agentId)) return;
       return;
     }
     if (router != ChatRouter.defaultRoute) return;
