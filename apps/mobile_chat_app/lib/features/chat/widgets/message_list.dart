@@ -374,7 +374,7 @@ class _MessageListState extends State<MessageList> {
                           : null,
                       decoration: isUser
                           ? BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
+                              color: const Color(0xFFF2F2F2),
                               borderRadius:
                                   BorderRadius.circular(BricksRadius.md),
                             )
@@ -389,7 +389,7 @@ class _MessageListState extends State<MessageList> {
                               ),
                               text: msg.content,
                               textColor:
-                                  Theme.of(context).colorScheme.onPrimary,
+                                  Theme.of(context).colorScheme.onSurface,
                             )
                           else
                             _AssistantMarkdownText(
@@ -411,7 +411,7 @@ class _MessageListState extends State<MessageList> {
                                     isUser
                                         ? Theme.of(context)
                                             .colorScheme
-                                            .onPrimary
+                                            .onSurface
                                         : Theme.of(context).colorScheme.primary,
                                   ),
                                 ),
@@ -432,7 +432,7 @@ class _MessageListState extends State<MessageList> {
                                       color: isUser
                                           ? Theme.of(context)
                                               .colorScheme
-                                              .onPrimary
+                                              .onSurface
                                           : Theme.of(context)
                                               .colorScheme
                                               .primary,
@@ -457,7 +457,7 @@ class _MessageListState extends State<MessageList> {
                                           ?.copyWith(
                                             color: Theme.of(context)
                                                 .colorScheme
-                                                .onPrimary,
+                                                .onSurface,
                                           ),
                                     ),
                                   ),
@@ -468,7 +468,7 @@ class _MessageListState extends State<MessageList> {
                                       messageId: msg.messageId,
                                       foregroundColor: Theme.of(context)
                                           .colorScheme
-                                          .onPrimary,
+                                          .onSurface,
                                     ),
                                   ],
                                 ],
