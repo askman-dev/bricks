@@ -48,6 +48,59 @@ const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 // Minimum interval between incremental DB flushes during model streaming to avoid write amplification.
 const STREAM_FLUSH_INTERVAL_MS = 300;
 
+function dispatchPlaceholderMetadata(params: {
+  resolvedBotId: string | null;
+  resolvedSkillId: string | null;
+  source: string;
+  model?: string | null;
+  agentName?: string | null;
+}) {
+  return {
+    resolvedBotId: params.resolvedBotId,
+    resolvedSkillId: params.resolvedSkillId,
+    source: params.source,
+    model: params.model ?? undefined,
+    agentName: params.agentName ?? undefined,
+    dispatchPlaceholder: true,
+  };
+}
+
+async function emitAssistantDispatchPlaceholder(params: {
+  userId: string;
+  assistantMessageId: string;
+  acceptedTaskId: string;
+  acceptedSessionId: string;
+  channelId: string;
+  threadId: string | null;
+  resolvedBotId: string | null;
+  resolvedSkillId: string | null;
+  source: string;
+  model?: string | null;
+  agentName?: string | null;
+}) {
+  await upsertMessages(params.userId, [
+    {
+      messageId: params.assistantMessageId,
+      taskId: params.acceptedTaskId,
+      channelId: params.channelId,
+      sessionId: params.acceptedSessionId,
+      threadId: params.threadId,
+      role: "assistant",
+      content: "",
+      taskState: "dispatched",
+      checkpointCursor: null,
+      metadata: dispatchPlaceholderMetadata({
+        resolvedBotId: params.resolvedBotId,
+        resolvedSkillId: params.resolvedSkillId,
+        source: params.source,
+        model: params.model,
+        agentName: params.agentName,
+      }),
+      createdAt: null,
+    },
+  ]);
+}
+
 function parseSessionId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -167,6 +220,19 @@ async function runDefaultRouterRespondAsync(params: {
   // so this work is not guaranteed to complete. A durable background job/queue
   // (or platform-provided waitUntil) would be needed for production reliability.
   try {
+    await emitAssistantDispatchPlaceholder({
+      userId,
+      assistantMessageId,
+      acceptedTaskId,
+      acceptedSessionId,
+      channelId,
+      threadId,
+      resolvedBotId,
+      resolvedSkillId,
+      source: "backend.respond.stream",
+      model: typeof body.model === "string" ? body.model : null,
+    });
+
     const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
       limit: 40,
       maxChars: 10000,
@@ -199,11 +265,13 @@ async function runDefaultRouterRespondAsync(params: {
       taskState: "dispatched",
       checkpointCursor: null,
       metadata: {
-        resolvedBotId,
-        resolvedSkillId,
+        ...dispatchPlaceholderMetadata({
+          resolvedBotId,
+          resolvedSkillId,
+          source: "backend.respond.stream",
+          model: modelId,
+        }),
         provider,
-        model: modelId,
-        source: "backend.respond.stream",
         streamMode: "model-chunk",
       },
       createdAt: null,
@@ -266,11 +334,13 @@ async function runDefaultRouterRespondAsync(params: {
         taskState: "completed",
         checkpointCursor: null,
         metadata: {
-          resolvedBotId,
-          resolvedSkillId,
+          ...dispatchPlaceholderMetadata({
+            resolvedBotId,
+            resolvedSkillId,
+            source: "backend.respond.stream",
+            model: modelId,
+          }),
           provider,
-          model: modelId,
-          source: "backend.respond.stream",
           streamMode: "model-chunk",
         },
         createdAt: null,
@@ -290,9 +360,12 @@ async function runDefaultRouterRespondAsync(params: {
         taskState: "failed",
         checkpointCursor: null,
         metadata: {
-          resolvedBotId,
-          resolvedSkillId,
-          source: "backend.respond",
+          ...dispatchPlaceholderMetadata({
+            resolvedBotId,
+            resolvedSkillId,
+            source: "backend.respond",
+            model: typeof body.model === "string" ? body.model : null,
+          }),
           error: message,
         },
         createdAt: null,
@@ -393,6 +466,21 @@ router.post(
               typeof body.createdAt === "string" ? body.createdAt : null,
           },
         ]);
+
+        void emitAssistantDispatchPlaceholder({
+          userId,
+          assistantMessageId,
+          acceptedTaskId,
+          acceptedSessionId,
+          channelId,
+          threadId: input.threadId,
+          resolvedBotId: input.resolvedBotId,
+          resolvedSkillId: input.resolvedSkillId,
+          source: "backend.respond.openclaw",
+          agentName: "OpenClaw",
+        }).catch((error) => {
+          console.error("Chat OpenClaw dispatch placeholder error:", error);
+        });
 
         res.json({
           taskId: acceptedTaskId,

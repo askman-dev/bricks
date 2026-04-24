@@ -194,6 +194,22 @@ describe("chat routes", () => {
         }),
       }),
     ]);
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 0);
+    });
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-assistant-1",
+        role: "assistant",
+        taskState: "dispatched",
+        content: "",
+        metadata: expect.objectContaining({
+          agentName: "OpenClaw",
+          dispatchPlaceholder: true,
+          source: "backend.respond.openclaw",
+        }),
+      }),
+    ]);
   });
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
@@ -238,6 +254,17 @@ describe("chat routes", () => {
     await new Promise<void>((resolve) => {
       setTimeout(() => resolve(), 0);
     });
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-assistant-default-1",
+        taskState: "dispatched",
+        content: "",
+        metadata: expect.objectContaining({
+          dispatchPlaceholder: true,
+          source: "backend.respond.stream",
+        }),
+      }),
+    ]);
     expect(streamWithUserConfigMock).toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({

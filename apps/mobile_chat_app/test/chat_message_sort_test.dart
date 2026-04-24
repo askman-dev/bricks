@@ -176,6 +176,41 @@ void main() {
       expect(sorted.first.messageId, equals('task-1'));
       expect(sorted.last.messageId, equals('task-2'));
     });
+
+    test(
+      'user message with writeSeq sorts before AI reply with higher writeSeq '
+      'even when server createdAt is earlier than client local time',
+      () {
+        // Scenario: openclaw async route. Client sends at local time T1 (later
+        // than server clock). respond() returns lastSeqId=50, which is stamped
+        // onto the user message as writeSeq. OpenClaw replies with writeSeq=51.
+        final clientLocalTime = DateTime.utc(2026, 4, 24, 3, 14, 30); // T1 local
+        final serverTime = DateTime.utc(2026, 4, 24, 3, 14, 20); // server 10s behind
+
+        final userMsg = ChatMessage(
+          messageId: 'u-local',
+          role: 'user',
+          content: 'hello',
+          // seqId not yet set (user message not re-delivered via SSE)
+          writeSeq: 50, // stamped from result.lastSeqId in respond callback
+          createdAt: clientLocalTime,
+        );
+        final aiReply = ChatMessage(
+          messageId: 'a-openclaw',
+          role: 'assistant',
+          content: 'reply',
+          seqId: 88,
+          writeSeq: 51, // higher than user message
+          createdAt: serverTime, // earlier than client local time
+        );
+
+        final sorted = [aiReply, userMsg]..sort(compareChatMessagesByCreatedTime);
+
+        expect(sorted.first.messageId, equals('u-local'),
+            reason: 'User message should sort before AI reply');
+        expect(sorted.last.messageId, equals('a-openclaw'));
+      },
+    );
   });
 
   group('ChatMessage.fromMap timestamp parsing', () {
@@ -190,6 +225,56 @@ void main() {
       expect(parsed.createdAt, isNotNull);
       expect(parsed.createdAt!.isUtc, isTrue);
       expect(parsed.createdAt, equals(DateTime.utc(2026, 4, 19, 11, 37, 11)));
+    });
+
+    test('parses model field from map', () {
+      final parsed = ChatMessage.fromMap({
+        'role': 'assistant',
+        'content': 'hello',
+        'model': 'claude-sonnet-4-5',
+      });
+
+      expect(parsed.model, equals('claude-sonnet-4-5'));
+    });
+  });
+
+  group('mergeServerMessage model preservation', () {
+    test('incoming model overrides null local model', () {
+      final local = ChatMessage(
+        messageId: 'm1',
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+      );
+      final server = ChatMessage(
+        messageId: 'm1',
+        role: 'assistant',
+        content: 'reply',
+        model: 'claude-sonnet-4-5',
+        taskState: ChatTaskState.completed,
+      );
+
+      final merged = mergeServerMessage(local, server);
+      expect(merged.model, equals('claude-sonnet-4-5'));
+    });
+
+    test('local model is preserved when server sends null model', () {
+      final local = ChatMessage(
+        messageId: 'm1',
+        role: 'assistant',
+        content: '',
+        model: 'gpt-4o',
+        isStreaming: true,
+      );
+      final server = ChatMessage(
+        messageId: 'm1',
+        role: 'assistant',
+        content: 'reply',
+        taskState: ChatTaskState.completed,
+      );
+
+      final merged = mergeServerMessage(local, server);
+      expect(merged.model, equals('gpt-4o'));
     });
   });
 }
