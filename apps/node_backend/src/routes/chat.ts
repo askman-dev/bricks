@@ -529,7 +529,7 @@ router.post(
             resolvedBotId: input.resolvedBotId,
             resolvedSkillId: input.resolvedSkillId,
             source: "backend.respond.openclaw",
-            agentName: "OpenClaw",
+            agentName: targetNode!.displayName?.trim() || targetNode!.nodeId,
           });
         } catch (error) {
           console.error("Chat OpenClaw dispatch placeholder error:", error);
