@@ -48,6 +48,7 @@ index:
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
       - packages/design_system/lib/src/bricks_theme.dart
       - apps/node_backend/src/routes/chat.ts
+      - apps/node_backend/src/services/chatRouterService.ts
       - apps/node_backend/src/services/chatAsyncTransportService.ts
       - apps/node_backend/src/llm/llm_service.ts
     doc_index:
@@ -55,8 +56,7 @@ index:
       - openspec/changes/multi-agent-participation/design.md
       - docs/plans/2026-04-18-00-20-UTC-openclaw-message-routing-current-state.md
       - docs/plans/2026-04-23-17-13-WIB-openclaw-agents-capture-display.md
-    test_index:
-      - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
+      - docs/plans/2026-04-23-15-33-openclaw-selected-node-routing.md
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
       - apps/mobile_chat_app/test/chat_message_sort_test.dart
@@ -96,9 +96,13 @@ index:
       - route-bound @ menu
       - OpenClaw agents mention menu
       - skills group placeholder
+      - selected node routing
+      - router selector
+      - node-scoped openclaw dispatch
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
+      - channel/thread scope 的 nodeId 持久化若与当前路由状态不同步，可能导致消息投递到错误节点。
       - 消息列表滚动锚点从“底部”改为“用户消息”后，若触发条件错误会导致上下文定位错位。
       - 长文本折叠状态与流式更新叠加时，可能出现按钮闪烁或展开状态丢失。
       - 菜单动画时长或曲线调整不当可能导致菜单响应突兀或视觉跳变。
@@ -119,6 +123,7 @@ index:
       - 若侧边栏 Skills 分组默认折叠状态或空态文案不稳定，可能与后续真实技能列表接入产生认知偏差。
       - Agent 详情页“修改配置/发起对话”回调若未正确关闭抽屉与路由跳转，可能出现重复页面栈或会话 Agent 未更新。
       - OpenClaw `@` 菜单若使用错误 nodeId 查询 agents，会导致用户引用到其他节点的 Agent 或看到空列表。
+      - 设置页返回后若未刷新节点列表，聊天页路由菜单可能继续显示过期节点名称或缺少新节点。
 
   - feature_id: model_settings
     capability: 模型配置读写
@@ -237,11 +242,13 @@ index:
       - apps/node_backend/src/routes/llm.ts
       - apps/node_backend/src/routes/platform.ts
       - apps/node_backend/src/routes/config.ts
+      - apps/node_backend/src/services/chatRouterService.ts
       - apps/node_backend/src/services/platformNodeService.ts
       - apps/node_backend/src/services/openclawAgentRuntimeService.ts
       - apps/node_backend/src/services/chatChannelNameService.ts
       - apps/node_backend/src/middleware/platformAuth.ts
       - apps/node_backend/src/services/platformIntegrationService.ts
+      - apps/node_backend/src/db/migrations/012_add_node_id_to_chat_scope_settings.sql
       - apps/node_openclaw_plugin/src/pluginRunner.ts
       - apps/node_backend/src/llm/llm_service.ts
       - apps/node_backend/src/llm/providers/anthropic_adapter.ts
@@ -251,10 +258,10 @@ index:
       - docs/openclaw_pull_only_integration_dev_doc.md
       - docs/plans/2026-04-18-00-20-UTC-openclaw-message-routing-current-state.md
       - docs/plans/2026-04-23-17-13-WIB-openclaw-agents-capture-display.md
-    test_index:
-      - apps/node_backend/src/routes/chat.test.ts
+      - docs/plans/2026-04-23-15-33-openclaw-selected-node-routing.md
       - apps/node_backend/src/routes/platform.test.ts
       - apps/node_backend/src/routes/config.test.ts
+      - apps/node_backend/src/services/chatRouterService.test.ts
       - apps/node_backend/src/services/platformIntegrationService.test.ts
       - apps/node_openclaw_plugin/test/pluginRunner.test.ts
     keywords:
@@ -274,6 +281,9 @@ index:
       - nodeName
       - events ack
       - OpenClaw runtime agents query
+      - targetPluginId
+      - plugin ownership
+      - scope settings
     change_risks:
       - provider 适配器接口变动导致 LLM 调用失败。
       - 流式响应格式变化导致前端解析出错。
@@ -281,6 +291,8 @@ index:
       - cursor 语义变化导致插件重复消费或漏消费消息事件。
       - 平台 JWT 中 pluginId 约束变化可能导致插件隔离失效或合法请求被拒绝。
       - 若后端运行环境没有可用的 `openclaw` CLI 或 CLI 上下文与目标节点不一致，@ 菜单会缺少 agent 或显示错误列表。
+      - 若 `/api/chat/respond` 未正确写入 targetPluginId/nodeId metadata，多节点环境下会重新出现一条消息被多个节点同时消费的问题。
+      - 若事件查询的 plugin 过滤条件与数据库方言不兼容，可能出现消息漏投递或跨节点串扰。
 
 
   - feature_id: node_openclaw_pull_loop

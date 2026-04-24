@@ -177,6 +177,7 @@ export function createPlatformRouter(options: {
       const response = await listPlatformEvents({
         cursor: cursor ?? undefined,
         limit,
+        pluginId: platformReq.platformPluginId,
         userId: platformReq.platformUserId,
       });
       res.status(200).json(response);
@@ -232,6 +233,7 @@ export function createPlatformRouter(options: {
           const response = await listPlatformEvents({
             cursor,
             limit: 50,
+            pluginId: platformReq.platformPluginId,
             userId,
           });
           if (!disconnected && response.events.length > 0) {
@@ -373,6 +375,7 @@ export function createPlatformRouter(options: {
           metadata: {
             ...(requestMetadata ?? {}),
             ...(await buildNodeMetadata(userId, req.platformPluginId)),
+            pluginId: req.platformPluginId,
           },
         });
 
@@ -428,6 +431,7 @@ export function createPlatformRouter(options: {
         const mergedMetadata = {
           ...(metadata ?? {}),
           ...nodeMetadata,
+          pluginId: req.platformPluginId,
         };
 
         const result = await patchPlatformMessage({
@@ -435,6 +439,7 @@ export function createPlatformRouter(options: {
           messageId,
           text: text ?? undefined,
           metadata: mergedMetadata,
+          pluginId: req.platformPluginId,
         });
         if (!result) {
           sendError(res, 404, 'MESSAGE_NOT_FOUND', 'message not found');
@@ -443,6 +448,10 @@ export function createPlatformRouter(options: {
 
         res.status(200).json(result);
       } catch (error) {
+        if (error instanceof Error && error.message === 'PLUGIN_OWNERSHIP_MISMATCH') {
+          sendError(res, 403, 'FORBIDDEN', 'message belongs to a different plugin scope');
+          return;
+        }
         console.error('platform patch message error:', error);
         sendError(res, 500, 'INTERNAL_ERROR', 'internal server error', true);
       }

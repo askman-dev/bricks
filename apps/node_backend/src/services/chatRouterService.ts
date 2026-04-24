@@ -11,6 +11,7 @@ interface ChatScopeSettingRow {
   channel_id: string;
   thread_id: string;
   router: ChatRouter;
+  node_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -20,6 +21,7 @@ export interface ChatScopeSetting {
   channelId: string;
   threadId: string | null;
   router: ChatRouter;
+  nodeId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -32,6 +34,12 @@ export interface ChatScopeSelector {
 export interface ChatScopeSettingInput extends ChatScopeSelector {
   scopeType: ChatScopeType;
   router: ChatRouter;
+  nodeId?: string | null;
+}
+
+export interface ResolvedChatScopeRouting {
+  router: ChatRouter;
+  nodeId: string | null;
 }
 
 export function normalizeChatThreadId(threadId: string | null | undefined): string {
@@ -50,6 +58,7 @@ function toDto(row: ChatScopeSettingRow): ChatScopeSetting {
     channelId: row.channel_id,
     threadId: row.scope_type === 'thread' ? row.thread_id : null,
     router: row.router,
+    nodeId: row.node_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -61,7 +70,7 @@ export function buildChatSessionId(channelId: string, threadId?: string | null):
 
 export async function listChatScopeSettings(userId: string): Promise<ChatScopeSetting[]> {
   const result = await pool.query<ChatScopeSettingRow>(
-    `SELECT scope_type, channel_id, thread_id, router, created_at, updated_at
+    `SELECT scope_type, channel_id, thread_id, router, node_id, created_at, updated_at
        FROM chat_scope_settings
       WHERE user_id = $1
       ORDER BY channel_id ASC, scope_type ASC, thread_id ASC`,
@@ -75,20 +84,23 @@ export async function upsertChatScopeSetting(
   input: ChatScopeSettingInput,
 ): Promise<ChatScopeSetting> {
   const threadId = toStorageThreadId(input.scopeType, input.threadId);
+  const nodeId = input.nodeId?.trim() || null;
   const result = await pool.query<ChatScopeSettingRow>(
     `INSERT INTO chat_scope_settings (
         user_id,
         scope_type,
         channel_id,
         thread_id,
-        router
-      ) VALUES ($1, $2, $3, $4, $5)
+        router,
+        node_id
+      ) VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (user_id, scope_type, channel_id, thread_id)
       DO UPDATE SET
         router = EXCLUDED.router,
+        node_id = EXCLUDED.node_id,
         updated_at = CURRENT_TIMESTAMP
-      RETURNING scope_type, channel_id, thread_id, router, created_at, updated_at`,
-    [userId, input.scopeType, input.channelId, threadId, input.router],
+      RETURNING scope_type, channel_id, thread_id, router, node_id, created_at, updated_at`,
+    [userId, input.scopeType, input.channelId, threadId, input.router, nodeId],
   );
 
   return toDto(result.rows[0]);
@@ -115,9 +127,17 @@ export async function resolveChatRouter(
   userId: string,
   selector: ChatScopeSelector,
 ): Promise<ChatRouter> {
+  const routing = await resolveChatScopeRouting(userId, selector);
+  return routing.router;
+}
+
+export async function resolveChatScopeRouting(
+  userId: string,
+  selector: ChatScopeSelector,
+): Promise<ResolvedChatScopeRouting> {
   const threadId = normalizeChatThreadId(selector.threadId);
-  const result = await pool.query<{ router: ChatRouter }>(
-    `SELECT router
+  const result = await pool.query<{ router: ChatRouter; node_id: string | null }>(
+    `SELECT router, node_id
        FROM chat_scope_settings
       WHERE user_id = $1
         AND channel_id = $2
@@ -131,5 +151,8 @@ export async function resolveChatRouter(
     [userId, selector.channelId, threadId],
   );
 
-  return result.rows[0]?.router ?? CHAT_ROUTER_DEFAULT;
+  return {
+    router: result.rows[0]?.router ?? CHAT_ROUTER_DEFAULT,
+    nodeId: result.rows[0]?.node_id ?? null,
+  };
 }

@@ -99,6 +99,7 @@ class ChatScopeSetting {
     required this.scopeType,
     required this.channelId,
     required this.router,
+    this.nodeId,
     this.threadId,
     this.updatedAt,
   });
@@ -107,6 +108,7 @@ class ChatScopeSetting {
   final String channelId;
   final String? threadId;
   final ChatRouter router;
+  final String? nodeId;
   final DateTime? updatedAt;
 }
 

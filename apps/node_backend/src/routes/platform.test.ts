@@ -359,7 +359,7 @@ describe('platform SSE events stream', () => {
             workspaceId: 'ws_1',
             conversationId: 'conv_1',
             rawId: 'channel:default',
-            occurredAt: '2026-04-23T00:00:00.000Z',
+            occurredAt: '2026-04-23T08:00:00.000Z',
             payload: {
               messageId: 'msg_sse_1',
               sender: {
