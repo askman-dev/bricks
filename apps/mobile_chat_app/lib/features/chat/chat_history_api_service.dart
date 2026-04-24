@@ -92,6 +92,7 @@ class ChatHistoryApiService {
     'resolvedSkillId',
     'agentId',
     'agentName',
+    'nodeType',
     'model',
     'nodeId',
     'nodeName',
@@ -563,13 +564,33 @@ class ChatHistoryApiService {
     final metadata = (map['metadata'] is Map)
         ? Map<String, Object?>.from(map['metadata'] as Map)
         : const <String, Object?>{};
-    final metadataAgentName = metadata['nodeName'] is String
-        ? (metadata['nodeName'] as String).trim()
+
+    // agentName = the node display name set by the backend dispatch placeholder
+    // (e.g. "openclaw 1"). Use it directly; no transformation needed.
+    final metadataAgentName = metadata['agentName'] is String
+        ? (metadata['agentName'] as String).trim()
         : '';
+
+    // Derive the plugin type label shown as a gray chip after the node name.
+    // Use the `plugin` field when present, otherwise fall back to `source`.
+    // Only applies to OpenClaw-routed messages.
+    final metadataPlugin = metadata['plugin'] is String
+        ? (metadata['plugin'] as String).trim()
+        : '';
+    final metadataSource = metadata['source'] is String
+        ? (metadata['source'] as String).trim()
+        : '';
+    String nodeType = '';
+    if (metadataPlugin == 'node_openclaw_plugin') {
+      nodeType = 'OpenClaw';
+    } else if (metadataSource.contains('openclaw')) {
+      nodeType = 'OpenClaw';
+    }
+
     final payload = <String, Object?>{
       ...metadata,
-      if (metadataAgentName.isNotEmpty && metadata['agentName'] == null)
-        'agentName': metadataAgentName,
+      if (nodeType.isNotEmpty && metadataAgentName.isNotEmpty)
+        'nodeType': nodeType,
       'messageId': map['messageId'],
       'seqId': map['seqId'],
       'writeSeq': map['writeSeq'],

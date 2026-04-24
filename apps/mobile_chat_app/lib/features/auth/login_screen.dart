@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../chat/chat_screen.dart';
 import 'auth_service.dart';
@@ -92,7 +93,9 @@ class _GitHubSignInButtonState extends State<_GitHubSignInButton> {
       if (token != null) {
         await AuthService.saveToken(token);
         widget.onSuccess();
-      } else if (mounted) {
+      } else if (mounted && !kIsWeb) {
+        // On web, null means a full-page redirect was initiated (OAuth flow).
+        // The snackbar is suppressed because the page will navigate away.
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('GitHub sign-in was not completed.')),
         );
