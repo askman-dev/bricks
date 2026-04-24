@@ -55,14 +55,32 @@ function dispatchPlaceholderMetadata(params: {
   model?: string | null;
   agentName?: string | null;
 }) {
-  return {
+  const metadata: {
+    resolvedBotId: string | null;
+    resolvedSkillId: string | null;
+    source: string;
+    dispatchPlaceholder: true;
+    model?: string;
+    agentName?: string;
+  } = {
     resolvedBotId: params.resolvedBotId,
     resolvedSkillId: params.resolvedSkillId,
     source: params.source,
-    model: params.model ?? undefined,
-    agentName: params.agentName ?? undefined,
     dispatchPlaceholder: true,
   };
+
+  if (typeof params.model === "string" && params.model.trim() !== "") {
+    metadata.model = params.model;
+  }
+
+  if (
+    typeof params.agentName === "string" &&
+    params.agentName.trim() !== ""
+  ) {
+    metadata.agentName = params.agentName;
+  }
+
+  return metadata;
 }
 
 async function emitAssistantDispatchPlaceholder(params: {
