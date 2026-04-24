@@ -90,7 +90,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, ChatRouter> _threadRouters = {};
   final Map<String, String> _channelNodeIds = {};
   final Map<String, String> _threadNodeIds = {};
-  List<PlatformNodeConfig> _platformNodes = const [];
   int _respondGeneration = 0;
   int _idCounter = 0;
 
@@ -169,15 +168,17 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         try {
           platformNodes = await _llmConfigService.fetchPlatformNodes();
-          final agentsByNodeId = <String, List<PlatformAgentConfig>>{};
-          for (final node in platformNodes) {
-            agentsByNodeId[node.nodeId] =
-                await _llmConfigService.fetchPlatformAgents(
-              nodeId: node.nodeId,
-              sourcePlatform: 'openclaw',
-            );
-          }
-          openClawAgentsByNodeId = agentsByNodeId;
+          final agentResults = await Future.wait(
+            platformNodes.map(
+              (node) => _llmConfigService
+                  .fetchPlatformAgents(
+                    nodeId: node.nodeId,
+                    sourcePlatform: 'openclaw',
+                  )
+                  .then((agents) => MapEntry(node.nodeId, agents)),
+            ),
+          );
+          openClawAgentsByNodeId = Map.fromEntries(agentResults);
         } catch (e) {
           debugPrint(
             'loadOpenClawAgents failed, continuing without OpenClaw @ menu agents: $e',

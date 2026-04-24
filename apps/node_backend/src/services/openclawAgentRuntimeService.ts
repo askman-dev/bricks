@@ -73,10 +73,17 @@ export function normalizeOpenClawRuntimeAgents(
   return agents;
 }
 
+const OPENCLAW_AGENTS_TIMEOUT_MS = 10_000;
+const OPENCLAW_AGENTS_MAX_BUFFER = 1 * 1024 * 1024; // 1 MiB
+
 export async function listOpenClawRuntimeAgents(
   nodeId: string,
 ): Promise<RuntimePlatformAgent[]> {
-  const { stdout } = await execFileAsync('openclaw', ['agents', 'list', '--json']);
+  const { stdout } = await execFileAsync(
+    'openclaw',
+    ['agents', 'list', '--json', '--node', nodeId],
+    { timeout: OPENCLAW_AGENTS_TIMEOUT_MS, maxBuffer: OPENCLAW_AGENTS_MAX_BUFFER },
+  );
   const trimmed = stdout.trim();
   if (!trimmed) {
     return [];

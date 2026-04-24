@@ -5,12 +5,12 @@
 The task target is to capture agents available inside OpenClaw and surface them in
 the Bricks chat interaction so users can reference them during conversation.
 
-This work must be isolated in a dedicated local worktree to avoid interfering with
-other active task worktrees.
+This work may optionally be isolated in a dedicated local worktree to avoid
+interfering with other active task worktrees.
 
 ## Goals
 
-- Work from the dedicated worktree at `.worktree/openclaw-agents-capture-display`.
+- Optionally work from the dedicated worktree at `.worktree/openclaw-agents-capture-display`.
 - Identify where OpenClaw internal agent metadata can be observed or queried.
 - Add a reliable path to persist or expose those agents to the mobile chat app.
 - Display the captured agents in the conversation UI in a way users can reference.
