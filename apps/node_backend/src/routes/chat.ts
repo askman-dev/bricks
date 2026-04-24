@@ -467,20 +467,23 @@ router.post(
           },
         ]);
 
-        void emitAssistantDispatchPlaceholder({
-          userId,
-          assistantMessageId,
-          acceptedTaskId,
-          acceptedSessionId,
-          channelId,
-          threadId: input.threadId,
-          resolvedBotId: input.resolvedBotId,
-          resolvedSkillId: input.resolvedSkillId,
-          source: "backend.respond.openclaw",
-          agentName: "OpenClaw",
-        }).catch((error) => {
+        try {
+          await emitAssistantDispatchPlaceholder({
+            userId,
+            assistantMessageId,
+            acceptedTaskId,
+            acceptedSessionId,
+            channelId,
+            threadId: input.threadId,
+            resolvedBotId: input.resolvedBotId,
+            resolvedSkillId: input.resolvedSkillId,
+            source: "backend.respond.openclaw",
+            agentName: "OpenClaw",
+          });
+        } catch (error) {
           console.error("Chat OpenClaw dispatch placeholder error:", error);
-        });
+          throw error;
+        }
 
         res.json({
           taskId: acceptedTaskId,
