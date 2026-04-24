@@ -13,6 +13,7 @@ class ChatMessage {
     this.writeSeq,
     this.agentId,
     this.agentName,
+    this.nodeType,
     this.model,
     DateTime? timestamp,
     this.isStreaming = false,
@@ -47,6 +48,7 @@ class ChatMessage {
 
   final String? agentId;
   final String? agentName;
+  final String? nodeType;
   final String? model;
   final DateTime timestamp;
   final bool isStreaming;
@@ -84,6 +86,7 @@ class ChatMessage {
     int? writeSeq,
     String? agentId,
     String? agentName,
+    String? nodeType,
     String? model,
     DateTime? timestamp,
     bool? isStreaming,
@@ -117,6 +120,7 @@ class ChatMessage {
       writeSeq: writeSeq ?? this.writeSeq,
       agentId: agentId ?? this.agentId,
       agentName: agentName ?? this.agentName,
+      nodeType: nodeType ?? this.nodeType,
       model: model ?? this.model,
       timestamp: timestamp ?? this.timestamp,
       isStreaming: isStreaming ?? this.isStreaming,
@@ -154,6 +158,7 @@ class ChatMessage {
       'writeSeq': writeSeq,
       'agentId': agentId,
       'agentName': agentName,
+      'nodeType': nodeType,
       'model': model,
       'timestamp': timestamp.toIso8601String(),
       'isStreaming': isStreaming,
@@ -210,6 +215,7 @@ class ChatMessage {
       writeSeq: (map['writeSeq'] as num?)?.toInt(),
       agentId: map['agentId'] as String?,
       agentName: map['agentName'] as String?,
+      nodeType: map['nodeType'] as String?,
       model: map['model'] as String?,
       timestamp: parseDate(map['timestamp']),
       isStreaming: map['isStreaming'] as bool? ?? false,

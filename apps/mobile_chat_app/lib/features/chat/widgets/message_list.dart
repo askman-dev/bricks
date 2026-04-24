@@ -285,6 +285,32 @@ class _MessageListState extends State<MessageList> {
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                         ),
+                        if (msg.nodeType != null) ...[
+                          const SizedBox(width: BricksSpacing.xs),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              msg.nodeType!,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

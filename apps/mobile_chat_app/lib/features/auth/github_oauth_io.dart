@@ -20,17 +20,10 @@ Future<String?> performGitHubOAuth() async {
       }
 
       final token = extractOAuthTokenFromUri(uri);
-      if (completer.isCompleted || !isNativeOAuthCallback(uri)) {
-        return;
-      }
-
-      final token = extractOAuthTokenFromUri(uri);
       if (token != null) {
         completer.complete(token);
         return;
       }
-
-      completer.complete(null);
 
       completer.complete(null);
     },

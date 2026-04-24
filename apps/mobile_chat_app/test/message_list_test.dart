@@ -580,5 +580,44 @@ void main() {
       // No agentName or model → no chip rendered; message content still visible
       expect(find.text('reply'), findsOneWidget);
     });
+
+    testWidgets(
+      'shows node name and nodeType label when both are present',
+      (tester) async {
+        final assistant = ChatMessage(
+          messageId: 'a-node-type',
+          role: 'assistant',
+          content: 'hello',
+          agentName: 'openclaw aliyun',
+          nodeType: 'OpenClaw',
+          timestamp: DateTime.utc(2026, 1, 1),
+        );
+
+        await tester.pumpWidget(_build([assistant]));
+        await tester.pumpAndSettle();
+
+        expect(find.text('openclaw aliyun'), findsOneWidget);
+        expect(find.text('OpenClaw'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'does not show nodeType label when only agentName is set',
+      (tester) async {
+        final assistant = ChatMessage(
+          messageId: 'a-no-type',
+          role: 'assistant',
+          content: 'hello',
+          agentName: 'OpenClaw',
+          timestamp: DateTime.utc(2026, 1, 1),
+        );
+
+        await tester.pumpWidget(_build([assistant]));
+        await tester.pumpAndSettle();
+
+        // agentName shown as the primary name, nodeType chip absent
+        expect(find.text('OpenClaw'), findsOneWidget);
+      },
+    );
   });
 }
