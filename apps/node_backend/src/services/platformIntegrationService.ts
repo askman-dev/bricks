@@ -87,6 +87,7 @@ export async function listPlatformEvents(params: {
   limit?: number;
   workspaceId?: string;
   userId?: string;
+  pluginId?: string;
 }): Promise<{ nextCursor: string; events: PlatformEvent[] }> {
   const limit = Math.min(MAX_PLATFORM_EVENTS_LIMIT, Math.max(1, params.limit ?? DEFAULT_PLATFORM_EVENTS_LIMIT));
   const afterSeq = cursorToSeq(params.cursor);
@@ -106,12 +107,19 @@ export async function listPlatformEvents(params: {
        FROM chat_messages msg`;
   const queryParams: unknown[] = [afterSeq, limit];
   const userFilter = appendUserIdFilter(params.userId, queryParams);
+  const pluginId = params.pluginId?.trim();
+  const targetPluginFilter = pluginId
+    ? pool.dialect === 'turso'
+      ? ` AND json_extract(msg.metadata, '$.targetPluginId') = $${queryParams.push(pluginId)}`
+      : ` AND msg.metadata->>'targetPluginId' = $${queryParams.push(pluginId)}`
+    : '';
   const result = await pool.query<ChatMessageEventRow>(
     `${baseSelect}
       WHERE msg.write_seq > $1${userFilter}
         AND msg.role = 'user'
         AND msg.task_state IN ('accepted', 'dispatched')
         AND CAST(msg.metadata AS TEXT) LIKE '%pendingAssistantMessageId%'
+        ${targetPluginFilter}
       ORDER BY msg.write_seq ASC
       LIMIT $2`,
     queryParams,
@@ -300,6 +308,7 @@ export async function patchPlatformMessage(input: {
   messageId: string;
   text?: string;
   metadata?: Record<string, unknown>;
+  pluginId?: string;
 }): Promise<{ messageId: string; updated: true } | null> {
   const existing = await pool.query<ExistingMessageRow>(
     `SELECT message_id, user_id, channel_id, session_id, thread_id, role, content, metadata, created_at, updated_at
@@ -310,10 +319,20 @@ export async function patchPlatformMessage(input: {
   );
   const row = existing.rows[0];
   if (!row) return null;
+  const existingMetadata = parseMetadata(row.metadata) ?? {};
+  const existingPluginId =
+    typeof existingMetadata.pluginId === 'string' && existingMetadata.pluginId.trim().length > 0
+      ? existingMetadata.pluginId.trim()
+      : null;
+  const inputPluginId = input.pluginId?.trim();
+  if (inputPluginId && existingPluginId && existingPluginId !== inputPluginId) {
+    throw new Error('PLUGIN_OWNERSHIP_MISMATCH');
+  }
 
   const mergedMetadata = {
-    ...(parseMetadata(row.metadata) ?? {}),
+    ...existingMetadata,
     ...(input.metadata ?? {}),
+    ...(inputPluginId ? { pluginId: inputPluginId } : {}),
     source: 'platform.messages.patch',
   };
 

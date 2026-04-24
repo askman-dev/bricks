@@ -39,6 +39,10 @@ products:
           - 发送一条消息后可以看到消息列表更新。
           - 将路由切到 openclaw 后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
+          - 当用户拥有多个 OpenClaw 节点时，输入框左侧路由菜单应仅列出真实节点；菜单主标题显示节点名称，副标题显示 `OpenClaw`。
+          - 当已保存的 OpenClaw `nodeId` 对应节点已被删除时，聊天页与发送行为应回退到 `Bricks Default`，而不是改投递到其他 OpenClaw 节点。
+          - 在聊天页选择某个 OpenClaw 节点后发送消息时，仅所选节点应收到并回复；同用户其他节点不应重复消费同一条消息。
+          - 从设置页新增或重命名节点后返回聊天页，路由菜单中的 OpenClaw 节点列表应刷新为最新状态。
           - 在 openclaw 离线后切回默认路由继续发送时，历史消息应优先按服务端 seqId（不可变插入序）渲染，后到达更新不会打乱对话先后。
           - 当多条消息 createdAt 相同（秒级碰撞）时，消息应按 seqId 稳定从旧到新渲染。
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
@@ -170,6 +174,9 @@ products:
           - 调用 chat 接口时返回结构化响应。
           - provider 配置缺失时给出明确错误。
           - '使用 API Key + X-Bricks-Plugin-Id 可访问 /api/v1/platform/events 并获取 nextCursor。'
+          - '使用 `/api/chat/scope-settings` 为 openclaw 路由保存 nodeId 后，再读取应返回同一 nodeId。'
+          - '同一用户存在多个 OpenClaw 节点时，`/api/chat/respond` 为消息写入目标节点 metadata 后，仅目标 plugin 可从 `/api/v1/platform/events` 读到该消息。'
+          - '非目标 plugin 对其他 plugin 创建的 assistant message 执行 PATCH 时，应返回 403。'
           - '/api/v1/platform/events/ack 禁止 body 中传 pluginId，合法 ACK 可重复调用并返回成功。'
           - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
           - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
