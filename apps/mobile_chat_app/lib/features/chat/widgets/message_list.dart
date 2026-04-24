@@ -285,7 +285,7 @@ class _MessageListState extends State<MessageList> {
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                         ),
-                        if (msg.nodeType != null) ...[
+                        if (msg.nodeType?.trim().isNotEmpty == true) ...[
                           const SizedBox(width: BricksSpacing.xs),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -299,7 +299,7 @@ class _MessageListState extends State<MessageList> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              msg.nodeType!,
+                              msg.nodeType!.trim(),
                               style: Theme.of(context)
                                   .textTheme
                                   .labelSmall
