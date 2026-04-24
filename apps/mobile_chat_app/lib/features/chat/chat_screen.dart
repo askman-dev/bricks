@@ -1789,6 +1789,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final updated = _updateMessageById(
         userMessageId,
         (current) => current.copyWith(
+          // Stamp the server-assigned write sequence on the user message so
+          // that the sort comparator can order it correctly against the
+          // incoming assistant reply (which will have a higher writeSeq).
+          writeSeq: result.lastSeqId > 0 ? result.lastSeqId : current.writeSeq,
           taskState: result.taskState ?? ChatTaskState.accepted,
           source: _sourceFromRespondRouter(result.router) ?? current.source,
           acknowledgedAt: ack.acceptedAt,

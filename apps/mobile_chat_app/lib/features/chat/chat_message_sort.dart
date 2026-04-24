@@ -63,6 +63,7 @@ ChatMessage mergeServerMessage(ChatMessage current, ChatMessage incoming) {
     timestamp: current.timestamp,
     agentId: incoming.agentId ?? current.agentId,
     agentName: incoming.agentName ?? current.agentName,
+    model: incoming.model ?? current.model,
     idempotencyKey: current.idempotencyKey,
     acknowledgedAt: incoming.acknowledgedAt ?? current.acknowledgedAt,
     checkpointCursor: incoming.checkpointCursor ?? current.checkpointCursor,

@@ -92,6 +92,7 @@ class ChatHistoryApiService {
     'resolvedSkillId',
     'agentId',
     'agentName',
+    'model',
     'nodeId',
     'nodeName',
     'traceId',

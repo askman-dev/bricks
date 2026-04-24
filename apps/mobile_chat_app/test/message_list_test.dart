@@ -384,7 +384,8 @@ void main() {
       );
       // Completed check inside user bubble uses onPrimary (full opacity)
       final onPrimaryColor = Theme.of(
-        tester.element(find.byKey(const ValueKey<String>('user-delivery-u-default-completed'))),
+        tester.element(find.byKey(
+            const ValueKey<String>('user-delivery-u-default-completed'))),
       ).colorScheme.onPrimary;
       expect(icons.last.color, onPrimaryColor);
     });
@@ -489,6 +490,95 @@ void main() {
       expect(find.text('重发（待开发）'), findsOneWidget);
       expect(find.text('message id: u-menu'), findsOneWidget);
       expect(find.text('task id: task-menu'), findsOneWidget);
+    });
+  });
+
+  group('AI message avatar / header chip', () {
+    testWidgets('shows dispatch placeholder header and loading state',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'a-dispatch',
+        role: 'assistant',
+        content: '',
+        agentName: 'OpenClaw',
+        taskState: ChatTaskState.dispatched,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('OpenClaw'), findsOneWidget);
+      expect(find.text('处理中…'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('shows header for streaming AI message when identity is known',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'a-streaming',
+        role: 'assistant',
+        content: '...',
+        model: 'claude-sonnet',
+        isStreaming: true,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      // Use pump() with a fixed duration instead of pumpAndSettle() because
+      // streaming messages have ongoing animations that never fully settle.
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('claude-sonnet'), findsOneWidget);
+    });
+
+    testWidgets('shows model name as header chip once message is confirmed',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'a-confirmed',
+        role: 'assistant',
+        content: 'reply',
+        model: 'claude-sonnet',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('claude-sonnet'), findsOneWidget);
+    });
+
+    testWidgets('shows agentName over model when both are set', (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'a-both',
+        role: 'assistant',
+        content: 'reply',
+        agentName: 'openclaw aliyun',
+        model: 'qwen-plus',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('openclaw aliyun'), findsOneWidget);
+      expect(find.text('qwen-plus'), findsNothing);
+    });
+
+    testWidgets('does not show header for confirmed AI message with no name',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'a-no-name',
+        role: 'assistant',
+        content: 'reply',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pumpAndSettle();
+
+      // No agentName or model → no chip rendered; message content still visible
+      expect(find.text('reply'), findsOneWidget);
     });
   });
 }

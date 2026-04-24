@@ -128,6 +128,16 @@ class _MessageListState extends State<MessageList> {
     ].join(' · ');
   }
 
+  bool _isAssistantDispatchPlaceholder(ChatMessage message) {
+    if (message.role != 'assistant') return false;
+    if (message.content.trim().isNotEmpty) return false;
+    if (message.taskState != ChatTaskState.dispatched &&
+        message.taskState != ChatTaskState.accepted) {
+      return false;
+    }
+    return message.agentName != null || message.model != null;
+  }
+
   _UserDeliveryStatus? _deliveryIndicatorForUserMessage(
     ChatMessage message,
     List<ChatMessage> allMessages,
@@ -237,6 +247,8 @@ class _MessageListState extends State<MessageList> {
         itemBuilder: (context, index) {
           final msg = messages[index];
           final isUser = msg.role == 'user';
+          final isAssistantDispatchPlaceholder =
+              _isAssistantDispatchPlaceholder(msg);
           final deliveryIndicator =
               isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
           // Attach the focused-item key only to the target row so that
@@ -250,8 +262,10 @@ class _MessageListState extends State<MessageList> {
               crossAxisAlignment:
                   isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                // Show agent attribution chip above the bubble when present.
-                if (!isUser && msg.agentName != null)
+                // Show agent attribution chip as soon as assistant identity is
+                // known, including dispatch placeholders pushed by SSE before
+                // any assistant text is available.
+                if (!isUser && (msg.agentName != null || msg.model != null))
                   Padding(
                     padding: const EdgeInsets.only(
                       left: BricksSpacing.xs,
@@ -263,7 +277,7 @@ class _MessageListState extends State<MessageList> {
                         const Icon(Icons.smart_toy_outlined, size: 14),
                         const SizedBox(width: BricksSpacing.xs),
                         Text(
-                          msg.agentName!,
+                          msg.agentName ?? msg.model ?? '',
                           style: Theme.of(context)
                               .textTheme
                               .labelSmall
@@ -274,134 +288,170 @@ class _MessageListState extends State<MessageList> {
                       ],
                     ),
                   ),
-                GestureDetector(
-                  onLongPressStart: isUser
-                      ? (details) => _showUserMessageContextMenu(
-                            context: context,
-                            globalPosition: details.globalPosition,
-                            message: msg,
-                          )
-                      : null,
-                  child: Container(
-                    key: ValueKey<String>(
-                      'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                    ),
-                    margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-                    padding: isUser
-                        ? const EdgeInsets.symmetric(
-                            horizontal: BricksSpacing.md,
-                            vertical: BricksSpacing.sm,
-                          )
-                        : const EdgeInsets.symmetric(
-                            horizontal: BricksSpacing.xs,
-                            vertical: BricksSpacing.xs,
-                          ),
-                    width: isUser ? null : double.infinity,
-                    constraints: isUser
-                        ? BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width * 0.75,
-                          )
-                        : null,
-                    decoration: isUser
-                        ? BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            borderRadius:
-                                BorderRadius.circular(BricksRadius.md),
-                          )
-                        : null,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                if (isAssistantDispatchPlaceholder)
+                  Padding(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (isUser)
-                          _MessageExpandToggle(
-                            key: ValueKey<String>(
-                              'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).colorScheme.primary,
                             ),
-                            text: msg.content,
-                            textColor: Theme.of(context).colorScheme.onPrimary,
-                          )
-                        else
-                          _AssistantMarkdownText(
-                            text: msg.content,
-                            textColor: Theme.of(context).colorScheme.onSurface,
-                            textStyle: Theme.of(context).textTheme.bodyMedium,
                           ),
-                        if (msg.isStreaming)
-                          Padding(
-                            padding:
-                                const EdgeInsets.only(top: BricksSpacing.xs),
-                            child: SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  isUser
-                                      ? Theme.of(context).colorScheme.onPrimary
-                                      : Theme.of(context).colorScheme.primary,
-                                ),
+                        ),
+                        const SizedBox(width: BricksSpacing.xs),
+                        Text(
+                          '处理中…',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.only(
+                      left: BricksSpacing.xs,
+                      right: BricksSpacing.xs,
+                      bottom: BricksSpacing.xs,
+                    ),
+                  )
+                else
+                  GestureDetector(
+                    onLongPressStart: isUser
+                        ? (details) => _showUserMessageContextMenu(
+                              context: context,
+                              globalPosition: details.globalPosition,
+                              message: msg,
+                            )
+                        : null,
+                    child: Container(
+                      key: ValueKey<String>(
+                        'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                      ),
+                      margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+                      padding: isUser
+                          ? const EdgeInsets.symmetric(
+                              horizontal: BricksSpacing.md,
+                              vertical: BricksSpacing.sm,
+                            )
+                          : const EdgeInsets.symmetric(
+                              horizontal: BricksSpacing.xs,
+                              vertical: BricksSpacing.xs,
+                            ),
+                      width: isUser ? null : double.infinity,
+                      constraints: isUser
+                          ? BoxConstraints(
+                              maxWidth:
+                                  MediaQuery.of(context).size.width * 0.75,
+                            )
+                          : null,
+                      decoration: isUser
+                          ? BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              borderRadius:
+                                  BorderRadius.circular(BricksRadius.md),
+                            )
+                          : null,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (isUser)
+                            _MessageExpandToggle(
+                              key: ValueKey<String>(
+                                'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
                               ),
+                              text: msg.content,
+                              textColor:
+                                  Theme.of(context).colorScheme.onPrimary,
+                            )
+                          else
+                            _AssistantMarkdownText(
+                              text: msg.content,
+                              textColor:
+                                  Theme.of(context).colorScheme.onSurface,
+                              textStyle: Theme.of(context).textTheme.bodyMedium,
                             ),
-                          ),
-                        if (msg.arbitrationMode && msg.resolvedBotId != null)
-                          Padding(
-                            padding:
-                                const EdgeInsets.only(top: BricksSpacing.xs),
-                            child: Text(
-                              msg.fallbackToDefaultBot
-                                  ? 'fallback→${msg.resolvedBotId}'
-                                  : 'selected→${msg.resolvedBotId}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: isUser
+                          if (msg.isStreaming)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(top: BricksSpacing.xs),
+                              child: SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    isUser
                                         ? Theme.of(context)
                                             .colorScheme
                                             .onPrimary
                                         : Theme.of(context).colorScheme.primary,
                                   ),
-                            ),
-                          ),
-                        if (isUser)
-                          Padding(
-                            padding:
-                                const EdgeInsets.only(top: BricksSpacing.xs),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    _messageMetaLine(msg),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onPrimary,
-                                        ),
-                                  ),
                                 ),
-                                if (deliveryIndicator != null) ...[
-                                  const SizedBox(width: BricksSpacing.xs),
-                                  _UserMessageDeliveryStatus(
-                                    indicator: deliveryIndicator,
-                                    messageId: msg.messageId,
-                                    foregroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimary,
-                                  ),
-                                ],
-                              ],
+                              ),
                             ),
-                          ),
-                      ],
+                          if (msg.arbitrationMode && msg.resolvedBotId != null)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(top: BricksSpacing.xs),
+                              child: Text(
+                                msg.fallbackToDefaultBot
+                                    ? 'fallback→${msg.resolvedBotId}'
+                                    : 'selected→${msg.resolvedBotId}',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: isUser
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .onPrimary
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                    ),
+                              ),
+                            ),
+                          if (isUser)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(top: BricksSpacing.xs),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      _messageMetaLine(msg),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onPrimary,
+                                          ),
+                                    ),
+                                  ),
+                                  if (deliveryIndicator != null) ...[
+                                    const SizedBox(width: BricksSpacing.xs),
+                                    _UserMessageDeliveryStatus(
+                                      indicator: deliveryIndicator,
+                                      messageId: msg.messageId,
+                                      foregroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .onPrimary,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 if (!isUser)
                   Padding(
                     padding: const EdgeInsets.only(
@@ -443,10 +493,12 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
       key: key,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _DeliveryStatusIcon(icon: indicator.first, foregroundColor: foregroundColor),
+        _DeliveryStatusIcon(
+            icon: indicator.first, foregroundColor: foregroundColor),
         if (indicator.second != null) ...[
           const SizedBox(width: 2),
-          _DeliveryStatusIcon(icon: indicator.second!, foregroundColor: foregroundColor),
+          _DeliveryStatusIcon(
+              icon: indicator.second!, foregroundColor: foregroundColor),
         ],
       ],
     );
@@ -510,7 +562,8 @@ class _DeliveryStatusIcon extends StatelessWidget {
             '🦞',
             style: TextStyle(
               fontSize: 12,
-              color: (foregroundColor ?? Theme.of(context).colorScheme.onSurfaceVariant)
+              color: (foregroundColor ??
+                      Theme.of(context).colorScheme.onSurfaceVariant)
                   .withValues(alpha: icon.opacity),
             ),
           ),
