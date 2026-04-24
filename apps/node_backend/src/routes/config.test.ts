@@ -8,6 +8,7 @@ const {
   renamePlatformNodeMock,
   getPlatformNodeByNodeIdMock,
   getPlatformNodeByPluginIdMock,
+  listOpenClawRuntimeAgentsMock,
   issuePlatformAccessTokenMock,
 } = vi.hoisted(() => ({
   ensureDefaultPlatformNodeMock: vi.fn(async () => ({
@@ -46,6 +47,15 @@ const {
     updatedAt: '2026-04-21T00:00:00.000Z',
   })),
   getPlatformNodeByPluginIdMock: vi.fn(async () => null),
+  listOpenClawRuntimeAgentsMock: vi.fn(async () => [
+    {
+      nodeId: 'node_2',
+      sourcePlatform: 'openclaw',
+      agentId: 'main',
+      displayName: 'Main Agent',
+      description: null,
+    },
+  ]),
   issuePlatformAccessTokenMock: vi.fn(() => 'jwt-node-token'),
 }));
 
@@ -71,6 +81,10 @@ vi.mock('../services/platformNodeService.js', () => ({
   renamePlatformNode: renamePlatformNodeMock,
   getPlatformNodeByNodeId: getPlatformNodeByNodeIdMock,
   getPlatformNodeByPluginId: getPlatformNodeByPluginIdMock,
+}));
+
+vi.mock('../services/openclawAgentRuntimeService.js', () => ({
+  listOpenClawRuntimeAgents: listOpenClawRuntimeAgentsMock,
 }));
 
 vi.mock('../middleware/platformAuth.js', () => ({
@@ -112,6 +126,7 @@ describe('config node routes', () => {
     renamePlatformNodeMock.mockClear();
     getPlatformNodeByNodeIdMock.mockClear();
     getPlatformNodeByPluginIdMock.mockClear();
+    listOpenClawRuntimeAgentsMock.mockClear();
     issuePlatformAccessTokenMock.mockClear();
   });
 
@@ -157,6 +172,21 @@ describe('config node routes', () => {
     expect(body.nodeId).toBe('node_2');
     expect(body.nodeName).toBe('openclaw 2');
     expect(body.pluginId).toBe('plugin_node_2');
+  });
+
+  it('lists agents for a node', async () => {
+    const response = await fetch(
+      `${baseUrl}/api/config/nodes/node_2/agents?sourcePlatform=openclaw`,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      nodeId?: string;
+      agents?: Array<{ agentId?: string; displayName?: string }>;
+    };
+    expect(body.nodeId).toBe('node_2');
+    expect(body.agents?.[0]?.agentId).toBe('main');
+    expect(body.agents?.[0]?.displayName).toBe('Main Agent');
+    expect(listOpenClawRuntimeAgentsMock).toHaveBeenCalledWith('node_2');
   });
 
   it('does not rate limit config GET reads at app layer', async () => {

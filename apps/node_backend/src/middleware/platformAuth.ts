@@ -149,3 +149,19 @@ export function requirePlatformScope(scope: string) {
     next();
   };
 }
+
+export function requireAnyPlatformScope(scopesToCheck: string[]) {
+  return (req: PlatformAuthRequest, res: Response, next: NextFunction): void => {
+    const scopes = req.platformScopes;
+    if (!scopes || !scopesToCheck.some((scope) => scopes.has(scope))) {
+      sendAuthError(
+        res,
+        403,
+        'FORBIDDEN',
+        `token lacks one of ${scopesToCheck.join(', ')}`,
+      );
+      return;
+    }
+    next();
+  };
+}
