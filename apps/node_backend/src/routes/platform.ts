@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
   authenticatePlatformApiKey,
+  requireAnyPlatformScope,
   requirePlatformScope,
   type PlatformAuthRequest,
 } from '../middleware/platformAuth.js';

@@ -63,6 +63,8 @@ class _ChatScreenState extends State<ChatScreen> {
   AgentDefinition? _activeAgent;
   final LlmConfigService _llmConfigService = const LlmConfigService();
   List<LlmConfig> _llmConfigs = const [];
+  List<PlatformNodeConfig> _platformNodes = const [];
+  Map<String, List<PlatformAgentConfig>> _openClawAgentsByNodeId = const {};
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
@@ -130,6 +132,8 @@ class _ChatScreenState extends State<ChatScreen> {
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
       List<ChatChannelNameSetting> channelNames = const [];
+      List<PlatformNodeConfig> platformNodes = const [];
+      Map<String, List<PlatformAgentConfig>> openClawAgentsByNodeId = const {};
       if (authToken != null && authToken.isNotEmpty) {
         try {
           persistedScopes = await _chatHistoryApiService.loadScopes(
@@ -158,6 +162,22 @@ class _ChatScreenState extends State<ChatScreen> {
         } catch (e) {
           debugPrint(
             'loadChannelNames failed, continuing without channel name hydration: $e',
+          );
+        }
+        try {
+          platformNodes = await _llmConfigService.fetchPlatformNodes();
+          final agentsByNodeId = <String, List<PlatformAgentConfig>>{};
+          for (final node in platformNodes) {
+            agentsByNodeId[node.nodeId] =
+                await _llmConfigService.fetchPlatformAgents(
+              nodeId: node.nodeId,
+              sourcePlatform: 'openclaw',
+            );
+          }
+          openClawAgentsByNodeId = agentsByNodeId;
+        } catch (e) {
+          debugPrint(
+            'loadOpenClawAgents failed, continuing without OpenClaw @ menu agents: $e',
           );
         }
       }
@@ -203,6 +223,8 @@ class _ChatScreenState extends State<ChatScreen> {
             mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
         _loadingAgents = false;
         _llmConfigs = llmConfigs;
+        _platformNodes = platformNodes;
+        _openClawAgentsByNodeId = openClawAgentsByNodeId;
         _sessionConfigSlotId ??=
             llmConfigs.isNotEmpty ? defaultConfig.slotId : null;
         _sessionModelOverride ??=
@@ -984,15 +1006,42 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  PlatformNodeConfig? _activeOpenClawNode() {
+    if (_platformNodes.isEmpty) return null;
+    return _platformNodes.first;
+  }
+
   List<ComposerAtAction> _composerAtActions(ChatRouter router) {
     if (router == ChatRouter.openclaw) {
-      return const <ComposerAtAction>[
-        ComposerAtAction(
-          value: '__openclaw_todo__',
-          label: '待实现',
-          enabled: false,
-        ),
-      ];
+      final node = _activeOpenClawNode();
+      if (node == null) {
+        return const <ComposerAtAction>[
+          ComposerAtAction(
+            value: '__openclaw_no_node__',
+            label: 'No OpenClaw node',
+            enabled: false,
+          ),
+        ];
+      }
+      final agents = _openClawAgentsByNodeId[node.nodeId] ?? const [];
+      if (agents.isEmpty) {
+        return const <ComposerAtAction>[
+          ComposerAtAction(
+            value: '__openclaw_no_agents__',
+            label: 'No OpenClaw agents',
+            enabled: false,
+          ),
+        ];
+      }
+      return agents
+          .map(
+            (agent) => ComposerAtAction(
+              value: 'openclaw:${node.nodeId}:${agent.agentId}',
+              label: agent.displayName,
+              insertText: '@${agent.agentId} ',
+            ),
+          )
+          .toList();
     }
     if (router == ChatRouter.defaultRoute) {
       return _agents
@@ -1008,6 +1057,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _handleComposerAtSelection(ChatRouter router, String value) {
+    if (router == ChatRouter.openclaw) {
+      if (!value.startsWith('openclaw:')) return;
+      final node = _activeOpenClawNode();
+      if (node == null) return;
+      final parts = value.split(':');
+      if (parts.length < 3 || parts[1] != node.nodeId) return;
+      final agentId = parts.sublist(2).join(':');
+      final agents = _openClawAgentsByNodeId[node.nodeId] ?? const [];
+      final selected = agents.where((agent) => agent.agentId == agentId);
+      if (selected.isEmpty) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mentioned ${selected.first.displayName}')),
+      );
+      return;
+    }
     if (router != ChatRouter.defaultRoute) return;
     final agent = _findAgent(value);
     if (agent == null) return;

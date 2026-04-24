@@ -31,7 +31,12 @@ const {
     acceptedAt: "2026-04-17T07:00:00.000Z",
   })),
   listSessionMessagesForModelMock: vi.fn(async () => []),
-  syncMessagesMock: vi.fn(async () => ({ messages: [], lastSeqId: 0 })),
+  syncMessagesMock: vi.fn<
+    () => Promise<{
+      messages: Array<Record<string, unknown>>;
+      lastSeqId: number;
+    }>
+  >(async () => ({ messages: [], lastSeqId: 0 })),
   upsertMessagesMock: vi.fn(async () => ({ lastSeqId: 7 })),
   listUserScopesMock: vi.fn(async () => []),
   listChatScopeSettingsMock: vi.fn(async () => []),

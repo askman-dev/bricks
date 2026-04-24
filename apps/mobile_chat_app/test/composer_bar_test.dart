@@ -213,6 +213,31 @@ void main() {
       expect(selected, 'Planner');
     });
 
+    testWidgets('selecting @ action inserts configured mention text',
+        (tester) async {
+      await tester.pumpWidget(
+        _buildBar(
+          atActions: const [
+            ComposerAtAction(
+              value: 'openclaw:node:main',
+              label: 'Main Agent',
+              insertText: '@main ',
+            ),
+          ],
+        ),
+      );
+      await tester.pump();
+
+      final button = tester.widget<PopupMenuButton<String>>(
+        find.byType(PopupMenuButton<String>),
+      );
+      button.onSelected?.call('openclaw:node:main');
+      await tester.pump();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, '@main ');
+    });
+
     testWidgets('@ menu supports disabled placeholder item', (tester) async {
       await tester.pumpWidget(
         _buildBar(

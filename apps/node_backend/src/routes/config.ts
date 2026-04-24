@@ -17,6 +17,7 @@ import {
   listPlatformNodes,
   renamePlatformNode,
 } from '../services/platformNodeService.js';
+import { listOpenClawRuntimeAgents } from '../services/openclawAgentRuntimeService.js';
 
 const router = express.Router();
 const ALLOWED_PROVIDERS = new Set(['anthropic', 'google_ai_studio']);
@@ -303,6 +304,45 @@ router.patch('/nodes/:nodeId', configWriteLimiter, async (req: AuthRequest, res:
       return;
     }
     console.error('Rename platform node error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/nodes/:nodeId/agents', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const nodeId =
+      typeof req.params.nodeId === 'string' ? req.params.nodeId.trim() : '';
+    if (!nodeId) {
+      res.status(400).json({ error: 'nodeId is required' });
+      return;
+    }
+
+    const node = await getPlatformNodeByNodeId(userId, nodeId);
+    if (!node) {
+      res.status(404).json({ error: 'Node not found' });
+      return;
+    }
+
+    const sourcePlatformRaw =
+      typeof req.query.sourcePlatform === 'string'
+        ? req.query.sourcePlatform.trim()
+        : '';
+    const sourcePlatform = sourcePlatformRaw || 'openclaw';
+    if (sourcePlatform !== 'openclaw') {
+      res.json({ nodeId, sourcePlatform, agents: [] });
+      return;
+    }
+
+    const agents = await listOpenClawRuntimeAgents(nodeId);
+    res.json({ nodeId, sourcePlatform, agents });
+  } catch (error) {
+    console.error('List platform agents error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
