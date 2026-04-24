@@ -565,39 +565,32 @@ class ChatHistoryApiService {
         ? Map<String, Object?>.from(map['metadata'] as Map)
         : const <String, Object?>{};
 
-    // handledBy = the specific node/agent that processed the message
-    // (set by the plugin after completing the request)
-    final metadataHandledBy = metadata['handledBy'] is String
-        ? (metadata['handledBy'] as String).trim()
-        : '';
-
-    // agentName in metadata = the plugin-level type label (e.g., "OpenClaw")
-    // set by the dispatch placeholder before the plugin processes
-    final metadataPluginType = metadata['agentName'] is String
+    // agentName = the node display name set by the backend dispatch placeholder
+    // (e.g. "openclaw 1"). Use it directly; no transformation needed.
+    final metadataAgentName = metadata['agentName'] is String
         ? (metadata['agentName'] as String).trim()
         : '';
 
-    // nodeName = legacy field used by some routes (kept for compatibility)
-    final metadataNodeName = metadata['nodeName'] is String
-        ? (metadata['nodeName'] as String).trim()
+    // Derive the plugin type label shown as a gray chip after the node name.
+    // Use the `plugin` field when present, otherwise fall back to `source`.
+    // Only applies to OpenClaw-routed messages.
+    final metadataPlugin = metadata['plugin'] is String
+        ? (metadata['plugin'] as String).trim()
         : '';
-
-    // Display name priority: handledBy (specific node) > nodeName > nothing
-    final displayName = metadataHandledBy.isNotEmpty
-        ? metadataHandledBy
-        : metadataNodeName;
+    final metadataSource = metadata['source'] is String
+        ? (metadata['source'] as String).trim()
+        : '';
+    String nodeType = '';
+    if (metadataPlugin == 'node_openclaw_plugin') {
+      nodeType = 'OpenClaw';
+    } else if (metadataSource.contains('openclaw')) {
+      nodeType = 'OpenClaw';
+    }
 
     final payload = <String, Object?>{
       ...metadata,
-      // Override agentName with the actual node name when available
-      if (displayName.isNotEmpty) 'agentName': displayName,
-      // Store the plugin type separately so the UI can show it as a label.
-      // Only set when the specific name differs from the type
-      // (avoids redundant "OpenClaw [OpenClaw]" display).
-      if (displayName.isNotEmpty &&
-          metadataPluginType.isNotEmpty &&
-          displayName != metadataPluginType)
-        'nodeType': metadataPluginType,
+      if (nodeType.isNotEmpty && metadataAgentName.isNotEmpty)
+        'nodeType': nodeType,
       'messageId': map['messageId'],
       'seqId': map['seqId'],
       'writeSeq': map['writeSeq'],
