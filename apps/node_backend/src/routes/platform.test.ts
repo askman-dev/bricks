@@ -358,7 +358,17 @@ describe('platform SSE events stream', () => {
             eventType: 'message.created',
             workspaceId: 'ws_1',
             conversationId: 'conv_1',
-            payload: { text: 'hello from SSE' },
+            rawId: 'channel:default',
+            occurredAt: '2026-04-23T08:00:00.000Z',
+            payload: {
+              messageId: 'msg_sse_1',
+              sender: {
+                userId: 'user-123',
+                displayName: 'user',
+              },
+              text: 'hello from SSE',
+              attachments: [],
+            },
           },
         ],
       });

@@ -75,6 +75,8 @@ class LlmConfig {
 class LlmConfigService {
   const LlmConfigService();
 
+  static const String productionApiBaseUrl = 'https://bricks.askman.dev';
+
   static const String _apiBaseUrl = String.fromEnvironment(
     'BRICKS_API_BASE_URL',
     defaultValue: '',
@@ -88,6 +90,7 @@ class LlmConfigService {
   static String resolveBaseUrl() {
     if (_apiBaseUrl.isNotEmpty) return _apiBaseUrl;
     if (kIsWeb) return Uri.base.origin;
+    if (kReleaseMode) return productionApiBaseUrl;
     return 'http://localhost:3000';
   }
 
@@ -299,6 +302,53 @@ class LlmConfigService {
     );
   }
 
+  Future<List<PlatformAgentConfig>> fetchPlatformAgents({
+    required String nodeId,
+    String? sourcePlatform,
+  }) async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.get(
+      _buildUri(
+        '/api/config/nodes/${Uri.encodeComponent(nodeId)}/agents',
+        sourcePlatform == null || sourcePlatform.trim().isEmpty
+            ? null
+            : {'sourcePlatform': sourcePlatform.trim()},
+      ),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to fetch platform agents (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) return const [];
+    final map = Map<String, dynamic>.from(decoded);
+    final agentsRaw = map['agents'];
+    if (agentsRaw is! List) return const [];
+    return agentsRaw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map(
+          (item) => PlatformAgentConfig(
+            nodeId: (item['nodeId'] as String?) ?? nodeId,
+            agentId: (item['agentId'] as String?) ?? '',
+            displayName: (item['displayName'] as String?) ?? '',
+            description: item['description'] as String?,
+          ),
+        )
+        .where(
+          (agent) =>
+              agent.agentId.trim().isNotEmpty &&
+              agent.displayName.trim().isNotEmpty,
+        )
+        .toList(growable: false);
+  }
+
   Future<PlatformTokenBundle> fetchPlatformToken({
     String? nodeId,
     String pluginId = 'plugin_local_main',
@@ -491,4 +541,18 @@ class PlatformNodeConfig {
   final String nodeId;
   final String displayName;
   final String pluginId;
+}
+
+class PlatformAgentConfig {
+  const PlatformAgentConfig({
+    required this.nodeId,
+    required this.agentId,
+    required this.displayName,
+    this.description,
+  });
+
+  final String nodeId;
+  final String agentId;
+  final String displayName;
+  final String? description;
 }

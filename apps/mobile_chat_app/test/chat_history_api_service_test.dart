@@ -235,6 +235,7 @@ void main() {
       final decoded = jsonDecode(request.body) as Map<String, dynamic>;
       expect(decoded['taskId'], equals('task-2'));
       expect(decoded['userMessage'], equals('1+3'));
+      expect(decoded['nodeId'], equals('node_2'));
       return http.Response(
         jsonEncode({
           'text': '',
@@ -257,6 +258,7 @@ void main() {
       userMessage: '1+3',
       provider: 'anthropic',
       model: 'claude-sonnet-4-5',
+      nodeId: 'node_2',
     );
 
     expect(result.text, isEmpty);

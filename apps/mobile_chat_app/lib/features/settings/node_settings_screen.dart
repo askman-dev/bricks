@@ -148,14 +148,17 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
   Widget build(BuildContext context) {
     final nodes = _nodes;
     return Scaffold(
-      appBar: AppBar(title: const Text('节点')),
-      floatingActionButton: nodes.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: _actionLoading ? null : _createNode,
-              icon: const Icon(Icons.add),
-              label: const Text('新增节点'),
-            )
-          : null,
+      appBar: AppBar(
+        title: const Text('Node Management'),
+        actions: [
+          TextButton.icon(
+            onPressed: _actionLoading ? null : _createNode,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Node'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : nodes.isEmpty
@@ -163,7 +166,7 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                   child: FilledButton.icon(
                     onPressed: _actionLoading ? null : _createNode,
                     icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('创建第一个节点'),
+                    label: const Text('Create First Node'),
                   ),
                 )
               : ListView(
@@ -195,7 +198,7 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                                   ),
                                 ],
                               ),
-                              Text('plugin: ${node.pluginId}'),
+                              Text('Plugin: ${node.pluginId}'),
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 8,
@@ -205,14 +208,14 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                                     onPressed: () => _copyText(
                                         node.pluginId, 'Plugin ID copied'),
                                     icon: const Icon(Icons.copy_outlined),
-                                    label: const Text('复制 Plugin ID'),
+                                    label: const Text('Copy Plugin ID'),
                                   ),
                                   OutlinedButton.icon(
                                     onPressed: _actionLoading
                                         ? null
                                         : () => _generateNodeToken(node),
                                     icon: const Icon(Icons.vpn_key_outlined),
-                                    label: const Text('生成 Token'),
+                                    label: const Text('Generate Token'),
                                   ),
                                 ],
                               ),
@@ -230,7 +233,7 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
                           'OpenClaw commands copied',
                         ),
                         icon: const Icon(Icons.copy_all_outlined),
-                        label: const Text('复制 OpenClaw 命令'),
+                        label: const Text('Copy OpenClaw Commands'),
                       ),
                     ],
                   ],

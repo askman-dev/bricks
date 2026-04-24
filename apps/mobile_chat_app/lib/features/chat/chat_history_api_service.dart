@@ -119,8 +119,7 @@ class ChatHistoryApiService {
         '$_base/api/chat/sync/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
       );
 
-  Uri _eventsUri(String sessionId, {required int afterSeq}) =>
-      Uri.parse(
+  Uri _eventsUri(String sessionId, {required int afterSeq}) => Uri.parse(
         '$_base/api/chat/events/${Uri.encodeComponent(sessionId)}?afterSeq=$afterSeq',
       );
 
@@ -195,6 +194,7 @@ class ChatHistoryApiService {
         channelId: (item['channelId'] as String?) ?? 'default',
         threadId: item['threadId'] as String?,
         router: chatRouterFromApi(item['router'] as String?),
+        nodeId: item['nodeId'] as String?,
         updatedAt: item['updatedAt'] is String
             ? DateTime.tryParse(item['updatedAt'] as String)
             : null,
@@ -346,8 +346,7 @@ class ChatHistoryApiService {
                     .map(_messageFromServerMap)
                     .toList();
                 messages.sort(compareChatMessagesByCreatedTime);
-                final resolvedSeqId =
-                    (map['lastSeqId'] as num?)?.toInt();
+                final resolvedSeqId = (map['lastSeqId'] as num?)?.toInt();
                 if (resolvedSeqId == null) {
                   debugPrint(
                     'listenEvents: SSE event missing lastSeqId, '
@@ -387,6 +386,7 @@ class ChatHistoryApiService {
     String? provider,
     String? model,
     String? configId,
+    String? nodeId,
     DateTime? createdAt,
   }) async {
     final response = await _client.post(
@@ -409,6 +409,7 @@ class ChatHistoryApiService {
         'provider': provider,
         'model': model,
         'configId': configId,
+        if (nodeId != null && nodeId.trim().isNotEmpty) 'nodeId': nodeId.trim(),
         'createdAt': createdAt?.toIso8601String(),
       }),
     );
@@ -434,6 +435,7 @@ class ChatHistoryApiService {
     required String channelId,
     String? threadId,
     required ChatRouter? router,
+    String? nodeId,
   }) async {
     final response = await _client.put(
       _scopeSettingsUri,
@@ -446,6 +448,7 @@ class ChatHistoryApiService {
         'channelId': channelId,
         if (threadId != null) 'threadId': threadId,
         'router': router?.apiValue,
+        if (nodeId != null) 'nodeId': nodeId,
       }),
     );
     if (response.statusCode != 200) {

@@ -10,11 +10,13 @@ class ComposerAtAction {
     required this.value,
     required this.label,
     this.enabled = true,
+    this.insertText,
   });
 
   final String value;
   final String label;
   final bool enabled;
+  final String? insertText;
 }
 
 /// The input composer bar at the bottom of the chat screen.
@@ -122,6 +124,20 @@ class _ComposerBarState extends State<ComposerBar>
     );
   }
 
+  void _insertTextAtCursor(String text) {
+    if (text.isEmpty) return;
+    final value = _controller.value;
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : value.text.length;
+    final nextText = value.text.replaceRange(start, end, text);
+    final offset = start + text.length;
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: offset),
+    );
+  }
+
   @override
   void dispose() {
     _spinController.dispose();
@@ -218,8 +234,19 @@ class _ComposerBarState extends State<ComposerBar>
                                 BricksTheme.menuPopupAnimationStyle,
                             tooltip: 'Mention actions',
                             enabled: !widget.isStreaming,
-                            onSelected: (value) =>
-                                widget.onAtActionSelected?.call(value),
+                            onSelected: (value) {
+                              String? insertText;
+                              for (final action in widget.atActions) {
+                                if (action.value == value) {
+                                  insertText = action.insertText;
+                                  break;
+                                }
+                              }
+                              if (insertText != null) {
+                                _insertTextAtCursor(insertText);
+                              }
+                              widget.onAtActionSelected?.call(value);
+                            },
                             itemBuilder: (context) => widget.atActions
                                 .map(
                                   (action) => PopupMenuItem<String>(

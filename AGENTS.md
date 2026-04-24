@@ -9,6 +9,12 @@
 - For each feature or task, create and save a markdown plan file in `docs/plans/`.
 - Name plan files with a `YYYY-MM-DD-HH-mm` prefix using 24-hour time (optionally appending a timezone such as `-UTC`).
 
+## Worktree task workflow
+- The repository may contain a top-level `.worktree/` directory for storing local git worktrees.
+- When this workflow is useful, place task-specific worktrees there, for example `.worktree/openclaw-selected-node-routing`.
+- This is an optional local workflow, not a required process for every task or every contributor.
+- Do not assume Codex cloud or similar cloud agents should use `.worktree/`, because some agent environments treat top-level folders as push paths and `.worktree/` can interfere with that flow.
+
 ## API debugging workflow
 - When debugging API/interface errors, try the `vercel-api-log-context` skill first to collect Vercel deployment log context before proposing fixes.
 

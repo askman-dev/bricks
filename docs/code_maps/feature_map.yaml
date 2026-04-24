@@ -24,7 +24,9 @@ products:
           - service: GitHubOAuth/AuthService
             route_hint: apps/mobile_chat_app/lib/features/auth/
         smoke_checks:
-          - 打开登录页并发起 GitHub 登录。
+          - Web 打开登录页并发起 GitHub 登录。
+          - iOS release 点击 GitHub 登录时默认应打开 `https://bricks.askman.dev` 上的后端 OAuth 授权页。
+          - iOS OAuth 完成后通过 `bricks://auth/github/callback` 回到应用。
           - 完成 token 回调后进入主界面。
 
       - feature_id: chat_session
@@ -39,6 +41,10 @@ products:
           - 发送一条消息后可以看到消息列表更新。
           - 将路由切到 openclaw 后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
+          - 当用户拥有多个 OpenClaw 节点时，输入框左侧路由菜单应仅列出真实节点；菜单主标题显示节点名称，副标题显示 `OpenClaw`。
+          - 当已保存的 OpenClaw `nodeId` 对应节点已被删除时，聊天页与发送行为应回退到 `Bricks Default`，而不是改投递到其他 OpenClaw 节点。
+          - 在聊天页选择某个 OpenClaw 节点后发送消息时，仅所选节点应收到并回复；同用户其他节点不应重复消费同一条消息。
+          - 从设置页新增或重命名节点后返回聊天页，路由菜单中的 OpenClaw 节点列表应刷新为最新状态。
           - 在 openclaw 离线后切回默认路由继续发送时，历史消息应优先按服务端 seqId（不可变插入序）渲染，后到达更新不会打乱对话先后。
           - 当多条消息 createdAt 相同（秒级碰撞）时，消息应按 seqId 稳定从旧到新渲染。
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
@@ -63,7 +69,7 @@ products:
           - 在 Prompt 详情页点击“修改配置”后，应进入 Agent 管理流程。
           - 在 Prompt 详情页点击“发起对话”后，应将该 Agent 设为当前会话 Agent。
           - 输入框不再支持 `@agent` 文本补全；当路由为默认路由时，`@` 按钮显示在路由按钮右侧、配置按钮左侧，点击后下拉展示与侧边栏 Agents 分组一致的 Agent 列表。
-          - 当路由为 OpenClaw 时，`@` 按钮同样可点击并弹出下拉菜单；当前菜单内容为“待实现”占位。
+          - 当路由为 OpenClaw 时，`@` 按钮同样可点击并弹出下拉菜单；菜单应展示匹配 OpenClaw node 上报的 agents，选择后将 `@agentId` 插入输入框。
           - 对话页顶部不再显示横向“参与者/Agent 概率”指示条。
           - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
           - 当路由为默认路由时，输入框左下角应显示配置按钮，且“模型”项副标题展示当前生效模型名。
@@ -89,26 +95,9 @@ products:
           - 点击 Base URL 右侧复制按钮后可复制 API URL。
           - 点击 API Key 右侧复制按钮时，非空 key 可被复制，空值会提示不可复制。
 
-      - feature_id: openclaw_token_settings
-        name: OpenClaw Token 配置
-        user_value: 用户可在设置页生成 Openclaw Token，并复制插件安装说明用于 OpenClaw 对接。
-        entry_paths:
-          - screen: SettingsScreen
-            route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
-          - screen: OpenclawTokenSettingsScreen
-            route_hint: apps/mobile_chat_app/lib/features/settings/openclaw_token_settings_screen.dart
-          - service: LlmConfigService.fetchPlatformToken
-            route_hint: apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
-        smoke_checks:
-          - 在设置页可看到并进入 “Openclaw Token” 设置项。
-          - 点击 “Openclaw Token” 按钮后可生成 token 信息。
-          - 生成后可复制 Openclaw Token 到剪贴板。
-          - 生成后页面会显示包含 pluginId / URL / scopes / token 的安装说明。
-          - 点击 “Copy Install Instructions” 可一键复制完整安装说明文本。
-
       - feature_id: node_settings
-        name: 节点（Node）管理与节点级 Token
-        user_value: 用户可管理多个节点（本地/云端运行时），并为指定节点生成专属 Token 与可直接执行的 OpenClaw 配置命令。
+        name: Node management and node-scoped token
+        user_value: Users can manage nodes and generate reusable OpenClaw installation tokens from each node entry.
         entry_paths:
           - screen: SettingsScreen
             route_hint: apps/mobile_chat_app/lib/features/settings/settings_screen.dart
@@ -121,8 +110,10 @@ products:
           - route: /api/config/platform-token?nodeId=...
             route_hint: apps/node_backend/src/routes/config.ts
         smoke_checks:
-          - 设置页可看到“节点”入口并进入节点列表页面。
-          - 当节点列表为空时，显示“创建第一个节点”按钮并可创建节点。
+          - Settings shows a single "Node Management" entry and no separate Openclaw Token entry.
+          - Add-node action is displayed in the AppBar top-right using icon + text.
+          - When no node exists, the page shows a "Create First Node" button.
+          - Each node supports rename, plugin-id copy, and token generation for OpenClaw installation.
           - 节点创建后可展示默认名称（openclaw 1 / openclaw 2 ...）并支持重命名。
           - 每个节点可复制 plugin id，可为该节点生成 token 与只写入 `channels.dev-askman-bricks` 的 OpenClaw CLI 配置命令。
           - 点击“复制 OpenClaw 命令”后，剪贴板内容可直接粘贴到 shell 执行，并包含 base URL / plugin id / platform token / validate / gateway restart / inspect。
@@ -166,6 +157,7 @@ products:
         smoke_checks:
           - 未登录请求返回预期状态码。
           - 合法回跳参数通过校验。
+          - 仅允许受控 native OAuth callback，拒绝任意自定义 scheme 回跳。
 
       - feature_id: backend_chat_llm
         name: Chat 与 LLM 调用
@@ -185,7 +177,11 @@ products:
           - 调用 chat 接口时返回结构化响应。
           - provider 配置缺失时给出明确错误。
           - '使用 API Key + X-Bricks-Plugin-Id 可访问 /api/v1/platform/events 并获取 nextCursor。'
+          - '使用 `/api/chat/scope-settings` 为 openclaw 路由保存 nodeId 后，再读取应返回同一 nodeId。'
+          - '同一用户存在多个 OpenClaw 节点时，`/api/chat/respond` 为消息写入目标节点 metadata 后，仅目标 plugin 可从 `/api/v1/platform/events` 读到该消息。'
+          - '非目标 plugin 对其他 plugin 创建的 assistant message 执行 PATCH 时，应返回 403。'
           - '/api/v1/platform/events/ack 禁止 body 中传 pluginId，合法 ACK 可重复调用并返回成功。'
+          - '/api/config/nodes/:nodeId/agents?sourcePlatform=openclaw 在请求时即时执行 OpenClaw CLI 查询 agents，并用于 OpenClaw router 的 @ 下拉菜单。'
           - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
           - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
           - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'
@@ -219,5 +215,6 @@ products:
           - 设置 BRICKS_BASE_URL / BRICKS_PLATFORM_TOKEN / BRICKS_PLUGIN_ID 后可启动插件轮询。
           - 非 JWT token 或 claims 不完整时插件启动应失败（JWT-only）。
           - 插件可调用 `/api/v1/platform/events` 拉取事件并以 `X-Bricks-Plugin-Id` 发送请求。
+          - 插件启动时可通过 `openclaw agents list --json` 抓取 OpenClaw agents 并上报到 Bricks platform。
           - 插件 ACK body 仅包含 `cursor` 与 `ackedEventIds` 且可推进本地 cursor。
           - 收到 `message.created` 事件后可执行 create + patch 消息回写。
