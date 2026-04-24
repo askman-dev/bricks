@@ -13,22 +13,31 @@ index:
       - apps/mobile_chat_app/lib/features/auth/login_screen.dart
       - apps/mobile_chat_app/lib/features/auth/auth_service.dart
       - apps/mobile_chat_app/lib/features/auth/github_oauth.dart
+      - apps/mobile_chat_app/lib/features/auth/github_oauth_io.dart
+      - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
       - apps/node_backend/src/routes/auth.ts
+      - apps/node_backend/src/routes/auth_return_to.ts
+      - apps/mobile_chat_app/ios/Runner/Info.plist
+      - apps/mobile_chat_app/ios/Runner/SceneDelegate.swift
     doc_index:
       - docs/architecture.md
       - BUILD.md
     test_index:
       - apps/mobile_chat_app/test/auth_service_test.dart
+      - apps/mobile_chat_app/test/oauth_callback_test.dart
+      - apps/mobile_chat_app/test/llm_config_service_test.dart
       - apps/node_backend/src/routes/auth.test.ts
     keywords:
       - oauth
       - github
+      - ios
       - token
       - auth
       - callback
     change_risks:
       - Web 与移动端 token 回调分支行为不一致。
       - 登录成功后导航状态未同步。
+      - native callback scheme 配置或后端 allowlist 不一致会导致 iOS 登录无法返回应用。
 
   - feature_id: chat_session
     capability: 多 Agent 聊天会话与仲裁
@@ -139,6 +148,7 @@ index:
       - docs/openclaw_pull_only_integration_dev_doc.md
     test_index:
       - apps/mobile_chat_app/test/model_settings_screen_test.dart
+      - apps/mobile_chat_app/test/llm_config_service_test.dart
     keywords:
       - model
       - provider
@@ -151,6 +161,7 @@ index:
     change_risks:
       - 字段格式变化导致保存后读取失败。
       - 后端默认模型与前端选择策略不一致。
+      - release native API base URL 默认值错误会导致登录、配置读取和聊天请求打到本机 localhost。
 
   - feature_id: node_settings
     capability: Node management (create/rename) and node-scoped token issuance
@@ -218,13 +229,16 @@ index:
       - apps/node_backend/src/middleware/auth.ts
       - apps/node_backend/src/services/userService.ts
       - apps/node_backend/src/services/oauthStateService.ts
+      - apps/mobile_chat_app/lib/features/auth/oauth_callback.dart
     doc_index:
       - docs/architecture.md
     test_index:
       - apps/node_backend/src/routes/auth.test.ts
+      - apps/mobile_chat_app/test/oauth_callback_test.dart
     keywords:
       - oauth
       - github
+      - ios
       - callback
       - return_to
       - jwt
@@ -233,6 +247,7 @@ index:
     change_risks:
       - OAuth state 校验逻辑变动可能导致回调失效。
       - return_to 校验规则变动可能引入开放重定向漏洞。
+      - native callback target 放宽过度会引入自定义 scheme 开放跳转风险。
       - 认证路由限流策略过严会导致正常登录流程误触发 429。
 
   - feature_id: backend_chat_llm

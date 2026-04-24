@@ -24,7 +24,9 @@ products:
           - service: GitHubOAuth/AuthService
             route_hint: apps/mobile_chat_app/lib/features/auth/
         smoke_checks:
-          - 打开登录页并发起 GitHub 登录。
+          - Web 打开登录页并发起 GitHub 登录。
+          - iOS release 点击 GitHub 登录时默认应打开 `https://bricks.askman.dev` 上的后端 OAuth 授权页。
+          - iOS OAuth 完成后通过 `bricks://auth/github/callback` 回到应用。
           - 完成 token 回调后进入主界面。
 
       - feature_id: chat_session
@@ -155,6 +157,7 @@ products:
         smoke_checks:
           - 未登录请求返回预期状态码。
           - 合法回跳参数通过校验。
+          - 仅允许受控 native OAuth callback，拒绝任意自定义 scheme 回跳。
 
       - feature_id: backend_chat_llm
         name: Chat 与 LLM 调用

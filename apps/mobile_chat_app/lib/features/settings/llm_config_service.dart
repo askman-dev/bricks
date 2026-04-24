@@ -75,6 +75,8 @@ class LlmConfig {
 class LlmConfigService {
   const LlmConfigService();
 
+  static const String productionApiBaseUrl = 'https://bricks.askman.dev';
+
   static const String _apiBaseUrl = String.fromEnvironment(
     'BRICKS_API_BASE_URL',
     defaultValue: '',
@@ -88,6 +90,7 @@ class LlmConfigService {
   static String resolveBaseUrl() {
     if (_apiBaseUrl.isNotEmpty) return _apiBaseUrl;
     if (kIsWeb) return Uri.base.origin;
+    if (kReleaseMode) return productionApiBaseUrl;
     return 'http://localhost:3000';
   }
 

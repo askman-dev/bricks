@@ -39,6 +39,27 @@ describe('auth return_to validation', () => {
     ).toBe(false);
   });
 
+  it('allows the native iOS GitHub callback target', () => {
+    expect(
+      isAllowedReturnTo('bricks://auth/github/callback', {
+        nodeEnv: 'production',
+      })
+    ).toBe(true);
+  });
+
+  it('rejects arbitrary native scheme return_to values', () => {
+    expect(
+      isAllowedReturnTo('bricks://auth/other/callback', {
+        nodeEnv: 'production',
+      })
+    ).toBe(false);
+    expect(
+      isAllowedReturnTo('otherapp://auth/github/callback', {
+        nodeEnv: 'production',
+      })
+    ).toBe(false);
+  });
+
   it('still allows explicitly configured origins', () => {
     expect(
       isAllowedReturnTo('https://app.askman.dev/dashboard', {
@@ -258,5 +279,15 @@ describe('buildPostLoginRedirectTarget', () => {
     const params = new URLSearchParams(queryPart);
     expect(params.get('tab')).toBe('1');
     expect(params.get('auth_token')).toBe('jwt-token');
+  });
+
+  it('appends auth_token fragment for native app callback targets', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'bricks://auth/github/callback',
+      'jwt-token',
+      'https://bricks.askman.dev'
+    );
+
+    expect(redirect).toBe('bricks://auth/github/callback#auth_token=jwt-token');
   });
 });
