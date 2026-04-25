@@ -356,29 +356,21 @@ class _MessageListState extends State<MessageList> {
                         'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
                       ),
                       margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-                      padding: isUser
-                          ? const EdgeInsets.symmetric(
-                              horizontal: BricksSpacing.md,
-                              vertical: BricksSpacing.sm,
-                            )
-                          : const EdgeInsets.symmetric(
-                              horizontal: BricksSpacing.xs,
-                              vertical: BricksSpacing.xs,
-                            ),
-                      width: isUser ? null : double.infinity,
-                      constraints: isUser
-                          ? BoxConstraints(
-                              maxWidth:
-                                  MediaQuery.of(context).size.width * 0.75,
-                            )
-                          : null,
-                      decoration: isUser
-                          ? BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              borderRadius:
-                                  BorderRadius.circular(BricksRadius.md),
-                            )
-                          : null,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: BricksSpacing.md,
+                        vertical: BricksSpacing.sm,
+                      ),
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.75,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(BricksRadius.lg),
+                        border: Border.all(
+                          color: AppColors.border,
+                          width: 0.5,
+                        ),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -389,7 +381,7 @@ class _MessageListState extends State<MessageList> {
                               ),
                               text: msg.content,
                               textColor:
-                                  Theme.of(context).colorScheme.onPrimary,
+                                  Theme.of(context).colorScheme.onSurface,
                             )
                           else
                             _AssistantMarkdownText(
@@ -411,7 +403,7 @@ class _MessageListState extends State<MessageList> {
                                     isUser
                                         ? Theme.of(context)
                                             .colorScheme
-                                            .onPrimary
+                                            .onSurface
                                         : Theme.of(context).colorScheme.primary,
                                   ),
                                 ),
@@ -432,7 +424,7 @@ class _MessageListState extends State<MessageList> {
                                       color: isUser
                                           ? Theme.of(context)
                                               .colorScheme
-                                              .onPrimary
+                                              .onSurface
                                           : Theme.of(context)
                                               .colorScheme
                                               .primary,
@@ -457,7 +449,7 @@ class _MessageListState extends State<MessageList> {
                                           ?.copyWith(
                                             color: Theme.of(context)
                                                 .colorScheme
-                                                .onPrimary,
+                                                .onSurface,
                                           ),
                                     ),
                                   ),
@@ -468,7 +460,7 @@ class _MessageListState extends State<MessageList> {
                                       messageId: msg.messageId,
                                       foregroundColor: Theme.of(context)
                                           .colorScheme
-                                          .onPrimary,
+                                          .onSurface,
                                     ),
                                   ],
                                 ],

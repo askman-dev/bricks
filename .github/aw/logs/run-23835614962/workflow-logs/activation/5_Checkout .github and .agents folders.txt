@@ -1,0 +1,115 @@
+﻿2026-04-01T06:41:55.7144430Z ##[group]Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+2026-04-01T06:41:55.7145145Z with:
+2026-04-01T06:41:55.7145517Z   persist-credentials: false
+2026-04-01T06:41:55.7145991Z   sparse-checkout: .github
+.agents
+
+2026-04-01T06:41:55.7147498Z   sparse-checkout-cone-mode: true
+2026-04-01T06:41:55.7148866Z   fetch-depth: 1
+2026-04-01T06:41:55.7149343Z   repository: askman-dev/bricks
+2026-04-01T06:41:55.7149948Z   token: ***
+2026-04-01T06:41:55.7150337Z   ssh-strict: true
+2026-04-01T06:41:55.7150727Z   ssh-user: git
+2026-04-01T06:41:55.7151108Z   clean: true
+2026-04-01T06:41:55.7151482Z   fetch-tags: false
+2026-04-01T06:41:55.7151888Z   show-progress: true
+2026-04-01T06:41:55.7152298Z   lfs: false
+2026-04-01T06:41:55.7152664Z   submodules: false
+2026-04-01T06:41:55.7153084Z   set-safe-directory: true
+2026-04-01T06:41:55.7153522Z ##[endgroup]
+2026-04-01T06:41:55.8818550Z Syncing repository: askman-dev/bricks
+2026-04-01T06:41:55.8820449Z ##[group]Getting Git version info
+2026-04-01T06:41:55.8821197Z Working directory is '/home/runner/work/bricks/bricks'
+2026-04-01T06:41:55.8822139Z [command]/usr/bin/git version
+2026-04-01T06:41:55.9096810Z git version 2.53.0
+2026-04-01T06:41:55.9134941Z ##[endgroup]
+2026-04-01T06:41:55.9162588Z Temporarily overriding HOME='/home/runner/work/_temp/fa0bb7ba-9502-436c-a2a1-04bfe4353ffc' before making global git config changes
+2026-04-01T06:41:55.9166571Z Adding repository directory to the temporary git global config as a safe directory
+2026-04-01T06:41:55.9175746Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/bricks/bricks
+2026-04-01T06:41:55.9226965Z Deleting the contents of '/home/runner/work/bricks/bricks'
+2026-04-01T06:41:55.9232667Z ##[group]Initializing the repository
+2026-04-01T06:41:55.9241811Z [command]/usr/bin/git init /home/runner/work/bricks/bricks
+2026-04-01T06:41:55.9564132Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-04-01T06:41:55.9565155Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-04-01T06:41:55.9566075Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-04-01T06:41:55.9566768Z hint: call:
+2026-04-01T06:41:55.9567114Z hint:
+2026-04-01T06:41:55.9567579Z hint: 	git config --global init.defaultBranch <name>
+2026-04-01T06:41:55.9568476Z hint:
+2026-04-01T06:41:55.9613010Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-04-01T06:41:55.9614133Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-04-01T06:41:55.9614843Z hint:
+2026-04-01T06:41:55.9615231Z hint: 	git branch -m <name>
+2026-04-01T06:41:55.9615675Z hint:
+2026-04-01T06:41:55.9616256Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-04-01T06:41:55.9675411Z Initialized empty Git repository in /home/runner/work/bricks/bricks/.git/
+2026-04-01T06:41:55.9677639Z [command]/usr/bin/git remote add origin https://github.com/askman-dev/bricks
+2026-04-01T06:41:55.9694305Z ##[endgroup]
+2026-04-01T06:41:55.9695142Z ##[group]Disabling automatic garbage collection
+2026-04-01T06:41:55.9695919Z [command]/usr/bin/git config --local gc.auto 0
+2026-04-01T06:41:55.9730209Z ##[endgroup]
+2026-04-01T06:41:55.9731003Z ##[group]Setting up auth
+2026-04-01T06:41:55.9731551Z Removing SSH command configuration
+2026-04-01T06:41:55.9736752Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-04-01T06:41:55.9771467Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-04-01T06:41:56.0250741Z Removing HTTP extra header
+2026-04-01T06:41:56.0257195Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-04-01T06:41:56.0291991Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-04-01T06:41:56.9352046Z Removing includeIf entries pointing to credentials config files
+2026-04-01T06:41:56.9352986Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-04-01T06:41:56.9354726Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-04-01T06:41:56.9357364Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-04-01T06:41:56.9361728Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/bricks/bricks/.git.path /home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9365430Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/bricks/bricks/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9368046Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9370908Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9373525Z ##[endgroup]
+2026-04-01T06:41:56.9374190Z ##[group]Fetching the repository
+2026-04-01T06:41:56.9375536Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --filter=blob:none --depth=1 origin +fc448a81a79df588b221e1537a6353d9354958ad:refs/remotes/origin/main
+2026-04-01T06:41:56.9376951Z From https://github.com/askman-dev/bricks
+2026-04-01T06:41:56.9377650Z  * [new ref]         fc448a81a79df588b221e1537a6353d9354958ad -> origin/main
+2026-04-01T06:41:56.9379196Z [command]/usr/bin/git branch --list --remote origin/main
+2026-04-01T06:41:56.9379817Z   origin/main
+2026-04-01T06:41:56.9380802Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+2026-04-01T06:41:56.9381415Z fc448a81a79df588b221e1537a6353d9354958ad
+2026-04-01T06:41:56.9382627Z ##[endgroup]
+2026-04-01T06:41:56.9383270Z ##[group]Determining the checkout info
+2026-04-01T06:41:56.9385659Z ##[endgroup]
+2026-04-01T06:41:56.9386433Z ##[group]Setting up sparse checkout
+2026-04-01T06:41:56.9388049Z [command]/usr/bin/git sparse-checkout set .github .agents
+2026-04-01T06:41:56.9390219Z ##[endgroup]
+2026-04-01T06:41:56.9390864Z ##[group]Checking out the ref
+2026-04-01T06:41:56.9391585Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-04-01T06:41:56.9392349Z Switched to a new branch 'main'
+2026-04-01T06:41:56.9393172Z branch 'main' set up to track 'origin/main'.
+2026-04-01T06:41:56.9394421Z ##[endgroup]
+2026-04-01T06:41:56.9395320Z [command]/usr/bin/git log -1 --format=%H
+2026-04-01T06:41:56.9395844Z fc448a81a79df588b221e1537a6353d9354958ad
+2026-04-01T06:41:56.9397065Z ##[group]Removing auth
+2026-04-01T06:41:56.9397516Z Removing SSH command configuration
+2026-04-01T06:41:56.9398407Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-04-01T06:41:56.9400380Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-04-01T06:41:56.9402216Z Removing HTTP extra header
+2026-04-01T06:41:56.9403009Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-04-01T06:41:56.9405330Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-04-01T06:41:56.9407432Z Removing includeIf entries pointing to credentials config files
+2026-04-01T06:41:56.9408480Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-04-01T06:41:56.9409514Z includeif.gitdir:/home/runner/work/bricks/bricks/.git.path
+2026-04-01T06:41:56.9410308Z includeif.gitdir:/home/runner/work/bricks/bricks/.git/worktrees/*.path
+2026-04-01T06:41:56.9411034Z includeif.gitdir:/github/workspace/.git.path
+2026-04-01T06:41:56.9411681Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-04-01T06:41:56.9413143Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/bricks/bricks/.git.path
+2026-04-01T06:41:56.9414266Z /home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9416304Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/bricks/bricks/.git.path /home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9418702Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/bricks/bricks/.git/worktrees/*.path
+2026-04-01T06:41:56.9419881Z /home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9422005Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/bricks/bricks/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9425261Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-04-01T06:41:56.9426299Z /github/runner_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9428950Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9431104Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-04-01T06:41:56.9432190Z /github/runner_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9436052Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config
+2026-04-01T06:41:56.9438738Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-04-01T06:41:56.9444056Z Removing credentials config '/home/runner/work/_temp/git-credentials-059930a3-968c-4290-b3bf-474626f49bc6.config'
+2026-04-01T06:41:56.9445616Z ##[endgroup]

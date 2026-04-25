@@ -1,0 +1,19 @@
+﻿2026-04-01T06:43:08.4080710Z ##[group]Run mkdir -p /tmp/gh-aw/
+2026-04-01T06:43:08.4081379Z [36;1mmkdir -p /tmp/gh-aw/[0m
+2026-04-01T06:43:08.4081932Z [36;1mfind "/tmp/gh-aw/" -type f -print[0m
+2026-04-01T06:43:08.4082699Z [36;1mecho "GH_AW_AGENT_OUTPUT=/tmp/gh-aw/agent_output.json" >> "$GITHUB_OUTPUT"[0m
+2026-04-01T06:43:08.4091414Z shell: /usr/bin/bash -e {0}
+2026-04-01T06:43:08.4091917Z ##[endgroup]
+2026-04-01T06:43:08.4181044Z /tmp/gh-aw/agent_output.json
+2026-04-01T06:43:08.4182012Z /tmp/gh-aw/sandbox/agent/logs/process-1775025761461-146.log
+2026-04-01T06:43:08.4182816Z /tmp/gh-aw/agent-stdio.log
+2026-04-01T06:43:08.4214417Z /tmp/gh-aw/mcp-logs/mcp-gateway.log
+2026-04-01T06:43:08.4215015Z /tmp/gh-aw/mcp-logs/rpc-messages.jsonl
+2026-04-01T06:43:08.4215540Z /tmp/gh-aw/mcp-logs/tools.json
+2026-04-01T06:43:08.4216034Z /tmp/gh-aw/mcp-logs/stderr.log
+2026-04-01T06:43:08.4218683Z /tmp/gh-aw/mcp-logs/start-gateway.log
+2026-04-01T06:43:08.4219250Z /tmp/gh-aw/mcp-logs/safeoutputs.log
+2026-04-01T06:43:08.4219786Z /tmp/gh-aw/mcp-logs/safeoutputs/server.log
+2026-04-01T06:43:08.4220365Z /tmp/gh-aw/mcp-logs/gateway.md
+2026-04-01T06:43:08.4220839Z /tmp/gh-aw/mcp-logs/github.log
+2026-04-01T06:43:08.4221307Z /tmp/gh-aw/aw-prompts/prompt.txt

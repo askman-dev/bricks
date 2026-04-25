@@ -1,0 +1,19 @@
+﻿2026-04-01T06:43:08.5298685Z ##[group]Run actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+2026-04-01T06:43:08.5299412Z with:
+2026-04-01T06:43:08.5300006Z   github-token: ***
+2026-04-01T06:43:08.5301468Z   script: const { setupGlobals } = require('/home/runner/work/_temp/gh-aw/actions/setup_globals.cjs');
+setupGlobals(core, github, context, exec, io);
+const { main } = require('/home/runner/work/_temp/gh-aw/actions/missing_tool.cjs');
+await main();
+
+2026-04-01T06:43:08.5303045Z   debug: false
+2026-04-01T06:43:08.5303441Z   user-agent: actions/github-script
+2026-04-01T06:43:08.5303922Z   result-encoding: json
+2026-04-01T06:43:08.5304317Z   retries: 0
+2026-04-01T06:43:08.5304742Z   retry-exempt-status-codes: 400,401,403,404,422
+2026-04-01T06:43:08.5305260Z env:
+2026-04-01T06:43:08.5305680Z   GH_AW_AGENT_OUTPUT: /tmp/gh-aw/agent_output.json
+2026-04-01T06:43:08.5306250Z   GH_AW_MISSING_TOOL_CREATE_ISSUE: true
+2026-04-01T06:43:08.5307117Z   GH_AW_WORKFLOW_NAME: Bricks PR Review
+2026-04-01T06:43:08.5307593Z ##[endgroup]
+2026-04-01T06:43:08.6260433Z Max count: unlimited

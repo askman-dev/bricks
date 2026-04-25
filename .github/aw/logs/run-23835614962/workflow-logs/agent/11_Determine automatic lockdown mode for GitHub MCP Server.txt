@@ -1,0 +1,31 @@
+﻿2026-04-01T06:42:12.2431953Z ##[group]Run actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+2026-04-01T06:42:12.2432350Z with:
+2026-04-01T06:42:12.2433027Z   script: const determineAutomaticLockdown = require('/home/runner/work/_temp/gh-aw/actions/determine_automatic_lockdown.cjs');
+await determineAutomaticLockdown(github, context, core);
+
+2026-04-01T06:42:12.2433901Z   github-token: ***
+2026-04-01T06:42:12.2434096Z   debug: false
+2026-04-01T06:42:12.2434281Z   user-agent: actions/github-script
+2026-04-01T06:42:12.2434553Z   result-encoding: json
+2026-04-01T06:42:12.2434770Z   retries: 0
+2026-04-01T06:42:12.2434970Z   retry-exempt-status-codes: 400,401,403,404,422
+2026-04-01T06:42:12.2435228Z env:
+2026-04-01T06:42:12.2435386Z   DEFAULT_BRANCH: main
+2026-04-01T06:42:12.2435753Z   GH_AW_ASSETS_ALLOWED_EXTS: 
+2026-04-01T06:42:12.2435967Z   GH_AW_ASSETS_BRANCH: 
+2026-04-01T06:42:12.2436156Z   GH_AW_ASSETS_MAX_SIZE_KB: 0
+2026-04-01T06:42:12.2436409Z   GH_AW_MCP_LOG_DIR: /tmp/gh-aw/mcp-logs/safeoutputs
+2026-04-01T06:42:12.2436729Z   GH_AW_WORKFLOW_ID_SANITIZED: prreview
+2026-04-01T06:42:12.2437216Z   GH_AW_GITHUB_TOKEN: 
+2026-04-01T06:42:12.2437465Z   GH_AW_GITHUB_MCP_SERVER_TOKEN: 
+2026-04-01T06:42:12.2437681Z ##[endgroup]
+2026-04-01T06:42:12.3150799Z Determining automatic guard policy for GitHub MCP server
+2026-04-01T06:42:12.3152129Z Checking repository: askman-dev/bricks
+2026-04-01T06:42:12.4954400Z Repository visibility: public
+2026-04-01T06:42:12.4954999Z Repository is private: false
+2026-04-01T06:42:12.4960928Z Configured min-integrity: (not set)
+2026-04-01T06:42:12.4961481Z Configured repos: (not set)
+2026-04-01T06:42:12.4962480Z min-integrity not configured — automatically setting to 'approved' for public repository
+2026-04-01T06:42:12.4966378Z repos not configured — automatically setting to 'all' for public repository
+2026-04-01T06:42:12.4967616Z Automatic guard policy determination complete for public repository
+2026-04-01T06:42:12.4995277Z ##[warning]GitHub MCP guard policy automatically applied for public repository. min-integrity='approved' and repos='all' ensure only approved-integrity content is accessible.

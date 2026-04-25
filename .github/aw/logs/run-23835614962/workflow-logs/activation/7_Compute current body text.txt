@@ -1,0 +1,18 @@
+﻿2026-04-01T06:41:57.5272183Z ##[group]Run actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+2026-04-01T06:41:57.5272942Z with:
+2026-04-01T06:41:57.5274392Z   script: const { setupGlobals } = require('/home/runner/work/_temp/gh-aw/actions/setup_globals.cjs');
+setupGlobals(core, github, context, exec, io);
+const { main } = require('/home/runner/work/_temp/gh-aw/actions/compute_text.cjs');
+await main();
+
+2026-04-01T06:41:57.5276207Z   github-token: ***
+2026-04-01T06:41:57.5276607Z   debug: false
+2026-04-01T06:41:57.5277019Z   user-agent: actions/github-script
+2026-04-01T06:41:57.5277515Z   result-encoding: json
+2026-04-01T06:41:57.5278377Z   retries: 0
+2026-04-01T06:41:57.5278830Z   retry-exempt-status-codes: 400,401,403,404,422
+2026-04-01T06:41:57.5279379Z ##[endgroup]
+2026-04-01T06:41:57.8790870Z Repository permission level: admin
+2026-04-01T06:41:57.8791475Z text: 
+2026-04-01T06:41:57.8792068Z title: 
+2026-04-01T06:41:57.8792416Z body: 
