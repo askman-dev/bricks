@@ -1,0 +1,19 @@
+﻿2026-04-01T06:42:47.4039490Z ##[group]Run bash ${RUNNER_TEMP}/gh-aw/actions/stop_mcp_gateway.sh "$GATEWAY_PID"
+2026-04-01T06:42:47.4040053Z [36;1mbash ${RUNNER_TEMP}/gh-aw/actions/stop_mcp_gateway.sh "$GATEWAY_PID"[0m
+2026-04-01T06:42:47.4063481Z shell: /usr/bin/bash -e {0}
+2026-04-01T06:42:47.4063714Z env:
+2026-04-01T06:42:47.4063891Z   DEFAULT_BRANCH: main
+2026-04-01T06:42:47.4064104Z   GH_AW_ASSETS_ALLOWED_EXTS: 
+2026-04-01T06:42:47.4064327Z   GH_AW_ASSETS_BRANCH: 
+2026-04-01T06:42:47.4064535Z   GH_AW_ASSETS_MAX_SIZE_KB: 0
+2026-04-01T06:42:47.4064799Z   GH_AW_MCP_LOG_DIR: /tmp/gh-aw/mcp-logs/safeoutputs
+2026-04-01T06:42:47.4065105Z   GH_AW_WORKFLOW_ID_SANITIZED: prreview
+2026-04-01T06:42:47.4065529Z   MCP_GATEWAY_PORT: 80
+2026-04-01T06:42:47.4065998Z   MCP_GATEWAY_API_KEY: ***
+2026-04-01T06:42:47.4066229Z   GATEWAY_PID: 3577
+2026-04-01T06:42:47.4066421Z ##[endgroup]
+2026-04-01T06:42:47.4122872Z Stopping MCP gateway (PID: 3577)...
+2026-04-01T06:42:47.4222592Z Attempting graceful shutdown via /close endpoint...
+2026-04-01T06:42:47.4475337Z Gateway accepted close request
+2026-04-01T06:42:47.4477591Z Response: {"message":"Gateway shutdown initiated","serversTerminated":2,"status":"closed"}
+2026-04-01T06:42:48.4755358Z Gateway stopped gracefully via /close endpoint

@@ -1,0 +1,22 @@
+﻿2026-04-01T06:41:56.9545300Z ##[group]Run actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+2026-04-01T06:41:56.9546049Z with:
+2026-04-01T06:41:56.9549324Z   script: const { setupGlobals } = require('/home/runner/work/_temp/gh-aw/actions/setup_globals.cjs');
+setupGlobals(core, github, context, exec, io);
+const { main } = require('/home/runner/work/_temp/gh-aw/actions/check_workflow_timestamp_api.cjs');
+await main();
+
+2026-04-01T06:41:56.9551529Z   github-token: ***
+2026-04-01T06:41:56.9551942Z   debug: false
+2026-04-01T06:41:56.9552357Z   user-agent: actions/github-script
+2026-04-01T06:41:56.9552855Z   result-encoding: json
+2026-04-01T06:41:56.9553272Z   retries: 0
+2026-04-01T06:41:56.9553696Z   retry-exempt-status-codes: 400,401,403,404,422
+2026-04-01T06:41:56.9554237Z env:
+2026-04-01T06:41:56.9554629Z   GH_AW_WORKFLOW_FILE: pr-review.lock.yml
+2026-04-01T06:41:56.9555139Z ##[endgroup]
+2026-04-01T06:41:57.0683405Z Checking workflow timestamps using GitHub API:
+2026-04-01T06:41:57.0684168Z   Source: .github/workflows/pr-review.md
+2026-04-01T06:41:57.0684811Z   Lock file: .github/workflows/pr-review.lock.yml
+2026-04-01T06:41:57.5174042Z   Source last commit: 2026-03-30T15:28:27.000Z (a727e2b)
+2026-04-01T06:41:57.5174824Z   Lock last commit: 2026-03-30T15:28:27.000Z (a727e2b)
+2026-04-01T06:41:57.5175638Z ✅ Lock file is up to date (same commit)

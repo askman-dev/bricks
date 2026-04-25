@@ -356,29 +356,21 @@ class _MessageListState extends State<MessageList> {
                         'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
                       ),
                       margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-                      padding: isUser
-                          ? const EdgeInsets.symmetric(
-                              horizontal: BricksSpacing.md,
-                              vertical: BricksSpacing.sm,
-                            )
-                          : const EdgeInsets.symmetric(
-                              horizontal: BricksSpacing.xs,
-                              vertical: BricksSpacing.xs,
-                            ),
-                      width: isUser ? null : double.infinity,
-                      constraints: isUser
-                          ? BoxConstraints(
-                              maxWidth:
-                                  MediaQuery.of(context).size.width * 0.75,
-                            )
-                          : null,
-                      decoration: isUser
-                          ? BoxDecoration(
-                              color: const Color(0xFFF2F2F2),
-                              borderRadius:
-                                  BorderRadius.circular(BricksRadius.md),
-                            )
-                          : null,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: BricksSpacing.md,
+                        vertical: BricksSpacing.sm,
+                      ),
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.75,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(BricksRadius.lg),
+                        border: Border.all(
+                          color: AppColors.border,
+                          width: 0.5,
+                        ),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

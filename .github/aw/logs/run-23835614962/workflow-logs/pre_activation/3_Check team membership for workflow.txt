@@ -1,0 +1,17 @@
+﻿2026-04-01T06:41:37.7062635Z ##[group]Run actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+2026-04-01T06:41:37.7063405Z with:
+2026-04-01T06:41:37.7064083Z   github-token: ***
+2026-04-01T06:41:37.7065850Z   script: const { setupGlobals } = require('/home/runner/work/_temp/gh-aw/actions/setup_globals.cjs');
+setupGlobals(core, github, context, exec, io);
+const { main } = require('/home/runner/work/_temp/gh-aw/actions/check_membership.cjs');
+await main();
+
+2026-04-01T06:41:37.7067881Z   debug: false
+2026-04-01T06:41:37.7068342Z   user-agent: actions/github-script
+2026-04-01T06:41:37.7069168Z   result-encoding: json
+2026-04-01T06:41:37.7069596Z   retries: 0
+2026-04-01T06:41:37.7070048Z   retry-exempt-status-codes: 400,401,403,404,422
+2026-04-01T06:41:37.7070623Z env:
+2026-04-01T06:41:37.7071040Z   GH_AW_REQUIRED_ROLES: admin,maintainer,write
+2026-04-01T06:41:37.7071620Z ##[endgroup]
+2026-04-01T06:41:37.9677516Z ✅ Event workflow_dispatch does not require validation (write role allowed)

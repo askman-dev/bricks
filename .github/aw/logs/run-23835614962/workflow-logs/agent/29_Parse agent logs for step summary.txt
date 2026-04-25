@@ -1,0 +1,23 @@
+﻿2026-04-01T06:42:48.8789906Z ##[group]Run actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+2026-04-01T06:42:48.8790312Z with:
+2026-04-01T06:42:48.8791194Z   script: const { setupGlobals } = require('/home/runner/work/_temp/gh-aw/actions/setup_globals.cjs');
+setupGlobals(core, github, context, exec, io);
+const { main } = require('/home/runner/work/_temp/gh-aw/actions/parse_copilot_log.cjs');
+await main();
+
+2026-04-01T06:42:48.8792451Z   github-token: ***
+2026-04-01T06:42:48.8792646Z   debug: false
+2026-04-01T06:42:48.8792849Z   user-agent: actions/github-script
+2026-04-01T06:42:48.8793103Z   result-encoding: json
+2026-04-01T06:42:48.8793304Z   retries: 0
+2026-04-01T06:42:48.8793516Z   retry-exempt-status-codes: 400,401,403,404,422
+2026-04-01T06:42:48.8793785Z env:
+2026-04-01T06:42:48.8793955Z   DEFAULT_BRANCH: main
+2026-04-01T06:42:48.8794163Z   GH_AW_ASSETS_ALLOWED_EXTS: 
+2026-04-01T06:42:48.8794385Z   GH_AW_ASSETS_BRANCH: 
+2026-04-01T06:42:48.8794587Z   GH_AW_ASSETS_MAX_SIZE_KB: 0
+2026-04-01T06:42:48.8794849Z   GH_AW_MCP_LOG_DIR: /tmp/gh-aw/mcp-logs/safeoutputs
+2026-04-01T06:42:48.8795173Z   GH_AW_WORKFLOW_ID_SANITIZED: prreview
+2026-04-01T06:42:48.8795463Z   GH_AW_AGENT_OUTPUT: /tmp/gh-aw/sandbox/agent/logs/
+2026-04-01T06:42:48.8795728Z ##[endgroup]
+2026-04-01T06:42:48.9606205Z Copilot log parsed successfully

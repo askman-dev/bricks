@@ -1,0 +1,49 @@
+﻿2026-04-01T06:43:08.6344075Z ##[group]Run actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+2026-04-01T06:43:08.6344828Z with:
+2026-04-01T06:43:08.6345427Z   github-token: ***
+2026-04-01T06:43:08.6347313Z   script: const { setupGlobals } = require('/home/runner/work/_temp/gh-aw/actions/setup_globals.cjs');
+setupGlobals(core, github, context, exec, io);
+const { main } = require('/home/runner/work/_temp/gh-aw/actions/handle_agent_failure.cjs');
+await main();
+
+2026-04-01T06:43:08.6348980Z   debug: false
+2026-04-01T06:43:08.6349383Z   user-agent: actions/github-script
+2026-04-01T06:43:08.6349864Z   result-encoding: json
+2026-04-01T06:43:08.6350261Z   retries: 0
+2026-04-01T06:43:08.6350682Z   retry-exempt-status-codes: 400,401,403,404,422
+2026-04-01T06:43:08.6351229Z env:
+2026-04-01T06:43:08.6351629Z   GH_AW_AGENT_OUTPUT: /tmp/gh-aw/agent_output.json
+2026-04-01T06:43:08.6352197Z   GH_AW_WORKFLOW_NAME: Bricks PR Review
+2026-04-01T06:43:08.6352888Z   GH_AW_RUN_URL: https://github.com/askman-dev/bricks/actions/runs/23835614962
+2026-04-01T06:43:08.6353657Z   GH_AW_AGENT_CONCLUSION: failure
+2026-04-01T06:43:08.6354128Z   GH_AW_WORKFLOW_ID: pr-review
+2026-04-01T06:43:08.6354608Z   GH_AW_SECRET_VERIFICATION_RESULT: success
+2026-04-01T06:43:08.6355116Z   GH_AW_CHECKOUT_PR_SUCCESS: true
+2026-04-01T06:43:08.6355596Z   GH_AW_INFERENCE_ACCESS_ERROR: false
+2026-04-01T06:43:08.6356090Z   GH_AW_LOCKDOWN_CHECK_FAILED: false
+2026-04-01T06:43:08.6356770Z   GH_AW_GROUP_REPORTS: false
+2026-04-01T06:43:08.6357243Z   GH_AW_FAILURE_REPORT_AS_ISSUE: true
+2026-04-01T06:43:08.6357725Z   GH_AW_TIMEOUT_MINUTES: 10
+2026-04-01T06:43:08.6358143Z ##[endgroup]
+2026-04-01T06:43:09.1408249Z Agent conclusion: failure
+2026-04-01T06:43:09.1408882Z Workflow name: Bricks PR Review
+2026-04-01T06:43:09.1409491Z Workflow ID: pr-review
+2026-04-01T06:43:09.1409960Z Secret verification result: success
+2026-04-01T06:43:09.1410473Z Assignment error count: 0
+2026-04-01T06:43:09.1410946Z Assign copilot failure count: 0
+2026-04-01T06:43:09.1411444Z Create discussion error count: 0
+2026-04-01T06:43:09.1411956Z Code push failure count: 0
+2026-04-01T06:43:09.1412428Z Checkout PR success: true
+2026-04-01T06:43:09.1412889Z Inference access error: false
+2026-04-01T06:43:09.1413364Z Push repo-memory result: 
+2026-04-01T06:43:09.1414059Z App token minting failed (safe_outputs/conclusion/activation): false/false/false
+2026-04-01T06:43:09.1414843Z Lockdown check failed: false
+2026-04-01T06:43:09.1415316Z Agent output content length: 13
+2026-04-01T06:43:09.1415836Z Searching for pull request from branch: main
+2026-04-01T06:43:09.1416417Z No pull request found for branch: main
+2026-04-01T06:43:09.1417296Z Parent issue creation is disabled (group-reports: false)
+2026-04-01T06:43:09.1418351Z Checking for existing issue with title: "[aw] Bricks PR Review failed"
+2026-04-01T06:43:09.2213384Z No existing issue found, creating a new one
+2026-04-01T06:43:09.2248903Z Agent output content length: 13
+2026-04-01T06:43:09.2249698Z Found 1 engine error message(s) in agent-stdio.log
+2026-04-01T06:43:09.3715377Z ##[warning]Failed to create or update failure tracking issue: Resource not accessible by integration

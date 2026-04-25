@@ -1,0 +1,5 @@
+{"ts":1775025754.073,"client":"::1","host":"-","dest":"-:-","method":"-","status":0,"decision":"NONE_NONE","url":"error:transaction-end-before-headers"}
+{"ts":1775025759.109,"client":"::1","host":"-","dest":"-:-","method":"-","status":0,"decision":"NONE_NONE","url":"error:transaction-end-before-headers"}
+{"ts":1775025761.941,"client":"172.30.0.30","host":"api.githubcopilot.com:443","dest":"140.82.112.21:443","method":"CONNECT","status":200,"decision":"TCP_TUNNEL","url":"api.githubcopilot.com:443"}
+{"ts":1775025762.059,"client":"172.30.0.30","host":"api.githubcopilot.com:443","dest":"140.82.112.21:443","method":"CONNECT","status":200,"decision":"TCP_TUNNEL","url":"api.githubcopilot.com:443"}
+{"ts":1775025764.144,"client":"::1","host":"-","dest":"-:-","method":"-","status":0,"decision":"NONE_NONE","url":"error:transaction-end-before-headers"}

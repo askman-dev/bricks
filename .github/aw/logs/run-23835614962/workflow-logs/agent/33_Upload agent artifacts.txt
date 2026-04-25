@@ -1,0 +1,39 @@
+﻿2026-04-01T06:42:49.3610311Z ##[group]Run actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+2026-04-01T06:42:49.3610739Z with:
+2026-04-01T06:42:49.3610914Z   name: agent
+2026-04-01T06:42:49.3611845Z   path: /tmp/gh-aw/aw-prompts/prompt.txt
+/tmp/gh-aw/sandbox/agent/logs/
+/tmp/gh-aw/redacted-urls.log
+/tmp/gh-aw/mcp-logs/
+/tmp/gh-aw/agent-stdio.log
+/tmp/gh-aw/agent/
+/tmp/gh-aw/safeoutputs.jsonl
+/tmp/gh-aw/agent_output.json
+/tmp/gh-aw/aw-*.patch
+/tmp/gh-aw/aw-*.bundle
+
+2026-04-01T06:42:49.3612841Z   if-no-files-found: ignore
+2026-04-01T06:42:49.3613069Z   compression-level: 6
+2026-04-01T06:42:49.3613268Z   overwrite: false
+2026-04-01T06:42:49.3613477Z   include-hidden-files: false
+2026-04-01T06:42:49.3613703Z   archive: true
+2026-04-01T06:42:49.3613880Z env:
+2026-04-01T06:42:49.3614049Z   DEFAULT_BRANCH: main
+2026-04-01T06:42:49.3614256Z   GH_AW_ASSETS_ALLOWED_EXTS: 
+2026-04-01T06:42:49.3614475Z   GH_AW_ASSETS_BRANCH: 
+2026-04-01T06:42:49.3614676Z   GH_AW_ASSETS_MAX_SIZE_KB: 0
+2026-04-01T06:42:49.3614929Z   GH_AW_MCP_LOG_DIR: /tmp/gh-aw/mcp-logs/safeoutputs
+2026-04-01T06:42:49.3615263Z   GH_AW_WORKFLOW_ID_SANITIZED: prreview
+2026-04-01T06:42:49.3615509Z ##[endgroup]
+2026-04-01T06:42:49.5127798Z With the provided path, there will be 13 files uploaded
+2026-04-01T06:42:49.5135239Z Artifact name is valid!
+2026-04-01T06:42:49.5135731Z Root directory input is valid!
+2026-04-01T06:42:49.5733793Z Uploading artifact: agent.zip
+2026-04-01T06:42:49.5788952Z Beginning upload of artifact content to blob storage
+2026-04-01T06:42:49.6686333Z Uploaded bytes 45722
+2026-04-01T06:42:49.6826194Z Finished uploading artifact content to blob storage!
+2026-04-01T06:42:49.6827433Z SHA256 digest of uploaded artifact is 1088e3ef92b0dd6091313cf33a19e94a801aca25845b158bb8819a632a6cca4d
+2026-04-01T06:42:49.6828355Z Finalizing artifact upload
+2026-04-01T06:42:49.7827911Z Artifact agent successfully finalized. Artifact ID 6214890911
+2026-04-01T06:42:49.7829076Z Artifact agent has been successfully uploaded! Final size is 45722 bytes. Artifact ID is 6214890911
+2026-04-01T06:42:49.7833537Z Artifact download URL: https://github.com/askman-dev/bricks/actions/runs/23835614962/artifacts/6214890911

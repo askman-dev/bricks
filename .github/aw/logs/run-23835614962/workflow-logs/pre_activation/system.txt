@@ -1,0 +1,9 @@
+2026-04-01T06:41:15.7290000Z Evaluating pre_activation.if
+2026-04-01T06:41:15.7290000Z Evaluating: (success() && (((github.event_name != 'pull_request') || (github.event.pull_request.head.repo.id == github.repository_id))))
+2026-04-01T06:41:15.7290000Z Expanded: (true && (('workflow_dispatch' != 'pull_request') || (github.event.pull_request.head.repo.id == github.repository_id)))
+2026-04-01T06:41:15.7290000Z Result: true
+2026-04-01T06:41:15.7330000Z Requested labels: ubuntu-slim
+2026-04-01T06:41:15.7330000Z Job defined at: askman-dev/bricks/.github/workflows/pr-review.lock.yml@refs/heads/main
+2026-04-01T06:41:15.7330000Z Waiting for a runner to pick up this job...
+2026-04-01T06:41:16.3740000Z Job is waiting for a hosted runner to come online.
+2026-04-01T06:41:16.3740000Z Job is about to start running on the hosted runner: GitHub Actions 1000001481

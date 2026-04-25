@@ -1,6 +1,7 @@
 // Flutter dependency – intentionally thin.
 // ignore: depend_on_referenced_packages
 import 'package:flutter/material.dart';
+import 'tokens.dart';
 
 /// Provides the Bricks [ThemeData] for light and dark modes.
 class BricksTheme {
@@ -16,7 +17,19 @@ class BricksTheme {
 
   static ThemeData light() => _buildTheme(Brightness.light);
 
-  static ThemeData dark() => _buildTheme(Brightness.dark);
+  static ThemeData dark() => ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: AppColors.background,
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF4A90D9),
+          surface: AppColors.surface,
+          surfaceContainerHighest: AppColors.surface2,
+          onSurface: AppColors.textPrimary,
+          onSurfaceVariant: AppColors.textSecondary,
+          outline: AppColors.textTertiary,
+        ),
+      );
 
   static ThemeData _buildTheme(Brightness brightness) => ThemeData(
         useMaterial3: true,

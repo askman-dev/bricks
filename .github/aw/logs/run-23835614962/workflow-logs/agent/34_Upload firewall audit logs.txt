@@ -1,0 +1,33 @@
+﻿2026-04-01T06:42:49.7954184Z ##[group]Run actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+2026-04-01T06:42:49.7954600Z with:
+2026-04-01T06:42:49.7954793Z   name: firewall-audit-logs
+2026-04-01T06:42:49.7955153Z   path: /tmp/gh-aw/sandbox/firewall/logs/
+/tmp/gh-aw/sandbox/firewall/audit/
+
+2026-04-01T06:42:49.7955545Z   if-no-files-found: ignore
+2026-04-01T06:42:49.7955777Z   compression-level: 6
+2026-04-01T06:42:49.7955986Z   overwrite: false
+2026-04-01T06:42:49.7956195Z   include-hidden-files: false
+2026-04-01T06:42:49.7956429Z   archive: true
+2026-04-01T06:42:49.7956614Z env:
+2026-04-01T06:42:49.7956787Z   DEFAULT_BRANCH: main
+2026-04-01T06:42:49.7957462Z   GH_AW_ASSETS_ALLOWED_EXTS: 
+2026-04-01T06:42:49.7957864Z   GH_AW_ASSETS_BRANCH: 
+2026-04-01T06:42:49.7958178Z   GH_AW_ASSETS_MAX_SIZE_KB: 0
+2026-04-01T06:42:49.7958462Z   GH_AW_MCP_LOG_DIR: /tmp/gh-aw/mcp-logs/safeoutputs
+2026-04-01T06:42:49.7958982Z   GH_AW_WORKFLOW_ID_SANITIZED: prreview
+2026-04-01T06:42:49.7959262Z ##[endgroup]
+2026-04-01T06:42:49.9401281Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-04-01T06:42:49.9403376Z The least common ancestor is /tmp/gh-aw/sandbox/firewall. This will be the root directory of the artifact
+2026-04-01T06:42:49.9404215Z With the provided path, there will be 7 files uploaded
+2026-04-01T06:42:49.9409288Z Artifact name is valid!
+2026-04-01T06:42:49.9409955Z Root directory input is valid!
+2026-04-01T06:42:49.9922444Z Uploading artifact: firewall-audit-logs.zip
+2026-04-01T06:42:49.9966067Z Beginning upload of artifact content to blob storage
+2026-04-01T06:42:50.0710789Z Uploaded bytes 10689
+2026-04-01T06:42:50.0835923Z Finished uploading artifact content to blob storage!
+2026-04-01T06:42:50.0839388Z SHA256 digest of uploaded artifact is ae6c5c7d53e6a24c9112f896c9cc5c4f6557795f0663a282a713abcb5e116574
+2026-04-01T06:42:50.0840468Z Finalizing artifact upload
+2026-04-01T06:42:50.1825467Z Artifact firewall-audit-logs successfully finalized. Artifact ID 6214891008
+2026-04-01T06:42:50.1826736Z Artifact firewall-audit-logs has been successfully uploaded! Final size is 10689 bytes. Artifact ID is 6214891008
+2026-04-01T06:42:50.1831053Z Artifact download URL: https://github.com/askman-dev/bricks/actions/runs/23835614962/artifacts/6214891008
