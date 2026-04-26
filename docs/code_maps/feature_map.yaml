@@ -223,3 +223,30 @@ products:
           - 插件启动时可通过 `openclaw agents list --json` 抓取 OpenClaw agents 并上报到 Bricks platform。
           - 插件 ACK body 仅包含 `cursor` 与 `ackedEventIds` 且可推进本地 cursor。
           - 收到 `message.created` 事件后可执行 create + patch 消息回写。
+
+  - product_id: docs_site
+    name: Docusaurus Docs Site
+    platform:
+      - nodejs
+      - docusaurus
+      - vercel-static
+    entry_points:
+      - path: apps/docs_site/docusaurus.config.ts
+        route: /docs/
+      - path: vercel.json
+        route: rewrite /docs/*
+      - path: tools/vercel-build.sh
+        route: build/web/docs artifact assembly
+    features:
+      - feature_id: docs_site_hosting
+        name: Docusaurus 文档子路径挂载
+        user_value: 用户可通过 `/docs/` 访问文档站点，并与 Flutter Web 主站共用同一域名部署。
+        entry_paths:
+          - route: /docs/
+            route_hint: apps/docs_site/docusaurus.config.ts
+          - route: /docs/:path*
+            route_hint: vercel.json
+        smoke_checks:
+          - 执行 `DOCS_URL=http://localhost:3000 DOCS_BASE_URL=/docs/ npm run build` 后，docs 输出可被 `/docs/` 前缀访问。
+          - 执行 `bash ./tools/vercel-build.sh` 后，`apps/mobile_chat_app/build/web/docs/index.html` 存在。
+          - 本地静态服务访问 `/docs/` 呈现 Docusaurus 页面，访问 `/` 仍呈现 Flutter Web 首页。

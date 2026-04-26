@@ -374,6 +374,32 @@ index:
       - 上游接口字段变化可能导致回写消息失败。
       - '`openclaw agents list --json` 输出结构变化时，插件可能无法抓取或上报完整 Agent 列表。'
 
+  - feature_id: docs_site_hosting
+    capability: Docusaurus docs site 挂载到 /docs 并与 Flutter Web 同域部署
+    code_index:
+      - apps/docs_site/docusaurus.config.ts
+      - tools/vercel-build.sh
+      - vercel.json
+    doc_index:
+      - docs/intro.md
+      - docs/get-started/quickstart.md
+      - docs/product/overview.md
+      - docs/plans/2026-04-26-12-19-docs-subpath-vercel-integration.md
+    test_index:
+      - tools/vercel-build.sh
+    keywords:
+      - docs
+      - docusaurus
+      - baseUrl
+      - routeBasePath
+      - vercel rewrites
+      - subpath deployment
+      - flutter web output
+    change_risks:
+      - DOCS_URL 若误含 `/docs` 会导致静态资源 URL 双重前缀并产生 404。
+      - rewrites 顺序若把 Flutter fallback 放在 `/docs` 之前，会让 docs 路由错误落入 SPA。
+      - 若先复制 docs 再执行 Flutter build，`build/web/docs` 可能被 Flutter 构建流程覆盖。
+
 maintenance_rules:
   update_required_when:
     - 新增、删除或重命名用户可见功能入口。
