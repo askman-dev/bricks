@@ -22,7 +22,7 @@ The docs site is managed as an independent project in `website/` and renders con
 
 ```bash
 cd website
-npm install
+npm ci
 npm run start
 npm run build
 ```

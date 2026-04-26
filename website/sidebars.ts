@@ -36,6 +36,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Plans',
       items: [
+        'plans/2026-04-26-13-20-UTC-docusaurus-site-implementation',
         'plans/2026-04-26-10-20-UTC-docusaurus-doc-ia-restructure',
         'plans/2026-04-21-07-57-UTC-readme-refresh-consolidated-plan',
         'plans/2026-04-08-02-40-UTC-code-map-foundation',

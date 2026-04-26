@@ -11,6 +11,11 @@ const config: Config = {
   organizationName: 'bricks',
   projectName: 'bricks-docs',
 
+  future: {
+    faster: true,
+    v4: true,
+  },
+
   onBrokenLinks: 'warn',
 
   markdown: {

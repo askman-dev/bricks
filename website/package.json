@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "DOCUSAURUS_BUNDLER=rspack docusaurus start",
-    "build": "DOCUSAURUS_BUNDLER=rspack docusaurus build",
+    "start": "docusaurus start",
+    "build": "docusaurus build",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear"
   },
