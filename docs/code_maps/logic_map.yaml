@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-04-24
+last_updated: 2026-04-26
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -67,6 +67,7 @@ index:
       - docs/plans/2026-04-23-17-13-WIB-openclaw-agents-capture-display.md
       - docs/plans/2026-04-23-15-33-openclaw-selected-node-routing.md
       - docs/plans/2026-04-24-12-15-dispatch-avatar-placeholder.md
+      - docs/plans/2026-04-26-02-45-UTC-jump-to-latest-message.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
@@ -111,6 +112,7 @@ index:
       - selected node routing
       - router selector
       - node-scoped openclaw dispatch
+      - jump-to-latest button
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
@@ -137,6 +139,7 @@ index:
       - Agent 详情页“修改配置/发起对话”回调若未正确关闭抽屉与路由跳转，可能出现重复页面栈或会话 Agent 未更新。
       - OpenClaw `@` 菜单若使用错误 nodeId 查询 agents，会导致用户引用到其他节点的 Agent 或看到空列表。
       - 设置页返回后若未刷新节点列表，聊天页路由菜单可能继续显示过期节点名称或缺少新节点。
+      - 若“回到最新消息”按钮显隐阈值或滚动目标设置不当，用户可能误判已到达最新消息或无法快速回到底部。
 
   - feature_id: model_settings
     capability: 模型配置读写

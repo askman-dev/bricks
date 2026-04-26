@@ -86,6 +86,27 @@ void main() {
 
       expect(scrollable.position.pixels, greaterThan(0));
     });
+
+    testWidgets('shows jump-to-latest button and scrolls to bottom when tapped',
+        (tester) async {
+      await tester.pumpWidget(_build(_messages('jump', 60)));
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      scrollable.position.jumpTo(0);
+      await tester.pump();
+
+      final jumpButton = find.byTooltip('Jump to latest');
+      expect(jumpButton, findsOneWidget);
+
+      await tester.tap(jumpButton);
+      await tester.pumpAndSettle();
+
+      expect(
+        scrollable.position.pixels,
+        closeTo(scrollable.position.maxScrollExtent, 1.0),
+      );
+    });
   });
 
   group('MessageList streaming without messageId', () {
@@ -385,9 +406,8 @@ void main() {
       // Completed check inside user bubble uses the onUserMessageContainer
       // token from ChatColors — verifies the widget reads the theme token,
       // not a hard-coded color value.
-      final chatColors =
-          Theme.of(tester.element(find.byKey(
-                const ValueKey<String>('user-delivery-u-default-completed'))))
+      final chatColors = Theme.of(tester.element(find.byKey(
+                  const ValueKey<String>('user-delivery-u-default-completed'))))
               .extension<ChatColors>() ??
           ChatColors.light;
       expect(icons.last.color, chatColors.onUserMessageContainer);
