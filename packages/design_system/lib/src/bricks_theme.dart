@@ -21,21 +21,28 @@ class BricksTheme {
   static ThemeData dark() => ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: AppColors.background,
+        scaffoldBackgroundColor: AppColors.backgroundBase,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.backgroundChrome,
+          foregroundColor: AppColors.textPrimary,
+          surfaceTintColor: Colors.transparent,
+        ),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF4A90D9),
-          surface: AppColors.surface,
-          surfaceContainerHighest: AppColors.surface2,
+          primary: AppColors.accentPrimary,
+          onPrimary: AppColors.textPrimary,
+          surface: AppColors.surfaceDefault,
+          surfaceContainerHighest: AppColors.surfaceElevated,
           onSurface: AppColors.textPrimary,
           onSurfaceVariant: AppColors.textSecondary,
-          outline: AppColors.textTertiary,
+          outline: AppColors.borderSubtle,
+          error: AppColors.danger,
         ),
         extensions: const [ChatColors.dark],
       );
 
   static ThemeData _buildTheme(Brightness brightness) => ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF4A90D9),
+        colorSchemeSeed: AppColors.accentPrimary,
         brightness: brightness,
         extensions: const [ChatColors.light],
       );

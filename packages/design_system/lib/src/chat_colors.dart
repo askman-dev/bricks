@@ -4,129 +4,120 @@ import 'package:flutter/material.dart';
 import 'tokens.dart';
 
 /// Semantic color tokens for the chat module.
-///
-/// Business components read these tokens; they never hard-code a color value or
-/// branch on [Brightness]. The theme layer is responsible for providing the
-/// correct [ChatColors] instance via [ThemeExtension].
-///
-/// Usage:
-/// ```dart
-/// final chatColors = Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
-/// ```
 class ChatColors extends ThemeExtension<ChatColors> {
   const ChatColors({
-    required this.userMessageContainer,
-    required this.onUserMessageContainer,
-    required this.userMessageMeta,
+    required this.messageUserBackground,
+    required this.messageAssistantBackground,
+    required this.onMessageUser,
+    required this.onMessageAssistant,
+    required this.metaText,
     required this.agentName,
     required this.agentBadgeContainer,
     required this.onAgentBadgeContainer,
     required this.agentAccent,
-    required this.onAgentMessageContainer,
-    required this.agentMessageMeta,
+    required this.linkText,
+    required this.composerBackground,
+    required this.composerBorder,
+    required this.composerBorderFocus,
+    required this.composerPlaceholder,
+    required this.codeBlockBackground,
+    required this.quoteBackground,
   });
 
-  // ---------------------------------------------------------------------------
-  // User message bubble
-  // ---------------------------------------------------------------------------
-
-  /// Background color of the user message bubble container.
-  final Color userMessageContainer;
-
-  /// Foreground color (text, icons) rendered inside the user message bubble.
-  final Color onUserMessageContainer;
-
-  /// Secondary / meta text color inside the user message bubble (timestamp,
-  /// thread id, delivery status).
-  final Color userMessageMeta;
-
-  // ---------------------------------------------------------------------------
-  // Agent (assistant) header & badge
-  // ---------------------------------------------------------------------------
-
-  /// Color of the agent name label shown above an assistant message.
+  final Color messageUserBackground;
+  final Color messageAssistantBackground;
+  final Color onMessageUser;
+  final Color onMessageAssistant;
+  final Color metaText;
   final Color agentName;
-
-  /// Background of the nodeType badge chip shown next to the agent name.
   final Color agentBadgeContainer;
-
-  /// Text color inside the nodeType badge chip.
   final Color onAgentBadgeContainer;
-
-  // ---------------------------------------------------------------------------
-  // Agent (assistant) message body
-  // ---------------------------------------------------------------------------
-
-  /// Accent color used for the thinking/streaming progress indicator and
-  /// arbitration routing labels in agent messages.
   final Color agentAccent;
+  final Color linkText;
+  final Color composerBackground;
+  final Color composerBorder;
+  final Color composerBorderFocus;
+  final Color composerPlaceholder;
+  final Color codeBlockBackground;
+  final Color quoteBackground;
 
-  /// Main text color of an agent message.
-  final Color onAgentMessageContainer;
-
-  /// Secondary / meta text color rendered below an agent message (timestamp,
-  /// model name, etc.).
-  final Color agentMessageMeta;
-
-  // ---------------------------------------------------------------------------
-  // Default instances (used as fallback when no ThemeExtension is registered)
-  // ---------------------------------------------------------------------------
-
-  /// Default light-mode chat colors.
   static const ChatColors light = ChatColors(
-    userMessageContainer: Color(0xFFF2F2F2),
-    onUserMessageContainer: Color(0xFF1C1C1E),
-    userMessageMeta: Color(0xFF3A3A3C),
-    agentName: Color(0xFF4A90D9),
-    agentBadgeContainer: Color(0xFFE5E5EA),
-    onAgentBadgeContainer: Color(0xFF636366),
-    agentAccent: Color(0xFF4A90D9),
-    onAgentMessageContainer: Color(0xFF1C1C1E),
-    agentMessageMeta: Color(0xFF8E8E93),
+    messageUserBackground: Color(0xFFE9EBEC),
+    messageAssistantBackground: Colors.transparent,
+    onMessageUser: Color(0xFF1F2328),
+    onMessageAssistant: Color(0xFF1F2328),
+    metaText: Color(0xFF657786),
+    agentName: Color(0xFF1D9BF0),
+    agentBadgeContainer: Color(0xFFE8EEF2),
+    onAgentBadgeContainer: Color(0xFF576470),
+    agentAccent: Color(0xFF1D9BF0),
+    linkText: Color(0xFF1D9BF0),
+    composerBackground: Color(0xFFF5F7F8),
+    composerBorder: Color(0xFFD0D5D9),
+    composerBorderFocus: Color(0xFF536471),
+    composerPlaceholder: Color(0xFF7A838A),
+    codeBlockBackground: Color(0xFFEFF3F4),
+    quoteBackground: Color(0xFFE8EEF2),
   );
 
-  /// Default dark-mode chat colors.
   static const ChatColors dark = ChatColors(
-    userMessageContainer: AppColors.surface2,
-    onUserMessageContainer: AppColors.textPrimary,
-    userMessageMeta: AppColors.textSecondary,
-    agentName: Color(0xFF4A90D9),
-    agentBadgeContainer: AppColors.surface3,
+    messageUserBackground: AppColors.surfaceDefault,
+    messageAssistantBackground: Colors.transparent,
+    onMessageUser: AppColors.textPrimary,
+    onMessageAssistant: AppColors.textPrimary,
+    metaText: AppColors.textSecondary,
+    agentName: AppColors.accentPrimary,
+    agentBadgeContainer: AppColors.surfaceSubtle,
     onAgentBadgeContainer: AppColors.textSecondary,
-    agentAccent: Color(0xFF4A90D9),
-    onAgentMessageContainer: AppColors.textPrimary,
-    agentMessageMeta: AppColors.textTertiary,
+    agentAccent: AppColors.accentPrimary,
+    linkText: AppColors.accentPrimary,
+    composerBackground: AppColors.surfaceElevated,
+    composerBorder: AppColors.borderSubtle,
+    composerBorderFocus: AppColors.borderFocus,
+    composerPlaceholder: AppColors.textTertiary,
+    codeBlockBackground: AppColors.surfaceElevated,
+    quoteBackground: AppColors.surfaceSubtle,
   );
-
-  // ---------------------------------------------------------------------------
-  // ThemeExtension overrides
-  // ---------------------------------------------------------------------------
 
   @override
   ChatColors copyWith({
-    Color? userMessageContainer,
-    Color? onUserMessageContainer,
-    Color? userMessageMeta,
+    Color? messageUserBackground,
+    Color? messageAssistantBackground,
+    Color? onMessageUser,
+    Color? onMessageAssistant,
+    Color? metaText,
     Color? agentName,
     Color? agentBadgeContainer,
     Color? onAgentBadgeContainer,
     Color? agentAccent,
-    Color? onAgentMessageContainer,
-    Color? agentMessageMeta,
+    Color? linkText,
+    Color? composerBackground,
+    Color? composerBorder,
+    Color? composerBorderFocus,
+    Color? composerPlaceholder,
+    Color? codeBlockBackground,
+    Color? quoteBackground,
   }) {
     return ChatColors(
-      userMessageContainer: userMessageContainer ?? this.userMessageContainer,
-      onUserMessageContainer:
-          onUserMessageContainer ?? this.onUserMessageContainer,
-      userMessageMeta: userMessageMeta ?? this.userMessageMeta,
+      messageUserBackground:
+          messageUserBackground ?? this.messageUserBackground,
+      messageAssistantBackground:
+          messageAssistantBackground ?? this.messageAssistantBackground,
+      onMessageUser: onMessageUser ?? this.onMessageUser,
+      onMessageAssistant: onMessageAssistant ?? this.onMessageAssistant,
+      metaText: metaText ?? this.metaText,
       agentName: agentName ?? this.agentName,
       agentBadgeContainer: agentBadgeContainer ?? this.agentBadgeContainer,
       onAgentBadgeContainer:
           onAgentBadgeContainer ?? this.onAgentBadgeContainer,
       agentAccent: agentAccent ?? this.agentAccent,
-      onAgentMessageContainer:
-          onAgentMessageContainer ?? this.onAgentMessageContainer,
-      agentMessageMeta: agentMessageMeta ?? this.agentMessageMeta,
+      linkText: linkText ?? this.linkText,
+      composerBackground: composerBackground ?? this.composerBackground,
+      composerBorder: composerBorder ?? this.composerBorder,
+      composerBorderFocus: composerBorderFocus ?? this.composerBorderFocus,
+      composerPlaceholder: composerPlaceholder ?? this.composerPlaceholder,
+      codeBlockBackground: codeBlockBackground ?? this.codeBlockBackground,
+      quoteBackground: quoteBackground ?? this.quoteBackground,
     );
   }
 
@@ -134,22 +125,34 @@ class ChatColors extends ThemeExtension<ChatColors> {
   ChatColors lerp(ChatColors? other, double t) {
     if (other == null) return this;
     return ChatColors(
-      userMessageContainer:
-          Color.lerp(userMessageContainer, other.userMessageContainer, t)!,
-      onUserMessageContainer:
-          Color.lerp(onUserMessageContainer, other.onUserMessageContainer, t)!,
-      userMessageMeta:
-          Color.lerp(userMessageMeta, other.userMessageMeta, t)!,
+      messageUserBackground:
+          Color.lerp(messageUserBackground, other.messageUserBackground, t)!,
+      messageAssistantBackground: Color.lerp(
+        messageAssistantBackground,
+        other.messageAssistantBackground,
+        t,
+      )!,
+      onMessageUser: Color.lerp(onMessageUser, other.onMessageUser, t)!,
+      onMessageAssistant:
+          Color.lerp(onMessageAssistant, other.onMessageAssistant, t)!,
+      metaText: Color.lerp(metaText, other.metaText, t)!,
       agentName: Color.lerp(agentName, other.agentName, t)!,
       agentBadgeContainer:
           Color.lerp(agentBadgeContainer, other.agentBadgeContainer, t)!,
       onAgentBadgeContainer:
           Color.lerp(onAgentBadgeContainer, other.onAgentBadgeContainer, t)!,
       agentAccent: Color.lerp(agentAccent, other.agentAccent, t)!,
-      onAgentMessageContainer:
-          Color.lerp(onAgentMessageContainer, other.onAgentMessageContainer, t)!,
-      agentMessageMeta:
-          Color.lerp(agentMessageMeta, other.agentMessageMeta, t)!,
+      linkText: Color.lerp(linkText, other.linkText, t)!,
+      composerBackground:
+          Color.lerp(composerBackground, other.composerBackground, t)!,
+      composerBorder: Color.lerp(composerBorder, other.composerBorder, t)!,
+      composerBorderFocus:
+          Color.lerp(composerBorderFocus, other.composerBorderFocus, t)!,
+      composerPlaceholder:
+          Color.lerp(composerPlaceholder, other.composerPlaceholder, t)!,
+      codeBlockBackground:
+          Color.lerp(codeBlockBackground, other.codeBlockBackground, t)!,
+      quoteBackground: Color.lerp(quoteBackground, other.quoteBackground, t)!,
     );
   }
 }
