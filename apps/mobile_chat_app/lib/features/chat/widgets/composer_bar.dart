@@ -69,6 +69,7 @@ class _ComposerBarState extends State<ComposerBar>
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   late AnimationController _spinController;
+  bool _hasDraft = false;
 
   @override
   void initState() {
@@ -78,6 +79,13 @@ class _ComposerBarState extends State<ComposerBar>
       duration: const Duration(seconds: 1),
     )..repeat();
     _focusNode.addListener(() => setState(() {}));
+    _controller.addListener(_onDraftChanged);
+  }
+
+  void _onDraftChanged() {
+    final nextHasDraft = _controller.text.trim().isNotEmpty;
+    if (_hasDraft == nextHasDraft) return;
+    setState(() => _hasDraft = nextHasDraft);
   }
 
   void _submit() {
@@ -114,6 +122,7 @@ class _ComposerBarState extends State<ComposerBar>
   @override
   void dispose() {
     _spinController.dispose();
+    _controller.removeListener(_onDraftChanged);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -166,9 +175,9 @@ class _ComposerBarState extends State<ComposerBar>
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.fromLTRB(
                         BricksSpacing.md,
-                        BricksSpacing.sm,
+                        6,
                         BricksSpacing.md,
-                        BricksSpacing.xs,
+                        2,
                       ),
                     ),
                   ),
@@ -209,7 +218,7 @@ class _ComposerBarState extends State<ComposerBar>
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,
-                                  color: chatColors.agentAccent,
+                                  color: chatColors.composerActionIdle,
                                 ),
                               ),
                             ),
@@ -254,7 +263,7 @@ class _ComposerBarState extends State<ComposerBar>
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,
-                                  color: chatColors.agentAccent,
+                                  color: chatColors.composerActionIdle,
                                 ),
                               ),
                             ),
@@ -269,7 +278,7 @@ class _ComposerBarState extends State<ComposerBar>
                             enabled: !widget.isStreaming,
                             icon: Icon(
                               Icons.tune,
-                              color: chatColors.metaText,
+                              color: chatColors.composerActionIdle,
                             ),
                             onSelected: (action) {
                               switch (action) {
@@ -312,8 +321,8 @@ class _ComposerBarState extends State<ComposerBar>
                             turns: _spinController,
                             child: IconButton.filled(
                               style: IconButton.styleFrom(
-                                backgroundColor: chatColors.agentAccent,
-                                foregroundColor: chatColors.onMessageUser,
+                                backgroundColor: chatColors.sendActive,
+                                foregroundColor: AppColors.backgroundBase,
                               ),
                               onPressed: widget.onStop,
                               icon: Container(
@@ -322,7 +331,7 @@ class _ComposerBarState extends State<ComposerBar>
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: chatColors.onMessageUser,
+                                    color: AppColors.backgroundBase,
                                     width: 2,
                                   ),
                                 ),
@@ -344,7 +353,9 @@ class _ComposerBarState extends State<ComposerBar>
                                   )
                                 : Icon(
                                     Icons.send,
-                                    color: chatColors.agentAccent,
+                                    color: _hasDraft
+                                        ? chatColors.sendActive
+                                        : chatColors.sendIdle,
                                   ),
                             tooltip: 'Send',
                           ),

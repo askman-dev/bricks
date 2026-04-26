@@ -22,6 +22,12 @@ class ChatColors extends ThemeExtension<ChatColors> {
     required this.composerPlaceholder,
     required this.codeBlockBackground,
     required this.quoteBackground,
+    required this.composerActionIdle,
+    required this.composerActionHoverOrPressed,
+    required this.composerActionDisabled,
+    required this.sendIdle,
+    required this.sendActive,
+    required this.agentIdentity,
   });
 
   final Color messageUserBackground;
@@ -40,6 +46,12 @@ class ChatColors extends ThemeExtension<ChatColors> {
   final Color composerPlaceholder;
   final Color codeBlockBackground;
   final Color quoteBackground;
+  final Color composerActionIdle;
+  final Color composerActionHoverOrPressed;
+  final Color composerActionDisabled;
+  final Color sendIdle;
+  final Color sendActive;
+  final Color agentIdentity;
 
   static const ChatColors light = ChatColors(
     messageUserBackground: Color(0xFFE9EBEC),
@@ -58,6 +70,12 @@ class ChatColors extends ThemeExtension<ChatColors> {
     composerPlaceholder: AppColors.textSecondary,
     codeBlockBackground: Color(0xFFEFF3F4),
     quoteBackground: Color(0xFFE8EEF2),
+    composerActionIdle: Color(0xFF576470),
+    composerActionHoverOrPressed: Color(0xFF1F2328),
+    composerActionDisabled: Color(0xFF9EA6AE),
+    sendIdle: Color(0xFF576470),
+    sendActive: Color(0xFF1D9BF0),
+    agentIdentity: Color(0xFF1F2328),
   );
 
   static const ChatColors dark = ChatColors(
@@ -77,6 +95,12 @@ class ChatColors extends ThemeExtension<ChatColors> {
     composerPlaceholder: AppColors.textPrimary,
     codeBlockBackground: AppColors.surfaceElevated,
     quoteBackground: AppColors.surfaceSubtle,
+    composerActionIdle: Color(0xFFB5BDC4),
+    composerActionHoverOrPressed: AppColors.textPrimary,
+    composerActionDisabled: Color(0x66B5BDC4),
+    sendIdle: Color(0xFFB5BDC4),
+    sendActive: Color(0xFFE7E9EA),
+    agentIdentity: Color(0xFFDEE3E7),
   );
 
   @override
@@ -97,6 +121,12 @@ class ChatColors extends ThemeExtension<ChatColors> {
     Color? composerPlaceholder,
     Color? codeBlockBackground,
     Color? quoteBackground,
+    Color? composerActionIdle,
+    Color? composerActionHoverOrPressed,
+    Color? composerActionDisabled,
+    Color? sendIdle,
+    Color? sendActive,
+    Color? agentIdentity,
   }) {
     return ChatColors(
       messageUserBackground:
@@ -118,6 +148,14 @@ class ChatColors extends ThemeExtension<ChatColors> {
       composerPlaceholder: composerPlaceholder ?? this.composerPlaceholder,
       codeBlockBackground: codeBlockBackground ?? this.codeBlockBackground,
       quoteBackground: quoteBackground ?? this.quoteBackground,
+      composerActionIdle: composerActionIdle ?? this.composerActionIdle,
+      composerActionHoverOrPressed:
+          composerActionHoverOrPressed ?? this.composerActionHoverOrPressed,
+      composerActionDisabled:
+          composerActionDisabled ?? this.composerActionDisabled,
+      sendIdle: sendIdle ?? this.sendIdle,
+      sendActive: sendActive ?? this.sendActive,
+      agentIdentity: agentIdentity ?? this.agentIdentity,
     );
   }
 
@@ -153,6 +191,18 @@ class ChatColors extends ThemeExtension<ChatColors> {
       codeBlockBackground:
           Color.lerp(codeBlockBackground, other.codeBlockBackground, t)!,
       quoteBackground: Color.lerp(quoteBackground, other.quoteBackground, t)!,
+      composerActionIdle:
+          Color.lerp(composerActionIdle, other.composerActionIdle, t)!,
+      composerActionHoverOrPressed: Color.lerp(
+        composerActionHoverOrPressed,
+        other.composerActionHoverOrPressed,
+        t,
+      )!,
+      composerActionDisabled:
+          Color.lerp(composerActionDisabled, other.composerActionDisabled, t)!,
+      sendIdle: Color.lerp(sendIdle, other.sendIdle, t)!,
+      sendActive: Color.lerp(sendActive, other.sendActive, t)!,
+      agentIdentity: Color.lerp(agentIdentity, other.agentIdentity, t)!,
     );
   }
 }
