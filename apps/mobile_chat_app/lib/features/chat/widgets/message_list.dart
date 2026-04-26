@@ -176,7 +176,7 @@ class _MessageListState extends State<MessageList> {
 
     final secondIcon = hasReplyStarted
         ? (isOpenclaw
-            ? _DeliveryIconState.lobster()
+            ? _DeliveryIconState.openclaw()
             : _DeliveryIconState.check(isCompleted: hasReplyCompleted))
         : null;
     if (!isOpenclaw && !isGenericRemote && !hasReplyStarted) {
@@ -256,6 +256,7 @@ class _MessageListState extends State<MessageList> {
           // working without an explicit BricksTheme.
           final chatColors =
               Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+          final messageBodyStyle = Theme.of(context).textTheme.bodyMedium;
           // Attach the focused-item key only to the target row so that
           // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
           // without maintaining a GlobalKey for every list item.
@@ -285,7 +286,7 @@ class _MessageListState extends State<MessageList> {
                           msg.agentName ?? msg.model ?? '',
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: chatColors.agentName,
+                                    color: chatColors.agentIdentity,
                                   ),
                         ),
                         if (msg.nodeType?.trim().isNotEmpty == true) ...[
@@ -388,6 +389,7 @@ class _MessageListState extends State<MessageList> {
                               ),
                               text: msg.content,
                               textColor: chatColors.onMessageUser,
+                              textStyle: messageBodyStyle,
                             )
                           else
                             _AssistantMarkdownText(
@@ -396,7 +398,7 @@ class _MessageListState extends State<MessageList> {
                               linkColor: chatColors.linkText,
                               codeBlockColor: chatColors.codeBlockBackground,
                               quoteBlockColor: chatColors.quoteBackground,
-                              textStyle: Theme.of(context).textTheme.bodyMedium,
+                              textStyle: messageBodyStyle,
                             ),
                           if (msg.isStreaming)
                             Padding(
@@ -521,7 +523,7 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
   }
 }
 
-enum _DeliveryIcon { lobster, check }
+enum _DeliveryIcon { openclaw, check }
 
 class _DeliveryIconState {
   const _DeliveryIconState._({
@@ -530,9 +532,9 @@ class _DeliveryIconState {
     required this.opacity,
   });
 
-  const _DeliveryIconState.lobster({bool isDispatched = true})
+  const _DeliveryIconState.openclaw({bool isDispatched = true})
       : this._(
-          icon: _DeliveryIcon.lobster,
+          icon: _DeliveryIcon.openclaw,
           isCompleted: false,
           opacity: isDispatched ? 0.75 : 0.45,
         );
@@ -564,24 +566,21 @@ class _DeliveryStatusIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusLabel = icon.icon == _DeliveryIcon.lobster
+    final statusLabel = icon.icon == _DeliveryIcon.openclaw
         ? 'OpenClaw reply started'
         : icon.isCompleted
             ? 'AI reply completed'
             : 'Persisted';
-    if (icon.icon == _DeliveryIcon.lobster) {
+    if (icon.icon == _DeliveryIcon.openclaw) {
       return Semantics(
         label: statusLabel,
         child: Tooltip(
           message: statusLabel,
-          child: Text(
-            '🦞',
-            style: TextStyle(
-              fontSize: 12,
-              color: (foregroundColor ??
-                      Theme.of(context).colorScheme.onSurfaceVariant)
-                  .withValues(alpha: icon.opacity),
-            ),
+          child: Icon(
+            Icons.hub_outlined,
+            size: 14,
+            color: (foregroundColor ?? Theme.of(context).colorScheme.outline)
+                .withValues(alpha: icon.opacity),
           ),
         ),
       );
@@ -894,10 +893,12 @@ class _MessageExpandToggle extends StatefulWidget {
     super.key,
     required this.text,
     required this.textColor,
+    required this.textStyle,
   });
 
   final String text;
   final Color textColor;
+  final TextStyle? textStyle;
 
   @override
   State<_MessageExpandToggle> createState() => _MessageExpandToggleState();
@@ -925,9 +926,9 @@ class _MessageExpandToggleState extends State<_MessageExpandToggle> {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: widget.textColor,
-        );
+    final textStyle = widget.textStyle?.copyWith(
+      color: widget.textColor,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final painter = TextPainter(

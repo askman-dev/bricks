@@ -50,7 +50,7 @@ products:
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
           - default 与 openclaw 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
           - 发送后 user query 仍先显示“已接受”状态；assistant 身份占位可在 SSE dispatch 占位到达时提前出现，但 assistant 正文气泡仍应等待真实内容开始到达。
-          - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，default/其他远端为第二枚 ✓，openclaw 为第二枚 🦞。
+          - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，default/其他远端为第二枚 ✓，openclaw 为单色路由状态图标。
           - user query 的时间/线程与投递状态应显示在气泡内；长按气泡可弹出“复制/分叉（待开发）/重发（待开发）”菜单，并在底部显示 message id 与 task id。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
           - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
@@ -81,7 +81,9 @@ products:
           - 在主区（channel 对话）打开路由菜单时，不应显示 Thread router 分组；在子区（thread 对话）应显示 Follow channel / Bricks Default / OpenClaw 三项。
           - Openclaw 异步会话空闲时，客户端应通过 SSE（`/api/chat/events/:sessionId`）保持持久推送连接，服务端将在新消息到达后实时推送事件，无需客户端反复轮询。
           - 深色主题下应采用纯黑背景与低亮度灰阶 surface；用户消息气泡不得使用品牌 primary 色。
-          - 链接、Agent 名称与发送按钮应统一使用同一 accent token，时间/thread 等 meta 信息应统一为次级灰。
+          - 输入框底部动作按钮默认应为白灰层级；发送按钮仅在输入非空时进入高亮激活态。
+          - OpenClaw 路由与投递状态图标应使用单色图标，不使用彩色 emoji。
+          - 用户消息与 assistant 消息正文应共享同一文本样式基线（字号一致）；时间/thread 等 meta 信息应统一为次级灰。
 
       - feature_id: model_settings
         name: 模型与提供商配置
