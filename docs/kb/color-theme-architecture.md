@@ -2,473 +2,195 @@
 
 ## 1. Goals
 
-The color system in this project must serve long-term maintenance rather than
-serve as a quick fix for a single screen.
+The color system must stay small, reusable, and predictable. A color change
+should usually happen in one design-system layer instead of spreading across
+widgets.
 
 Color-related code must satisfy these requirements:
 
-- Designs can be unified centrally.
-- Light and dark themes can be switched transparently.
-- Components are reusable.
-- Screen-level visual style can be adjusted without touching component code.
-- Colors are testable by verifying token usage, not concrete values.
-- Local fixes must not break the global theme.
-
-Business components must not decide colors themselves.
-Business components must only read pre-defined semantic color tokens.
+- Components do not contain concrete color literals.
+- Components consume named design-system tokens.
+- Dark and light values are supplied by the theme layer.
+- Most UI surfaces reuse a small set of background/surface layers.
+- Component-specific tokens are thin aliases for product semantics, not a new
+  color scale for every widget.
+- Tests verify token consumption, not exact color values.
 
 ---
 
-## 2. Core Principles
+## 2. Layer Model
 
-### 2.1 No concrete color values in business components
+Colors are organized in two practical layers:
 
-Business components must not contain explicit color literals, for example:
-
-```dart
-// ❌ Do not do this in a widget
-const Color(0xFFF2F2F2)
+```text
+Core layer tokens  ->  Component aliases
+AppColors              ChatColors, future feature ThemeExtensions
 ```
 
-Concrete color values belong only in theme files, design-token files, or
-`ThemeExtension` definitions.
+`AppColors` is the small shared vocabulary. It defines the app's surface,
+border, text, accent, and status layers.
 
-Business components consume semantic tokens only, for example:
-
-```dart
-// ✅ Correct
-chatColors.userMessageContainer
-```
-
-Not:
-
-```dart
-// ❌ Incorrect
-const Color(0xFFF2F2F2)
-```
-
-### 2.2 No light/dark branching inside business components
-
-Business components must not branch on the current brightness themselves.
-
-Do not write:
-
-```dart
-// ❌ Do not do this in a widget
-Theme.of(context).brightness == Brightness.dark ? darkColor : lightColor
-```
-
-The difference between light and dark is handled entirely by the theme layer.
-The component reads the same semantic token in both modes; the theme provides
-the correct color for each mode.
-
-### 2.3 Do not use Material `ColorScheme` as business semantics
-
-Do not treat Material's general-purpose colors as chat-specific meanings:
-
-- `colorScheme.primary`
-- `colorScheme.onPrimary`
-- `colorScheme.surface`
-- `colorScheme.surfaceContainerHighest`
-
-These express Material Design's structural semantics, not this product's chat
-bubbles, input fields, agent messages, or model selection chips.
-
-`ColorScheme` can serve as a foundation for Material base widgets (Scaffold,
-Dialog, Button, etc.), but core product components must use product-level
-semantic tokens.
+`ChatColors` is a feature-level alias layer. It gives chat code readable names
+such as `composerBackground` and `codeBlockBackground`, but those values should
+usually map back to `AppColors` rather than introduce one-off colors.
 
 ---
 
-## 3. Color Layer Architecture
+## 3. Core Layer Tokens
 
-Colors are organized in three layers:
+Use these roles before adding new tokens:
 
-```
-Primitive Colors   →   Semantic Colors   →   Component Colors
-(raw palette)          (app-wide meaning)      (feature-specific meaning)
-```
+| Token | Meaning |
+|---|---|
+| `backgroundChrome` | Lowest shell/chrome background. In dark mode this is pure black. |
+| `backgroundBase` | Main reading/page background. |
+| `surfaceDefault` | Recessed or embedded content block surface, such as markdown/code blocks. |
+| `surfaceSubtle` | Low-emphasis secondary surface, such as badges or quote blocks. |
+| `surfaceElevated` | Raised/floating interaction surface, such as composer or overlays. |
+| `borderSubtle` | Low-emphasis borders. |
+| `borderFocus` | Focused or high-emphasis borders. |
+| `textPrimary` | Primary readable text. |
+| `textSecondary` | Supporting text. |
+| `textTertiary` | Weak hints or tertiary metadata. |
+| `accentPrimary` | Brand/interactive accent. |
+| `danger`, `warning`, `success` | Status colors. |
+
+Do not add component-shaped core tokens such as `surfaceInput` or
+`messageCardBackground`. If the color is a surface layer, name the layer.
 
 ---
 
-## 4. Primitive Colors (`AppPrimitiveColors` / `AppColors`)
+## 4. Component Aliases
 
-Primitive colors are the lowest-level color palette. They express the color
-itself, not any business meaning.
+Component aliases are useful when they express product meaning or make widget
+code easier to read. They should be limited and should usually point at the
+core layer tokens.
 
 Examples:
-- black scale, grey scale, white scale
-- blue scale, warning scale, danger scale
-
-Primitive colors must only appear in the theme definition layer.
-Business components must never reference primitive colors directly.
-
-| ❌ Wrong | ✅ Correct |
-|---------|-----------|
-| `message bubble uses gray900` | `message bubble uses userMessageContainer` |
-
-`gray900` is a raw color. `userMessageContainer` is a business semantic.
-
----
-
-## 5. Semantic Colors (`AppSemanticColors`)
-
-Semantic colors express application-level meaning. Recommended tokens:
-
-| Token | Usage |
-|-------|-------|
-| `pageBackground` | Screen background |
-| `surface` | Standard card background |
-| `surfaceRaised` | Floating card / overlay background |
-| `surfaceOverlay` | Modal scrim / drawer overlay |
-| `borderSubtle` | Low-emphasis borders |
-| `borderStrong` | High-emphasis borders |
-| `textPrimary` | Primary body text |
-| `textSecondary` | Secondary / supporting text |
-| `textTertiary` | Weak hints / disabled labels |
-| `iconPrimary` | Primary icons |
-| `iconSecondary` | Secondary / supporting icons |
-| `accent` | Brand accent / interactive highlight |
-| `warning` | Warning state |
-| `danger` | Error / destructive state |
-
-Use semantic tokens for generic page structure: page backgrounds, ordinary
-cards, primary text, secondary explanations, and weak hints.
-
----
-
-## 6. Component Colors (`ChatColors`, etc.)
-
-Core business components must define their own component-level color tokens.
-
-The chat screen must not rely solely on generic `surface` or `primary` tokens,
-because the chat screen contains distinct product semantics:
-
-- User messages
-- Agent (assistant) messages
-- System prompts
-- Composer / input area
-- Model selector chip
-- Toolbar buttons
-- Status information
-- Error information
-
-Define a dedicated `ChatColors` `ThemeExtension` for the chat module.
-
----
-
-## 7. `ChatColors` Token Definitions
-
-### User Message Bubble
-
-| Token | Description |
-|-------|-------------|
-| `userMessageContainer` | User bubble background |
-| `userMessageBorder` | User bubble border (if any) |
-| `onUserMessageContainer` | Text and icon foreground inside user bubble |
-| `userMessageMeta` | Secondary / timestamp / delivery status text |
-
-### Agent (Assistant) Message
-
-| Token | Description |
-|-------|-------------|
-| `agentMessageContainer` | Agent bubble background (`null` = no bubble) |
-| `agentMessageBorder` | Agent bubble border (if any) |
-| `onAgentMessageContainer` | Main text color of agent message |
-| `agentMessageMeta` | Secondary / timestamp / model label text |
-
-### Agent Header & Badge
-
-| Token | Description |
-|-------|-------------|
-| `agentName` | Agent name label color |
-| `agentBadgeContainer` | nodeType badge background |
-| `onAgentBadgeContainer` | nodeType badge text color |
-
-### Agent Accent
-
-| Token | Description |
-|-------|-------------|
-| `agentAccent` | Thinking spinner, streaming spinner, routing label accent |
-
-### System Prompt Capsule
-
-| Token | Description |
-|-------|-------------|
-| `promptBubbleContainer` | Background |
-| `promptBubbleBorder` | Border |
-| `onPromptBubbleContainer` | Text |
-
-### Composer / Input Area
-
-| Token | Description |
-|-------|-------------|
-| `composerContainer` | Input area background |
-| `composerBorder` | Input area border |
-| `composerPlaceholder` | Placeholder text |
-| `onComposer` | User-typed text |
-| `composerIconContainer` | Toolbar icon background |
-| `onComposerIcon` | Toolbar icon foreground |
-
-### Model Selector Chip
-
-| Token | Description |
-|-------|-------------|
-| `modelChipContainer` | Chip background |
-| `modelChipBorder` | Chip border |
-| `onModelChipContainer` | Chip label text |
-
-### Status & Emphasis
-
-| Token | Description |
-|-------|-------------|
-| `link` | Hyperlink / tappable text |
-| `selected` | Selected / active state highlight |
-| `thinking` | AI "thinking" animation color |
-| `warning` | Warning indicator |
-| `error` | Error indicator |
-
-Token names express **where** the color is used, not what it looks like.
-
----
-
-## 8. Light and Dark Theme Definitions
-
-Every color token must have both a light and a dark value.
 
 ```dart
-static const ChatColors light = ChatColors(
-  userMessageContainer: Color(0xFFF2F2F2),
-  // ...
-);
-
-static const ChatColors dark = ChatColors(
-  userMessageContainer: AppColors.surface2,
-  // ...
-);
+composerBackground: AppColors.surfaceElevated
+codeBlockBackground: AppColors.surfaceDefault
+quoteBackground: AppColors.surfaceSubtle
+agentBadgeContainer: AppColors.surfaceSubtle
 ```
 
-Business components do not care about the current theme mode.
-The theme system is responsible for switching between `light` and `dark`.
+Add a new component alias only when all of these are true:
 
-Always write component code as:
+1. The component role is stable and product-specific.
+2. Existing core layer names would make call sites unclear.
+3. The alias is expected to be reused by more than a single ad-hoc state.
+4. The alias can be mapped to existing core layers unless a genuinely new
+   visual role is being introduced.
 
-```dart
-// ✅ Correct — theme decides which value applies
-chatColors.userMessageContainer
-```
-
-Never:
-
-```dart
-// ❌ Incorrect — component decides the color itself
-isDark ? AppColors.surface2 : const Color(0xFFF2F2F2)
-```
+Avoid adding aliases only because one widget needs a different color once.
 
 ---
 
-## 9. Component Usage Rules
+## 5. Business Component Rules
 
-**Allowed inside business components:**
-
-```dart
-chatColors.userMessageContainer
-chatColors.onUserMessageContainer
-chatColors.composerContainer
-chatColors.composerBorder
-semanticColors.pageBackground
-```
-
-**Not allowed inside business components:**
-
-- Explicit color literals (`const Color(...)`)
-- Light/dark branching (`brightness == Brightness.dark ? ... : ...`)
-- Ad-hoc opacity helpers (`.withOpacity(0.5)` written directly in a widget)
-- Material `ColorScheme` tokens used as product-specific semantics
-
-If transparency is needed, define a dedicated token:
+Business widgets must not contain concrete color literals:
 
 ```dart
-// ✅ Correct
-borderSubtle          // already encodes the desired opacity
-overlayWeak           // pre-defined overlay with correct alpha
+// Incorrect
+const Color(0xFF303030)
 ```
+
+Business widgets should read tokens:
+
+```dart
+// Correct
+chatColors.composerBackground
+AppColors.surfaceElevated
+```
+
+Prefer feature aliases in reusable feature widgets. Screen composition code may
+choose between existing core layer tokens when the layout changes the surface
+role, for example compact chat using `backgroundChrome` for the page and
+`backgroundBase` for the composer while wide chat uses `backgroundBase` and
+`surfaceElevated`.
+
+The important boundary is: widgets may choose a surface role, but they must not
+invent a color value.
 
 ---
 
-## 10. Boundary of Material `ColorScheme`
+## 6. Responsive Surface Roles
 
-`ColorScheme` is appropriate for Material base widgets:
+Responsive color changes must be explained as surface role changes, not as
+device-specific color hacks.
+
+Current dark chat model:
+
+```text
+Compact chat:
+  page      -> backgroundChrome (#000000)
+  composer  -> backgroundBase (#212121)
+
+Wide chat:
+  page      -> backgroundBase (#212121)
+  composer  -> surfaceElevated (#303030)
+
+Markdown/code:
+  block     -> surfaceDefault (#181818)
+```
+
+This follows the rule that the composer is one visual layer above the current
+page surface, while markdown/code blocks are embedded content surfaces.
+
+---
+
+## 7. Material `ColorScheme`
+
+`ColorScheme` is appropriate for Material defaults:
 
 - `Scaffold`
 - `Dialog`
-- Default `Button` and `IconButton` theming
-- Default `TextField` theming
+- default Material buttons
+- default Material text fields
 
-Product-core components must use product semantic tokens, not `ColorScheme`
-directly. Binding chat bubbles to `colorScheme.primary` or
-`colorScheme.surfaceContainerHighest` is fragile because:
-
-- `primary` is typically a brand accent, not a message bubble background.
-- `surfaceContainerHighest` is a Material container-hierarchy concept.
-- Adjusting the Material theme in the future must not accidentally change chat
-  message appearance.
-- The chat screen requires finer design control than generic Material semantics
-  provide.
+Product-core surfaces should not depend directly on generic Material meanings
+such as `colorScheme.primary` or `surfaceContainerHighest`. Map our product
+layers into the Material theme in `BricksTheme`, then keep product widgets on
+`AppColors`/`ChatColors`.
 
 ---
 
-## 11. User Message Bubble Design Semantics
+## 8. Testing Guidelines
 
-The user message bubble is a standalone component semantic:
+Tests should verify token use, not concrete color values.
 
-- `userMessageContainer` — bubble background
-- `userMessageBorder` — bubble border (if used)
-- `onUserMessageContainer` — text and icon foreground inside the bubble
-- `userMessageMeta` — meta / timestamp / delivery status text
+| Avoid | Prefer |
+|---|---|
+| "Composer color equals `0xFF303030`." | "Composer reads `chatColors.composerBackground` unless layout overrides the surface role." |
+| "Delivery icon is blue." | "Delivery icon reads the expected status/accent token." |
 
-Design requirements:
-
-- No large-area brand color.
-- No dependency on `colorScheme.primary`.
-- No hard-coded light or dark color value inside the component.
-- No brightness branching inside the component.
-- `ChatColors` provides the correct color for both light and dark modes.
-- Changes to the bubble color must not affect other cards, buttons, or inputs.
+When possible, inject a test theme with known token values and assert the widget
+reads the expected token.
 
 ---
 
-## 12. Agent Message Design Semantics
+## 9. Review Checklist
 
-Agent messages also need dedicated semantics. Agent messages have different
-information structure from user messages:
+When reviewing color changes, check:
 
-- User messages represent submitted input.
-- Agent messages are system responses that may contain long text, code blocks,
-  lists, error details, and tool-call information.
-
-Therefore, agent messages need a stable, reading-friendly color layer that is
-separate from user message styling.
-
----
-
-## 13. Composer / Input Area Design Semantics
-
-The composer is the core interaction zone, separate from message content.
-Define it independently from message bubble colors.
+1. Does the widget introduce a concrete `Color(...)` value?
+2. Can an existing `AppColors` layer express the visual role?
+3. Is a new component alias truly reusable product semantics?
+4. Does the alias map to an existing core layer where possible?
+5. Does a responsive difference reflect a changed surface role?
+6. Are light and dark values defined in the theme layer?
+7. Does the test verify token usage instead of exact color values?
+8. Could the change affect unrelated components?
 
 ---
 
-## 14. Recommended Code Structure
+## 10. Summary Rule
 
+Use a small surface vocabulary first. Add component aliases sparingly.
+
+```text
+Core surface role first.
+Component alias second.
+Concrete color value only in the design-system layer.
 ```
-lib/
-  theme/
-    app_primitive_colors.dart   ← raw color palette
-    app_semantic_colors.dart    ← app-wide semantic tokens
-    app_chat_colors.dart        ← chat module ThemeExtension
-    app_theme.dart              ← registers light/dark ThemeData
-```
-
-Or, within the `design_system` package:
-
-```
-packages/design_system/lib/src/
-  tokens.dart            ← AppColors (primitive) + BricksSpacing / BricksRadius
-  app_chat_colors.dart   ← ChatColors ThemeExtension
-  bricks_theme.dart      ← BricksTheme (registers extensions)
-```
-
-Business components import only theme tokens; they never define colors.
-
----
-
-## 15. Testing Guidelines
-
-Tests must not assert that a component contains a specific concrete color value.
-
-| ❌ Wrong test target | ✅ Correct test target |
-|---------------------|----------------------|
-| "User bubble color equals `0xFFF2F2F2`." | "User bubble color comes from `chatColors.userMessageContainer`." |
-
-Tests can inject a custom test theme with known token values, then verify that
-the component reads those tokens correctly.
-
-This approach tests the architecture relationship, not a design value. When a
-designer changes a color, tests must not fail because of the color change — they
-must only fail when the component stops reading the correct theme token.
-
-```dart
-// ✅ Correct pattern
-final chatColors =
-    Theme.of(tester.element(find.byKey(key)))
-        .extension<ChatColors>() ??
-    ChatColors.light;
-expect(deliveryIcon.color, chatColors.onUserMessageContainer);
-
-// ❌ Incorrect pattern
-expect(deliveryIcon.color, const Color(0xFF1C1C1E));
-```
-
----
-
-## 16. Code Review Checklist
-
-When reviewing color-related changes, verify:
-
-1. Does the business component introduce a new concrete color literal?
-2. Does the business component branch on `brightness`?
-3. Is `colorScheme.primary` used directly as a chat bubble color?
-4. Is a Material surface token used directly as a product component color?
-5. Should a new semantic token be added instead?
-6. Is the new color defined in the theme/token layer?
-7. Are both light and dark values defined?
-8. Does the test verify token consumption, not a hard-coded color value?
-9. Could this color change accidentally affect unrelated components?
-10. Does the token name express purpose (where it is used) rather than
-    appearance (what it looks like)?
-
----
-
-## 17. Requirements for AI Agents and Developers
-
-When modifying UI colors, follow these rules without exception:
-
-- **Do not** write `const Color(...)` in a business component.
-- **Do not** write `brightness == Brightness.dark` in a business component.
-- **Do not** substitute `colorScheme.primary` for a user message bubble.
-- **Do not** substitute a Material surface token for a product component color.
-- Identify whether the color belongs to the primitive, semantic, or component
-  layer.
-- If the color is chat-page-specific, define it in `ChatColors`.
-- If the color is app-wide, define it in `SemanticColors` (or `AppColors`).
-- If the color is a raw palette entry, define it in `PrimitiveColors`.
-- Components only read semantic tokens.
-- Tests verify that components read the correct tokens.
-
----
-
-## 18. Summary Rule
-
-Concrete color values may exist — but only in the theme layer.
-
-**Business components should see:**
-
-```dart
-chatColors.userMessageContainer
-chatColors.onUserMessageContainer
-chatColors.composerContainer
-semanticColors.pageBackground
-```
-
-**Business components must not see:**
-
-- Concrete color literals
-- Brightness-mode branching
-- Ad-hoc color fixes
-- Material general-purpose colors used as product semantics
-
-The boundary is:
-
-> **Theme decides color. Component decides structure. Business code does not
-> decide the design system.**

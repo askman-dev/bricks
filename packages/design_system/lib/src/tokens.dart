@@ -45,32 +45,6 @@ class AppColors {
   static const danger = Color(0xFFF4212E);
   static const warning = Color(0xFFFFD400);
   static const success = Color(0xFF00BA7C);
-
-  // ------------------------------------------------------------------------
-  // Legacy aliases kept for compatibility with existing components.
-  // ------------------------------------------------------------------------
-  static const background = backgroundBase;
-  static const surface = surfaceDefault;
-  static const surface2 = surfaceElevated;
-  static const surface3 = surfaceSubtle;
-  static const border = borderSubtle;
-  static const divider = borderFocus;
-  static const iconPrimary = textPrimary;
-  static const iconSecondary = textSecondary;
-}
-
-/// Semantic color names used across the app.
-///
-/// Actual color values are resolved from the active [BricksTheme].
-class BricksColorTokens {
-  const BricksColorTokens._();
-
-  static const String surface = 'surface';
-  static const String onSurface = 'onSurface';
-  static const String primary = 'primary';
-  static const String onPrimary = 'onPrimary';
-  static const String error = 'error';
-  static const String onError = 'onError';
 }
 
 /// Border radius tokens.
