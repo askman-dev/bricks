@@ -12,7 +12,8 @@ Bricks uses a modular architecture with clear package boundaries between UI, con
 ## Package graph summary
 
 - `apps/mobile_chat_app`
-  - depends on `agent_sdk_contract`, `workspace_fs`, `project_system`, `chat_domain`, `platform_bridge`, `design_system`
+  - depends on `agent_core`, `agent_sdk_contract`, `workspace_fs`, `project_system`, `chat_domain`, `platform_bridge`, `design_system`
+  - UI integration is kept separate from core runtime concerns and primarily relies on `agent_sdk_contract` interfaces
 - `packages/agent_core`
   - depends on `agent_sdk_contract`
 - `packages/test_harness`

@@ -12,6 +12,7 @@ This page summarizes the current OpenClaw integration surface implemented in thi
 ## API capabilities
 
 - `GET /api/v1/platform/events`
+- `GET /api/v1/platform/events/stream?cursor=...` (SSE – used by plugin client for event consumption)
 - `POST /api/v1/platform/events/ack`
 - `POST /api/v1/platform/messages`
 - `PATCH /api/v1/platform/messages/:messageId`

@@ -11,9 +11,9 @@ Bricks is an agent console centered on multi-thread task execution and control.
 
 ## Core product areas in this repository
 
-- `mobile_chat_app`: user-facing console for auth, chat session, model and node settings.
-- `node_backend`: API service for auth, chat, model config, and platform endpoints.
-- `node_openclaw_plugin`: pull-only OpenClaw plugin runtime for platform events and writeback.
+- `apps/mobile_chat_app`: user-facing console for auth, chat session, model and node settings.
+- `apps/node_backend`: API service for auth, chat, model config, and platform endpoints.
+- `apps/node_openclaw_plugin`: pull-only OpenClaw plugin runtime for platform events and writeback.
 
 ## Primary user value
 
