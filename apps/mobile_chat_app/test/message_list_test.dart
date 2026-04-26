@@ -4,6 +4,19 @@ import 'package:design_system/design_system.dart';
 import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
+// Must match _kBottomPaddingRatio in message_list.dart
+const double _kTestBottomPaddingRatio = 0.35;
+
+/// Computes the expected latest-content anchor offset using the same formula
+/// as MessageList._latestContentAnchorOffset.
+double _latestAnchorOffset(WidgetTester tester, ScrollPosition position) {
+  final screenHeight =
+      tester.view.physicalSize.height / tester.view.devicePixelRatio;
+  return (position.maxScrollExtent -
+          (BricksSpacing.md + screenHeight * _kTestBottomPaddingRatio))
+      .clamp(position.minScrollExtent, position.maxScrollExtent);
+}
+
 List<ChatMessage> _messages(String prefix, int count) {
   final start = DateTime.utc(2026, 1, 1);
   return List<ChatMessage>.generate(
@@ -100,15 +113,9 @@ void main() {
       final jumpButton = find.byTooltip('Jump to latest');
       expect(jumpButton, findsOneWidget);
 
-      // Compute the expected anchor BEFORE tapping, using the same formula as
-      // production: maxScrollExtent - (BricksSpacing.md + screenHeight * _kBottomPaddingRatio)
-      const kBottomPaddingRatio = 0.35;
-      final screenHeight =
-          tester.view.physicalSize.height / tester.view.devicePixelRatio;
-      final expectedAnchor = (scrollable.position.maxScrollExtent -
-              (BricksSpacing.md + screenHeight * kBottomPaddingRatio))
-          .clamp(scrollable.position.minScrollExtent,
-              scrollable.position.maxScrollExtent);
+      // Compute the expected anchor BEFORE tapping so it uses the same
+      // maxScrollExtent the production code will see when the button is pressed.
+      final expectedAnchor = _latestAnchorOffset(tester, scrollable.position);
 
       await tester.tap(jumpButton);
       await tester.pumpAndSettle();
@@ -123,11 +130,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
-      const kBottomPaddingRatio = 0.35;
-      final screenHeight =
-          tester.view.physicalSize.height / tester.view.devicePixelRatio;
-      final nearAnchor = scrollable.position.maxScrollExtent -
-          (BricksSpacing.md + screenHeight * kBottomPaddingRatio);
+      final nearAnchor = _latestAnchorOffset(tester, scrollable.position);
       final almostNearEnough =
           nearAnchor - scrollable.position.viewportDimension * 1.9;
       scrollable.position.jumpTo(almostNearEnough.clamp(
