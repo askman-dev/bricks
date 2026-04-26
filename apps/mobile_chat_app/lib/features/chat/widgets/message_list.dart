@@ -23,6 +23,7 @@ class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
   static const double _kJumpButtonShowScreens = 2;
   bool _showJumpToLatestButton = false;
+  double _listBottomPadding = 0;
 
   // A single key attached only to the focused (latest user) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
@@ -135,8 +136,7 @@ class _MessageListState extends State<MessageList> {
   }
 
   double _latestContentAnchorOffset(ScrollPosition position) {
-    final bottomPadding = position.viewportDimension * _kBottomPaddingRatio;
-    return (position.maxScrollExtent - bottomPadding)
+    return (position.maxScrollExtent - _listBottomPadding)
         .clamp(position.minScrollExtent, position.maxScrollExtent)
         .toDouble();
   }
@@ -278,6 +278,9 @@ class _MessageListState extends State<MessageList> {
       );
     }
 
+    _listBottomPadding = BricksSpacing.md +
+        MediaQuery.sizeOf(context).height * _kBottomPaddingRatio;
+
     return Stack(
       children: [
         SelectionArea(
@@ -287,8 +290,7 @@ class _MessageListState extends State<MessageList> {
               BricksSpacing.md,
               BricksSpacing.md,
               BricksSpacing.md,
-              BricksSpacing.md +
-                  MediaQuery.of(context).size.height * _kBottomPaddingRatio,
+              _listBottomPadding,
             ),
             itemCount: messages.length,
             itemBuilder: (context, index) {

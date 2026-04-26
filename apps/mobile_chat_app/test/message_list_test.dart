@@ -100,16 +100,20 @@ void main() {
       final jumpButton = find.byTooltip('Jump to latest');
       expect(jumpButton, findsOneWidget);
 
+      // Compute the expected anchor BEFORE tapping, using the same formula as
+      // production: maxScrollExtent - (BricksSpacing.md + screenHeight * _kBottomPaddingRatio)
+      const kBottomPaddingRatio = 0.35;
+      final screenHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
+      final expectedAnchor = (scrollable.position.maxScrollExtent -
+              (BricksSpacing.md + screenHeight * kBottomPaddingRatio))
+          .clamp(scrollable.position.minScrollExtent,
+              scrollable.position.maxScrollExtent);
+
       await tester.tap(jumpButton);
       await tester.pumpAndSettle();
 
-      final distanceToBottom =
-          scrollable.position.maxScrollExtent - scrollable.position.pixels;
-      expect(distanceToBottom, greaterThan(0));
-      expect(
-        distanceToBottom,
-        lessThan(scrollable.position.viewportDimension * 0.5),
-      );
+      expect(scrollable.position.pixels, closeTo(expectedAnchor, 1.0));
     });
 
     testWidgets(
@@ -119,8 +123,11 @@ void main() {
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      const kBottomPaddingRatio = 0.35;
+      final screenHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
       final nearAnchor = scrollable.position.maxScrollExtent -
-          scrollable.position.viewportDimension * 0.35;
+          (BricksSpacing.md + screenHeight * kBottomPaddingRatio);
       final almostNearEnough =
           nearAnchor - scrollable.position.viewportDimension * 1.9;
       scrollable.position.jumpTo(almostNearEnough.clamp(
