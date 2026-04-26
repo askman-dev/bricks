@@ -10,9 +10,9 @@ The repository currently deploys Flutter Web from `apps/mobile_chat_app/build/we
 # Implementation Plan (phased)
 ## Phase 1: Docs site config
 - Update `apps/docs_site/docusaurus.config.ts`:
-  - Set `baseUrl` to `process.env.DOCS_BASE_URL ?? '/docs/'`.
+  - Hardcode `baseUrl: '/docs/'` — no env var needed.
   - Keep `routeBasePath: '/'` to preserve docs-only mode semantics.
-  - Add clarifying comments to avoid setting `/docs` in `DOCS_URL`.
+  - Resolve `url` from `DOCS_URL` (optional override) → `VERCEL_PROJECT_PRODUCTION_URL` → `VERCEL_URL` → fail-fast error. No manual configuration required on Vercel.
 
 ## Phase 2: Build pipeline integration
 - Update `tools/vercel-build.sh`:
@@ -31,7 +31,7 @@ The repository currently deploys Flutter Web from `apps/mobile_chat_app/build/we
 - Review and update `docs/code_maps/feature_map.yaml` and `docs/code_maps/logic_map.yaml` if docs entry/routing capabilities are impacted.
 
 # Acceptance Criteria
-1. Running Docusaurus build with `DOCS_BASE_URL=/docs/` generates docs site paths under `/docs/`.
+1. Running Docusaurus build generates docs site paths under `/docs/` (baseUrl is hardcoded; no env var required).
 2. Running `bash ./tools/vercel-build.sh` produces `apps/mobile_chat_app/build/web/docs/index.html`.
 3. `vercel.json` rewrites route `/docs` and `/docs/*` to docs index before Flutter fallback.
 4. Existing `/api/*` and Flutter fallback routing remain present and ordered correctly.
