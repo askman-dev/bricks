@@ -74,7 +74,7 @@ class ChatColors extends ThemeExtension<ChatColors> {
     composerBackground: AppColors.surfaceElevated,
     composerBorder: AppColors.borderSubtle,
     composerBorderFocus: AppColors.borderFocus,
-    composerPlaceholder: AppColors.textSecondary,
+    composerPlaceholder: AppColors.textPrimary,
     codeBlockBackground: AppColors.surfaceElevated,
     quoteBackground: AppColors.surfaceSubtle,
   );
