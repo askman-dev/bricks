@@ -8,10 +8,11 @@ The current dark-mode chat UI already has a design-system foundation (`AppColors
 - Agent attribution text/icon color and composer action colors are not separated by semantic intent.
 - Composer container sizing/padding leaves a “large console” impression instead of a compact ChatGPT/X-like composer.
 
-In addition, there is token-level redundancy/ambiguity:
+In addition, earlier token-level redundancy/ambiguity has been reduced:
 
-- `AppColors` has legacy aliases (`surface`, `surface2`, `surface3`, etc.) that can mask semantic intent.
-- `ChatColors` currently mixes interaction accent and identity accent into `agentAccent`.
+- Legacy `AppColors` aliases such as `surface2`/`surface3` were removed in favor of explicit surface-layer names.
+- `ChatColors` now favors a smaller set of aliases that map back to core surface/text/accent layers.
+- `agentAccent` is still overloaded for running/active emphasis and should be narrowed in a later pass.
 
 ## Goals
 1. Keep dark mode minimal and premium by converging action icon colors to a white/gray scale.
@@ -22,16 +23,14 @@ In addition, there is token-level redundancy/ambiguity:
 
 ## Implementation Plan (phased)
 
-### Phase 1 — Token cleanup and semantic expansion (design system first)
-- Add explicit chat token roles to `ChatColors` so interaction states do not overload `agentAccent`:
+### Phase 1 — Token cleanup and semantic tightening (design system first)
+- Keep the current compact token set and avoid reintroducing one-off action-state aliases unless a widget actually consumes them.
+- Continue using existing roles where they match current behavior:
   - `composerActionIdle`
-  - `composerActionHoverOrPressed`
-  - `composerActionDisabled`
   - `sendIdle`
   - `sendActive`
-  - `agentIdentity` (replace current visual meaning of `agentName` in dark mode)
-  - `statusRunning` / `statusCompleted` (if needed, can map to existing semantic colors)
-- Keep existing fields temporarily with deprecation comments to avoid immediate breakage.
+  - `agentIdentity`
+- Add `statusRunning` / `statusCompleted` only if status UI needs product-specific meaning beyond existing accent/status tokens.
 - Map dark defaults to neutral white-gray scale; reserve accent blue only for activated/explicit state cues.
 
 ### Phase 2 — ComposerBar visual convergence
@@ -40,7 +39,7 @@ In addition, there is token-level redundancy/ambiguity:
   - Replace config/tune icon, send icon, and stop control with state-driven neutral/active mapping:
     - Empty input -> `sendIdle` (neutral)
     - Non-empty input -> `sendActive` (clear active cue)
-    - Disabled -> `composerActionDisabled`
+    - Disabled -> existing disabled Material state or a new token only if the component needs product-specific disabled styling
   - Introduce `ValueListenableBuilder`/controller listener for input non-empty state to drive send visual activation.
   - Reduce composer perceived height:
     - lower vertical paddings
@@ -54,8 +53,8 @@ In addition, there is token-level redundancy/ambiguity:
   - Keep blue only for explicit “running/active route selected” states when needed.
 
 ### Phase 4 — Redundancy hardening and migration safety
-- Audit call sites still directly relying on overloaded accent tokens and migrate to new semantic tokens.
-- Add comments to legacy aliases in `AppColors` and create a follow-up cleanup issue for alias removal.
+- Audit call sites still directly relying on overloaded accent tokens and migrate to existing semantic tokens.
+- Do not add component-specific color aliases unless they represent stable product semantics and map to the core surface-layer model.
 - Ensure theme extension fallback behavior remains stable for tests running plain `MaterialApp`.
 
 ### Phase 5 — Validation and regression coverage

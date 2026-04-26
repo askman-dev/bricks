@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-26
+last_updated: 2026-04-27
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -64,6 +64,7 @@ products:
           - 切换 Agent 后仍可继续会话。
           - 首次安装且未创建自定义 Agent 时，侧边栏 Agents 分组应默认显示内建 Agent 列表（不为空）。
           - 侧边栏应在 Agents 分组上方显示 Skills 分组；当前内容为空并显示“待实现”占位。
+          - 深色紧凑布局下侧边栏应使用黑色背景并展开为全屏宽度；深色宽屏布局下侧边栏应使用黑色背景并固定为约 260px 宽，与主聊天画布形成层级色差。
           - 侧边栏 Agents 列表中，内建 Agent 需显示只读标识，自定义 Agent 可显示自定义描述。
           - 侧边栏 Agents 分组标题右侧不应出现“配置”按钮。
           - 点击任一侧边栏 Agent 后应进入 Prompt 详情页，且底部应提供“修改配置”“发起对话”两个按钮。
@@ -81,8 +82,12 @@ products:
           - 打开右上角分区菜单与输入框配置菜单时，弹出动画应快速并呈现缩放+淡入效果。
           - 在主区（channel 对话）打开路由菜单时，不应显示 Thread router 分组；在子区（thread 对话）应显示 Follow channel / Bricks Default / OpenClaw 三项。
           - Openclaw 异步会话空闲时，客户端应通过 SSE（`/api/chat/events/:sessionId`）保持持久推送连接，服务端将在新消息到达后实时推送事件，无需客户端反复轮询。
-          - 深色主题下应采用纯黑背景与低亮度灰阶 surface；用户消息气泡不得使用品牌 primary 色。
+          - 深色主题下应采用低亮度灰阶 surface；用户消息气泡不得使用品牌 primary 色。
+          - 深色紧凑布局应呈现“黑色页面背景 + 近黑输入框”的层级；深色宽屏布局应呈现“近黑页面背景 + elevated 输入框”的层级。
+          - 对话输入框获得焦点时不应切换为高亮边框，应保持与未聚焦状态一致的安静边框。
+          - Markdown/code 内容块应保持 embedded/recessed surface 层级，而不是使用输入框的 elevated surface。
           - 输入框底部动作按钮默认应为白灰层级；发送按钮仅在输入非空时进入高亮激活态。
+          - 输入框底部可点击且非禁用的动作按钮（路由、`/`、`@`、配置、发送）应使用一致的白色系 enabled 颜色，除非该状态刻意使用 accent。
           - OpenClaw 路由与投递状态图标应使用单色图标，不使用彩色 emoji。
           - 用户消息与 assistant 消息正文应共享同一文本样式基线（字号一致）；时间/thread 等 meta 信息应统一为次级灰。
 

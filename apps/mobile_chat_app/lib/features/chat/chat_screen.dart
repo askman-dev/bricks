@@ -2013,6 +2013,21 @@ class _ChatScreenState extends State<ChatScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final theme = Theme.of(context);
+    final isCompactDarkChat = theme.brightness == Brightness.dark &&
+        MediaQuery.sizeOf(context).width < 600;
+    final isCompactChat = MediaQuery.sizeOf(context).width < 600;
+    final chatBackgroundColor = isCompactDarkChat
+        ? AppColors.backgroundChrome
+        : theme.scaffoldBackgroundColor;
+    final composerBackgroundColor =
+        isCompactDarkChat ? AppColors.backgroundBase : null;
+    final drawerBackgroundColor = theme.brightness == Brightness.dark
+        ? AppColors.backgroundChrome
+        : theme.colorScheme.surface;
+    final drawerWidth =
+        isCompactChat ? MediaQuery.sizeOf(context).width : 260.0;
+
     String activeChannelName = '频道';
     for (final item in _channels) {
       if (item.id == _activeChannelId) {
@@ -2023,56 +2038,63 @@ class _ChatScreenState extends State<ChatScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
+        backgroundColor: chatBackgroundColor,
         drawer: Drawer(
-          width: MediaQuery.of(context).size.width,
+          width: drawerWidth,
+          backgroundColor: drawerBackgroundColor,
           child: SafeArea(
-            child: ChatNavigationPage(
-              agents: _agents
-                  .map<ChatAgentItem>(
-                    (agent) => ChatAgentItem(
-                      name: agent.name,
-                      prompt: agent.systemPrompt,
-                      description: agent.description,
-                      isBuiltIn: _builtInAgentNames.contains(agent.name),
-                    ),
-                  )
-                  .toList(growable: false),
-              channels: _channels
-                  .map(
-                    (item) => ChatChannelItem(
-                      id: item.id,
-                      name: item.name,
-                      isDefault: item.isDefault,
-                    ),
-                  )
-                  .toList(),
-              selectedChannelId: _activeChannelId,
-              onChannelSelected: _switchChannel,
-              onChannelRename: _renameChannel,
-              onChannelArchive: _archiveChannel,
-              onActionSelected: (action) {
-                switch (action) {
-                  case ChatNavigationAction.appSettings:
-                    _openSettingsScreen();
-                    break;
-                  case ChatNavigationAction.sessions:
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Sessions coming soon')),
-                    );
-                    break;
-                  case ChatNavigationAction.createChannel:
-                    _createChannel();
-                    break;
-                  case ChatNavigationAction.manageAgents:
-                    _openAgentsScreen();
-                    break;
-                }
-              },
+            child: Theme(
+              data: theme.copyWith(
+                scaffoldBackgroundColor: drawerBackgroundColor,
+              ),
+              child: ChatNavigationPage(
+                agents: _agents
+                    .map<ChatAgentItem>(
+                      (agent) => ChatAgentItem(
+                        name: agent.name,
+                        prompt: agent.systemPrompt,
+                        description: agent.description,
+                        isBuiltIn: _builtInAgentNames.contains(agent.name),
+                      ),
+                    )
+                    .toList(growable: false),
+                channels: _channels
+                    .map(
+                      (item) => ChatChannelItem(
+                        id: item.id,
+                        name: item.name,
+                        isDefault: item.isDefault,
+                      ),
+                    )
+                    .toList(),
+                selectedChannelId: _activeChannelId,
+                onChannelSelected: _switchChannel,
+                onChannelRename: _renameChannel,
+                onChannelArchive: _archiveChannel,
+                onActionSelected: (action) {
+                  switch (action) {
+                    case ChatNavigationAction.appSettings:
+                      _openSettingsScreen();
+                      break;
+                    case ChatNavigationAction.sessions:
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Sessions coming soon')),
+                      );
+                      break;
+                    case ChatNavigationAction.createChannel:
+                      _createChannel();
+                      break;
+                    case ChatNavigationAction.manageAgents:
+                      _openAgentsScreen();
+                      break;
+                  }
+                },
+              ),
             ),
           ),
         ),
         appBar: AppBar(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          backgroundColor: chatBackgroundColor,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           centerTitle: false,
@@ -2173,6 +2195,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 return ComposerBar(
                   activeAgent: _activeAgent,
                   agents: _agents,
+                  backgroundColor: composerBackgroundColor,
                   leadingActions: [
                     PopupMenuButton<String>(
                       popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,

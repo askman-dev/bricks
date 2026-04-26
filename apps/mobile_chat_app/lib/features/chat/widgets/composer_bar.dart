@@ -37,6 +37,7 @@ class ComposerBar extends StatefulWidget {
     this.onShowInfo,
     this.onStop,
     this.isStreaming = false,
+    this.backgroundColor,
   });
 
   final List<AgentDefinition> agents;
@@ -59,6 +60,7 @@ class ComposerBar extends StatefulWidget {
   final VoidCallback? onShowInfo;
   final VoidCallback? onStop;
   final bool isStreaming;
+  final Color? backgroundColor;
 
   @override
   State<ComposerBar> createState() => _ComposerBarState();
@@ -145,11 +147,9 @@ class _ComposerBarState extends State<ComposerBar>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(BricksRadius.lg),
                 border: Border.all(
-                  color: _focusNode.hasFocus
-                      ? chatColors.composerBorderFocus
-                      : chatColors.composerBorder,
+                  color: chatColors.composerBorder,
                 ),
-                color: chatColors.composerBackground,
+                color: widget.backgroundColor ?? chatColors.composerBackground,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,

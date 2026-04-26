@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-04-26
+last_updated: 2026-04-27
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -76,6 +76,11 @@ index:
       - docs/plans/2026-04-24-12-15-dispatch-avatar-placeholder.md
       - docs/plans/2026-04-26-02-45-UTC-jump-to-latest-message.md
       - docs/plans/2026-04-26-02-45-dark-theme-semantic-token-refactor.md
+      - docs/kb/color-theme-architecture.md
+      - .codex/skills/bricks-design-system/SKILL.md
+      - docs/plans/2026-04-26-23-24-+08-chat-dark-colors.md
+      - docs/plans/2026-04-27-00-19-+08-design-system-token-alignment.md
+      - docs/plans/2026-04-27-00-27-+08-design-system-skill.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
@@ -110,6 +115,12 @@ index:
       - long-polling (deprecated, replaced by SSE)
       - SSE (Server-Sent Events)
       - built-in agents
+      - design-system tokens
+      - responsive dark surfaces
+      - responsive sidebar drawer
+      - quiet composer focus
+      - composer action color alignment
+      - surface-layer color model
       - BOT
       - system prompt
       - manage agents
@@ -128,6 +139,10 @@ index:
       - 消息列表滚动锚点从“底部”改为“用户消息”后，若触发条件错误会导致上下文定位错位。
       - 长文本折叠状态与流式更新叠加时，可能出现按钮闪烁或展开状态丢失。
       - 菜单动画时长或曲线调整不当可能导致菜单响应突兀或视觉跳变。
+      - 设计系统 token 文档与 `AppColors` / `ChatColors` 映射不一致时，后续 UI 变更可能重新引入一次性颜色或冗余组件 token。
+      - 侧边栏宽度或背景色若与 chat surface 层级脱节，宽屏下会丢失导航层与主画布的视觉分离。
+      - 输入框 focus 态若重新引入强边框，会破坏暗色 composer 的安静层级并制造不必要的视觉噪音。
+      - 输入框底部 action 若混用不同 enabled 颜色，用户会误解部分按钮被禁用或处于不同优先级。
       - 标题区子区切换与右上角管理菜单职责若混淆，可能导致用户误触或切换不可达。
       - 频道重命名与新建时若未统一大小写/空白策略，可能出现“看似重复”名称并影响切换。
       - 异步路由（如 OpenClaw）与默认路由混用时，若排序键选错（例如把可变写入游标当作时间序）可能导致历史消息时序错乱。

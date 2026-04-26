@@ -14,18 +14,18 @@ class BricksSpacing {
 
 /// Centralized app color palette with semantic names.
 ///
-/// The dark palette follows a pure-black foundation + grayscale surfaces +
+/// The dark palette follows a near-black foundation (#212121) + grayscale surfaces +
 /// single brand blue accent strategy.
 class AppColors {
   const AppColors._();
 
   // Backgrounds
-  static const backgroundBase = Color(0xFF000000);
+  static const backgroundBase = Color(0xFF212121);
   static const backgroundChrome = Color(0xFF000000);
 
   // Surfaces
-  static const surfaceDefault = Color(0xFF16181C);
-  static const surfaceElevated = Color(0xFF1C1F23);
+  static const surfaceDefault = Color(0xFF181818);
+  static const surfaceElevated = Color(0xFF303030);
   static const surfaceSubtle = Color(0xFF202327);
 
   // Borders
@@ -45,32 +45,6 @@ class AppColors {
   static const danger = Color(0xFFF4212E);
   static const warning = Color(0xFFFFD400);
   static const success = Color(0xFF00BA7C);
-
-  // ------------------------------------------------------------------------
-  // Legacy aliases kept for compatibility with existing components.
-  // ------------------------------------------------------------------------
-  static const background = backgroundBase;
-  static const surface = surfaceDefault;
-  static const surface2 = surfaceElevated;
-  static const surface3 = surfaceSubtle;
-  static const border = borderSubtle;
-  static const divider = borderFocus;
-  static const iconPrimary = textPrimary;
-  static const iconSecondary = textSecondary;
-}
-
-/// Semantic color names used across the app.
-///
-/// Actual color values are resolved from the active [BricksTheme].
-class BricksColorTokens {
-  const BricksColorTokens._();
-
-  static const String surface = 'surface';
-  static const String onSurface = 'onSurface';
-  static const String primary = 'primary';
-  static const String onPrimary = 'onPrimary';
-  static const String error = 'error';
-  static const String onError = 'onError';
 }
 
 /// Border radius tokens.
