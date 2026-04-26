@@ -176,7 +176,7 @@ class _MessageListState extends State<MessageList> {
 
     final secondIcon = hasReplyStarted
         ? (isOpenclaw
-            ? _DeliveryIconState.lobster()
+            ? _DeliveryIconState.openclaw()
             : _DeliveryIconState.check(isCompleted: hasReplyCompleted))
         : null;
     if (!isOpenclaw && !isGenericRemote && !hasReplyStarted) {
@@ -523,7 +523,7 @@ class _UserMessageDeliveryStatus extends StatelessWidget {
   }
 }
 
-enum _DeliveryIcon { lobster, check }
+enum _DeliveryIcon { openclaw, check }
 
 class _DeliveryIconState {
   const _DeliveryIconState._({
@@ -532,9 +532,9 @@ class _DeliveryIconState {
     required this.opacity,
   });
 
-  const _DeliveryIconState.lobster({bool isDispatched = true})
+  const _DeliveryIconState.openclaw({bool isDispatched = true})
       : this._(
-          icon: _DeliveryIcon.lobster,
+          icon: _DeliveryIcon.openclaw,
           isCompleted: false,
           opacity: isDispatched ? 0.75 : 0.45,
         );
@@ -566,12 +566,12 @@ class _DeliveryStatusIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusLabel = icon.icon == _DeliveryIcon.lobster
+    final statusLabel = icon.icon == _DeliveryIcon.openclaw
         ? 'OpenClaw reply started'
         : icon.isCompleted
             ? 'AI reply completed'
             : 'Persisted';
-    if (icon.icon == _DeliveryIcon.lobster) {
+    if (icon.icon == _DeliveryIcon.openclaw) {
       return Semantics(
         label: statusLabel,
         child: Tooltip(

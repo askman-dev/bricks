@@ -353,11 +353,9 @@ class _ComposerBarState extends State<ComposerBar>
                                   )
                                 : Icon(
                                     Icons.send,
-                                    color: isSending
-                                        ? chatColors.composerActionDisabled
-                                        : _hasDraft
-                                            ? chatColors.sendActive
-                                            : chatColors.sendIdle,
+                                    color: _hasDraft
+                                        ? chatColors.sendActive
+                                        : chatColors.sendIdle,
                                   ),
                             tooltip: 'Send',
                           ),

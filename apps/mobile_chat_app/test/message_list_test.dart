@@ -392,7 +392,7 @@ void main() {
       expect(icons.last.color, chatColors.onMessageUser);
     });
 
-    testWidgets('shows check + lobster when openclaw reply starts',
+    testWidgets('shows check + openclaw icon when openclaw reply starts',
         (tester) async {
       final user = ChatMessage(
         messageId: 'u-openclaw',
