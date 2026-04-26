@@ -27,6 +27,10 @@ ensure_flutter() {
 }
 
 install_docs_site() {
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "Error: 'npm' is required to install docs site dependencies but was not found in PATH." >&2
+    exit 1
+  fi
   echo "Installing docs site dependencies..."
   (
     cd apps/docs_site
