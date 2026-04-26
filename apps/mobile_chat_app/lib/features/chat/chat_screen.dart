@@ -2013,6 +2013,15 @@ class _ChatScreenState extends State<ChatScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final theme = Theme.of(context);
+    final isCompactDarkChat = theme.brightness == Brightness.dark &&
+        MediaQuery.sizeOf(context).width < 600;
+    final chatBackgroundColor = isCompactDarkChat
+        ? AppColors.backgroundChrome
+        : theme.scaffoldBackgroundColor;
+    final composerBackgroundColor =
+        isCompactDarkChat ? AppColors.backgroundBase : null;
+
     String activeChannelName = '频道';
     for (final item in _channels) {
       if (item.id == _activeChannelId) {
@@ -2023,6 +2032,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
+        backgroundColor: chatBackgroundColor,
         drawer: Drawer(
           width: MediaQuery.of(context).size.width,
           child: SafeArea(
@@ -2072,7 +2082,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         appBar: AppBar(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          backgroundColor: chatBackgroundColor,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           centerTitle: false,
@@ -2173,6 +2183,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 return ComposerBar(
                   activeAgent: _activeAgent,
                   agents: _agents,
+                  backgroundColor: composerBackgroundColor,
                   leadingActions: [
                     PopupMenuButton<String>(
                       popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,

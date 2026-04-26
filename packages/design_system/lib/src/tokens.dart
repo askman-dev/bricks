@@ -24,10 +24,9 @@ class AppColors {
   static const backgroundChrome = Color(0xFF000000);
 
   // Surfaces
-  static const surfaceDefault = Color(0xFF16181C);
-  static const surfaceElevated = Color(0xFF1C1F23);
+  static const surfaceDefault = Color(0xFF181818);
+  static const surfaceElevated = Color(0xFF303030);
   static const surfaceSubtle = Color(0xFF202327);
-  static const surfaceInput = Color(0xFF303030);
 
   // Borders
   static const borderSubtle = Color(0xFF2F3336);
