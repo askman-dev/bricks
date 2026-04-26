@@ -1,3 +1,8 @@
+---
+title: Common Issues
+sidebar_position: 1
+---
+
 # Common Issues
 
 ## Environment bootstrap not run
