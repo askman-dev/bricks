@@ -1,3 +1,9 @@
+---
+title: Introduction
+sidebar_position: 1
+slug: /
+---
+
 # Bricks Documentation
 
 This documentation is organized for product understanding, local setup, integration, and architecture navigation.

@@ -1,3 +1,8 @@
+---
+title: OpenClaw Integration
+sidebar_position: 1
+---
+
 # OpenClaw Integration
 
 This page summarizes the current OpenClaw integration surface implemented in this repository.

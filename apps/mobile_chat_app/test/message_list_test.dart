@@ -4,6 +4,19 @@ import 'package:design_system/design_system.dart';
 import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
+// Must match _kBottomPaddingRatio in message_list.dart
+const double _kTestBottomPaddingRatio = 0.35;
+
+/// Computes the expected latest-content anchor offset using the same formula
+/// as MessageList._latestContentAnchorOffset.
+double _latestAnchorOffset(WidgetTester tester, ScrollPosition position) {
+  final screenHeight =
+      tester.view.physicalSize.height / tester.view.devicePixelRatio;
+  return (position.maxScrollExtent -
+          (BricksSpacing.md + screenHeight * _kTestBottomPaddingRatio))
+      .clamp(position.minScrollExtent, position.maxScrollExtent);
+}
+
 List<ChatMessage> _messages(String prefix, int count) {
   final start = DateTime.utc(2026, 1, 1);
   return List<ChatMessage>.generate(
@@ -92,7 +105,8 @@ void main() {
       expect(scrollable.position.pixels, greaterThan(0));
     });
 
-    testWidgets('shows jump-to-latest button and scrolls to bottom when tapped',
+    testWidgets(
+        'shows jump-to-latest button when over two screens away and scrolls to latest anchor on tap',
         (tester) async {
       await tester.pumpWidget(_build(_messages('jump', 60)));
       await tester.pumpAndSettle();
@@ -104,13 +118,36 @@ void main() {
       final jumpButton = find.byTooltip('Jump to latest');
       expect(jumpButton, findsOneWidget);
 
+      // Compute the expected anchor BEFORE tapping so it uses the same
+      // maxScrollExtent the production code will see when the button is pressed.
+      final expectedAnchor = _latestAnchorOffset(tester, scrollable.position);
+
       await tester.tap(jumpButton);
       await tester.pumpAndSettle();
 
-      expect(
-        scrollable.position.pixels,
-        closeTo(scrollable.position.maxScrollExtent, 1.0),
-      );
+      expect(scrollable.position.pixels, closeTo(expectedAnchor, 1.0));
+    });
+
+    testWidgets(
+        'keeps jump-to-latest button hidden when under two screens away',
+        (tester) async {
+      await tester.pumpWidget(_build(_messages('near', 60)));
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final nearAnchor = _latestAnchorOffset(tester, scrollable.position);
+      final almostNearEnough =
+          nearAnchor - scrollable.position.viewportDimension * 1.9;
+      scrollable.position.jumpTo(almostNearEnough.clamp(
+        scrollable.position.minScrollExtent,
+        scrollable.position.maxScrollExtent,
+      ));
+      await tester.pump();
+
+      final beforeTap = scrollable.position.pixels;
+      await tester.tap(find.byTooltip('Jump to latest'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(scrollable.position.pixels, closeTo(beforeTap, 0.1));
     });
   });
 
