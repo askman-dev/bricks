@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-23
+last_updated: 2026-04-26
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -80,6 +80,8 @@ products:
           - 打开右上角分区菜单与输入框配置菜单时，弹出动画应快速并呈现缩放+淡入效果。
           - 在主区（channel 对话）打开路由菜单时，不应显示 Thread router 分组；在子区（thread 对话）应显示 Follow channel / Bricks Default / OpenClaw 三项。
           - Openclaw 异步会话空闲时，客户端应通过 SSE（`/api/chat/events/:sessionId`）保持持久推送连接，服务端将在新消息到达后实时推送事件，无需客户端反复轮询。
+          - 深色主题下应采用纯黑背景与低亮度灰阶 surface；用户消息气泡不得使用品牌 primary 色。
+          - 链接、Agent 名称与发送按钮应统一使用同一 accent token，时间/thread 等 meta 信息应统一为次级灰。
 
       - feature_id: model_settings
         name: 模型与提供商配置
