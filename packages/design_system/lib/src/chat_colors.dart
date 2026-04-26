@@ -17,7 +17,6 @@ class ChatColors extends ThemeExtension<ChatColors> {
     required this.linkText,
     required this.composerBackground,
     required this.composerBorder,
-    required this.composerBorderFocus,
     required this.composerPlaceholder,
     required this.codeBlockBackground,
     required this.quoteBackground,
@@ -38,7 +37,6 @@ class ChatColors extends ThemeExtension<ChatColors> {
   final Color linkText;
   final Color composerBackground;
   final Color composerBorder;
-  final Color composerBorderFocus;
   final Color composerPlaceholder;
   final Color codeBlockBackground;
   final Color quoteBackground;
@@ -59,7 +57,6 @@ class ChatColors extends ThemeExtension<ChatColors> {
     linkText: Color(0xFF1D9BF0),
     composerBackground: Color(0xFFF5F7F8),
     composerBorder: Color(0xFFD0D5D9),
-    composerBorderFocus: Color(0xFF536471),
     composerPlaceholder: AppColors.textSecondary,
     codeBlockBackground: Color(0xFFEFF3F4),
     quoteBackground: Color(0xFFE8EEF2),
@@ -81,7 +78,6 @@ class ChatColors extends ThemeExtension<ChatColors> {
     linkText: AppColors.accentPrimary,
     composerBackground: AppColors.surfaceElevated,
     composerBorder: AppColors.borderSubtle,
-    composerBorderFocus: AppColors.borderFocus,
     composerPlaceholder: AppColors.textPrimary,
     codeBlockBackground: AppColors.surfaceDefault,
     quoteBackground: AppColors.surfaceSubtle,
@@ -104,7 +100,6 @@ class ChatColors extends ThemeExtension<ChatColors> {
     Color? linkText,
     Color? composerBackground,
     Color? composerBorder,
-    Color? composerBorderFocus,
     Color? composerPlaceholder,
     Color? codeBlockBackground,
     Color? quoteBackground,
@@ -127,7 +122,6 @@ class ChatColors extends ThemeExtension<ChatColors> {
       linkText: linkText ?? this.linkText,
       composerBackground: composerBackground ?? this.composerBackground,
       composerBorder: composerBorder ?? this.composerBorder,
-      composerBorderFocus: composerBorderFocus ?? this.composerBorderFocus,
       composerPlaceholder: composerPlaceholder ?? this.composerPlaceholder,
       codeBlockBackground: codeBlockBackground ?? this.codeBlockBackground,
       quoteBackground: quoteBackground ?? this.quoteBackground,
@@ -158,8 +152,6 @@ class ChatColors extends ThemeExtension<ChatColors> {
       composerBackground:
           Color.lerp(composerBackground, other.composerBackground, t)!,
       composerBorder: Color.lerp(composerBorder, other.composerBorder, t)!,
-      composerBorderFocus:
-          Color.lerp(composerBorderFocus, other.composerBorderFocus, t)!,
       composerPlaceholder:
           Color.lerp(composerPlaceholder, other.composerPlaceholder, t)!,
       codeBlockBackground:

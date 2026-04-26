@@ -147,9 +147,7 @@ class _ComposerBarState extends State<ComposerBar>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(BricksRadius.lg),
                 border: Border.all(
-                  color: _focusNode.hasFocus
-                      ? chatColors.composerBorderFocus
-                      : chatColors.composerBorder,
+                  color: chatColors.composerBorder,
                 ),
                 color: widget.backgroundColor ?? chatColors.composerBackground,
               ),
