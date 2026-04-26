@@ -1,3 +1,8 @@
+---
+title: System Overview
+sidebar_position: 1
+---
+
 # System Overview
 
 Bricks uses a modular architecture with clear package boundaries between UI, contracts, runtime, and platform integration.
