@@ -1,3 +1,8 @@
+---
+title: Product Overview
+sidebar_position: 1
+---
+
 # Product Overview
 
 Bricks is an agent console centered on multi-thread task execution and control.

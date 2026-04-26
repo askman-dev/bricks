@@ -1,0 +1,21 @@
+{
+  "name": "bricks-docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "DOCUSAURUS_BUNDLER=rspack docusaurus start",
+    "build": "DOCUSAURUS_BUNDLER=rspack docusaurus build",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.10.0",
+    "@docusaurus/preset-classic": "^3.10.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "@docusaurus/faster": "^3.10.0"
+  },
+  "overrides": {
+    "webpack": "5.94.0"
+  }
+}

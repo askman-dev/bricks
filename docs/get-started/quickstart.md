@@ -1,3 +1,8 @@
+---
+title: Quickstart
+sidebar_position: 1
+---
+
 # Quickstart
 
 ## 1) Initialize environment
@@ -36,4 +41,4 @@ cd apps/mobile_chat_app
 flutter build web --release
 ```
 
-For full build details, see [`BUILD.md`](../../BUILD.md).
+For full build details, see `BUILD.md`.
