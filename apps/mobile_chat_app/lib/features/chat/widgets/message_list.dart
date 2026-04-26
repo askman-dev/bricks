@@ -374,7 +374,12 @@ class _MessageListState extends State<MessageList> {
                           : null,
                       decoration: isUser
                           ? BoxDecoration(
-                              color: const Color(0xFFF2F2F2),
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                  : const Color(0xFFF2F2F2),
                               borderRadius:
                                   BorderRadius.circular(BricksRadius.md),
                             )
