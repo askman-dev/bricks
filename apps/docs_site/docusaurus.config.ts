@@ -5,11 +5,17 @@ const config: Config = {
   title: 'Bricks Docs',
   tagline: 'Documentation for Bricks',
 
-  url: 'http://localhost',
+  url: process.env.DOCS_URL ?? 'http://localhost',
   baseUrl: '/',
 
   organizationName: 'bricks',
   projectName: 'bricks-docs',
+
+  future: {
+    experimental_faster: {
+      rspackBundler: true,
+    },
+  },
 
   onBrokenLinks: 'warn',
 

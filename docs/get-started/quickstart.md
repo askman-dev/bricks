@@ -41,4 +41,4 @@ cd apps/mobile_chat_app
 flutter build web --release
 ```
 
-For full build details, see `BUILD.md`.
+For full build details, see `BUILD.md` at the repository root.
