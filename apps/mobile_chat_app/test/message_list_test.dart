@@ -86,6 +86,27 @@ void main() {
 
       expect(scrollable.position.pixels, greaterThan(0));
     });
+
+    testWidgets('shows jump-to-latest button and scrolls to bottom when tapped',
+        (tester) async {
+      await tester.pumpWidget(_build(_messages('jump', 60)));
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      scrollable.position.jumpTo(0);
+      await tester.pump();
+
+      final jumpButton = find.byTooltip('Jump to latest');
+      expect(jumpButton, findsOneWidget);
+
+      await tester.tap(jumpButton);
+      await tester.pumpAndSettle();
+
+      expect(
+        scrollable.position.pixels,
+        closeTo(scrollable.position.maxScrollExtent, 1.0),
+      );
+    });
   });
 
   group('MessageList streaming without messageId', () {
@@ -346,7 +367,7 @@ void main() {
         find.descendant(of: row, matching: find.byIcon(Icons.check)),
         findsOneWidget,
       );
-      expect(find.descendant(of: row, matching: find.text('🦞')), findsNothing);
+      expect(find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)), findsNothing);
     });
 
     testWidgets('shows check + completed check when default router has replied',
