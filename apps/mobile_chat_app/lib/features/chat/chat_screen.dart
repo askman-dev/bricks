@@ -2273,11 +2273,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: Center(
                           child:
                               _effectiveRouterForScope() == ChatRouter.openclaw
-                                  ? const Text(
-                                      '🦞',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(fontSize: 18, height: 1),
-                                    )
+                                  ? const Icon(Icons.hub_outlined, size: 20)
                                   : const Icon(Icons.alt_route, size: 20),
                         ),
                       ),
