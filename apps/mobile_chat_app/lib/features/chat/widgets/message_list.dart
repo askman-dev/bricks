@@ -408,7 +408,7 @@ class _MessageListState extends State<MessageList> {
                               : null,
                           decoration: isUser
                               ? BoxDecoration(
-                                  color: chatColors.userMessageContainer,
+                                  color: chatColors.messageUserBackground,
                                   borderRadius:
                                       BorderRadius.circular(BricksRadius.md),
                                 )
@@ -422,12 +422,16 @@ class _MessageListState extends State<MessageList> {
                                     'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
                                   ),
                                   text: msg.content,
-                                  textColor: chatColors.onUserMessageContainer,
+                                  textColor: chatColors.onMessageUser,
                                 )
                               else
                                 _AssistantMarkdownText(
                                   text: msg.content,
-                                  textColor: chatColors.onAgentMessageContainer,
+                                  textColor: chatColors.onMessageAssistant,
+                                  linkColor: chatColors.linkText,
+                                  codeBlockColor:
+                                      chatColors.codeBlockBackground,
+                                  quoteBlockColor: chatColors.quoteBackground,
                                   textStyle:
                                       Theme.of(context).textTheme.bodyMedium,
                                 ),
@@ -442,7 +446,7 @@ class _MessageListState extends State<MessageList> {
                                       strokeWidth: 2,
                                       valueColor: AlwaysStoppedAnimation<Color>(
                                         isUser
-                                            ? chatColors.onUserMessageContainer
+                                            ? chatColors.onMessageUser
                                             : chatColors.agentAccent,
                                       ),
                                     ),
@@ -462,8 +466,7 @@ class _MessageListState extends State<MessageList> {
                                         .labelSmall
                                         ?.copyWith(
                                           color: isUser
-                                              ? chatColors
-                                                  .onUserMessageContainer
+                                              ? chatColors.onMessageUser
                                               : chatColors.agentAccent,
                                         ),
                                   ),
@@ -484,8 +487,7 @@ class _MessageListState extends State<MessageList> {
                                               .textTheme
                                               .labelSmall
                                               ?.copyWith(
-                                                color:
-                                                    chatColors.userMessageMeta,
+                                                color: chatColors.metaText,
                                               ),
                                         ),
                                       ),
@@ -495,7 +497,7 @@ class _MessageListState extends State<MessageList> {
                                           indicator: deliveryIndicator,
                                           messageId: msg.messageId,
                                           foregroundColor:
-                                              chatColors.onUserMessageContainer,
+                                              chatColors.onMessageUser,
                                         ),
                                       ],
                                     ],
@@ -516,7 +518,7 @@ class _MessageListState extends State<MessageList> {
                           _messageMetaLine(msg),
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: chatColors.agentMessageMeta,
+                                    color: chatColors.metaText,
                                   ),
                         ),
                       ),
@@ -655,7 +657,7 @@ class _DeliveryStatusIcon extends StatelessWidget {
           color: foregroundColor != null
               ? foregroundColor!.withValues(alpha: icon.isCompleted ? 1.0 : 0.6)
               : icon.isCompleted
-                  ? Colors.green
+                  ? AppColors.success
                   : Theme.of(context).colorScheme.outline,
         ),
       ),
@@ -667,11 +669,17 @@ class _AssistantMarkdownText extends StatelessWidget {
   const _AssistantMarkdownText({
     required this.text,
     required this.textColor,
+    required this.linkColor,
+    required this.codeBlockColor,
+    required this.quoteBlockColor,
     required this.textStyle,
   });
 
   final String text;
   final Color textColor;
+  final Color linkColor;
+  final Color codeBlockColor;
+  final Color quoteBlockColor;
   final TextStyle? textStyle;
 
   @override
@@ -683,39 +691,95 @@ class _AssistantMarkdownText extends StatelessWidget {
       return Text(text, style: baseStyle);
     }
     final lines = text.split('\n');
+    final widgets = <Widget>[];
+    var inCodeBlock = false;
+    final codeLines = <String>[];
+
+    Widget _buildCodeBlock(List<String> codeContent) => Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: BricksSpacing.sm,
+            vertical: BricksSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: codeBlockColor,
+            borderRadius: BorderRadius.circular(BricksRadius.sm),
+          ),
+          child: Text(
+            codeContent.join('\n'),
+            style: baseStyle.copyWith(fontFamily: 'monospace'),
+          ),
+        );
+
+    for (final line in lines) {
+      final trimmed = line.trimLeft();
+      if (trimmed.startsWith('```')) {
+        if (inCodeBlock) {
+          widgets.add(_buildCodeBlock(codeLines));
+          codeLines.clear();
+          inCodeBlock = false;
+        } else {
+          inCodeBlock = true;
+        }
+        continue;
+      }
+      if (inCodeBlock) {
+        codeLines.add(line);
+        continue;
+      }
+      if (trimmed.startsWith('>')) {
+        widgets.add(Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: BricksSpacing.sm,
+            vertical: BricksSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: quoteBlockColor,
+            borderRadius: BorderRadius.circular(BricksRadius.sm),
+          ),
+          child: Text(trimmed.substring(1).trimLeft(), style: baseStyle),
+        ));
+        continue;
+      }
+      final block = _MarkdownBlock.tryParse(line);
+      final lineStyle = block.type == _MarkdownBlockType.heading
+          ? baseStyle.copyWith(fontWeight: FontWeight.w700)
+          : baseStyle;
+      final inlineSpans = _parseInlineMarkdown(
+        block.text,
+        baseStyle: lineStyle,
+        linkStyle: lineStyle.copyWith(color: linkColor),
+        headingLike: false,
+      );
+      if (block.type == _MarkdownBlockType.unorderedList ||
+          block.type == _MarkdownBlockType.orderedList) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(left: BricksSpacing.md),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(block.marker, style: lineStyle),
+              const SizedBox(width: BricksSpacing.xs),
+              Expanded(child: Text.rich(TextSpan(children: inlineSpans))),
+            ],
+          ),
+        ));
+        continue;
+      }
+      widgets.add(Text.rich(TextSpan(children: inlineSpans)));
+    }
+
+    // Handle unclosed code block (e.g. during streaming).
+    if (inCodeBlock && codeLines.isNotEmpty) {
+      widgets.add(_buildCodeBlock(codeLines));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: lines.map((line) {
-        final block = _MarkdownBlock.tryParse(line);
-        final lineStyle = block.type == _MarkdownBlockType.heading
-            ? baseStyle.copyWith(fontWeight: FontWeight.w700)
-            : baseStyle;
-        final inlineSpans = _parseInlineMarkdown(
-          block.text,
-          baseStyle: lineStyle,
-          headingLike: false,
-        );
-        if (block.type == _MarkdownBlockType.unorderedList ||
-            block.type == _MarkdownBlockType.orderedList) {
-          return Padding(
-            padding: const EdgeInsets.only(left: BricksSpacing.md),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  block.marker,
-                  style: lineStyle,
-                ),
-                const SizedBox(width: BricksSpacing.xs),
-                Expanded(child: Text.rich(TextSpan(children: inlineSpans))),
-              ],
-            ),
-          );
-        }
-
-        return Text.rich(TextSpan(children: inlineSpans));
-      }).toList(growable: false),
+      children: widgets,
     );
   }
 }
@@ -771,6 +835,7 @@ class _MarkdownBlock {
 List<InlineSpan> _parseInlineMarkdown(
   String source, {
   required TextStyle baseStyle,
+  required TextStyle linkStyle,
   required bool headingLike,
 }) {
   if (source.isEmpty) {
@@ -826,7 +891,50 @@ List<InlineSpan> _parseInlineMarkdown(
   }
 
   flush();
-  return spans;
+  return _injectLinkSpans(spans, baseStyle: baseStyle, linkStyle: linkStyle);
+}
+
+List<InlineSpan> _injectLinkSpans(
+  List<InlineSpan> spans, {
+  required TextStyle baseStyle,
+  required TextStyle linkStyle,
+}) {
+  final urlPattern = RegExp(r'https?://[^\s]+');
+  final expanded = <InlineSpan>[];
+  for (final span in spans) {
+    if (span is! TextSpan || (span.text ?? '').isEmpty) {
+      expanded.add(span);
+      continue;
+    }
+    final text = span.text!;
+    var cursor = 0;
+    for (final match in urlPattern.allMatches(text)) {
+      if (match.start > cursor) {
+        expanded.add(
+          TextSpan(
+            text: text.substring(cursor, match.start),
+            style: span.style ?? baseStyle,
+          ),
+        );
+      }
+      expanded.add(
+        TextSpan(
+          text: match.group(0),
+          style: (span.style ?? baseStyle).merge(linkStyle),
+        ),
+      );
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      expanded.add(
+        TextSpan(
+          text: text.substring(cursor),
+          style: span.style ?? baseStyle,
+        ),
+      );
+    }
+  }
+  return expanded;
 }
 
 TextStyle _styleFor(

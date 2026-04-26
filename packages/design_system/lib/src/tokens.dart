@@ -12,27 +12,51 @@ class BricksSpacing {
   static const double xxl = 48.0;
 }
 
-/// A centralized color palette matching the design target.
+/// Centralized app color palette with semantic names.
+///
+/// The dark palette follows a pure-black foundation + grayscale surfaces +
+/// single brand blue accent strategy.
 class AppColors {
   const AppColors._();
 
-  static const background = Color(0xFF000000);
+  // Backgrounds
+  static const backgroundBase = Color(0xFF000000);
+  static const backgroundChrome = Color(0xFF000000);
 
-  static const surface = Color(0xFF111111);
-  static const surface2 = Color(0xFF1C1C1E);
-  static const surface3 = Color(0xFF232325);
+  // Surfaces
+  static const surfaceDefault = Color(0xFF16181C);
+  static const surfaceElevated = Color(0xFF1C1F23);
+  static const surfaceSubtle = Color(0xFF202327);
 
-  static const border = Color(0xFF2C2C2E);
-  static const divider = Color(0xFF3A3A3C);
+  // Borders
+  static const borderSubtle = Color(0xFF2F3336);
+  static const borderFocus = Color(0xFF536471);
 
-  static const textPrimary = Color(0xFFF5F5F7);
-  static const textSecondary = Color(0xFF9A9AA0);
-  static const textTertiary = Color(0xFF6C6C70);
+  // Typography
+  static const textPrimary = Color(0xFFE7E9EA);
+  static const textSecondary = Color(0xFF71767B);
+  static const textTertiary = Color(0xFF536471);
 
-  static const iconPrimary = Color(0xFFF5F5F7);
-  static const iconSecondary = Color(0xFFB0B0B5);
+  // Accent
+  static const accentPrimary = Color(0xFF1D9BF0);
+  static const accentMuted = Color(0xFF0A3A5C);
 
-  static const danger = Color(0xFF8B8B90);
+  // Status colors
+  static const danger = Color(0xFFF4212E);
+  static const warning = Color(0xFFFFD400);
+  static const success = Color(0xFF00BA7C);
+
+  // ------------------------------------------------------------------------
+  // Legacy aliases kept for compatibility with existing components.
+  // ------------------------------------------------------------------------
+  static const background = backgroundBase;
+  static const surface = surfaceDefault;
+  static const surface2 = surfaceElevated;
+  static const surface3 = surfaceSubtle;
+  static const border = borderSubtle;
+  static const divider = borderFocus;
+  static const iconPrimary = textPrimary;
+  static const iconSecondary = textSecondary;
 }
 
 /// Semantic color names used across the app.

@@ -403,14 +403,14 @@ void main() {
       final icons = tester.widgetList<Icon>(
         find.descendant(of: row, matching: find.byIcon(Icons.check)),
       );
-      // Completed check inside user bubble uses the onUserMessageContainer
+      // Completed check inside user bubble uses the onMessageUser
       // token from ChatColors — verifies the widget reads the theme token,
       // not a hard-coded color value.
       final chatColors = Theme.of(tester.element(find.byKey(
                   const ValueKey<String>('user-delivery-u-default-completed'))))
               .extension<ChatColors>() ??
           ChatColors.light;
-      expect(icons.last.color, chatColors.onUserMessageContainer);
+      expect(icons.last.color, chatColors.onMessageUser);
     });
 
     testWidgets('shows check + lobster when openclaw reply starts',
