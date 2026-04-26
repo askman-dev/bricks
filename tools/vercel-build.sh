@@ -26,17 +26,39 @@ ensure_flutter() {
   echo "Using Flutter from ${flutter_root}"
 }
 
+install_docs_site() {
+  echo "Installing docs site dependencies..."
+  (
+    cd apps/docs_site
+    npm ci
+  )
+}
+
+build_docs_site() {
+  echo "Building docs site..."
+  (
+    cd apps/docs_site
+    npm run build
+  )
+
+  echo "Copying docs site into Flutter web output..."
+  rm -rf apps/mobile_chat_app/build/web/docs
+  mkdir -p apps/mobile_chat_app/build/web/docs
+  cp -R apps/docs_site/build/. apps/mobile_chat_app/build/web/docs/
+}
+
 ensure_flutter
 flutter config --enable-web >/dev/null
 
 if [ "${INSTALL_ONLY}" = "--install-only" ]; then
-  echo "Running install-only setup (pub get and web precache)..."
+  echo "Running install-only setup..."
   flutter --version
   (
     cd apps/mobile_chat_app
     flutter pub get
   )
   flutter precache --web 2>&1 || echo "Warning: flutter precache --web failed; build may be slower." >&2
+  install_docs_site
   echo "Install-only step finished."
   exit 0
 fi
@@ -47,3 +69,10 @@ flutter --version
   flutter pub get
   flutter build web --release
 )
+
+# Useful for local runs where --install-only was not executed first.
+if [ ! -d apps/docs_site/node_modules ]; then
+  install_docs_site
+fi
+
+build_docs_site

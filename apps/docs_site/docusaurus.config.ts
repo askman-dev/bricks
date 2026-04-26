@@ -5,14 +5,17 @@ const config: Config = {
   title: 'Bricks Docs',
   tagline: 'Documentation for Bricks',
 
+  // Production: DOCS_URL=https://bricks.askman.dev
+  // Do not include /docs here. /docs belongs to baseUrl.
   url: process.env.DOCS_URL ?? 'http://localhost',
-  baseUrl: '/',
+  // Mount the whole Docusaurus site under /docs/.
+  baseUrl: process.env.DOCS_BASE_URL ?? '/docs/',
 
   organizationName: 'bricks',
   projectName: 'bricks-docs',
 
   future: {
-    experimental_faster: {
+    faster: {
       rspackBundler: true,
     },
   },
