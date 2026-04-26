@@ -17,7 +17,12 @@ List<ChatMessage> _messages(String prefix, int count) {
   );
 }
 
-Widget _build(List<ChatMessage> messages) => MaterialApp(
+Widget _build(
+  List<ChatMessage> messages, {
+  ThemeData? theme,
+}) =>
+    MaterialApp(
+      theme: theme,
       home: Scaffold(
         body: SizedBox(height: 320, child: MessageList(messages: messages)),
       ),
@@ -240,6 +245,56 @@ void main() {
     });
   });
 
+  group('MessageList visual style', () {
+    testWidgets('uses high-contrast user bubble colors in dark mode',
+        (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-dark',
+        role: 'user',
+        content: 'dark mode user message',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([user], theme: BricksTheme.dark()));
+      await tester.pumpAndSettle();
+
+      final userContainer = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-u-dark')),
+      );
+      final decoration = userContainer.decoration! as BoxDecoration;
+      expect(decoration.color, const Color(0xFFE9EBEC));
+
+      final userText = tester.widget<Text>(find.text('dark mode user message'));
+      expect(userText.style?.color, const Color(0xFF1F2328));
+    });
+
+    testWidgets('adds larger gap after user bubbles', (tester) async {
+      final user = ChatMessage(
+        messageId: 'u-gap',
+        role: 'user',
+        content: 'first message',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      final assistant = ChatMessage(
+        messageId: 'a-gap',
+        role: 'assistant',
+        content: 'second message',
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+      );
+
+      await tester.pumpWidget(_build([user, assistant]));
+      await tester.pumpAndSettle();
+
+      final userContainer = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-u-gap')),
+      );
+      expect(
+        userContainer.margin,
+        const EdgeInsets.only(bottom: BricksSpacing.md),
+      );
+    });
+  });
+
   group('Assistant markdown rendering', () {
     testWidgets(
         'renders markdown heading without heading marker and without size increase',
@@ -367,7 +422,9 @@ void main() {
         find.descendant(of: row, matching: find.byIcon(Icons.check)),
         findsOneWidget,
       );
-      expect(find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)), findsNothing);
+      expect(
+          find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)),
+          findsNothing);
     });
 
     testWidgets('shows check + completed check when default router has replied',

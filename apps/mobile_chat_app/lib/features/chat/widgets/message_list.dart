@@ -388,8 +388,10 @@ class _MessageListState extends State<MessageList> {
                           key: ValueKey<String>(
                             'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
                           ),
-                          margin:
-                              const EdgeInsets.only(bottom: BricksSpacing.xs),
+                          margin: EdgeInsets.only(
+                            bottom:
+                                isUser ? BricksSpacing.md : BricksSpacing.xs,
+                          ),
                           padding: isUser
                               ? const EdgeInsets.symmetric(
                                   horizontal: BricksSpacing.md,
@@ -487,7 +489,12 @@ class _MessageListState extends State<MessageList> {
                                               .textTheme
                                               .labelSmall
                                               ?.copyWith(
-                                                color: chatColors.metaText,
+                                                color: isUser
+                                                    ? chatColors.onMessageUser
+                                                        .withValues(
+                                                        alpha: 0.68,
+                                                      )
+                                                    : chatColors.metaText,
                                               ),
                                         ),
                                       ),
