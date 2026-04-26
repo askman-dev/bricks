@@ -256,7 +256,6 @@ class _MessageListState extends State<MessageList> {
           // working without an explicit BricksTheme.
           final chatColors =
               Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
-          final messageBodyStyle = Theme.of(context).textTheme.bodyMedium;
           // Attach the focused-item key only to the target row so that
           // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
           // without maintaining a GlobalKey for every list item.
@@ -389,7 +388,6 @@ class _MessageListState extends State<MessageList> {
                               ),
                               text: msg.content,
                               textColor: chatColors.onMessageUser,
-                              textStyle: messageBodyStyle,
                             )
                           else
                             _AssistantMarkdownText(
@@ -398,7 +396,7 @@ class _MessageListState extends State<MessageList> {
                               linkColor: chatColors.linkText,
                               codeBlockColor: chatColors.codeBlockBackground,
                               quoteBlockColor: chatColors.quoteBackground,
-                              textStyle: messageBodyStyle,
+                              textStyle: Theme.of(context).textTheme.bodyLarge,
                             ),
                           if (msg.isStreaming)
                             Padding(
@@ -893,12 +891,10 @@ class _MessageExpandToggle extends StatefulWidget {
     super.key,
     required this.text,
     required this.textColor,
-    required this.textStyle,
   });
 
   final String text;
   final Color textColor;
-  final TextStyle? textStyle;
 
   @override
   State<_MessageExpandToggle> createState() => _MessageExpandToggleState();
@@ -926,9 +922,9 @@ class _MessageExpandToggleState extends State<_MessageExpandToggle> {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = widget.textStyle?.copyWith(
-      color: widget.textColor,
-    );
+    final textStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
+          color: widget.textColor,
+        );
     return LayoutBuilder(
       builder: (context, constraints) {
         final painter = TextPainter(
