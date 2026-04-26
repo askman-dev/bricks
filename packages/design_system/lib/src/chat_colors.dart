@@ -55,7 +55,7 @@ class ChatColors extends ThemeExtension<ChatColors> {
     composerBackground: Color(0xFFF5F7F8),
     composerBorder: Color(0xFFD0D5D9),
     composerBorderFocus: Color(0xFF536471),
-    composerPlaceholder: Color(0xFF7A838A),
+    composerPlaceholder: AppColors.textSecondary,
     codeBlockBackground: Color(0xFFEFF3F4),
     quoteBackground: Color(0xFFE8EEF2),
   );
@@ -74,7 +74,7 @@ class ChatColors extends ThemeExtension<ChatColors> {
     composerBackground: AppColors.surfaceElevated,
     composerBorder: AppColors.borderSubtle,
     composerBorderFocus: AppColors.borderFocus,
-    composerPlaceholder: AppColors.textTertiary,
+    composerPlaceholder: AppColors.textSecondary,
     codeBlockBackground: AppColors.surfaceElevated,
     quoteBackground: AppColors.surfaceSubtle,
   );

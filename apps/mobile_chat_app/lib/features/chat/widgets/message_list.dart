@@ -396,7 +396,7 @@ class _MessageListState extends State<MessageList> {
                               linkColor: chatColors.linkText,
                               codeBlockColor: chatColors.codeBlockBackground,
                               quoteBlockColor: chatColors.quoteBackground,
-                              textStyle: Theme.of(context).textTheme.bodyMedium,
+                              textStyle: Theme.of(context).textTheme.bodyLarge,
                             ),
                           if (msg.isStreaming)
                             Padding(
@@ -925,7 +925,7 @@ class _MessageExpandToggleState extends State<_MessageExpandToggle> {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+    final textStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
           color: widget.textColor,
         );
     return LayoutBuilder(
