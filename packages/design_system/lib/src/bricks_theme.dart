@@ -1,6 +1,7 @@
 // Flutter dependency – intentionally thin.
 // ignore: depend_on_referenced_packages
 import 'package:flutter/material.dart';
+import 'chat_colors.dart';
 import 'tokens.dart';
 
 /// Provides the Bricks [ThemeData] for light and dark modes.
@@ -29,11 +30,13 @@ class BricksTheme {
           onSurfaceVariant: AppColors.textSecondary,
           outline: AppColors.textTertiary,
         ),
+        extensions: const [ChatColors.dark],
       );
 
   static ThemeData _buildTheme(Brightness brightness) => ThemeData(
         useMaterial3: true,
         colorSchemeSeed: const Color(0xFF4A90D9),
         brightness: brightness,
+        extensions: const [ChatColors.light],
       );
 }

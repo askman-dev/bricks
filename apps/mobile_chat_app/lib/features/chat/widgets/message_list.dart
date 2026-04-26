@@ -251,6 +251,11 @@ class _MessageListState extends State<MessageList> {
               _isAssistantDispatchPlaceholder(msg);
           final deliveryIndicator =
               isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
+          // Resolve chat-specific semantic colors from the ThemeExtension.
+          // Falling back to the light defaults keeps plain MaterialApp tests
+          // working without an explicit BricksTheme.
+          final chatColors =
+              Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
           // Attach the focused-item key only to the target row so that
           // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
           // without maintaining a GlobalKey for every list item.
@@ -282,7 +287,7 @@ class _MessageListState extends State<MessageList> {
                               .textTheme
                               .labelSmall
                               ?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
+                                color: chatColors.agentName,
                               ),
                         ),
                         if (msg.nodeType?.trim().isNotEmpty == true) ...[
@@ -293,9 +298,7 @@ class _MessageListState extends State<MessageList> {
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
+                              color: chatColors.agentBadgeContainer,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -304,9 +307,7 @@ class _MessageListState extends State<MessageList> {
                                   .textTheme
                                   .labelSmall
                                   ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
+                                    color: chatColors.onAgentBadgeContainer,
                                   ),
                             ),
                           ),
@@ -325,7 +326,7 @@ class _MessageListState extends State<MessageList> {
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).colorScheme.primary,
+                              chatColors.agentAccent,
                             ),
                           ),
                         ),
@@ -374,12 +375,7 @@ class _MessageListState extends State<MessageList> {
                           : null,
                       decoration: isUser
                           ? BoxDecoration(
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Theme.of(context)
-                                      .colorScheme
-                                      .surfaceContainerHighest
-                                  : const Color(0xFFF2F2F2),
+                              color: chatColors.userMessageContainer,
                               borderRadius:
                                   BorderRadius.circular(BricksRadius.md),
                             )
@@ -393,14 +389,12 @@ class _MessageListState extends State<MessageList> {
                                 'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
                               ),
                               text: msg.content,
-                              textColor:
-                                  Theme.of(context).colorScheme.onSurface,
+                              textColor: chatColors.onUserMessageContainer,
                             )
                           else
                             _AssistantMarkdownText(
                               text: msg.content,
-                              textColor:
-                                  Theme.of(context).colorScheme.onSurface,
+                              textColor: chatColors.onAgentMessageContainer,
                               textStyle: Theme.of(context).textTheme.bodyMedium,
                             ),
                           if (msg.isStreaming)
@@ -414,10 +408,8 @@ class _MessageListState extends State<MessageList> {
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     isUser
-                                        ? Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                        : Theme.of(context).colorScheme.primary,
+                                        ? chatColors.onUserMessageContainer
+                                        : chatColors.agentAccent,
                                   ),
                                 ),
                               ),
@@ -435,12 +427,8 @@ class _MessageListState extends State<MessageList> {
                                     .labelSmall
                                     ?.copyWith(
                                       color: isUser
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .primary,
+                                          ? chatColors.onUserMessageContainer
+                                          : chatColors.agentAccent,
                                     ),
                               ),
                             ),
@@ -460,9 +448,7 @@ class _MessageListState extends State<MessageList> {
                                           .textTheme
                                           .labelSmall
                                           ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface,
+                                            color: chatColors.userMessageMeta,
                                           ),
                                     ),
                                   ),
@@ -471,9 +457,8 @@ class _MessageListState extends State<MessageList> {
                                     _UserMessageDeliveryStatus(
                                       indicator: deliveryIndicator,
                                       messageId: msg.messageId,
-                                      foregroundColor: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface,
+                                      foregroundColor:
+                                          chatColors.onUserMessageContainer,
                                     ),
                                   ],
                                 ],
@@ -493,7 +478,7 @@ class _MessageListState extends State<MessageList> {
                     child: Text(
                       _messageMetaLine(msg),
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
+                            color: chatColors.agentMessageMeta,
                           ),
                     ),
                   ),
