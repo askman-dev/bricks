@@ -89,7 +89,7 @@ class ChatColors extends ThemeExtension<ChatColors> {
     onAgentBadgeContainer: AppColors.textSecondary,
     agentAccent: AppColors.accentPrimary,
     linkText: AppColors.accentPrimary,
-    composerBackground: AppColors.surfaceElevated,
+    composerBackground: AppColors.surfaceInput,
     composerBorder: AppColors.borderSubtle,
     composerBorderFocus: AppColors.borderFocus,
     composerPlaceholder: AppColors.textPrimary,
