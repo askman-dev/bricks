@@ -119,6 +119,7 @@ index:
       - responsive dark surfaces
       - responsive sidebar drawer
       - quiet composer focus
+      - composer action color alignment
       - surface-layer color model
       - BOT
       - system prompt
@@ -141,6 +142,7 @@ index:
       - 设计系统 token 文档与 `AppColors` / `ChatColors` 映射不一致时，后续 UI 变更可能重新引入一次性颜色或冗余组件 token。
       - 侧边栏宽度或背景色若与 chat surface 层级脱节，宽屏下会丢失导航层与主画布的视觉分离。
       - 输入框 focus 态若重新引入强边框，会破坏暗色 composer 的安静层级并制造不必要的视觉噪音。
+      - 输入框底部 action 若混用不同 enabled 颜色，用户会误解部分按钮被禁用或处于不同优先级。
       - 标题区子区切换与右上角管理菜单职责若混淆，可能导致用户误触或切换不可达。
       - 频道重命名与新建时若未统一大小写/空白策略，可能出现“看似重复”名称并影响切换。
       - 异步路由（如 OpenClaw）与默认路由混用时，若排序键选错（例如把可变写入游标当作时间序）可能导致历史消息时序错乱。

@@ -1,6 +1,6 @@
 ---
 name: bricks-design-system
-description: Use when modifying Bricks UI design, colors, theme tokens, ChatColors/AppColors, responsive dark surfaces, composer/message styling, or docs about the design system. Guides agents to preserve the surface-layer-first token model, avoid redundant component-specific tokens, and keep code, KB docs, plans, and code maps aligned.
+description: Use when modifying or reviewing Bricks UI design, color choices, theme tokens, AppColors, ChatColors, component color aliases, hardcoded Color values, responsive dark surfaces, composer/message/sidebar styling, or design-system documentation. Also use when the user asks whether a color should reuse a token, whether token definitions are redundant, or how to keep code, KB docs, plans, and code maps aligned. Guides agents to preserve the surface-layer-first token model, map component aliases back to core tokens, avoid copying literal token values into aliases, avoid redundant component-specific tokens, and keep implementation and documentation consistent.
 ---
 
 # Bricks Design System
@@ -40,6 +40,11 @@ name and reuse the layer.
 Add or keep a component alias such as `ChatColors.composerBackground` only when
 it represents stable product meaning and makes call sites clearer. Component
 aliases should usually map back to `AppColors`.
+
+Do not copy a core token's literal value into a component alias. For example,
+if an enabled neutral composer action should use the primary readable/icon
+color, write `composerActionIdle: AppColors.textPrimary`, not
+`composerActionIdle: Color(0xFFE7E9EA)`.
 
 ## Responsive surfaces
 

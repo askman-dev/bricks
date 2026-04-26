@@ -81,9 +81,9 @@ class ChatColors extends ThemeExtension<ChatColors> {
     composerPlaceholder: AppColors.textPrimary,
     codeBlockBackground: AppColors.surfaceDefault,
     quoteBackground: AppColors.surfaceSubtle,
-    composerActionIdle: Color(0xFFB5BDC4),
-    sendIdle: Color(0xFFB5BDC4),
-    sendActive: Color(0xFFE7E9EA),
+    composerActionIdle: AppColors.textPrimary,
+    sendIdle: AppColors.textPrimary,
+    sendActive: AppColors.textPrimary,
     agentIdentity: Color(0xFFDEE3E7),
   );
 
