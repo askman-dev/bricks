@@ -423,8 +423,9 @@ void main() {
         findsOneWidget,
       );
       expect(
-          find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)),
-          findsNothing);
+        find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)),
+        findsNothing,
+      );
     });
 
     testWidgets('shows check + completed check when default router has replied',
