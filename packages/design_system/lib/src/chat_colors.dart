@@ -79,9 +79,9 @@ class ChatColors extends ThemeExtension<ChatColors> {
   );
 
   static const ChatColors dark = ChatColors(
-    messageUserBackground: AppColors.surfaceDefault,
+    messageUserBackground: Color(0xFFE9EBEC),
     messageAssistantBackground: Colors.transparent,
-    onMessageUser: AppColors.textPrimary,
+    onMessageUser: Color(0xFF1F2328),
     onMessageAssistant: AppColors.textPrimary,
     metaText: AppColors.textSecondary,
     agentName: AppColors.accentPrimary,
