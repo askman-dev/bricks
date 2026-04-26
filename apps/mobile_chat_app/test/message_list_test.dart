@@ -414,7 +414,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: beforeReplyRow, matching: find.text('🦞')),
+        find.descendant(
+          of: beforeReplyRow,
+          matching: find.byIcon(Icons.hub_outlined),
+        ),
         findsNothing,
       );
 
@@ -437,7 +440,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: afterReplyRow, matching: find.text('🦞')),
+        find.descendant(
+          of: afterReplyRow,
+          matching: find.byIcon(Icons.hub_outlined),
+        ),
         findsOneWidget,
       );
     });

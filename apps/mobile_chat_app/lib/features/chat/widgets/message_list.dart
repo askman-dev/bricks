@@ -256,6 +256,7 @@ class _MessageListState extends State<MessageList> {
           // working without an explicit BricksTheme.
           final chatColors =
               Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+          final messageBodyStyle = Theme.of(context).textTheme.bodyMedium;
           // Attach the focused-item key only to the target row so that
           // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
           // without maintaining a GlobalKey for every list item.
@@ -285,7 +286,7 @@ class _MessageListState extends State<MessageList> {
                           msg.agentName ?? msg.model ?? '',
                           style:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: chatColors.agentName,
+                                    color: chatColors.agentIdentity,
                                   ),
                         ),
                         if (msg.nodeType?.trim().isNotEmpty == true) ...[
@@ -388,6 +389,7 @@ class _MessageListState extends State<MessageList> {
                               ),
                               text: msg.content,
                               textColor: chatColors.onMessageUser,
+                              textStyle: messageBodyStyle,
                             )
                           else
                             _AssistantMarkdownText(
@@ -396,7 +398,7 @@ class _MessageListState extends State<MessageList> {
                               linkColor: chatColors.linkText,
                               codeBlockColor: chatColors.codeBlockBackground,
                               quoteBlockColor: chatColors.quoteBackground,
-                              textStyle: Theme.of(context).textTheme.bodyMedium,
+                              textStyle: messageBodyStyle,
                             ),
                           if (msg.isStreaming)
                             Padding(
@@ -574,14 +576,11 @@ class _DeliveryStatusIcon extends StatelessWidget {
         label: statusLabel,
         child: Tooltip(
           message: statusLabel,
-          child: Text(
-            '🦞',
-            style: TextStyle(
-              fontSize: 12,
-              color: (foregroundColor ??
-                      Theme.of(context).colorScheme.onSurfaceVariant)
-                  .withValues(alpha: icon.opacity),
-            ),
+          child: Icon(
+            Icons.hub_outlined,
+            size: 14,
+            color: (foregroundColor ?? Theme.of(context).colorScheme.outline)
+                .withValues(alpha: icon.opacity),
           ),
         ),
       );
@@ -894,10 +893,12 @@ class _MessageExpandToggle extends StatefulWidget {
     super.key,
     required this.text,
     required this.textColor,
+    required this.textStyle,
   });
 
   final String text;
   final Color textColor;
+  final TextStyle? textStyle;
 
   @override
   State<_MessageExpandToggle> createState() => _MessageExpandToggleState();
@@ -925,9 +926,9 @@ class _MessageExpandToggleState extends State<_MessageExpandToggle> {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: widget.textColor,
-        );
+    final textStyle = widget.textStyle?.copyWith(
+      color: widget.textColor,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final painter = TextPainter(
