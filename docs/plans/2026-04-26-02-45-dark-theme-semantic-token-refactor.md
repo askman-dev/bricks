@@ -32,4 +32,4 @@ The chat UI dark theme currently mixes direct `ColorScheme` fields and hard-code
 - Meta text (time/thread/handle-like info) uses a unified secondary token.
 - Composer default border is subtle, with stronger emphasis only on focus/action states.
 - Business widgets avoid raw hex colors and direct color misuse for chat hierarchy.
-- Validation commands complete successfully: `./tools/init_dev_env.sh`, `cd apps/mobile_chat_app && flutter analyze`, and `python3 -c "import yaml..."` for code maps.
+- Validation commands complete successfully: `./tools/init_dev_env.sh`, `cd apps/mobile_chat_app && flutter analyze`, `npx js-yaml docs/code_maps/feature_map.yaml`, and `npx js-yaml docs/code_maps/logic_map.yaml`.

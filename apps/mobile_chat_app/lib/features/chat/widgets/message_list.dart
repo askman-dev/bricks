@@ -630,74 +630,95 @@ class _AssistantMarkdownText extends StatelessWidget {
       return Text(text, style: baseStyle);
     }
     final lines = text.split('\n');
+    final widgets = <Widget>[];
+    var inCodeBlock = false;
+    final codeLines = <String>[];
+
+    Widget _buildCodeBlock(List<String> codeContent) => Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: BricksSpacing.sm,
+            vertical: BricksSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: codeBlockColor,
+            borderRadius: BorderRadius.circular(BricksRadius.sm),
+          ),
+          child: Text(
+            codeContent.join('\n'),
+            style: baseStyle.copyWith(fontFamily: 'monospace'),
+          ),
+        );
+
+    for (final line in lines) {
+      final trimmed = line.trimLeft();
+      if (trimmed.startsWith('```')) {
+        if (inCodeBlock) {
+          widgets.add(_buildCodeBlock(codeLines));
+          codeLines.clear();
+          inCodeBlock = false;
+        } else {
+          inCodeBlock = true;
+        }
+        continue;
+      }
+      if (inCodeBlock) {
+        codeLines.add(line);
+        continue;
+      }
+      if (trimmed.startsWith('>')) {
+        widgets.add(Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+            horizontal: BricksSpacing.sm,
+            vertical: BricksSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: quoteBlockColor,
+            borderRadius: BorderRadius.circular(BricksRadius.sm),
+          ),
+          child: Text(trimmed.substring(1).trimLeft(), style: baseStyle),
+        ));
+        continue;
+      }
+      final block = _MarkdownBlock.tryParse(line);
+      final lineStyle = block.type == _MarkdownBlockType.heading
+          ? baseStyle.copyWith(fontWeight: FontWeight.w700)
+          : baseStyle;
+      final inlineSpans = _parseInlineMarkdown(
+        block.text,
+        baseStyle: lineStyle,
+        linkStyle: lineStyle.copyWith(color: linkColor),
+        headingLike: false,
+      );
+      if (block.type == _MarkdownBlockType.unorderedList ||
+          block.type == _MarkdownBlockType.orderedList) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(left: BricksSpacing.md),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(block.marker, style: lineStyle),
+              const SizedBox(width: BricksSpacing.xs),
+              Expanded(child: Text.rich(TextSpan(children: inlineSpans))),
+            ],
+          ),
+        ));
+        continue;
+      }
+      widgets.add(Text.rich(TextSpan(children: inlineSpans)));
+    }
+
+    // Handle unclosed code block (e.g. during streaming).
+    if (inCodeBlock && codeLines.isNotEmpty) {
+      widgets.add(_buildCodeBlock(codeLines));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: lines.map((line) {
-        final block = _MarkdownBlock.tryParse(line);
-        final lineStyle = block.type == _MarkdownBlockType.heading
-            ? baseStyle.copyWith(fontWeight: FontWeight.w700)
-            : baseStyle;
-        final trimmed = line.trimLeft();
-        if (trimmed.startsWith('```')) {
-          return Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-            padding: const EdgeInsets.symmetric(
-              horizontal: BricksSpacing.sm,
-              vertical: BricksSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              color: codeBlockColor,
-              borderRadius: BorderRadius.circular(BricksRadius.sm),
-            ),
-            child: Text(
-              trimmed,
-              style: lineStyle.copyWith(fontFamily: 'monospace'),
-            ),
-          );
-        }
-        if (trimmed.startsWith('>')) {
-          return Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
-            padding: const EdgeInsets.symmetric(
-              horizontal: BricksSpacing.sm,
-              vertical: BricksSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              color: quoteBlockColor,
-              borderRadius: BorderRadius.circular(BricksRadius.sm),
-            ),
-            child: Text(trimmed.substring(1).trimLeft(), style: lineStyle),
-          );
-        }
-        final inlineSpans = _parseInlineMarkdown(
-          block.text,
-          baseStyle: lineStyle,
-          linkStyle: lineStyle.copyWith(color: linkColor),
-          headingLike: false,
-        );
-        if (block.type == _MarkdownBlockType.unorderedList ||
-            block.type == _MarkdownBlockType.orderedList) {
-          return Padding(
-            padding: const EdgeInsets.only(left: BricksSpacing.md),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  block.marker,
-                  style: lineStyle,
-                ),
-                const SizedBox(width: BricksSpacing.xs),
-                Expanded(child: Text.rich(TextSpan(children: inlineSpans))),
-              ],
-            ),
-          );
-        }
-
-        return Text.rich(TextSpan(children: inlineSpans));
-      }).toList(growable: false),
+      children: widgets,
     );
   }
 }
