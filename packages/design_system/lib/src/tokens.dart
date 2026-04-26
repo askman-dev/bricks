@@ -14,7 +14,7 @@ class BricksSpacing {
 
 /// Centralized app color palette with semantic names.
 ///
-/// The dark palette follows a pure-black foundation + grayscale surfaces +
+/// The dark palette follows a near-black foundation (#212121) + grayscale surfaces +
 /// single brand blue accent strategy.
 class AppColors {
   const AppColors._();
