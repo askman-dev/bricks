@@ -367,7 +367,7 @@ void main() {
         find.descendant(of: row, matching: find.byIcon(Icons.check)),
         findsOneWidget,
       );
-      expect(find.descendant(of: row, matching: find.text('🦞')), findsNothing);
+      expect(find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)), findsNothing);
     });
 
     testWidgets('shows check + completed check when default router has replied',
@@ -413,7 +413,7 @@ void main() {
       expect(icons.last.color, chatColors.onMessageUser);
     });
 
-    testWidgets('shows check + lobster when openclaw reply starts',
+    testWidgets('shows check + openclaw icon when openclaw reply starts',
         (tester) async {
       final user = ChatMessage(
         messageId: 'u-openclaw',
@@ -435,7 +435,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: beforeReplyRow, matching: find.text('🦞')),
+        find.descendant(
+          of: beforeReplyRow,
+          matching: find.byIcon(Icons.hub_outlined),
+        ),
         findsNothing,
       );
 
@@ -458,7 +461,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: afterReplyRow, matching: find.text('🦞')),
+        find.descendant(
+          of: afterReplyRow,
+          matching: find.byIcon(Icons.hub_outlined),
+        ),
         findsOneWidget,
       );
     });
