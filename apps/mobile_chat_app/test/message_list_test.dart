@@ -87,7 +87,8 @@ void main() {
       expect(scrollable.position.pixels, greaterThan(0));
     });
 
-    testWidgets('shows jump-to-latest button and scrolls to bottom when tapped',
+    testWidgets(
+        'shows jump-to-latest button when over two screens away and scrolls to latest anchor on tap',
         (tester) async {
       await tester.pumpWidget(_build(_messages('jump', 60)));
       await tester.pumpAndSettle();
@@ -102,10 +103,36 @@ void main() {
       await tester.tap(jumpButton);
       await tester.pumpAndSettle();
 
+      final distanceToBottom =
+          scrollable.position.maxScrollExtent - scrollable.position.pixels;
+      expect(distanceToBottom, greaterThan(0));
       expect(
-        scrollable.position.pixels,
-        closeTo(scrollable.position.maxScrollExtent, 1.0),
+        distanceToBottom,
+        lessThan(scrollable.position.viewportDimension * 0.5),
       );
+    });
+
+    testWidgets(
+        'keeps jump-to-latest button hidden when under two screens away',
+        (tester) async {
+      await tester.pumpWidget(_build(_messages('near', 60)));
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final nearAnchor = scrollable.position.maxScrollExtent -
+          scrollable.position.viewportDimension * 0.35;
+      final almostNearEnough =
+          nearAnchor - scrollable.position.viewportDimension * 1.9;
+      scrollable.position.jumpTo(almostNearEnough.clamp(
+        scrollable.position.minScrollExtent,
+        scrollable.position.maxScrollExtent,
+      ));
+      await tester.pump();
+
+      final beforeTap = scrollable.position.pixels;
+      await tester.tap(find.byTooltip('Jump to latest'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(scrollable.position.pixels, closeTo(beforeTap, 0.1));
     });
   });
 
@@ -367,7 +394,9 @@ void main() {
         find.descendant(of: row, matching: find.byIcon(Icons.check)),
         findsOneWidget,
       );
-      expect(find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)), findsNothing);
+      expect(
+          find.descendant(of: row, matching: find.byIcon(Icons.hub_outlined)),
+          findsNothing);
     });
 
     testWidgets('shows check + completed check when default router has replied',
