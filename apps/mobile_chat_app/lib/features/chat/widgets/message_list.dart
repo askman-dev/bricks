@@ -21,8 +21,9 @@ class MessageList extends StatefulWidget {
 
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
-  static const double _kJumpButtonShowDistance = 120;
+  static const double _kJumpButtonShowScreens = 2;
   bool _showJumpToLatestButton = false;
+  double _listBottomPadding = 0;
 
   // A single key attached only to the focused (latest user) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
@@ -92,8 +93,9 @@ class _MessageListState extends State<MessageList> {
   void _handleScrollChanged() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    final distanceToBottom = position.maxScrollExtent - position.pixels;
-    final shouldShow = distanceToBottom > _kJumpButtonShowDistance;
+    final distanceToLatestAnchor = _distanceToLatestContentAnchor(position);
+    final shouldShow = distanceToLatestAnchor >
+        position.viewportDimension * _kJumpButtonShowScreens;
     if (shouldShow != _showJumpToLatestButton) {
       setState(() {
         _showJumpToLatestButton = shouldShow;
@@ -133,13 +135,29 @@ class _MessageListState extends State<MessageList> {
     });
   }
 
+  double _latestContentAnchorOffset(ScrollPosition position) {
+    return (position.maxScrollExtent - _listBottomPadding)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+  }
+
+  double _distanceToLatestContentAnchor(ScrollPosition position) {
+    final anchorOffset = _latestContentAnchorOffset(position);
+    return (anchorOffset - position.pixels)
+        .clamp(0.0, double.infinity)
+        .toDouble();
+  }
+
   void _scrollToLatestMessage() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
+    final targetOffset = _latestContentAnchorOffset(position);
+    final distance = (targetOffset - position.pixels).abs();
+    final durationMs = (180 + distance * 0.18).clamp(220, 560).round();
     _scrollController.animateTo(
-      position.maxScrollExtent,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
+      targetOffset,
+      duration: Duration(milliseconds: durationMs),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -260,6 +278,9 @@ class _MessageListState extends State<MessageList> {
       );
     }
 
+    _listBottomPadding = BricksSpacing.md +
+        MediaQuery.sizeOf(context).height * _kBottomPaddingRatio;
+
     return Stack(
       children: [
         SelectionArea(
@@ -269,8 +290,7 @@ class _MessageListState extends State<MessageList> {
               BricksSpacing.md,
               BricksSpacing.md,
               BricksSpacing.md,
-              BricksSpacing.md +
-                  MediaQuery.of(context).size.height * _kBottomPaddingRatio,
+              _listBottomPadding,
             ),
             itemCount: messages.length,
             itemBuilder: (context, index) {
