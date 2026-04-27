@@ -5,10 +5,9 @@ import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
 
-// Extra bottom padding as a fraction of screen height, so an incoming
-// assistant reply is visible when the list is anchored on the latest user
-// message. ~45 % of screen height keeps enough trailing room for the
-// "last-three-lines" anchoring policy.
+// Extra bottom padding as a fraction of screen height, so the latest message
+// is visible when the list is anchored on it. ~45 % of screen height keeps
+// enough trailing room for the "last-three-lines" tail anchoring policy.
 const double _kBottomPaddingRatio = 0.45;
 
 /// Displays the list of chat messages in timeline format.
@@ -49,7 +48,7 @@ class _MessageListState extends State<MessageList> {
     _focusedIndex = _latestMessageIndex();
     _latestUserIndex = _latestUserMessageIndex();
     _saveSnapshot();
-    _scrollToLatestMessageOnLoad();
+    _scrollToLatestMessageIfNeeded();
   }
 
   @override
@@ -78,7 +77,7 @@ class _MessageListState extends State<MessageList> {
       if (!streamingProgressOnly) {
         _focusedIndex = _latestMessageIndex();
         _latestUserIndex = _latestUserMessageIndex();
-        _scrollToLatestMessageOnLoad();
+        _scrollToLatestMessageIfNeeded();
       }
     }
   }
@@ -121,7 +120,7 @@ class _MessageListState extends State<MessageList> {
     return -1;
   }
 
-  void _scrollToLatestMessageOnLoad() {
+  void _scrollToLatestMessageIfNeeded() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
@@ -136,8 +135,7 @@ class _MessageListState extends State<MessageList> {
         if (!mounted || !_scrollController.hasClients) return;
         final targetContext = _focusedItemKey.currentContext;
         if (targetContext == null) return;
-        final targetRenderBox = targetContext.findRenderObject() as RenderBox?;
-        if (targetRenderBox == null) return;
+        if (targetContext.findRenderObject() == null) return;
 
         final textStyle = Theme.of(context).textTheme.bodyLarge;
         final fallbackFontSize = textStyle?.fontSize ?? 16;
@@ -147,13 +145,12 @@ class _MessageListState extends State<MessageList> {
             _focusedIndex >= 0 && _focusedIndex < widget.messages.length
                 ? widget.messages[_focusedIndex]
                 : null;
-        final explicitLineCount = (tailMessage?.content ?? '')
-            .split('\n')
-            .where((line) => line.isNotEmpty)
-            .length;
+        final explicitLineCount =
+            (tailMessage?.content ?? '').split('\n').length;
         final tailLineCount = explicitLineCount == 0 ? 1 : explicitLineCount;
-        final targetTop =
-            tailLineCount <= _kTailPreviewLines ? lineHeight : -(lineHeight * 2);
+        final targetTop = tailLineCount <= _kTailPreviewLines
+            ? lineHeight
+            : -(lineHeight * 2);
         final revealContext = (_latestUserIndex >= 0 &&
                 _latestUserIndex != _focusedIndex &&
                 _latestUserItemKey.currentContext != null)
@@ -161,13 +158,11 @@ class _MessageListState extends State<MessageList> {
             : targetContext;
         final revealRenderBox = revealContext.findRenderObject() as RenderBox?;
         if (revealRenderBox == null) return;
-        final alignment =
-            targetTop / _scrollController.position.viewportDimension;
         final viewport = RenderAbstractViewport.of(revealRenderBox);
         if (viewport == null) return;
-        final reveal = viewport.getOffsetToReveal(revealRenderBox, alignment);
+        final reveal = viewport.getOffsetToReveal(revealRenderBox, 0.0);
         final position = _scrollController.position;
-        final targetOffset = reveal.offset
+        final targetOffset = (reveal.offset - targetTop)
             .clamp(position.minScrollExtent, position.maxScrollExtent)
             .toDouble();
         _scrollController.jumpTo(targetOffset);
@@ -348,8 +343,8 @@ class _MessageListState extends State<MessageList> {
               final chatColors =
                   Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
               // Attach the focused-item key only to the target row so that
-              // _scrollToLatestMessageOnLoad can call Scrollable.ensureVisible
-              // without maintaining a GlobalKey for every list item.
+              // _scrollToLatestMessageIfNeeded can find that row's render object
+              // and compute the reveal offset without a GlobalKey per item.
               final itemKey = index == _focusedIndex
                   ? _focusedItemKey
                   : index == _latestUserIndex

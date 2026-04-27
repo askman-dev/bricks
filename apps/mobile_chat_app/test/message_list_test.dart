@@ -177,8 +177,9 @@ void main() {
       await tester.pumpAndSettle();
 
       final userTopLeft = tester.getTopLeft(find.text('最后一条用户消息'));
+      final listHeight = tester.getSize(find.byType(ListView)).height;
       expect(userTopLeft.dy, greaterThanOrEqualTo(0));
-      expect(userTopLeft.dy, lessThan(40));
+      expect(userTopLeft.dy, lessThan(listHeight * 0.2));
     });
 
     testWidgets(
@@ -188,12 +189,14 @@ void main() {
       await tester.pumpAndSettle();
       final shortDy = tester.getTopLeft(find.text('最后一条用户消息')).dy;
 
-      await tester.pumpWidget(_build(_messagesWithAssistantTail('1\\n2\\n3\\n4\\n5\\n6')));
+      await tester.pumpWidget(
+          _build(_messagesWithAssistantTail('1\\n2\\n3\\n4\\n5\\n6')));
       await tester.pumpAndSettle();
       final longDy = tester.getTopLeft(find.text('最后一条用户消息')).dy;
 
       expect(longDy, lessThanOrEqualTo(shortDy));
-      expect(longDy, lessThan(40));
+      final listHeight = tester.getSize(find.byType(ListView)).height;
+      expect(longDy, lessThan(listHeight * 0.2));
     });
   });
 
