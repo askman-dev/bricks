@@ -5,7 +5,7 @@ import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
 // Must match _kBottomPaddingRatio in message_list.dart
-const double _kTestBottomPaddingRatio = 0.35;
+const double _kTestBottomPaddingRatio = 0.45;
 
 /// Computes the expected latest-content anchor offset using the same formula
 /// as MessageList._latestContentAnchorOffset.
@@ -28,6 +28,25 @@ List<ChatMessage> _messages(String prefix, int count) {
       timestamp: start.add(Duration(minutes: index)),
     ),
   );
+}
+
+List<ChatMessage> _messagesWithAssistantTail(String assistantContent) {
+  final head = _messages('history', 30);
+  return [
+    ...head,
+    ChatMessage(
+      messageId: 'user-last',
+      role: 'user',
+      content: '最后一条用户消息',
+      timestamp: DateTime.utc(2026, 1, 1, 1, 0),
+    ),
+    ChatMessage(
+      messageId: 'assistant-last',
+      role: 'assistant',
+      content: assistantContent,
+      timestamp: DateTime.utc(2026, 1, 1, 1, 1),
+    ),
+  ];
 }
 
 Widget _build(
@@ -149,6 +168,32 @@ void main() {
       await tester.tap(find.byTooltip('Jump to latest'), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(scrollable.position.pixels, closeTo(beforeTap, 0.1));
+    });
+
+    testWidgets('pins latest short assistant tail with user message near top',
+        (tester) async {
+      final messages = _messagesWithAssistantTail('第一行\\n第二行');
+      await tester.pumpWidget(_build(messages));
+      await tester.pumpAndSettle();
+
+      final userTopLeft = tester.getTopLeft(find.text('最后一条用户消息'));
+      expect(userTopLeft.dy, greaterThanOrEqualTo(0));
+      expect(userTopLeft.dy, lessThan(40));
+    });
+
+    testWidgets(
+        'pins latest long assistant tail at least as aggressive as short-tail positioning',
+        (tester) async {
+      await tester.pumpWidget(_build(_messagesWithAssistantTail('第一行\\n第二行')));
+      await tester.pumpAndSettle();
+      final shortDy = tester.getTopLeft(find.text('最后一条用户消息')).dy;
+
+      await tester.pumpWidget(_build(_messagesWithAssistantTail('1\\n2\\n3\\n4\\n5\\n6')));
+      await tester.pumpAndSettle();
+      final longDy = tester.getTopLeft(find.text('最后一条用户消息')).dy;
+
+      expect(longDy, lessThanOrEqualTo(shortDy));
+      expect(longDy, lessThan(40));
     });
   });
 
