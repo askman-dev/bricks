@@ -43,16 +43,17 @@ Widget _build(
 
 void main() {
   group('MessageList auto scroll', () {
-    testWidgets('focuses latest user message on first render', (tester) async {
-      await tester.pumpWidget(_build(_messages('initial', 41)));
+    testWidgets('focuses latest message on first render', (tester) async {
+      final messages = _messages('initial', 41);
+      await tester.pumpWidget(_build(messages));
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
-      expect(scrollable.position.pixels,
-          lessThan(scrollable.position.maxScrollExtent));
+      expect(find.text(messages.last.content), findsOneWidget);
+      expect(scrollable.position.pixels, greaterThan(0));
     });
 
-    testWidgets('re-focuses latest user message when list content changes',
+    testWidgets('re-focuses latest message when list content changes',
         (tester) async {
       await tester.pumpWidget(_build(_messages('before', 41)));
       await tester.pumpAndSettle();
@@ -69,7 +70,7 @@ void main() {
     });
 
     testWidgets(
-        're-focuses latest user message when rebuilt with same mutated list instance',
+        're-focuses latest message when rebuilt with same mutated list instance',
         (tester) async {
       final messages = _messages('before', 41);
       late StateSetter setState;

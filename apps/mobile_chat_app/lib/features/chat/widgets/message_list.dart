@@ -25,7 +25,7 @@ class _MessageListState extends State<MessageList> {
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
 
-  // A single key attached only to the focused (latest user) item so that
+  // A single key attached only to the focused (latest) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
   // every list row.
   final GlobalKey _focusedItemKey = GlobalKey();
@@ -41,9 +41,9 @@ class _MessageListState extends State<MessageList> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScrollChanged);
-    _focusedIndex = _focusedMessageIndex();
+    _focusedIndex = _latestMessageIndex();
     _saveSnapshot();
-    _scrollToFocusedUserMessage();
+    _scrollToLatestMessageOnLoad();
   }
 
   @override
@@ -70,8 +70,8 @@ class _MessageListState extends State<MessageList> {
       _prevLength = newLength;
       _prevLastKey = newKey;
       if (!streamingProgressOnly) {
-        _focusedIndex = _focusedMessageIndex();
-        _scrollToFocusedUserMessage();
+        _focusedIndex = _latestMessageIndex();
+        _scrollToLatestMessageOnLoad();
       }
     }
   }
@@ -103,14 +103,11 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
-  int _focusedMessageIndex() {
-    for (var i = widget.messages.length - 1; i >= 0; i--) {
-      if (widget.messages[i].role == 'user') return i;
-    }
+  int _latestMessageIndex() {
     return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
   }
 
-  void _scrollToFocusedUserMessage() {
+  void _scrollToLatestMessageOnLoad() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
@@ -307,7 +304,7 @@ class _MessageListState extends State<MessageList> {
               final chatColors =
                   Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
               // Attach the focused-item key only to the target row so that
-              // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
+              // _scrollToLatestMessageOnLoad can call Scrollable.ensureVisible
               // without maintaining a GlobalKey for every list item.
               final itemKey = index == _focusedIndex ? _focusedItemKey : null;
               return Align(
