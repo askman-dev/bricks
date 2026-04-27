@@ -159,7 +159,6 @@ class _MessageListState extends State<MessageList> {
         final revealRenderBox = revealContext.findRenderObject() as RenderBox?;
         if (revealRenderBox == null) return;
         final viewport = RenderAbstractViewport.of(revealRenderBox);
-        if (viewport == null) return;
         final reveal = viewport.getOffsetToReveal(revealRenderBox, 0.0);
         final position = _scrollController.position;
         final targetOffset = (reveal.offset - targetTop)
