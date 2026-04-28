@@ -4,6 +4,7 @@
 - Before running Flutter/Dart workspace checks in this repository, run `./tools/init_dev_env.sh` from the repo root.
 - `tools/init_dev_env.sh` is the standard bootstrap entrypoint for both local and Codex/container environments.
 - Run mobile app Flutter tests from the package directory: `cd apps/mobile_chat_app && flutter test` (avoid `flutter test apps/mobile_chat_app` from repo root).
+- Never pass Markdown files (for example `*.md`) to `dart format` or other Dart source-only tooling commands; target only Dart files/directories.
 
 ## Plan persistence
 - For each feature or task, create and save a markdown plan file in `docs/plans/`.

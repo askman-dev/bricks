@@ -24,6 +24,8 @@ class ChatColors extends ThemeExtension<ChatColors> {
     required this.sendIdle,
     required this.sendActive,
     required this.agentIdentity,
+    required this.jumpToLatestBackground,
+    required this.onJumpToLatest,
   });
 
   final Color messageUserBackground;
@@ -44,10 +46,12 @@ class ChatColors extends ThemeExtension<ChatColors> {
   final Color sendIdle;
   final Color sendActive;
   final Color agentIdentity;
+  final Color jumpToLatestBackground;
+  final Color onJumpToLatest;
 
   static const ChatColors light = ChatColors(
-    messageUserBackground: Color(0xFFE9EBEC),
-    onMessageUser: Color(0xFF1F2328),
+    messageUserBackground: Color(0xFF111111),
+    onMessageUser: Color(0xFFFFFFFF),
     onMessageAssistant: Color(0xFF1F2328),
     metaText: Color(0xFF657786),
     agentName: Color(0xFF1D9BF0),
@@ -64,6 +68,8 @@ class ChatColors extends ThemeExtension<ChatColors> {
     sendIdle: Color(0xFF576470),
     sendActive: Color(0xFF1D9BF0),
     agentIdentity: Color(0xFF1F2328),
+    jumpToLatestBackground: Color(0xFFFFFFFF),
+    onJumpToLatest: Color(0xFF1F2328),
   );
 
   static const ChatColors dark = ChatColors(
@@ -85,6 +91,8 @@ class ChatColors extends ThemeExtension<ChatColors> {
     sendIdle: AppColors.textPrimary,
     sendActive: AppColors.textPrimary,
     agentIdentity: Color(0xFFDEE3E7),
+    jumpToLatestBackground: AppColors.accentPrimary,
+    onJumpToLatest: AppColors.textPrimary,
   );
 
   @override
@@ -107,6 +115,8 @@ class ChatColors extends ThemeExtension<ChatColors> {
     Color? sendIdle,
     Color? sendActive,
     Color? agentIdentity,
+    Color? jumpToLatestBackground,
+    Color? onJumpToLatest,
   }) {
     return ChatColors(
       messageUserBackground:
@@ -129,6 +139,9 @@ class ChatColors extends ThemeExtension<ChatColors> {
       sendIdle: sendIdle ?? this.sendIdle,
       sendActive: sendActive ?? this.sendActive,
       agentIdentity: agentIdentity ?? this.agentIdentity,
+      jumpToLatestBackground:
+          jumpToLatestBackground ?? this.jumpToLatestBackground,
+      onJumpToLatest: onJumpToLatest ?? this.onJumpToLatest,
     );
   }
 
@@ -162,6 +175,9 @@ class ChatColors extends ThemeExtension<ChatColors> {
       sendIdle: Color.lerp(sendIdle, other.sendIdle, t)!,
       sendActive: Color.lerp(sendActive, other.sendActive, t)!,
       agentIdentity: Color.lerp(agentIdentity, other.agentIdentity, t)!,
+      jumpToLatestBackground:
+          Color.lerp(jumpToLatestBackground, other.jumpToLatestBackground, t)!,
+      onJumpToLatest: Color.lerp(onJumpToLatest, other.onJumpToLatest, t)!,
     );
   }
 }

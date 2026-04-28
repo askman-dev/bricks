@@ -16,7 +16,23 @@ class BricksTheme {
     reverseCurve: Curves.easeInCubic,
   );
 
-  static ThemeData light() => _buildTheme(Brightness.light);
+  static ThemeData light() => ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFFFFFFF),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFFFFFFF),
+          foregroundColor: Color(0xFF1F2328),
+          surfaceTintColor: Colors.transparent,
+        ),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.accentPrimary,
+          brightness: Brightness.light,
+        ).copyWith(
+          surface: const Color(0xFFFFFFFF),
+        ),
+        extensions: const [ChatColors.light],
+      );
 
   static ThemeData dark() => ThemeData(
         useMaterial3: true,
@@ -38,12 +54,5 @@ class BricksTheme {
           error: AppColors.danger,
         ),
         extensions: const [ChatColors.dark],
-      );
-
-  static ThemeData _buildTheme(Brightness brightness) => ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: AppColors.accentPrimary,
-        brightness: brightness,
-        extensions: const [ChatColors.light],
       );
 }
