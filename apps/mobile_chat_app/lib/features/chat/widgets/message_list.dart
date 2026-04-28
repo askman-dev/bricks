@@ -564,10 +564,20 @@ class _MessageListState extends State<MessageList> {
               opacity: _showJumpToLatestButton ? 1 : 0,
               duration: const Duration(milliseconds: 150),
               child: Center(
-                child: IconButton.filled(
-                  onPressed: _scrollToLatestMessage,
-                  tooltip: 'Jump to latest',
-                  icon: const Icon(Icons.arrow_downward),
+                child: Builder(
+                  builder: (context) {
+                    final chatColors =
+                        Theme.of(context).extension<ChatColors>()!;
+                    return IconButton.filled(
+                      onPressed: _scrollToLatestMessage,
+                      tooltip: 'Jump to latest',
+                      style: IconButton.styleFrom(
+                        backgroundColor: chatColors.jumpToLatestBackground,
+                        foregroundColor: chatColors.onJumpToLatest,
+                      ),
+                      icon: const Icon(Icons.arrow_downward),
+                    );
+                  },
                 ),
               ),
             ),
