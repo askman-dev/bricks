@@ -2,7 +2,7 @@
 
 ## Background
 
-The repository has project-specific skills under `.codex/skills/`, but no GitHub issue template was found under `.github/ISSUE_TEMPLATE`. Product requirement discussions still need a consistent structure for issue drafts.
+The repository has project-specific skills under `.agents/skills/`, but no GitHub issue template was found under `.github/ISSUE_TEMPLATE`. Product requirement discussions still need a consistent structure for issue drafts.
 
 ## Goals
 
