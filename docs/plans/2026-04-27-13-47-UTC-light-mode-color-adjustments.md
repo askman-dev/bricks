@@ -12,10 +12,11 @@
 - 在 `ChatColors.light` 中调整 `messageUserBackground` 与 `onMessageUser`，实现亮色模式黑底白字气泡。
 - 在 `BricksTheme.light()` 明确设置亮色 `scaffoldBackgroundColor` 与 `appBarTheme`，去除由 `colorSchemeSeed` 带来的灰蓝背景倾向。
 
-## Phase 2: 定位按钮亮暗模式分流
-- 在消息列表中按 `Theme.brightness` 区分 jump-to-latest 按钮样式：
-  - Light: 白色系按钮（白底、深色箭头）。
-  - Dark: 保持现有蓝色主色填充按钮。
+## Phase 2: 定位按钮语义色调整
+- 通过 `ChatColors.jumpToLatestBackground` 与 `ChatColors.onJumpToLatest` 统一定义 jump-to-latest 按钮样式，不在消息列表组件内按 `Theme.brightness` 额外分支。
+- 在主题 token 层分别配置亮暗模式取值：
+  - Light: `jumpToLatestBackground` 为白色系，`onJumpToLatest` 为深色箭头/图标。
+  - Dark: 保持现有蓝色主色填充按钮及对应前景色。
 
 ## Phase 3: 校验
 - 运行格式化和 Flutter 分析命令，确保代码风格与静态检查通过。

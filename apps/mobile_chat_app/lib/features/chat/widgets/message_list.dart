@@ -567,7 +567,8 @@ class _MessageListState extends State<MessageList> {
                 child: Builder(
                   builder: (context) {
                     final chatColors =
-                        Theme.of(context).extension<ChatColors>()!;
+                        Theme.of(context).extension<ChatColors>() ??
+                            ChatColors.light;
                     return IconButton.filled(
                       onPressed: _scrollToLatestMessage,
                       tooltip: 'Jump to latest',
