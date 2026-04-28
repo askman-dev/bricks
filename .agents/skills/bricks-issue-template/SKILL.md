@@ -1,6 +1,6 @@
 ---
 name: bricks-issue-template
-description: Use when drafting or revising Bricks GitHub issues, product requirements, feature requests, bug reports, or task descriptions that should follow the repository's issue-writing structure. Guides agents to write concise product-facing issues with Context, Motivation, Requirement, and GWT-style Acceptance Criteria, and to avoid implementation details unless explicitly requested.
+description: Use when drafting or revising Bricks GitHub issues, product requirements, feature requests, bug reports, or task descriptions that should follow the repository's issue-writing structure. Guides agents to write concise product-facing issues with Background, Requirement, and GWT-style Acceptance Criteria, and to avoid implementation details unless explicitly requested.
 ---
 
 # Bricks Issue Template
@@ -14,13 +14,21 @@ Use this structure unless the user asks for a different format:
 ```md
 # <short user-facing title>
 
-## Context
+## Background
 
-<Current situation, relevant product area, and known behavior. Keep it factual.>
+<Plain background text, or optional subsections when they help.>
 
-## Motivation
+### Context
 
-<Why this matters to users or maintainers. Explain the user pain or product value.>
+<Optional: current situation, relevant product area, and known behavior. Keep it factual.>
+
+### Problem
+
+<Optional: limitation, pain point, bug, or gap.>
+
+### Motivation
+
+<Optional: why this matters to users or maintainers. Explain the user pain or product value.>
 
 ## Requirement
 
@@ -37,20 +45,23 @@ Use this structure unless the user asks for a different format:
 
 - Write issue drafts in English unless the user explicitly asks for another language.
 - Prefer product behavior over implementation details.
+- Use `Background` instead of separate top-level `Context` and `Motivation` sections.
+- `Context`, `Problem`, and `Motivation` are optional `Background` subsections; include only the ones that improve clarity.
+- For small or obvious issues, write direct prose under `Background` without subsections.
 - Do not include an `Expected Behavior`, `Implementation Suggestions`, `Technical Plan`, or `How` section unless the user explicitly asks for it.
 - Write `Acceptance Criteria` in GWT form: `Given ... when ... then ...`.
 - Keep each acceptance criterion testable and user-observable where possible.
 - State explicit decisions that were clarified in conversation, such as whether a default item follows the same rule as other items.
 - If important scope boundaries exist, add a `Non-goals` section after `Requirement`.
-- If the issue is a bug, include the current behavior in `Context` and the corrected behavior in `Requirement`.
-- If several terms could be confused, define them in `Context` before using them in criteria.
+- If the issue is a bug, include the current behavior in `Background` and the corrected behavior in `Requirement`.
+- If several terms could be confused, define them in `Background` before using them in criteria.
 
 ## Quality Checklist
 
 Before returning the issue draft, check:
 
 - The title describes the outcome, not the implementation.
-- `Motivation` explains why the change matters, not just what changes.
+- `Background` gives enough context to understand why the change matters.
 - The desired behavior is understandable without reading code.
 - Every acceptance criterion follows GWT and can be validated manually or by tests.
 - No accidental implementation plan is included by default.
