@@ -44,6 +44,7 @@ class ChatNavigationPage extends StatefulWidget {
     this.onAgentSelected,
     this.onChannelRename,
     this.onChannelArchive,
+    this.onRequestClose,
   });
 
   final ValueChanged<ChatNavigationAction> onActionSelected;
@@ -55,6 +56,12 @@ class ChatNavigationPage extends StatefulWidget {
   final ValueChanged<String>? onChannelRename;
   final ValueChanged<String>? onChannelArchive;
 
+  /// Called when the navigation requests to be closed (e.g. back arrow pressed
+  /// or an item is selected). On mobile this is left null and the widget falls
+  /// back to `Scaffold.of(context).closeDrawer()`; on desktop callers should
+  /// wire this to collapse the inline sidebar.
+  final VoidCallback? onRequestClose;
+
   @override
   State<ChatNavigationPage> createState() => _ChatNavigationPageState();
 }
@@ -65,7 +72,11 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
   bool _channelsExpanded = true;
 
   void _closeNavigation(BuildContext context) {
-    Scaffold.of(context).closeDrawer();
+    if (widget.onRequestClose != null) {
+      widget.onRequestClose!();
+    } else {
+      Scaffold.of(context).closeDrawer();
+    }
   }
 
   void _selectAction(BuildContext context, ChatNavigationAction action) {

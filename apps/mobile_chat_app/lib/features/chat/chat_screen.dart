@@ -2011,6 +2011,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildNavigationContent({
     required ThemeData theme,
     required Color drawerBackgroundColor,
+    VoidCallback? onRequestClose,
   }) {
     return SafeArea(
       child: Theme(
@@ -2039,6 +2040,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onChannelSelected: _switchChannel,
           onChannelRename: _renameChannel,
           onChannelArchive: _archiveChannel,
+          onRequestClose: onRequestClose,
           onActionSelected: (action) {
             switch (action) {
               case ChatNavigationAction.appSettings:
@@ -2114,7 +2116,11 @@ class _ChatScreenState extends State<ChatScreen> {
           leading: Builder(
             builder: (context) => IconButton(
               icon: const Icon(Icons.menu),
-              tooltip: 'Open navigation',
+              tooltip: isDesktop
+                  ? (_isDesktopNavigationOpen
+                      ? 'Close navigation'
+                      : 'Open navigation')
+                  : 'Open navigation',
               onPressed: () {
                 if (isDesktop) {
                   setState(() {
@@ -2209,6 +2215,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: _buildNavigationContent(
                     theme: theme,
                     drawerBackgroundColor: drawerBackgroundColor,
+                    onRequestClose: () => setState(
+                      () => _isDesktopNavigationOpen = false,
+                    ),
                   ),
                 ),
               ),
