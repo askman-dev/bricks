@@ -2108,29 +2108,15 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           title: PopupMenuButton<String>(
             popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-            tooltip: '切换子区',
+            tooltip: '切换频道',
             onSelected: (value) {
-              if (value == '__new__') {
-                _createSubSection();
-                unawaited(_loadMessagesForActiveScope());
-                return;
-              }
-              _switchToSubSection(value);
+              _switchChannel(value);
             },
             itemBuilder: (context) => [
-              const PopupMenuItem<String>(
-                value: 'main',
-                child: Text('回到主区'),
-              ),
-              const PopupMenuItem<String>(
-                value: '__new__',
-                child: Text('新建子区'),
-              ),
-              const PopupMenuDivider(),
-              ..._activeSubSections.map(
-                (item) => PopupMenuItem<String>(
-                  value: item.id,
-                  child: Text(item.name),
+              ..._channels.map(
+                (channel) => PopupMenuItem<String>(
+                  value: channel.id,
+                  child: Text(channel.name),
                 ),
               ),
             ],
@@ -2139,45 +2125,75 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 Flexible(
                   child: Text(
-                    _activeSubSection == 'main'
-                        ? activeChannelName
-                        : (_subSectionNameById(_activeSubSection) ??
-                            _activeSubSection),
+                    activeChannelName,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
                 const Icon(Icons.arrow_drop_down),
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
+                  tooltip: '分区管理',
+                  onSelected: (value) {
+                    switch (value) {
+                      case '__new__':
+                        _createSubSection();
+                        unawaited(_loadMessagesForActiveScope());
+                        break;
+                      case '__rename__':
+                      case '__archive__':
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('功能暂未实现')),
+                        );
+                        break;
+                      default:
+                        _switchToSubSection(value);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem<String>(
+                      value: '__new__',
+                      child: Text('新建子区'),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: '__rename__',
+                      child: Text('分区改名（未实现）'),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: '__archive__',
+                      child: Text('分区存档（未实现）'),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem<String>(
+                      value: 'main',
+                      child: Text('回到主区'),
+                    ),
+                    ..._activeSubSections.map(
+                      (item) => PopupMenuItem<String>(
+                        value: item.id,
+                        child: Text(item.name),
+                      ),
+                    ),
+                  ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _activeSubSection == 'main'
+                            ? '主区'
+                            : (_subSectionNameById(_activeSubSection) ??
+                                _activeSubSection),
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const Icon(Icons.arrow_drop_down),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-          actions: [
-            PopupMenuButton<String>(
-              popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-              tooltip: '子区管理',
-              onSelected: (value) {
-                switch (value) {
-                  case '__rename__':
-                  case '__archive__':
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('功能暂未实现')),
-                    );
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem<String>(
-                  value: '__rename__',
-                  child: Text('分区改名（未实现）'),
-                ),
-                const PopupMenuItem<String>(
-                  value: '__archive__',
-                  child: Text('分区存档（未实现）'),
-                ),
-              ],
-              icon: const Icon(Icons.more_vert),
-            ),
-          ],
         ),
         body: Column(
           children: [
