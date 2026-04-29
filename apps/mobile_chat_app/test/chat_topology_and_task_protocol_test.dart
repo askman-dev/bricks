@@ -132,7 +132,7 @@ void main() {
       expect(sorted.map((c) => c.id), ['b', 'c', 'a']);
     });
 
-    test('channels with equal last-message time are ordered stably by id', () {
+    test('channels with equal last-message time are ordered deterministically by id', () {
       final sorted = sortChannelsByLastMessageAt(
         [chC, chA, chB],
         {chA.id: t1, chB.id: t1, chC.id: t1},

@@ -987,8 +987,8 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Returns channels sorted by their latest message time in descending order.
   ///
   /// Channels with a tracked last-message time appear before channels with
-  /// none.  When all times are equal (or absent) the order is stable via an
-  /// id-based tie-breaker.
+  /// none.  When all times are equal (or absent) the order is deterministic
+  /// via an id-based tie-breaker.
   List<ChatChannel> get _sortedChannels =>
       sortChannelsByLastMessageAt(_channels, _channelLastMessageAt);
 

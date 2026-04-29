@@ -116,8 +116,8 @@ class ChatScopeSetting {
 ///
 /// Channels with a tracked last-message time come before channels with none.
 /// When both channels have last-message times, the one with the later time
-/// comes first. When neither has a time, the order is stable (uses id as
-/// a lexicographic tie-breaker so results are deterministic).
+/// comes first. When neither has a time, the order is deterministic (uses id
+/// as a lexicographic tie-breaker).
 List<ChatChannel> sortChannelsByLastMessageAt(
   List<ChatChannel> channels,
   Map<String, DateTime> channelLastMessageAt,
@@ -134,7 +134,7 @@ List<ChatChannel> sortChannelsByLastMessageAt(
     } else if (ta != null) {
       return -1; // a has time, b doesn't → a first (more recent)
     }
-    // Stable tie-breaker: compare ids lexicographically
+    // Deterministic tie-breaker: compare ids lexicographically
     return a.id.compareTo(b.id);
   });
   return sorted;
