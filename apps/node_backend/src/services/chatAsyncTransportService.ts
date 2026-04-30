@@ -308,7 +308,11 @@ export async function loadHistoryWindow(
     params,
   );
 
-  // We fetched limit+1 to detect whether there are more rows.
+  // We fetched limit+1 to detect whether there are more older rows.
+  // The inner query uses ORDER BY seq_id DESC, so the (limit+1)-th row is the
+  // OLDEST one. After the outer ASC re-ordering it becomes the FIRST element.
+  // When hasMore is true we discard that first/oldest probe row and keep the
+  // newest `limit` rows — hence slice(1), not slice(0, -1).
   const hasMore = result.rows.length > limit;
   const rows = hasMore ? result.rows.slice(1) : result.rows;
   const messages = rows.map(toMessageDto);
