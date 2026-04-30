@@ -2016,6 +2016,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required ThemeData theme,
     required Color drawerBackgroundColor,
     VoidCallback? onRequestClose,
+    bool closeOnChannelSelected = true,
   }) {
     return SafeArea(
       child: Theme(
@@ -2045,6 +2046,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onChannelRename: _renameChannel,
           onChannelArchive: _archiveChannel,
           onRequestClose: onRequestClose,
+          closeOnChannelSelected: closeOnChannelSelected,
           onActionSelected: (action) {
             switch (action) {
               case ChatNavigationAction.appSettings:
@@ -2381,6 +2383,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       onRequestClose: () => setState(
                         () => _isDesktopNavigationOpen = false,
                       ),
+                      closeOnChannelSelected: false,
                     ),
                   ),
                 ),
