@@ -81,6 +81,7 @@ class _ChatScreenState extends State<ChatScreen> {
     'default': <ChatSubSection>[],
   };
   final Map<String, DateTime> _subSectionLastMessageAt = {};
+  final Map<String, DateTime> _channelLastMessageAt = {};
   String _activeSubSection = 'main';
 
   /// Remembers the last-active sub-section id per channel so that switching
@@ -214,6 +215,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       final restoredLastSubSectionByChannel =
           _hydrateLastActiveSubSectionByChannel(persistedScopes);
+      final restoredChannelLastMessageAt =
+          _hydrateChannelLastMessageAt(persistedScopes);
       final restoredChannelRouters = _hydrateChannelRouters(scopeSettings);
       final restoredThreadRouters = _hydrateThreadRouters(scopeSettings);
       final restoredChannelNodeIds = _hydrateChannelNodeIds(scopeSettings);
@@ -245,6 +248,9 @@ class _ChatScreenState extends State<ChatScreen> {
         _channels
           ..clear()
           ..addAll(restoredNamedChannels);
+        _channelLastMessageAt
+          ..clear()
+          ..addAll(restoredChannelLastMessageAt);
         _channelSubSections
           ..clear()
           ..addAll(restoredSubSections);
@@ -600,6 +606,26 @@ class _ChatScreenState extends State<ChatScreen> {
     return channelsById.values.toList(growable: false);
   }
 
+  /// Computes the latest message time per channel from persisted scopes.
+  ///
+  /// For each channel the maximum [ChatPersistedScope.lastActivityAt] across
+  /// all of its scopes (sub-sections) is used as the channel's last-message
+  /// time.  Scopes with a null [lastActivityAt] are skipped.
+  Map<String, DateTime> _hydrateChannelLastMessageAt(
+    List<ChatPersistedScope> scopes,
+  ) {
+    final byChannel = <String, DateTime>{};
+    for (final scope in scopes) {
+      final at = scope.lastActivityAt;
+      if (at == null) continue;
+      final current = byChannel[scope.channelId];
+      if (current == null || at.isAfter(current)) {
+        byChannel[scope.channelId] = at;
+      }
+    }
+    return byChannel;
+  }
+
   Map<String, List<ChatSubSection>> _hydrateSubSectionsFromScopes(
     List<ChatPersistedScope> scopes,
   ) {
@@ -810,6 +836,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _channels.removeWhere((item) => item.id == channelId);
       _channelSubSections.remove(channelId);
+      _channelLastMessageAt.remove(channelId);
       _lastActiveSubSectionByChannel.remove(channelId);
       _subSectionLastMessageAt.removeWhere(
         (key, value) => key.startsWith('$channelId::'),
@@ -961,6 +988,14 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     return sorted;
   }
+
+  /// Returns channels sorted by their latest message time in descending order.
+  ///
+  /// Channels with a tracked last-message time appear before channels with
+  /// none.  When all times are equal (or absent) the order is deterministic
+  /// via an id-based tie-breaker.
+  List<ChatChannel> get _sortedChannels =>
+      sortChannelsByLastMessageAt(_channels, _channelLastMessageAt);
 
   ChatSessionScope get _activeScope => ChatSessionScope(
         channelId: _activeChannelId,
@@ -1438,6 +1473,10 @@ class _ChatScreenState extends State<ChatScreen> {
         resolvedChannelId,
         resolvedSubSection,
       )] = latest;
+      final currentChannelTime = _channelLastMessageAt[resolvedChannelId];
+      if (currentChannelTime == null || latest.isAfter(currentChannelTime)) {
+        _channelLastMessageAt[resolvedChannelId] = latest;
+      }
     });
   }
 
@@ -1667,6 +1706,11 @@ class _ChatScreenState extends State<ChatScreen> {
         _activeScope.channelId,
         _activeScope.threadId,
       )] = messageTime;
+      final currentChannelTime = _channelLastMessageAt[_activeScope.channelId];
+      if (currentChannelTime == null ||
+          messageTime.isAfter(currentChannelTime)) {
+        _channelLastMessageAt[_activeScope.channelId] = messageTime;
+      }
     });
     return _messages.length - 1;
   }
@@ -2031,7 +2075,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               )
               .toList(growable: false),
-          channels: _channels
+          channels: _sortedChannels
               .map(
                 (item) => ChatChannelItem(
                   id: item.id,
@@ -2136,7 +2180,7 @@ class _ChatScreenState extends State<ChatScreen> {
               _switchChannel(value);
             },
             itemBuilder: (context) => [
-              ..._channels.map(
+              ..._sortedChannels.map(
                 (channel) => PopupMenuItem<String>(
                   value: channel.id,
                   child: Text(channel.name),

@@ -112,6 +112,34 @@ class ChatScopeSetting {
   final DateTime? updatedAt;
 }
 
+/// Sorts [channels] by their latest message time in descending order.
+///
+/// Channels with a tracked last-message time come before channels with none.
+/// When both channels have last-message times, the one with the later time
+/// comes first. When neither has a time, the order is deterministic (uses id
+/// as a lexicographic tie-breaker).
+List<ChatChannel> sortChannelsByLastMessageAt(
+  List<ChatChannel> channels,
+  Map<String, DateTime> channelLastMessageAt,
+) {
+  final sorted = [...channels];
+  sorted.sort((a, b) {
+    final ta = channelLastMessageAt[a.id];
+    final tb = channelLastMessageAt[b.id];
+    if (ta != null && tb != null) {
+      final byLastMessage = tb.compareTo(ta);
+      if (byLastMessage != 0) return byLastMessage;
+    } else if (tb != null) {
+      return 1; // a has no time, b does → b first (more recent)
+    } else if (ta != null) {
+      return -1; // a has time, b doesn't → a first (more recent)
+    }
+    // Deterministic tie-breaker: compare ids lexicographically
+    return a.id.compareTo(b.id);
+  });
+  return sorted;
+}
+
 class ChatTopologyResolver {
   const ChatTopologyResolver({this.defaultChannelId = 'default'});
 
