@@ -133,6 +133,7 @@ index:
       - router selector
       - node-scoped openclaw dispatch
       - jump-to-latest button
+      - channel sort by last-message time
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
@@ -165,6 +166,8 @@ index:
       - 设置页返回后若未刷新节点列表，聊天页路由菜单可能继续显示过期节点名称或缺少新节点。
       - 若“回到最新消息”按钮显隐阈值或滚动目标设置不当，用户可能误判已到达最新消息或无法快速回到底部。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
+      - 若频道最新消息时间未在消息加载、追加、归档时同步更新，侧边栏排序将与实际活跃时间脱节。
+      - 若仅对侧边栏频道列表使用 _sortedChannels 而未对顶部频道下拉菜单同步更新，两处展示顺序不一致会混淆用户。
 
   - feature_id: model_settings
     capability: 模型配置读写

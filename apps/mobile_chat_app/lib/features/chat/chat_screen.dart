@@ -2180,7 +2180,7 @@ class _ChatScreenState extends State<ChatScreen> {
               _switchChannel(value);
             },
             itemBuilder: (context) => [
-              ..._channels.map(
+              ..._sortedChannels.map(
                 (channel) => PopupMenuItem<String>(
                   value: channel.id,
                   child: Text(channel.name),
