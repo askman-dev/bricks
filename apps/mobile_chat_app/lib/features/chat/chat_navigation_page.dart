@@ -58,10 +58,12 @@ class ChatNavigationPage extends StatefulWidget {
   final ValueChanged<String>? onChannelArchive;
   final bool closeOnChannelSelected;
 
-  /// Called when the navigation requests to be closed (e.g. back arrow pressed
-  /// or an item is selected). On mobile this is left null and the widget falls
-  /// back to `Scaffold.of(context).closeDrawer()`; on desktop callers should
-  /// wire this to collapse the inline sidebar for explicit close actions.
+  /// Called when the navigation requests to be closed. This is triggered by
+  /// the back arrow, action selections (rename/archive), and channel taps when
+  /// [closeOnChannelSelected] is true. On mobile this is left null and the
+  /// widget falls back to `Scaffold.of(context).closeDrawer()`; on desktop
+  /// callers should wire this to collapse the inline sidebar for explicit close
+  /// actions.
   final VoidCallback? onRequestClose;
 
   @override
