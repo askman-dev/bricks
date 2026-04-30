@@ -12,6 +12,7 @@ import {
 const {
   acceptTaskMock,
   listSessionMessagesForModelMock,
+  loadHistoryWindowMock,
   syncMessagesMock,
   upsertMessagesMock,
   listUserScopesMock,
@@ -32,6 +33,13 @@ const {
     acceptedAt: "2026-04-17T07:00:00.000Z",
   })),
   listSessionMessagesForModelMock: vi.fn(async () => []),
+  loadHistoryWindowMock: vi.fn(
+    async (): Promise<{
+      messages: Array<Record<string, unknown>>;
+      hasMore: boolean;
+      oldestSeqId: number | null;
+    }> => ({ messages: [], hasMore: false, oldestSeqId: null }),
+  ),
   syncMessagesMock: vi.fn(
     async (): Promise<{ messages: Array<Record<string, unknown>>; lastSeqId: number }> => ({
       messages: [],
@@ -88,6 +96,7 @@ const {
 vi.mock("../services/chatAsyncTransportService.js", () => ({
   acceptTask: acceptTaskMock,
   listSessionMessagesForModel: listSessionMessagesForModelMock,
+  loadHistoryWindow: loadHistoryWindowMock,
   listUserScopes: listUserScopesMock,
   syncMessages: syncMessagesMock,
   upsertMessages: upsertMessagesMock,
@@ -167,6 +176,7 @@ describe("chat routes", () => {
   beforeEach(() => {
     acceptTaskMock.mockClear();
     listSessionMessagesForModelMock.mockClear();
+    loadHistoryWindowMock.mockClear();
     syncMessagesMock.mockClear();
     upsertMessagesMock.mockClear();
     listUserScopesMock.mockClear();
@@ -676,5 +686,64 @@ describe("chat routes", () => {
       "channel-1",
     );
     expect(upsertChatChannelNameMock).not.toHaveBeenCalled();
+  });
+
+  it("history route returns latest 10 messages by default with hasMore flag", async () => {
+    loadHistoryWindowMock.mockResolvedValueOnce({
+      messages: [
+        {
+          seqId: 91,
+          writeSeq: 91,
+          messageId: "m-91",
+          taskId: null,
+          channelId: "default",
+          sessionId: "session:default:main",
+          threadId: null,
+          role: "user",
+          content: "hello",
+          taskState: "accepted",
+          checkpointCursor: null,
+          metadata: null,
+          createdAt: "2026-04-30T10:00:00.000Z",
+          updatedAt: "2026-04-30T10:00:00.000Z",
+        },
+      ],
+      hasMore: true,
+      oldestSeqId: 91,
+    });
+
+    const response = await fetch(
+      `${baseUrl}/api/chat/history/session%3Adefault%3Amain`,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body.hasMore).toBe(true);
+    expect(body.oldestSeqId).toBe(91);
+    expect((body.messages as unknown[]).length).toBe(1);
+    expect(loadHistoryWindowMock).toHaveBeenCalledWith(
+      "user-123",
+      "session:default:main",
+      expect.objectContaining({ limit: 10 }),
+    );
+  });
+
+  it("history route forwards beforeSeqId for backward pagination", async () => {
+    loadHistoryWindowMock.mockResolvedValueOnce({
+      messages: [],
+      hasMore: false,
+      oldestSeqId: null,
+    });
+
+    const response = await fetch(
+      `${baseUrl}/api/chat/history/session%3Adefault%3Amain?beforeSeqId=50`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(loadHistoryWindowMock).toHaveBeenCalledWith(
+      "user-123",
+      "session:default:main",
+      expect.objectContaining({ beforeSeqId: 50 }),
+    );
   });
 });

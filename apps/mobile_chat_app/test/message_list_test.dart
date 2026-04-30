@@ -43,16 +43,21 @@ Widget _build(
 
 void main() {
   group('MessageList auto scroll', () {
-    testWidgets('focuses latest user message on first render', (tester) async {
+    testWidgets('lands at latest content anchor on initial render',
+        (tester) async {
       await tester.pumpWidget(_build(_messages('initial', 41)));
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final expectedAnchor = _latestAnchorOffset(tester, scrollable.position);
+      // Scroll should land at or near the latest-content anchor.
+      expect(scrollable.position.pixels, closeTo(expectedAnchor, 1.0));
+      // And it must be less than maxScrollExtent (there is bottom padding).
       expect(scrollable.position.pixels,
           lessThan(scrollable.position.maxScrollExtent));
     });
 
-    testWidgets('re-focuses latest user message when list content changes',
+    testWidgets('re-focuses to latest anchor when list content changes',
         (tester) async {
       await tester.pumpWidget(_build(_messages('before', 41)));
       await tester.pumpAndSettle();
@@ -69,7 +74,7 @@ void main() {
     });
 
     testWidgets(
-        're-focuses latest user message when rebuilt with same mutated list instance',
+        're-scrolls to latest anchor when rebuilt with same mutated list instance',
         (tester) async {
       final messages = _messages('before', 41);
       late StateSetter setState;
@@ -191,6 +196,114 @@ void main() {
       await tester.pump();
 
       expect(scrollable.position.pixels, positionBefore);
+    });
+  });
+
+  group('MessageList upward pagination', () {
+    Widget _buildWithOlderLoader(
+      List<ChatMessage> messages, {
+      required VoidCallback? onLoadOlder,
+      bool canLoadOlder = false,
+    }) =>
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 320,
+              child: MessageList(
+                messages: messages,
+                onLoadOlder: onLoadOlder,
+                canLoadOlder: canLoadOlder,
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('maintains scroll position when older messages are prepended',
+        (tester) async {
+      final messages = _messages('latest', 20);
+      late StateSetter setState;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, stateSetter) {
+                setState = stateSetter;
+                return SizedBox(
+                  height: 320,
+                  child: MessageList(messages: messages),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      // Scroll to a non-bottom, non-top position.
+      final midOffset = scrollable.position.maxScrollExtent * 0.4;
+      scrollable.position.jumpTo(midOffset);
+      await tester.pump();
+
+      // Prepend older messages — the tail (last item) does not change.
+      messages.insertAll(0, _messages('older', 5));
+      setState(() {});
+      await tester.pumpAndSettle();
+
+      // After prepend the scroll must NOT have jumped to the latest-content
+      // anchor (which is what happens on a full list replacement).
+      final latestAnchorAfter =
+          _latestAnchorOffset(tester, scrollable.position);
+      expect(
+        scrollable.position.pixels,
+        isNot(closeTo(latestAnchorAfter, 10.0)),
+        reason: 'Scroll must not jump to latest anchor when older messages are prepended',
+      );
+      // The scroll offset must be larger than midOffset because new content was
+      // inserted above the viewport, shifting the existing content downward.
+      expect(
+        scrollable.position.pixels,
+        greaterThan(midOffset),
+        reason:
+            'Scroll offset should increase after older messages are prepended above the viewport',
+      );
+    });
+
+    testWidgets('calls onLoadOlder when canLoadOlder is true and near top',
+        (tester) async {
+      var callCount = 0;
+      await tester.pumpWidget(_buildWithOlderLoader(
+        _messages('m', 40),
+        onLoadOlder: () => callCount++,
+        canLoadOlder: true,
+      ));
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      // Scroll to the very top.
+      scrollable.position.jumpTo(0);
+      await tester.pump();
+
+      expect(callCount, greaterThan(0));
+    });
+
+    testWidgets(
+        'does not call onLoadOlder when canLoadOlder is false',
+        (tester) async {
+      var callCount = 0;
+      await tester.pumpWidget(_buildWithOlderLoader(
+        _messages('m', 40),
+        onLoadOlder: () => callCount++,
+        canLoadOlder: false,
+      ));
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      scrollable.position.jumpTo(0);
+      await tester.pump();
+
+      expect(callCount, equals(0));
     });
   });
 

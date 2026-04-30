@@ -15,6 +15,7 @@ vi.mock('../db/index.js', () => ({
 import {
   acceptTask,
   listUserScopes,
+  loadHistoryWindow,
   syncMessages,
   upsertMessages,
 } from './chatAsyncTransportService.js';
@@ -298,5 +299,174 @@ describe('chatAsyncTransportService', () => {
         lastActivityAt: null,
       },
     ]);
+  });
+
+  it('loadHistoryWindow selects by seq_id DESC and returns rows in ASC order', async () => {
+    // Simulate DB returning rows newest-first (as ordered by seq_id DESC), but
+    // wrapped in the sub-select so the outer ORDER BY seq_id ASC re-orders them.
+    // We return only limit rows (no +1 overflow) → hasMore = false.
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          seq_id: 8,
+          write_seq: 10,
+          message_id: 'm-older',
+          task_id: null,
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'user',
+          content: 'older',
+          task_state: 'accepted',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-30T10:00:00.000Z',
+          updated_at: '2026-04-30T10:00:00.000Z',
+        },
+        {
+          seq_id: 9,
+          write_seq: 11,
+          message_id: 'm-newer',
+          task_id: null,
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'assistant',
+          content: 'newer',
+          task_state: 'completed',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-30T10:01:00.000Z',
+          updated_at: '2026-04-30T10:01:00.000Z',
+        },
+      ],
+      rowCount: 2,
+    });
+
+    const result = await loadHistoryWindow('u-1', 'session:default:main', { limit: 10 });
+
+    expect(result.hasMore).toBe(false);
+    expect(result.messages).toHaveLength(2);
+    // Rows are returned in ascending seq_id order (display order).
+    expect(result.messages[0].messageId).toBe('m-older');
+    expect(result.messages[0].seqId).toBe(8);
+    expect(result.messages[1].messageId).toBe('m-newer');
+    expect(result.messages[1].seqId).toBe(9);
+    expect(result.oldestSeqId).toBe(8);
+
+    // Verify the SQL uses seq_id ordering, not write_seq.
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining('ORDER BY seq_id DESC'),
+      expect.any(Array),
+    );
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining('ORDER BY seq_id ASC'),
+      expect.any(Array),
+    );
+  });
+
+  it('loadHistoryWindow signals hasMore when more rows exist beyond limit', async () => {
+    // Return limit+1 rows to trigger hasMore = true; the oldest row is trimmed.
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          seq_id: 5,
+          write_seq: 5,
+          message_id: 'extra-oldest',
+          task_id: null,
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'user',
+          content: 'extra',
+          task_state: 'accepted',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-30T09:55:00.000Z',
+          updated_at: '2026-04-30T09:55:00.000Z',
+        },
+        {
+          seq_id: 6,
+          write_seq: 6,
+          message_id: 'm-1',
+          task_id: null,
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'user',
+          content: 'hello',
+          task_state: 'accepted',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-30T10:00:00.000Z',
+          updated_at: '2026-04-30T10:00:00.000Z',
+        },
+        {
+          seq_id: 7,
+          write_seq: 7,
+          message_id: 'm-2',
+          task_id: null,
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'assistant',
+          content: 'hi',
+          task_state: 'completed',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-30T10:01:00.000Z',
+          updated_at: '2026-04-30T10:01:00.000Z',
+        },
+      ],
+      rowCount: 3,
+    });
+
+    const result = await loadHistoryWindow('u-1', 'session:default:main', { limit: 2 });
+
+    expect(result.hasMore).toBe(true);
+    // The overflow row (extra-oldest, seq_id=5) is trimmed; only 2 rows are returned.
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].messageId).toBe('m-1');
+    expect(result.messages[1].messageId).toBe('m-2');
+    expect(result.oldestSeqId).toBe(6);
+  });
+
+  it('loadHistoryWindow respects beforeSeqId for backward pagination', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          seq_id: 3,
+          write_seq: 3,
+          message_id: 'm-page2',
+          task_id: null,
+          channel_id: 'default',
+          session_id: 'session:default:main',
+          thread_id: null,
+          role: 'user',
+          content: 'earlier',
+          task_state: 'accepted',
+          checkpoint_cursor: null,
+          metadata: null,
+          created_at: '2026-04-30T09:00:00.000Z',
+          updated_at: '2026-04-30T09:00:00.000Z',
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const result = await loadHistoryWindow('u-1', 'session:default:main', {
+      limit: 10,
+      beforeSeqId: 6,
+    });
+
+    expect(result.hasMore).toBe(false);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].messageId).toBe('m-page2');
+
+    // Verify the WHERE clause filters by seq_id < beforeSeqId.
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining('seq_id < $3'),
+      expect.arrayContaining(['u-1', 'session:default:main', 6]),
+    );
   });
 });

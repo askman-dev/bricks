@@ -5,6 +5,7 @@ import {
   acceptTask,
   listUserScopes,
   listSessionMessagesForModel,
+  loadHistoryWindow,
   syncMessages,
   upsertMessages,
   type AcceptTaskInput,
@@ -816,18 +817,39 @@ router.get("/history/:sessionId", async (req: AuthRequest, res: Response) => {
         : Number.NaN;
     const limit = Math.max(
       1,
-      Math.min(Number.isNaN(parsedLimit) ? 100 : parsedLimit, 500),
+      Math.min(Number.isNaN(parsedLimit) ? 10 : parsedLimit, 500),
     );
 
-    const synced = await syncMessages(userId, sessionId, 0, { limit });
+    const beforeSeqIdRaw = req.query.beforeSeqId;
+    const beforeSeqIdValue = Array.isArray(beforeSeqIdRaw)
+      ? beforeSeqIdRaw[0]
+      : beforeSeqIdRaw;
+    const parsedBeforeSeqId =
+      typeof beforeSeqIdValue === "string"
+        ? Number.parseInt(beforeSeqIdValue, 10)
+        : Number.NaN;
+    const beforeSeqId = Number.isNaN(parsedBeforeSeqId)
+      ? undefined
+      : parsedBeforeSeqId;
+
+    const window = await loadHistoryWindow(userId, sessionId, {
+      limit,
+      beforeSeqId,
+    });
     const latestCheckpointCursor =
-      [...synced.messages].reverse().find((m) => m.checkpointCursor != null)
+      [...window.messages].reverse().find((m) => m.checkpointCursor != null)
         ?.checkpointCursor ?? null;
+    const lastSeqId =
+      window.messages.length > 0
+        ? window.messages[window.messages.length - 1].seqId
+        : 0;
     res.json({
       sessionId,
-      messages: synced.messages,
+      messages: window.messages,
       latestCheckpointCursor,
-      lastSeqId: synced.lastSeqId,
+      lastSeqId,
+      hasMore: window.hasMore,
+      oldestSeqId: window.oldestSeqId,
     });
   } catch (error) {
     console.error("Get chat history error:", error);

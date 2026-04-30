@@ -11,9 +11,22 @@ const double _kBottomPaddingRatio = 0.35;
 
 /// Displays the list of chat messages in timeline format.
 class MessageList extends StatefulWidget {
-  const MessageList({super.key, required this.messages});
+  const MessageList({
+    super.key,
+    required this.messages,
+    this.onLoadOlder,
+    this.canLoadOlder = false,
+  });
 
   final List<ChatMessage> messages;
+
+  /// Called when the user scrolls near the top and older messages can be
+  /// loaded. Will not be called when [canLoadOlder] is false.
+  final VoidCallback? onLoadOlder;
+
+  /// Whether a load-older request can be triggered. Set to false while a
+  /// request is in-flight or when all history has been loaded.
+  final bool canLoadOlder;
 
   @override
   State<MessageList> createState() => _MessageListState();
@@ -22,6 +35,10 @@ class MessageList extends StatefulWidget {
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
   static const double _kJumpButtonShowScreens = 2;
+
+  /// Pixels from the top of the list that trigger an upward pagination load.
+  static const double _kLoadOlderScrollThreshold = 80.0;
+
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
 
@@ -43,7 +60,7 @@ class _MessageListState extends State<MessageList> {
     _scrollController.addListener(_handleScrollChanged);
     _focusedIndex = _focusedMessageIndex();
     _saveSnapshot();
-    _scrollToFocusedUserMessage();
+    _scrollToLatestOnLoad();
   }
 
   @override
@@ -66,12 +83,22 @@ class _MessageListState extends State<MessageList> {
         wasStreamingTail &&
         isStreamingTail &&
         sameTailIdentity;
+
+    // Detect an upward prepend: more messages but the tail is unchanged.
+    // In this case we adjust the scroll offset to prevent visible jump.
+    final isPrepend = newLength > _prevLength &&
+        _prevLastKey != null &&
+        newKey != null &&
+        _prevLastKey!.stableId == newKey.stableId;
+
     if (newLength != _prevLength || newKey != _prevLastKey) {
       _prevLength = newLength;
       _prevLastKey = newKey;
-      if (!streamingProgressOnly) {
+      if (isPrepend) {
+        _adjustScrollAfterPrepend();
+      } else if (!streamingProgressOnly) {
         _focusedIndex = _focusedMessageIndex();
-        _scrollToFocusedUserMessage();
+        _scrollToLatestOnLoad();
       }
     }
   }
@@ -101,6 +128,12 @@ class _MessageListState extends State<MessageList> {
         _showJumpToLatestButton = shouldShow;
       });
     }
+    // Trigger upward pagination when the user scrolls near the top.
+    if (widget.canLoadOlder &&
+        widget.onLoadOlder != null &&
+        position.pixels <= _kLoadOlderScrollThreshold) {
+      widget.onLoadOlder!();
+    }
   }
 
   int _focusedMessageIndex() {
@@ -110,28 +143,45 @@ class _MessageListState extends State<MessageList> {
     return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
   }
 
-  void _scrollToFocusedUserMessage() {
+  /// Scrolls to the latest-content anchor (bottom of list minus bottom
+  /// padding) after a full list replacement or initial render.
+  ///
+  /// A second post-frame retry ensures the position is correct even when
+  /// CJK font loading or dynamic-height Markdown rows cause a layout
+  /// re-pass after the first frame.
+  void _scrollToLatestOnLoad() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
-      if (_focusedIndex < 0) return;
-
-      // First jump to bottom to ensure trailing children are laid out, then
-      // pin the focused message as the first visible item.
-      final position = _scrollController.position;
-      _scrollController.jumpTo(position.maxScrollExtent);
-
+      _jumpToLatestAnchor();
+      // Retry once after the next frame to catch delayed font/layout changes.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
-        final targetContext = _focusedItemKey.currentContext;
-        if (targetContext == null) return;
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: Duration.zero,
-          alignment: 0,
-        );
+        _jumpToLatestAnchor();
         _handleScrollChanged();
       });
+    });
+  }
+
+  void _jumpToLatestAnchor() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    _scrollController.jumpTo(_latestContentAnchorOffset(position));
+  }
+
+  /// Adjusts the scroll offset after older messages are prepended so that
+  /// the currently visible content does not appear to jump.
+  void _adjustScrollAfterPrepend() {
+    if (!_scrollController.hasClients) return;
+    final prevPixels = _scrollController.position.pixels;
+    final prevMaxExtent = _scrollController.position.maxScrollExtent;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final newMaxExtent = _scrollController.position.maxScrollExtent;
+      final delta = newMaxExtent - prevMaxExtent;
+      if (delta > 0) {
+        _scrollController.jumpTo(prevPixels + delta);
+      }
     });
   }
 
