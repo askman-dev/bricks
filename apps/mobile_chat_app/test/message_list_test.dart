@@ -5,7 +5,7 @@ import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
 // Must match _kBottomPaddingRatio in message_list.dart
-const double _kTestBottomPaddingRatio = 0.35;
+const double _kTestBottomPaddingRatio = 0.45;
 
 /// Computes the expected latest-content anchor offset using the same formula
 /// as MessageList._latestContentAnchorOffset.
@@ -30,6 +30,25 @@ List<ChatMessage> _messages(String prefix, int count) {
   );
 }
 
+List<ChatMessage> _messagesWithAssistantTail(String assistantContent) {
+  final head = _messages('history', 30);
+  return [
+    ...head,
+    ChatMessage(
+      messageId: 'user-last',
+      role: 'user',
+      content: '最后一条用户消息',
+      timestamp: DateTime.utc(2026, 1, 1, 1, 0),
+    ),
+    ChatMessage(
+      messageId: 'assistant-last',
+      role: 'assistant',
+      content: assistantContent,
+      timestamp: DateTime.utc(2026, 1, 1, 1, 1),
+    ),
+  ];
+}
+
 Widget _build(
   List<ChatMessage> messages, {
   ThemeData? theme,
@@ -43,16 +62,17 @@ Widget _build(
 
 void main() {
   group('MessageList auto scroll', () {
-    testWidgets('focuses latest user message on first render', (tester) async {
-      await tester.pumpWidget(_build(_messages('initial', 41)));
+    testWidgets('focuses latest message on first render', (tester) async {
+      final messages = _messages('initial', 41);
+      await tester.pumpWidget(_build(messages));
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
-      expect(scrollable.position.pixels,
-          lessThan(scrollable.position.maxScrollExtent));
+      expect(find.text(messages.last.content), findsOneWidget);
+      expect(scrollable.position.pixels, greaterThan(0));
     });
 
-    testWidgets('re-focuses latest user message when list content changes',
+    testWidgets('re-focuses latest message when list content changes',
         (tester) async {
       await tester.pumpWidget(_build(_messages('before', 41)));
       await tester.pumpAndSettle();
@@ -69,7 +89,7 @@ void main() {
     });
 
     testWidgets(
-        're-focuses latest user message when rebuilt with same mutated list instance',
+        're-focuses latest message when rebuilt with same mutated list instance',
         (tester) async {
       final messages = _messages('before', 41);
       late StateSetter setState;
@@ -148,6 +168,35 @@ void main() {
       await tester.tap(find.byTooltip('Jump to latest'), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(scrollable.position.pixels, closeTo(beforeTap, 0.1));
+    });
+
+    testWidgets('pins latest short assistant tail with user message near top',
+        (tester) async {
+      final messages = _messagesWithAssistantTail('第一行\\n第二行');
+      await tester.pumpWidget(_build(messages));
+      await tester.pumpAndSettle();
+
+      final userTopLeft = tester.getTopLeft(find.text('最后一条用户消息'));
+      final listHeight = tester.getSize(find.byType(ListView)).height;
+      expect(userTopLeft.dy, greaterThanOrEqualTo(0));
+      expect(userTopLeft.dy, lessThan(listHeight * 0.2));
+    });
+
+    testWidgets(
+        'pins latest long assistant tail at least as aggressive as short-tail positioning',
+        (tester) async {
+      await tester.pumpWidget(_build(_messagesWithAssistantTail('第一行\\n第二行')));
+      await tester.pumpAndSettle();
+      final shortDy = tester.getTopLeft(find.text('最后一条用户消息')).dy;
+
+      await tester.pumpWidget(
+          _build(_messagesWithAssistantTail('1\\n2\\n3\\n4\\n5\\n6')));
+      await tester.pumpAndSettle();
+      final longDy = tester.getTopLeft(find.text('最后一条用户消息')).dy;
+
+      expect(longDy, lessThanOrEqualTo(shortDy));
+      final listHeight = tester.getSize(find.byType(ListView)).height;
+      expect(longDy, lessThan(listHeight * 0.2));
     });
   });
 

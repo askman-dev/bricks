@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
 
-// Extra bottom padding as a fraction of screen height, so an incoming
-// assistant reply is visible when the list is anchored on the latest user
-// message. ~35 % of screen height works well across common phone sizes.
-const double _kBottomPaddingRatio = 0.35;
+// Extra bottom padding as a fraction of screen height, so the latest message
+// is visible when the list is anchored on it. ~45 % of screen height keeps
+// enough trailing room for the "last-three-lines" tail anchoring policy.
+const double _kBottomPaddingRatio = 0.45;
 
 /// Displays the list of chat messages in timeline format.
 class MessageList extends StatefulWidget {
@@ -22,14 +23,17 @@ class MessageList extends StatefulWidget {
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
   static const double _kJumpButtonShowScreens = 2;
+  static const int _kTailPreviewLines = 3;
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
 
-  // A single key attached only to the focused (latest user) item so that
+  // A single key attached only to the focused (latest) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
   // every list row.
   final GlobalKey _focusedItemKey = GlobalKey();
+  final GlobalKey _latestUserItemKey = GlobalKey();
   int _focusedIndex = -1;
+  int _latestUserIndex = -1;
 
   // Persist the previous snapshot in state so comparisons work correctly even
   // when the same List instance is mutated in place (e.g. ChatScreen passes
@@ -41,9 +45,10 @@ class _MessageListState extends State<MessageList> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScrollChanged);
-    _focusedIndex = _focusedMessageIndex();
+    _focusedIndex = _latestMessageIndex();
+    _latestUserIndex = _latestUserMessageIndex();
     _saveSnapshot();
-    _scrollToFocusedUserMessage();
+    _scrollToLatestMessageIfNeeded();
   }
 
   @override
@@ -70,8 +75,9 @@ class _MessageListState extends State<MessageList> {
       _prevLength = newLength;
       _prevLastKey = newKey;
       if (!streamingProgressOnly) {
-        _focusedIndex = _focusedMessageIndex();
-        _scrollToFocusedUserMessage();
+        _focusedIndex = _latestMessageIndex();
+        _latestUserIndex = _latestUserMessageIndex();
+        _scrollToLatestMessageIfNeeded();
       }
     }
   }
@@ -103,14 +109,18 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
-  int _focusedMessageIndex() {
-    for (var i = widget.messages.length - 1; i >= 0; i--) {
-      if (widget.messages[i].role == 'user') return i;
-    }
+  int _latestMessageIndex() {
     return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
   }
 
-  void _scrollToFocusedUserMessage() {
+  int _latestUserMessageIndex() {
+    for (var i = widget.messages.length - 1; i >= 0; i--) {
+      if (widget.messages[i].role == 'user') return i;
+    }
+    return -1;
+  }
+
+  void _scrollToLatestMessageIfNeeded() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
@@ -125,11 +135,36 @@ class _MessageListState extends State<MessageList> {
         if (!mounted || !_scrollController.hasClients) return;
         final targetContext = _focusedItemKey.currentContext;
         if (targetContext == null) return;
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: Duration.zero,
-          alignment: 0,
-        );
+        if (targetContext.findRenderObject() == null) return;
+
+        final textStyle = Theme.of(context).textTheme.bodyLarge;
+        final fallbackFontSize = textStyle?.fontSize ?? 16;
+        final fallbackHeight = textStyle?.height ?? 1.4;
+        final lineHeight = fallbackFontSize * fallbackHeight;
+        final tailMessage =
+            _focusedIndex >= 0 && _focusedIndex < widget.messages.length
+                ? widget.messages[_focusedIndex]
+                : null;
+        final explicitLineCount =
+            (tailMessage?.content ?? '').split('\n').length;
+        final tailLineCount = explicitLineCount == 0 ? 1 : explicitLineCount;
+        final targetTop = tailLineCount <= _kTailPreviewLines
+            ? lineHeight
+            : -(lineHeight * 2);
+        final revealContext = (_latestUserIndex >= 0 &&
+                _latestUserIndex != _focusedIndex &&
+                _latestUserItemKey.currentContext != null)
+            ? _latestUserItemKey.currentContext!
+            : targetContext;
+        final revealRenderBox = revealContext.findRenderObject() as RenderBox?;
+        if (revealRenderBox == null) return;
+        final viewport = RenderAbstractViewport.of(revealRenderBox);
+        final reveal = viewport.getOffsetToReveal(revealRenderBox, 0.0);
+        final position = _scrollController.position;
+        final targetOffset = (reveal.offset - targetTop)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+        _scrollController.jumpTo(targetOffset);
         _handleScrollChanged();
       });
     });
@@ -307,9 +342,13 @@ class _MessageListState extends State<MessageList> {
               final chatColors =
                   Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
               // Attach the focused-item key only to the target row so that
-              // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
-              // without maintaining a GlobalKey for every list item.
-              final itemKey = index == _focusedIndex ? _focusedItemKey : null;
+              // _scrollToLatestMessageIfNeeded can find that row's render object
+              // and compute the reveal offset without a GlobalKey per item.
+              final itemKey = index == _focusedIndex
+                  ? _focusedItemKey
+                  : index == _latestUserIndex
+                      ? _latestUserItemKey
+                      : null;
               return Align(
                 key: itemKey,
                 alignment:
