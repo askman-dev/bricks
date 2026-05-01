@@ -101,6 +101,7 @@ class ChatScopeSetting {
     required this.router,
     this.nodeId,
     this.threadId,
+    this.instructions,
     this.updatedAt,
   });
 
@@ -109,6 +110,7 @@ class ChatScopeSetting {
   final String? threadId;
   final ChatRouter router;
   final String? nodeId;
+  final String? instructions;
   final DateTime? updatedAt;
 }
 

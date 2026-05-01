@@ -95,6 +95,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, ChatRouter> _threadRouters = {};
   final Map<String, String> _channelNodeIds = {};
   final Map<String, String> _threadNodeIds = {};
+  final Map<String, String> _channelInstructions = {};
+  final Map<String, String> _threadInstructions = {};
   int _respondGeneration = 0;
   int _idCounter = 0;
 
@@ -218,6 +220,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final restoredThreadRouters = _hydrateThreadRouters(scopeSettings);
       final restoredChannelNodeIds = _hydrateChannelNodeIds(scopeSettings);
       final restoredThreadNodeIds = _hydrateThreadNodeIds(scopeSettings);
+      final restoredChannelInstructions =
+          _hydrateChannelInstructions(scopeSettings);
+      final restoredThreadInstructions =
+          _hydrateThreadInstructions(scopeSettings);
       final resolvedActiveChannel = _topologyResolver.resolveChannelId(
         channels: restoredChannels,
         requestedChannelId: _activeChannelId,
@@ -263,6 +269,12 @@ class _ChatScreenState extends State<ChatScreen> {
         _threadNodeIds
           ..clear()
           ..addAll(restoredThreadNodeIds);
+        _channelInstructions
+          ..clear()
+          ..addAll(restoredChannelInstructions);
+        _threadInstructions
+          ..clear()
+          ..addAll(restoredThreadInstructions);
         _platformNodes = platformNodes;
         _activeChannelId = resolvedActiveChannel;
         _activeSubSection = restoredActiveSubSection;
@@ -721,6 +733,37 @@ class _ChatScreenState extends State<ChatScreen> {
       nodeIds[_subSectionKey(setting.channelId, setting.threadId!)] = nodeId;
     }
     return nodeIds;
+  }
+
+  Map<String, String> _hydrateChannelInstructions(
+    List<ChatScopeSetting> settings,
+  ) {
+    final instructions = <String, String>{};
+    for (final setting in settings) {
+      if (setting.scopeType != ChatScopeType.channel) continue;
+      final value = setting.instructions?.trim();
+      if (value == null || value.isEmpty) continue;
+      instructions[setting.channelId] = value;
+    }
+    return instructions;
+  }
+
+  Map<String, String> _hydrateThreadInstructions(
+    List<ChatScopeSetting> settings,
+  ) {
+    final instructions = <String, String>{};
+    for (final setting in settings) {
+      if (setting.scopeType != ChatScopeType.thread ||
+          setting.threadId == null) {
+        continue;
+      }
+      if (!_isThreadConversation(threadId: setting.threadId)) continue;
+      final value = setting.instructions?.trim();
+      if (value == null || value.isEmpty) continue;
+      instructions[_subSectionKey(setting.channelId, setting.threadId!)] =
+          value;
+    }
+    return instructions;
   }
 
   void _createChannel() {
@@ -1420,6 +1463,144 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _saveChannelInstructions(String? instructions) async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
+      return;
+    }
+
+    final channelId = _activeChannelId;
+    final normalized = instructions?.trim();
+    final previous = _channelInstructions[channelId];
+    setState(() {
+      if (normalized == null || normalized.isEmpty) {
+        _channelInstructions.remove(channelId);
+      } else {
+        _channelInstructions[channelId] = normalized;
+      }
+    });
+
+    final effectiveRouter =
+        _channelRouters[channelId] ?? ChatRouter.defaultRoute;
+
+    try {
+      await _chatHistoryApiService.saveScopeSetting(
+        token: token,
+        scopeType: ChatScopeType.channel,
+        channelId: channelId,
+        router:
+            effectiveRouter == ChatRouter.defaultRoute ? null : effectiveRouter,
+        nodeId: effectiveRouter == ChatRouter.openclaw
+            ? _channelNodeIds[channelId]
+            : null,
+        instructions: normalized?.isEmpty ?? true ? null : normalized,
+      );
+      if (!mounted) return;
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (previous == null || previous.isEmpty) {
+          _channelInstructions.remove(channelId);
+        } else {
+          _channelInstructions[channelId] = previous;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save channel instructions: $error')),
+      );
+    }
+  }
+
+  Future<void> _saveThreadInstructions(String? instructions) async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
+      return;
+    }
+
+    if (!_isThreadConversation()) return;
+
+    final channelId = _activeChannelId;
+    final threadId = _activeSubSection;
+    final key = _subSectionKey(channelId, threadId);
+    final normalized = instructions?.trim();
+    final previous = _threadInstructions[key];
+    setState(() {
+      if (normalized == null || normalized.isEmpty) {
+        _threadInstructions.remove(key);
+      } else {
+        _threadInstructions[key] = normalized;
+      }
+    });
+
+    final effectiveRouter = _threadRouters[key] ?? ChatRouter.defaultRoute;
+
+    try {
+      await _chatHistoryApiService.saveScopeSetting(
+        token: token,
+        scopeType: ChatScopeType.thread,
+        channelId: channelId,
+        threadId: threadId,
+        router: effectiveRouter,
+        nodeId: effectiveRouter == ChatRouter.openclaw
+            ? _threadNodeIds[key]
+            : null,
+        instructions: normalized?.isEmpty ?? true ? null : normalized,
+      );
+      if (!mounted) return;
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (previous == null || previous.isEmpty) {
+          _threadInstructions.remove(key);
+        } else {
+          _threadInstructions[key] = previous;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save section instructions: $error')),
+      );
+    }
+  }
+
+  Future<void> _openScopeConfigDialog() async {
+    final isSubSection = _isThreadConversation();
+    final channelId = _activeChannelId;
+    final threadKey = _subSectionKey(channelId, _activeSubSection);
+
+    final channelController = TextEditingController(
+      text: _channelInstructions[channelId] ?? '',
+    );
+    final threadController = TextEditingController(
+      text: isSubSection ? (_threadInstructions[threadKey] ?? '') : '',
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => _ScopeConfigDialog(
+        isSubSection: isSubSection,
+        channelController: channelController,
+        threadController: threadController,
+        onSaveChannel: (value) async {
+          Navigator.of(dialogContext).pop();
+          await _saveChannelInstructions(value);
+        },
+        onSaveThread: (value) async {
+          Navigator.of(dialogContext).pop();
+          await _saveThreadInstructions(value);
+        },
+      ),
+    );
+
+    channelController.dispose();
+    threadController.dispose();
+  }
+
   void _updateSubSectionLastMessageAtFromMessages({
     String? channelId,
     String? subSection,
@@ -1785,6 +1966,7 @@ class _ChatScreenState extends State<ChatScreen> {
       model: runtimeSettings.model,
       configId: runtimeSettings.configId,
       nodeId: _effectiveNodeIdForScope(),
+      systemPrompt: runtimeSettings.systemPrompt,
       createdAt: envelope.createdAt,
     )
         .then((result) async {
@@ -2221,6 +2403,13 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.tune_outlined),
+          tooltip: 'Conversation config',
+          onPressed: _openScopeConfigDialog,
+        ),
+      ],
     );
 
     // Message list + composer bar (shared between mobile and desktop).
@@ -2438,6 +2627,145 @@ class _ChatScreenState extends State<ChatScreen> {
         appBar: appBar,
         body: chatContent,
       ),
+    );
+  }
+}
+
+/// A two-tab dialog for configuring channel and section instructions.
+class _ScopeConfigDialog extends StatefulWidget {
+  const _ScopeConfigDialog({
+    required this.isSubSection,
+    required this.channelController,
+    required this.threadController,
+    required this.onSaveChannel,
+    required this.onSaveThread,
+  });
+
+  final bool isSubSection;
+  final TextEditingController channelController;
+  final TextEditingController threadController;
+  final Future<void> Function(String? value) onSaveChannel;
+  final Future<void> Function(String? value) onSaveThread;
+
+  @override
+  State<_ScopeConfigDialog> createState() => _ScopeConfigDialogState();
+}
+
+class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChange);
+  }
+
+  void _onTabChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChange);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      if (_tabController.index == 0) {
+        await widget.onSaveChannel(widget.channelController.text);
+      } else {
+        await widget.onSaveThread(widget.threadController.text);
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Conversation Config'),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'Channel'),
+                Tab(text: 'Section'),
+              ],
+            ),
+            const SizedBox(height: BricksSpacing.sm),
+            SizedBox(
+              height: 180,
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // Channel tab
+                  TextField(
+                    controller: widget.channelController,
+                    maxLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: const InputDecoration(
+                      labelText: 'Instructions',
+                      hintText:
+                          'Describe the broad context or topic for this channel.',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  // Section tab
+                  widget.isSubSection
+                      ? TextField(
+                          controller: widget.threadController,
+                          maxLines: null,
+                          expands: true,
+                          textAlignVertical: TextAlignVertical.top,
+                          decoration: const InputDecoration(
+                            labelText: 'Instructions',
+                            hintText:
+                                'Describe the narrower context for this section.',
+                            border: OutlineInputBorder(),
+                          ),
+                        )
+                      : const Padding(
+                          padding: EdgeInsets.all(BricksSpacing.sm),
+                          child: Text(
+                            'Main section uses channel instructions only.',
+                            style: TextStyle(fontStyle: FontStyle.italic),
+                          ),
+                        ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              _isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _isSaving ||
+                  (_tabController.index == 1 && !widget.isSubSection)
+              ? null
+              : _save,
+          child:
+              _isSaving ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save'),
+        ),
+      ],
     );
   }
 }

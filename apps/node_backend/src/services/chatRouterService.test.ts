@@ -18,6 +18,7 @@ import {
   normalizeChatThreadId,
   resolveChatScopeRouting,
   resolveChatRouter,
+  resolveScopeInstructions,
   upsertChatScopeSetting,
 } from './chatRouterService.js';
 
@@ -42,6 +43,7 @@ describe('chatRouterService', () => {
           thread_id: '',
           router: 'openclaw',
           node_id: 'node_default',
+          instructions: null,
           created_at: '2026-04-17T07:00:00.000Z',
           updated_at: '2026-04-17T07:05:00.000Z',
         },
@@ -58,6 +60,7 @@ describe('chatRouterService', () => {
         threadId: null,
         router: 'openclaw',
         nodeId: 'node_default',
+        instructions: null,
         createdAt: '2026-04-17T07:00:00.000Z',
         updatedAt: '2026-04-17T07:05:00.000Z',
       },
@@ -73,6 +76,7 @@ describe('chatRouterService', () => {
           thread_id: 'main',
           router: 'default',
           node_id: 'node_default',
+          instructions: null,
           created_at: '2026-04-17T07:00:00.000Z',
           updated_at: '2026-04-17T07:05:00.000Z',
         },
@@ -90,9 +94,10 @@ describe('chatRouterService', () => {
 
     expect(setting.threadId).toBe('main');
     expect(setting.nodeId).toBe('node_default');
+    expect(setting.instructions).toBeNull();
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO chat_scope_settings'),
-      ['u-1', 'thread', 'default', 'main', 'default', 'node_default'],
+      ['u-1', 'thread', 'default', 'main', 'default', 'node_default', null],
     );
   });
 
@@ -138,5 +143,52 @@ describe('chatRouterService', () => {
       router: 'openclaw',
       nodeId: 'node_default',
     });
+  });
+
+  it('resolves scope instructions for channel and sub-section', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        { scope_type: 'channel', instructions: 'channel-level context' },
+        { scope_type: 'thread', instructions: 'section-specific context' },
+      ],
+      rowCount: 2,
+    });
+
+    const result = await resolveScopeInstructions('u-1', {
+      channelId: 'channel-a',
+      threadId: 'sub-1',
+    });
+
+    expect(result.channelInstructions).toBe('channel-level context');
+    expect(result.threadInstructions).toBe('section-specific context');
+  });
+
+  it('returns null thread instructions when in main section', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        { scope_type: 'channel', instructions: 'channel context' },
+      ],
+      rowCount: 1,
+    });
+
+    const result = await resolveScopeInstructions('u-1', {
+      channelId: 'channel-a',
+      threadId: 'main',
+    });
+
+    expect(result.channelInstructions).toBe('channel context');
+    expect(result.threadInstructions).toBeNull();
+  });
+
+  it('returns nulls when no instructions are stored', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await resolveScopeInstructions('u-1', {
+      channelId: 'channel-a',
+      threadId: 'sub-1',
+    });
+
+    expect(result.channelInstructions).toBeNull();
+    expect(result.threadInstructions).toBeNull();
   });
 });

@@ -16,6 +16,7 @@ import {
   deleteChatScopeSetting,
   listChatScopeSettings,
   resolveChatScopeRouting,
+  resolveScopeInstructions,
   type ChatRouter,
   type ChatScopeType,
   upsertChatScopeSetting,
@@ -211,6 +212,32 @@ const respondLimiter = rateLimit({
   },
 });
 
+/**
+ * Builds a composed system prompt from the agent system prompt and optional
+ * scope instructions (channel-level and, when in a sub-section, thread-level).
+ *
+ * Returns null when there is nothing to include so that callers can skip
+ * adding a system message entirely.
+ */
+function buildComposedSystemPrompt(params: {
+  systemPrompt: string | null;
+  channelInstructions: string | null;
+  threadInstructions: string | null;
+}): string | null {
+  const parts: string[] = [];
+
+  const sp = params.systemPrompt?.trim();
+  if (sp) parts.push(sp);
+
+  const ci = params.channelInstructions?.trim();
+  if (ci) parts.push(`Channel context:\n${ci}`);
+
+  const ti = params.threadInstructions?.trim();
+  if (ti) parts.push(`Section context:\n${ti}`);
+
+  return parts.length > 0 ? parts.join('\n\n') : null;
+}
+
 async function runDefaultRouterRespondAsync(params: {
   userId: string;
   acceptedTaskId: string;
@@ -222,6 +249,9 @@ async function runDefaultRouterRespondAsync(params: {
   resolvedSkillId: string | null;
   body: Record<string, unknown>;
   maxTokens: number;
+  systemPrompt: string | null;
+  channelInstructions: string | null;
+  threadInstructions: string | null;
 }) {
   const {
     userId,
@@ -234,6 +264,9 @@ async function runDefaultRouterRespondAsync(params: {
     resolvedSkillId,
     body,
     maxTokens,
+    systemPrompt,
+    channelInstructions,
+    threadInstructions,
   } = params;
 
   // NOTE: This runs after the HTTP response has been sent. On Vercel Serverless
@@ -259,12 +292,21 @@ async function runDefaultRouterRespondAsync(params: {
       maxChars: 10000,
     });
 
+    const composedSystemPrompt = buildComposedSystemPrompt({
+      systemPrompt,
+      channelInstructions,
+      threadInstructions,
+    });
+    const messagesWithSystem = composedSystemPrompt
+      ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
+      : modelMessages;
+
     const { textStream, provider, modelId } = await streamWithUserConfig(
       userId,
       {
         model: typeof body.model === "string" ? body.model : undefined,
         configId: typeof body.configId === "string" ? body.configId : undefined,
-        messages: modelMessages,
+        messages: messagesWithSystem,
         maxTokens,
       },
       parseProvider(body.provider),
@@ -565,6 +607,15 @@ router.post(
         },
       ]);
 
+      const scopeInstructions = await resolveScopeInstructions(userId, {
+        channelId,
+        threadId,
+      });
+      const systemPrompt =
+        typeof body.systemPrompt === "string" && body.systemPrompt.trim()
+          ? body.systemPrompt.trim()
+          : null;
+
       void runDefaultRouterRespondAsync({
         userId,
         acceptedTaskId,
@@ -576,6 +627,9 @@ router.post(
         resolvedSkillId: input.resolvedSkillId,
         body,
         maxTokens: parsedMaxTokens.value,
+        systemPrompt,
+        channelInstructions: scopeInstructions.channelInstructions,
+        threadInstructions: scopeInstructions.threadInstructions,
       });
 
       res.json({
@@ -940,6 +994,12 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
     const channelId = parseSessionId(body.channelId);
     const threadId = parseSessionId(body.threadId);
     const nodeId = parseSessionId(body.nodeId);
+    const instructionsRaw =
+      body.instructions === null || body.instructions === undefined
+        ? undefined
+        : typeof body.instructions === "string"
+          ? body.instructions
+          : null;
     const routerValue =
       body.router === null || body.router === undefined
         ? null
@@ -999,6 +1059,7 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       threadId,
       router: routerValue,
       nodeId: routerValue === CHAT_ROUTER_OPENCLAW ? nodeId : null,
+      instructions: instructionsRaw,
     });
     res.json({ setting });
   } catch (error) {
