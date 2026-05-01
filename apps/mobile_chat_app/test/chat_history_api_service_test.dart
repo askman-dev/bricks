@@ -540,4 +540,108 @@ void main() {
     expect(snapshot.messages.first.messageId, equals('m-hb'));
     expect(snapshot.lastSeqId, equals(1));
   });
+
+  test('loads scope settings and parses instructions field', () async {
+    final client = MockClient((request) async {
+      expect(request.method, equals('GET'));
+      return http.Response(
+        jsonEncode({
+          'settings': [
+            {
+              'scopeType': 'channel',
+              'channelId': 'ch-1',
+              'router': 'default',
+              'instructions': 'broad context for this channel',
+              'updatedAt': '2026-04-30T10:00:00.000Z',
+            },
+            {
+              'scopeType': 'thread',
+              'channelId': 'ch-1',
+              'threadId': 'sub-1',
+              'router': 'default',
+              'instructions': 'narrower section context',
+              'updatedAt': '2026-04-30T10:05:00.000Z',
+            },
+            {
+              'scopeType': 'thread',
+              'channelId': 'ch-1',
+              'threadId': 'main',
+              'router': 'default',
+              'updatedAt': '2026-04-30T10:02:00.000Z',
+            },
+          ],
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final settings = await service.loadScopeSettings(token: 'token-1');
+
+    expect(settings, hasLength(3));
+    final channelSetting =
+        settings.firstWhere((s) => s.scopeType == ChatScopeType.channel);
+    expect(
+      channelSetting.instructions,
+      equals('broad context for this channel'),
+    );
+    final subSetting = settings.firstWhere(
+      (s) => s.scopeType == ChatScopeType.thread && s.threadId == 'sub-1',
+    );
+    expect(subSetting.instructions, equals('narrower section context'));
+    final mainSetting = settings.firstWhere(
+      (s) => s.scopeType == ChatScopeType.thread && s.threadId == 'main',
+    );
+    expect(mainSetting.instructions, isNull);
+  });
+
+  test('saveScopeSetting sends instructions in request body', () async {
+    final client = MockClient((request) async {
+      expect(request.method, equals('PUT'));
+      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(decoded['scopeType'], equals('channel'));
+      expect(decoded['channelId'], equals('ch-1'));
+      expect(decoded['instructions'], equals('channel-level instructions text'));
+      return http.Response(
+        jsonEncode({'setting': {}}),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    await service.saveScopeSetting(
+      token: 'token-1',
+      scopeType: ChatScopeType.channel,
+      channelId: 'ch-1',
+      router: ChatRouter.defaultRoute,
+      instructions: 'channel-level instructions text',
+    );
+  });
+
+  test('respond sends systemPrompt when provided', () async {
+    final client = MockClient((request) async {
+      expect(request.method, equals('POST'));
+      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(
+        decoded['systemPrompt'],
+        equals('You are a helpful assistant.'),
+      );
+      return http.Response(
+        jsonEncode({'text': '', 'lastSeqId': 1, 'mode': 'async'}),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    await service.respond(
+      token: 'token-1',
+      taskId: 'task-1',
+      idempotencyKey: 'idem-1',
+      scope: const ChatSessionScope(channelId: 'ch-1', threadId: 'main'),
+      userMessageId: 'msg-user',
+      assistantMessageId: 'msg-assistant',
+      userMessage: 'Hello',
+      systemPrompt: 'You are a helpful assistant.',
+    );
+  });
 }

@@ -196,6 +196,7 @@ class ChatHistoryApiService {
         threadId: item['threadId'] as String?,
         router: chatRouterFromApi(item['router'] as String?),
         nodeId: item['nodeId'] as String?,
+        instructions: item['instructions'] as String?,
         updatedAt: item['updatedAt'] is String
             ? DateTime.tryParse(item['updatedAt'] as String)
             : null,
@@ -388,6 +389,7 @@ class ChatHistoryApiService {
     String? model,
     String? configId,
     String? nodeId,
+    String? systemPrompt,
     DateTime? createdAt,
   }) async {
     final response = await _client.post(
@@ -411,6 +413,8 @@ class ChatHistoryApiService {
         'model': model,
         'configId': configId,
         if (nodeId != null && nodeId.trim().isNotEmpty) 'nodeId': nodeId.trim(),
+        if (systemPrompt != null && systemPrompt.trim().isNotEmpty)
+          'systemPrompt': systemPrompt.trim(),
         'createdAt': createdAt?.toIso8601String(),
       }),
     );
@@ -437,6 +441,7 @@ class ChatHistoryApiService {
     String? threadId,
     required ChatRouter? router,
     String? nodeId,
+    String? instructions,
   }) async {
     final response = await _client.put(
       _scopeSettingsUri,
@@ -450,6 +455,7 @@ class ChatHistoryApiService {
         if (threadId != null) 'threadId': threadId,
         'router': router?.apiValue,
         if (nodeId != null) 'nodeId': nodeId,
+        'instructions': instructions,
       }),
     );
     if (response.statusCode != 200) {

@@ -12,6 +12,7 @@ interface ChatScopeSettingRow {
   thread_id: string;
   router: ChatRouter;
   node_id: string | null;
+  instructions: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +23,7 @@ export interface ChatScopeSetting {
   threadId: string | null;
   router: ChatRouter;
   nodeId: string | null;
+  instructions: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,6 +37,7 @@ export interface ChatScopeSettingInput extends ChatScopeSelector {
   scopeType: ChatScopeType;
   router: ChatRouter;
   nodeId?: string | null;
+  instructions?: string | null;
 }
 
 export interface ResolvedChatScopeRouting {
@@ -59,6 +62,7 @@ function toDto(row: ChatScopeSettingRow): ChatScopeSetting {
     threadId: row.scope_type === 'thread' ? row.thread_id : null,
     router: row.router,
     nodeId: row.node_id,
+    instructions: row.instructions ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -70,7 +74,7 @@ export function buildChatSessionId(channelId: string, threadId?: string | null):
 
 export async function listChatScopeSettings(userId: string): Promise<ChatScopeSetting[]> {
   const result = await pool.query<ChatScopeSettingRow>(
-    `SELECT scope_type, channel_id, thread_id, router, node_id, created_at, updated_at
+    `SELECT scope_type, channel_id, thread_id, router, node_id, instructions, created_at, updated_at
        FROM chat_scope_settings
       WHERE user_id = $1
       ORDER BY channel_id ASC, scope_type ASC, thread_id ASC`,
@@ -85,6 +89,7 @@ export async function upsertChatScopeSetting(
 ): Promise<ChatScopeSetting> {
   const threadId = toStorageThreadId(input.scopeType, input.threadId);
   const nodeId = input.nodeId?.trim() || null;
+  const instructions = input.instructions?.trim() || null;
   const result = await pool.query<ChatScopeSettingRow>(
     `INSERT INTO chat_scope_settings (
         user_id,
@@ -92,15 +97,17 @@ export async function upsertChatScopeSetting(
         channel_id,
         thread_id,
         router,
-        node_id
-      ) VALUES ($1, $2, $3, $4, $5, $6)
+        node_id,
+        instructions
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (user_id, scope_type, channel_id, thread_id)
       DO UPDATE SET
         router = EXCLUDED.router,
         node_id = EXCLUDED.node_id,
+        instructions = EXCLUDED.instructions,
         updated_at = CURRENT_TIMESTAMP
-      RETURNING scope_type, channel_id, thread_id, router, node_id, created_at, updated_at`,
-    [userId, input.scopeType, input.channelId, threadId, input.router, nodeId],
+      RETURNING scope_type, channel_id, thread_id, router, node_id, instructions, created_at, updated_at`,
+    [userId, input.scopeType, input.channelId, threadId, input.router, nodeId, instructions],
   );
 
   return toDto(result.rows[0]);
@@ -155,4 +162,51 @@ export async function resolveChatScopeRouting(
     router: result.rows[0]?.router ?? CHAT_ROUTER_DEFAULT,
     nodeId: result.rows[0]?.node_id ?? null,
   };
+}
+
+export interface ResolvedScopeInstructions {
+  channelInstructions: string | null;
+  threadInstructions: string | null;
+}
+
+/**
+ * Returns the stored instructions for a channel scope and, when the thread is
+ * a sub-section (not 'main'), the thread-level instructions as well.
+ *
+ * Both values are null when no instructions have been saved.
+ */
+export async function resolveScopeInstructions(
+  userId: string,
+  selector: ChatScopeSelector,
+): Promise<ResolvedScopeInstructions> {
+  const threadId = normalizeChatThreadId(selector.threadId);
+  const result = await pool.query<{
+    scope_type: ChatScopeType;
+    instructions: string | null;
+  }>(
+    `SELECT scope_type, instructions
+       FROM chat_scope_settings
+      WHERE user_id = $1
+        AND channel_id = $2
+        AND (
+          (scope_type = 'channel' AND thread_id = '')
+          OR
+          (scope_type = 'thread' AND thread_id = $3)
+        )`,
+    [userId, selector.channelId, threadId],
+  );
+
+  let channelInstructions: string | null = null;
+  let threadInstructions: string | null = null;
+
+  for (const row of result.rows) {
+    const value = row.instructions?.trim() || null;
+    if (row.scope_type === 'channel') {
+      channelInstructions = value;
+    } else if (row.scope_type === 'thread' && threadId !== 'main') {
+      threadInstructions = value;
+    }
+  }
+
+  return { channelInstructions, threadInstructions };
 }

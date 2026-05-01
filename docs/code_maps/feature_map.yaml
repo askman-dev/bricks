@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-04-29
+last_updated: 2026-05-01
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -91,6 +91,30 @@ products:
           - 输入框底部可点击且非禁用的动作按钮（路由、`/`、`@`、配置、发送）应使用一致的白色系 enabled 颜色，除非该状态刻意使用 accent。
           - OpenClaw 路由与投递状态图标应使用单色图标，不使用彩色 emoji。
           - 用户消息与 assistant 消息正文应共享同一文本样式基线（字号一致）；时间/thread 等 meta 信息应统一为次级灰。
+
+      - feature_id: scope_instructions_config
+        name: 频道和分区会话指令配置
+        user_value: 用户可在聊天区域右上角打开会话配置，为当前频道和当前子区分别设置指令，为默认路由请求提供范围上下文。
+        entry_paths:
+          - screen: ChatScreen._openScopeConfigDialog
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - widget: _ScopeConfigDialog
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - service: ChatHistoryApiService.saveScopeSetting (instructions field)
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+          - route: PUT /api/chat/scope-settings (instructions field)
+            route_hint: apps/node_backend/src/routes/chat.ts
+          - route: POST /api/chat/respond (systemPrompt + scope instructions)
+            route_hint: apps/node_backend/src/routes/chat.ts
+        smoke_checks:
+          - 在任意频道/分区下，对话区顶部右侧出现独立的"调节"图标按钮（tune icon），与频道下拉菜单分离。
+          - 点击该按钮弹出含 Channel / Section 两个标签的对话框。
+          - Channel 标签中可编辑并保存频道指令；保存后刷新页面应恢复已保存值。
+          - 在主区下打开 Section 标签，应显示"主区仅使用频道指令"的非编辑提示，且 Save 按钮在 Section 标签时应禁用。
+          - 在子区下打开 Section 标签，可编辑并保存当前子区指令；保存后切换到该子区应恢复已保存值。
+          - 当频道和子区指令均已保存时，从该子区发送默认路由消息，后端应将 Agent 提示词 + 频道指令 + 子区指令合并为系统提示发送给模型。
+          - 清空指令后保存，刷新页面后该范围不应再贡献任何提示上下文。
+          - OpenClaw 路由下保存或发送消息，OpenClaw 路由行为不变。
 
       - feature_id: model_settings
         name: 模型与提供商配置
@@ -198,6 +222,8 @@ products:
           - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'
           - '高频访问 `/api/config?category=llm` 不应因应用层全局 IP 限流触发 429。'
           - '`/api/config` 写操作在同一用户维度超过每分钟预算时返回 429。'
+          - '向 `/api/chat/scope-settings` PUT 保存 `instructions` 字段后，再通过 GET 读取应返回同一 instructions 值。'
+          - '`/api/chat/respond` 在 body 包含 `systemPrompt` 且 DB 中存在 channel/thread instructions 时，发给模型的消息列表首条应为合并后的 system 消息。'
 
   - product_id: node_openclaw_plugin
     name: Node OpenClaw Plugin
