@@ -42,12 +42,6 @@ class _MessageListState extends State<MessageList> {
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
 
-  // A single key attached only to the focused (latest user) item so that
-  // Scrollable.ensureVisible can locate it without creating a GlobalKey for
-  // every list row.
-  final GlobalKey _focusedItemKey = GlobalKey();
-  int _focusedIndex = -1;
-
   // Persist the previous snapshot in state so comparisons work correctly even
   // when the same List instance is mutated in place (e.g. ChatScreen passes
   // _messages directly and mutates it via ..clear()..addAll / add / [i]=).
@@ -58,7 +52,6 @@ class _MessageListState extends State<MessageList> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScrollChanged);
-    _focusedIndex = _focusedMessageIndex();
     _saveSnapshot();
     _scrollToLatestOnLoad();
   }
@@ -97,7 +90,6 @@ class _MessageListState extends State<MessageList> {
       if (isPrepend) {
         _adjustScrollAfterPrepend();
       } else if (!streamingProgressOnly) {
-        _focusedIndex = _focusedMessageIndex();
         _scrollToLatestOnLoad();
       }
     }
@@ -134,13 +126,6 @@ class _MessageListState extends State<MessageList> {
         position.pixels <= _kLoadOlderScrollThreshold) {
       widget.onLoadOlder!();
     }
-  }
-
-  int _focusedMessageIndex() {
-    for (var i = widget.messages.length - 1; i >= 0; i--) {
-      if (widget.messages[i].role == 'user') return i;
-    }
-    return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
   }
 
   /// Scrolls to the latest-content anchor (bottom of list minus bottom
@@ -356,12 +341,7 @@ class _MessageListState extends State<MessageList> {
               // working without an explicit BricksTheme.
               final chatColors =
                   Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
-              // Attach the focused-item key only to the target row so that
-              // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
-              // without maintaining a GlobalKey for every list item.
-              final itemKey = index == _focusedIndex ? _focusedItemKey : null;
               return Align(
-                key: itemKey,
                 alignment:
                     isUser ? Alignment.centerRight : Alignment.centerLeft,
                 child: Column(

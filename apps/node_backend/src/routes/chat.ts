@@ -841,7 +841,7 @@ router.get("/history/:sessionId", async (req: AuthRequest, res: Response) => {
         ?.checkpointCursor ?? null;
     const lastSeqId =
       window.messages.length > 0
-        ? window.messages[window.messages.length - 1].seqId
+        ? window.messages[window.messages.length - 1].writeSeq
         : 0;
     res.json({
       sessionId,

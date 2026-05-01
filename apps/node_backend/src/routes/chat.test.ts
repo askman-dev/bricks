@@ -693,7 +693,7 @@ describe("chat routes", () => {
       messages: [
         {
           seqId: 91,
-          writeSeq: 91,
+          writeSeq: 95,   // writeSeq differs from seqId (e.g. after an update)
           messageId: "m-91",
           taskId: null,
           channelId: "default",
@@ -721,6 +721,8 @@ describe("chat routes", () => {
     expect(body.hasMore).toBe(true);
     expect(body.oldestSeqId).toBe(91);
     expect((body.messages as unknown[]).length).toBe(1);
+    // lastSeqId must reflect writeSeq (the sync/SSE cursor), not seqId.
+    expect(body.lastSeqId).toBe(95);
     expect(loadHistoryWindowMock).toHaveBeenCalledWith(
       "user-123",
       "session:default:main",
