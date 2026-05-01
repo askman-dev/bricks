@@ -273,6 +273,53 @@ export async function upsertMessages(
   }
 }
 
+export async function loadHistoryWindow(
+  userId: string,
+  sessionId: string,
+  options: { limit?: number; beforeSeqId?: number } = {},
+): Promise<{
+  messages: ReturnType<typeof toMessageDto>[];
+  hasMore: boolean;
+  oldestSeqId: number | null;
+}> {
+  const limit = Math.max(1, Math.min(options.limit ?? 10, 500));
+  const beforeSeqId = options.beforeSeqId;
+
+  const baseWhere = beforeSeqId != null
+    ? `WHERE user_id = $1 AND session_id = $2 AND seq_id < $3`
+    : `WHERE user_id = $1 AND session_id = $2`;
+
+  const params: unknown[] = beforeSeqId != null
+    ? [userId, sessionId, beforeSeqId, limit + 1]
+    : [userId, sessionId, limit + 1];
+
+  const limitParam = beforeSeqId != null ? `$4` : `$3`;
+
+  const result = await pool.query<ChatMessageRow>(
+    `SELECT * FROM (
+       SELECT seq_id, write_seq, message_id, task_id, channel_id, session_id, thread_id,
+              role, content, task_state, checkpoint_cursor, metadata, created_at, updated_at
+         FROM chat_messages
+        ${baseWhere}
+        ORDER BY seq_id DESC
+        LIMIT ${limitParam}
+     ) window
+     ORDER BY seq_id ASC`,
+    params,
+  );
+
+  // We fetched limit+1 to detect whether there are more older rows.
+  // The inner query uses ORDER BY seq_id DESC, so the (limit+1)-th row is the
+  // OLDEST one. After the outer ASC re-ordering it becomes the FIRST element.
+  // When hasMore is true we discard that first/oldest probe row and keep the
+  // newest `limit` rows — hence slice(1), not slice(0, -1).
+  const hasMore = result.rows.length > limit;
+  const rows = hasMore ? result.rows.slice(1) : result.rows;
+  const messages = rows.map(toMessageDto);
+  const oldestSeqId = messages.length > 0 ? messages[0].seqId : null;
+  return { messages, hasMore, oldestSeqId };
+}
+
 export async function syncMessages(
   userId: string,
   sessionId: string,

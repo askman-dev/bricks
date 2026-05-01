@@ -26,7 +26,7 @@ void main() {
   test('loads history snapshot from backend response', () async {
     final client = MockClient((request) async {
       expect(request.method, equals('GET'));
-      expect(request.url.queryParameters['limit'], equals('100'));
+      expect(request.url.queryParameters['limit'], equals('10'));
       return http.Response(
         jsonEncode({
           'messages': [
@@ -48,6 +48,8 @@ void main() {
           ],
           'latestCheckpointCursor': 'seq:2',
           'lastSeqId': 2,
+          'hasMore': false,
+          'oldestSeqId': 1,
         }),
         200,
       );
@@ -63,6 +65,42 @@ void main() {
     expect(snapshot.messages.last.taskState, ChatTaskState.completed);
     expect(snapshot.latestCheckpointCursor, equals('seq:2'));
     expect(snapshot.lastSeqId, equals(2));
+    expect(snapshot.hasMore, isFalse);
+    expect(snapshot.oldestSeqId, equals(1));
+  });
+
+  test('parses hasMore=true and forwards beforeSeqId for backward pagination',
+      () async {
+    final client = MockClient((request) async {
+      expect(request.url.queryParameters['limit'], equals('10'));
+      expect(request.url.queryParameters['beforeSeqId'], equals('50'));
+      return http.Response(
+        jsonEncode({
+          'messages': [
+            {
+              'messageId': 'm-old',
+              'role': 'user',
+              'content': 'old message',
+            },
+          ],
+          'lastSeqId': 40,
+          'hasMore': true,
+          'oldestSeqId': 40,
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final snapshot = await service.load(
+      token: 'token-1',
+      sessionId: 'session:default:main',
+      beforeSeqId: 50,
+    );
+
+    expect(snapshot.messages, hasLength(1));
+    expect(snapshot.hasMore, isTrue);
+    expect(snapshot.oldestSeqId, equals(40));
   });
 
   test('sorts loaded history by createdAt to keep chronology stable', () async {

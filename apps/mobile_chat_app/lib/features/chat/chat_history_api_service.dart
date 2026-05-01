@@ -13,11 +13,20 @@ class ChatHistorySnapshot {
     required this.messages,
     required this.lastSeqId,
     this.latestCheckpointCursor,
+    this.hasMore = false,
+    this.oldestSeqId,
   });
 
   final List<ChatMessage> messages;
   final int lastSeqId;
   final String? latestCheckpointCursor;
+
+  /// Whether the server has older messages preceding this window.
+  final bool hasMore;
+
+  /// The [seqId] of the oldest message in this window, used as the
+  /// [beforeSeqId] cursor for the next backward pagination request.
+  final int? oldestSeqId;
 }
 
 class ChatRespondResult {
@@ -108,9 +117,17 @@ class ChatHistoryApiService {
 
   String get _base => LlmConfigService.resolveBaseUrl();
 
-  Uri _historyUri(String sessionId, {required int limit}) => Uri.parse(
-        '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?limit=$limit',
-      );
+  Uri _historyUri(
+    String sessionId, {
+    required int limit,
+    int? beforeSeqId,
+  }) {
+    final params = StringBuffer('limit=$limit');
+    if (beforeSeqId != null) params.write('&beforeSeqId=$beforeSeqId');
+    return Uri.parse(
+      '$_base/api/chat/history/${Uri.encodeComponent(sessionId)}?$params',
+    );
+  }
 
   Uri _syncUri(
     String sessionId, {
@@ -238,10 +255,11 @@ class ChatHistoryApiService {
   Future<ChatHistorySnapshot> load({
     required String token,
     required String sessionId,
-    int limit = 100,
+    int limit = 10,
+    int? beforeSeqId,
   }) async {
     final response = await _client.get(
-      _historyUri(sessionId, limit: limit),
+      _historyUri(sessionId, limit: limit, beforeSeqId: beforeSeqId),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {
@@ -265,6 +283,8 @@ class ChatHistoryApiService {
       messages: messages,
       lastSeqId: (map['lastSeqId'] as num?)?.toInt() ?? 0,
       latestCheckpointCursor: map['latestCheckpointCursor'] as String?,
+      hasMore: (map['hasMore'] as bool?) ?? false,
+      oldestSeqId: (map['oldestSeqId'] as num?)?.toInt(),
     );
   }
 

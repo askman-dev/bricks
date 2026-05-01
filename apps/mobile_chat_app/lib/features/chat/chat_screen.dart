@@ -88,6 +88,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, String> _lastActiveSubSectionByChannel = {};
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
+  bool _hasMoreHistory = false;
+  int? _oldestLoadedSeqId;
+  bool _isLoadingOlderMessages = false;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
   StreamSubscription<ChatHistorySnapshot>? _sseSubscription;
   static const Duration _sseReconnectDelay = Duration(seconds: 3);
@@ -741,6 +744,8 @@ class _ChatScreenState extends State<ChatScreen> {
           _messages.clear();
           _latestCheckpointCursor = null;
           _lastSyncedSeq = 0;
+          _hasMoreHistory = false;
+          _oldestLoadedSeqId = null;
         });
         _configureActiveScopeSync();
         ScaffoldMessenger.of(
@@ -935,6 +940,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
+      _hasMoreHistory = false;
+      _oldestLoadedSeqId = null;
     });
     unawaited(_loadMessagesForActiveScope());
   }
@@ -977,6 +984,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.clear();
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
+        _hasMoreHistory = false;
+        _oldestLoadedSeqId = null;
       });
       _configureActiveScopeSync();
       return;
@@ -1005,6 +1014,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ..addAll(snapshot.messages);
         _latestCheckpointCursor = snapshot.latestCheckpointCursor;
         _lastSyncedSeq = snapshot.lastSeqId;
+        _hasMoreHistory = snapshot.hasMore;
+        _oldestLoadedSeqId = snapshot.oldestSeqId;
       });
       _updateSubSectionLastMessageAtFromMessages(
         channelId: capturedChannelId,
@@ -1017,8 +1028,47 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.clear();
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
+        _hasMoreHistory = false;
+        _oldestLoadedSeqId = null;
       });
       _configureActiveScopeSync();
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_isLoadingOlderMessages || !_hasMoreHistory) return;
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+    final capturedSessionId = _sessionIdForScope;
+    final beforeSeqId = _oldestLoadedSeqId;
+    if (beforeSeqId == null) return;
+
+    setState(() {
+      _isLoadingOlderMessages = true;
+    });
+
+    bool _isScopeStale() => _sessionIdForScope != capturedSessionId;
+
+    try {
+      final snapshot = await _chatHistoryApiService.load(
+        token: token,
+        sessionId: capturedSessionId,
+        beforeSeqId: beforeSeqId,
+      );
+      if (!mounted || _isScopeStale()) return;
+      setState(() {
+        _messages.insertAll(0, snapshot.messages);
+        _hasMoreHistory = snapshot.hasMore;
+        _oldestLoadedSeqId = snapshot.oldestSeqId ?? _oldestLoadedSeqId;
+      });
+    } catch (_) {
+      // Silently ignore pagination errors; the user can scroll to try again.
+    } finally {
+      if (mounted && !_isScopeStale()) {
+        setState(() {
+          _isLoadingOlderMessages = false;
+        });
+      }
     }
   }
 
@@ -1615,6 +1665,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
+      _hasMoreHistory = false;
+      _oldestLoadedSeqId = null;
     });
     _configureActiveScopeSync();
   }
@@ -1625,6 +1677,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
+      _hasMoreHistory = false;
+      _oldestLoadedSeqId = null;
     });
     unawaited(_loadMessagesForActiveScope());
   }
@@ -2226,7 +2280,13 @@ class _ChatScreenState extends State<ChatScreen> {
     // Message list + composer bar (shared between mobile and desktop).
     final chatContent = Column(
       children: [
-        Expanded(child: MessageList(messages: _messages)),
+        Expanded(
+          child: MessageList(
+            messages: _messages,
+            onLoadOlder: _hasMoreHistory ? _loadOlderMessages : null,
+            canLoadOlder: _hasMoreHistory && !_isLoadingOlderMessages,
+          ),
+        ),
         Builder(
           builder: (context) {
             final effectiveRouter = _effectiveRouterForScope();
