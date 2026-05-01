@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-04-29
+last_updated: 2026-05-01
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -165,6 +165,40 @@ index:
       - 设置页返回后若未刷新节点列表，聊天页路由菜单可能继续显示过期节点名称或缺少新节点。
       - 若“回到最新消息”按钮显隐阈值或滚动目标设置不当，用户可能误判已到达最新消息或无法快速回到底部。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
+
+
+  - feature_id: scope_instructions_config
+    capability: 频道与分区级别的会话指令配置及提示词组合
+    code_index:
+      - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
+      - apps/node_backend/src/routes/chat.ts
+      - apps/node_backend/src/services/chatRouterService.ts
+      - apps/node_backend/src/db/migrations/013_add_instructions_to_chat_scope_settings.sql
+    doc_index:
+      - docs/plans/2026-04-30-17-51-+08-scope-instructions-config.md
+    test_index:
+      - apps/mobile_chat_app/test/chat_history_api_service_test.dart
+      - apps/node_backend/src/services/chatRouterService.test.ts
+    keywords:
+      - scope instructions
+      - channel instructions
+      - section instructions
+      - system prompt
+      - prompt composition
+      - conversation config
+      - scope config dialog
+      - tune icon
+      - instructions field
+      - resolveScopeInstructions
+    change_risks:
+      - 若 resolveScopeInstructions 查询中 thread_id 的判断逻辑与 normalizeChatThreadId 不一致，主区消息可能携带错误的子区指令。
+      - 若 buildComposedSystemPrompt 未对空字符串做 trim/null 检查，发给模型的 system 消息可能含空段落噪音。
+      - 若 _hydrateChannelInstructions/_hydrateThreadInstructions 在应用启动时未正确调用，保存值不会在刷新后恢复。
+      - _saveChannelInstructions 的乐观更新+失败回滚若 state key 命名与读取不一致，会导致静默数据错位。
+      - OpenClaw 路由走的是 dispatch placeholder 分支，若在该分支误加 system prompt 拼接逻辑，会干扰 OpenClaw 路由行为。
+      - 指令字段在 DB 中允许 NULL；若 DTO 层遗漏 null 转换，可能导致 undefined 被序列化为 undefined 字符串。
 
   - feature_id: model_settings
     capability: 模型配置读写

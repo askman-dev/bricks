@@ -2762,8 +2762,12 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
                   (_tabController.index == 1 && !widget.isSubSection)
               ? null
               : _save,
-          child:
-              _isSaving ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save'),
+          child: _isSaving
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Save'),
         ),
       ],
     );

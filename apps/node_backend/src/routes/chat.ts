@@ -994,12 +994,14 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
     const channelId = parseSessionId(body.channelId);
     const threadId = parseSessionId(body.threadId);
     const nodeId = parseSessionId(body.nodeId);
-    const instructionsRaw =
-      body.instructions === null || body.instructions === undefined
-        ? undefined
-        : typeof body.instructions === "string"
-          ? body.instructions
-          : null;
+    let instructionsRaw: string | null | undefined;
+    if (body.instructions === null || body.instructions === undefined) {
+      instructionsRaw = undefined;
+    } else if (typeof body.instructions === "string") {
+      instructionsRaw = body.instructions;
+    } else {
+      instructionsRaw = null;
+    }
     const routerValue =
       body.router === null || body.router === undefined
         ? null
