@@ -64,7 +64,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, AgentSession> _sessions = {};
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   List<AgentDefinition> _agents = [];
-  Set<String> _builtInAgentNames = const {};
   AgentDefinition? _activeAgent;
   final LlmConfigService _llmConfigService = const LlmConfigService();
   List<LlmConfig> _llmConfigs = const [];
@@ -235,10 +234,6 @@ class _ChatScreenState extends State<ChatScreen> {
           restoredLastSubSectionByChannel[resolvedActiveChannel] ?? 'main';
       setState(() {
         _agents = mergedDefinitions;
-        _builtInAgentNames = mergedDefinitions
-            .map((d) => d.name)
-            .where(ChatBuiltInAgents.ids.contains)
-            .toSet();
         _activeAgent ??=
             mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
         _loadingAgents = false;
@@ -362,10 +357,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     setState(() {
       _agents = mergedDefinitions;
-      _builtInAgentNames = mergedDefinitions
-          .map((d) => d.name)
-          .where(ChatBuiltInAgents.ids.contains)
-          .toSet();
       _activeAgent ??=
           mergedDefinitions.isNotEmpty ? mergedDefinitions.first : null;
     });
@@ -2248,16 +2239,6 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Theme(
         data: theme.copyWith(scaffoldBackgroundColor: drawerBackgroundColor),
         child: ChatNavigationPage(
-          agents: _agents
-              .map<ChatAgentItem>(
-                (agent) => ChatAgentItem(
-                  name: agent.name,
-                  prompt: agent.systemPrompt,
-                  description: agent.description,
-                  isBuiltIn: _builtInAgentNames.contains(agent.name),
-                ),
-              )
-              .toList(growable: false),
           channels: _sortedChannels
               .map(
                 (item) => ChatChannelItem(
@@ -2267,6 +2248,22 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               )
               .toList(),
+          nodes: _platformNodes.map((node) {
+            final nodeAgents = _openClawAgentsByNodeId[node.nodeId] ?? [];
+            return ChatNodeItem(
+              id: node.nodeId,
+              name: node.displayName,
+              agents: nodeAgents
+                  .map(
+                    (a) => ChatAgentItem(
+                      name: a.displayName,
+                      prompt: '',
+                      description: a.description,
+                    ),
+                  )
+                  .toList(growable: false),
+            );
+          }).toList(growable: false),
           selectedChannelId: _activeChannelId,
           onChannelSelected: _switchChannel,
           onChannelRename: _renameChannel,

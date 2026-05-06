@@ -31,31 +31,58 @@ class ChatAgentItem {
   final bool isBuiltIn;
 }
 
+/// Represents a connected AI node shown in the Nodes tab.
+class ChatNodeItem {
+  const ChatNodeItem({
+    required this.id,
+    required this.name,
+    this.agents = const [],
+  });
+
+  final String id;
+  final String name;
+
+  /// Agents connected to this node.
+  final List<ChatAgentItem> agents;
+}
+
 /// Navigation content for chat-related routes, intended for use in a
 /// [Drawer].
+///
+/// The navigation is split into two tabs: **Channels** (a flat list of
+/// channels with a "New Channel" action) and **Nodes** (a flat list of
+/// connected AI nodes).
 class ChatNavigationPage extends StatefulWidget {
   const ChatNavigationPage({
     super.key,
     required this.onActionSelected,
-    required this.agents,
     required this.channels,
     required this.selectedChannelId,
+    this.nodes = const [],
     this.onChannelSelected,
-    this.onAgentSelected,
     this.onChannelRename,
     this.onChannelArchive,
+    this.onNodeSelected,
     this.onRequestClose,
     this.closeOnChannelSelected = true,
   });
 
   final ValueChanged<ChatNavigationAction> onActionSelected;
-  final List<ChatAgentItem> agents;
   final List<ChatChannelItem> channels;
   final String selectedChannelId;
+
+  /// Connected AI nodes shown in the Nodes tab.
+  final List<ChatNodeItem> nodes;
+
   final ValueChanged<String>? onChannelSelected;
-  final ValueChanged<String>? onAgentSelected;
   final ValueChanged<String>? onChannelRename;
   final ValueChanged<String>? onChannelArchive;
+
+  /// Called when a node is tapped in the Nodes tab. The node's [ChatNodeItem.id]
+  /// is passed as the argument. If null, tapping a node navigates to the
+  /// [_NodeDetailPage] internally.
+  final ValueChanged<String>? onNodeSelected;
+
   final bool closeOnChannelSelected;
 
   /// Called when the navigation requests to be closed. This is triggered by
@@ -70,10 +97,21 @@ class ChatNavigationPage extends StatefulWidget {
   State<ChatNavigationPage> createState() => _ChatNavigationPageState();
 }
 
-class _ChatNavigationPageState extends State<ChatNavigationPage> {
-  bool _skillsExpanded = true;
-  bool _agentsExpanded = true;
-  bool _channelsExpanded = true;
+class _ChatNavigationPageState extends State<ChatNavigationPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   void _closeNavigation(BuildContext context) {
     if (widget.onRequestClose != null) {
@@ -122,21 +160,10 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
     }
   }
 
-  Future<void> _showAgentPrompt(ChatAgentItem agent) async {
-    await Navigator.of(context).push(
+  void _openNodeDetail(ChatNodeItem node) {
+    Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _AgentPromptPage(
-          agent: agent,
-          onOpenConfig: () {
-            Navigator.of(context).pop();
-            _selectAction(context, ChatNavigationAction.manageAgents);
-          },
-          onStartConversation: () {
-            Navigator.of(context).pop();
-            _closeNavigation(context);
-            widget.onAgentSelected?.call(agent.name);
-          },
-        ),
+        builder: (_) => _NodeDetailPage(node: node),
       ),
     );
   }
@@ -144,12 +171,13 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
   @override
   Widget build(BuildContext context) {
     final channels = widget.channels;
-    final agents = widget.agents;
     final selected = channels.any((item) => item.id == widget.selectedChannelId)
         ? widget.selectedChannelId
         : (channels.isNotEmpty ? channels.first.id : null);
-    return ListView(
+
+    return Column(
       children: [
+        // Header row
         SizedBox(
           height: kToolbarHeight,
           child: Row(
@@ -181,226 +209,162 @@ class _ChatNavigationPageState extends State<ChatNavigationPage> {
             ],
           ),
         ),
-        const ListTile(
-          leading: Icon(Icons.chat_bubble_outline),
-          title: Text('Current Chat'),
-          subtitle: Text('You are here'),
+        // Tab bar
+        TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Channels'),
+            Tab(text: 'Nodes'),
+          ],
         ),
-        const Divider(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Row(
+        // Tab content
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
             children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () =>
-                      setState(() => _skillsExpanded = !_skillsExpanded),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+              // Channels tab
+              ListView(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
                     child: Row(
                       children: [
-                        Icon(
-                          _skillsExpanded
-                              ? Icons.expand_more
-                              : Icons.chevron_right,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Skills',
-                          style: Theme.of(context).textTheme.titleSmall,
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () => _selectAction(
+                              context, ChatNavigationAction.createChannel),
+                          icon: const Icon(Icons.add_circle_outline, size: 18),
+                          label: const Text('新建频道'),
                         ),
                       ],
                     ),
                   ),
-                ),
+                  if (channels.isEmpty)
+                    const ListTile(
+                      title: Text('No channels'),
+                      subtitle: Text('Create your first channel'),
+                    )
+                  else
+                    ...channels.map((channel) {
+                      final isSelected = selected == channel.id;
+                      return ListTile(
+                        leading: Icon(
+                          channel.isDefault
+                              ? Icons.home_filled
+                              : Icons.forum_outlined,
+                        ),
+                        title: Text(channel.name),
+                        subtitle: channel.isDefault
+                            ? const Text('Default channel')
+                            : null,
+                        selected: isSelected,
+                        onTap: () {
+                          if (widget.closeOnChannelSelected) {
+                            _closeNavigation(context);
+                          }
+                          widget.onChannelSelected?.call(channel.id);
+                        },
+                        onLongPress: channel.isDefault
+                            ? null
+                            : () {
+                                _showChannelMenu(channel);
+                              },
+                      );
+                    }),
+                  const SizedBox(height: 24),
+                ],
+              ),
+              // Nodes tab
+              ListView(
+                children: [
+                  if (widget.nodes.isEmpty)
+                    const ListTile(
+                      title: Text('No nodes'),
+                      subtitle: Text('Connect an AI node to get started'),
+                    )
+                  else
+                    ...widget.nodes.map((node) {
+                      return ListTile(
+                        leading: const Icon(Icons.memory_outlined),
+                        title: Text(node.name),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          if (widget.onNodeSelected != null) {
+                            widget.onNodeSelected!.call(node.id);
+                          } else {
+                            _openNodeDetail(node);
+                          }
+                        },
+                      );
+                    }),
+                  const SizedBox(height: 24),
+                ],
               ),
             ],
           ),
         ),
-        if (_skillsExpanded)
-          const ListTile(
-            title: Text('待实现'),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () =>
-                      setState(() => _agentsExpanded = !_agentsExpanded),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _agentsExpanded
-                              ? Icons.expand_more
-                              : Icons.chevron_right,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Agents',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (_agentsExpanded)
-          if (agents.isEmpty)
-            const ListTile(
-              title: Text('在设置中新建 Agents'),
-            )
-          else
-            ...agents.map(
-              (agent) {
-                final desc = agent.description?.trim();
-                return ListTile(
-                  leading: const Icon(Icons.smart_toy_outlined),
-                  title: Text(agent.name),
-                  subtitle: Text(
-                    desc == null || desc.isEmpty
-                        ? (agent.isBuiltIn ? '内建 Agent' : '自定义 Agent')
-                        : desc,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: agent.isBuiltIn
-                      ? const Icon(Icons.lock_outline, size: 18)
-                      : null,
-                  onTap: () => _showAgentPrompt(agent),
-                );
-              },
-            ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () =>
-                      setState(() => _channelsExpanded = !_channelsExpanded),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _channelsExpanded
-                              ? Icons.expand_more
-                              : Icons.chevron_right,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '频道',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () =>
-                    _selectAction(context, ChatNavigationAction.createChannel),
-                icon: const Icon(Icons.add_circle_outline, size: 18),
-                label: const Text('新建频道'),
-              ),
-            ],
-          ),
-        ),
-        if (_channelsExpanded)
-          if (channels.isEmpty)
-            const ListTile(
-              title: Text('No channels'),
-              subtitle: Text('Create your first channel'),
-            )
-          else
-            ...channels.map((channel) {
-              final isSelected = selected == channel.id;
-              return ListTile(
-                leading: Icon(
-                  channel.isDefault ? Icons.home_filled : Icons.forum_outlined,
-                ),
-                title: Text(channel.name),
-                subtitle:
-                    channel.isDefault ? const Text('Default channel') : null,
-                selected: isSelected,
-                onTap: () {
-                  if (widget.closeOnChannelSelected) {
-                    _closeNavigation(context);
-                  }
-                  widget.onChannelSelected?.call(channel.id);
-                },
-                onLongPress: channel.isDefault
-                    ? null
-                    : () {
-                        _showChannelMenu(channel);
-                      },
-              );
-            }),
-        const SizedBox(height: 24),
       ],
     );
   }
 }
 
-class _AgentPromptPage extends StatelessWidget {
-  const _AgentPromptPage({
-    required this.agent,
-    required this.onOpenConfig,
-    required this.onStartConversation,
-  });
+/// Detail page for a connected AI node showing its Skills and Agents.
+class _NodeDetailPage extends StatelessWidget {
+  const _NodeDetailPage({required this.node});
 
-  final ChatAgentItem agent;
-  final VoidCallback onOpenConfig;
-  final VoidCallback onStartConversation;
+  final ChatNodeItem node;
 
   @override
   Widget build(BuildContext context) {
-    final trimmedPrompt = agent.prompt.trim();
-    final prompt = trimmedPrompt.isEmpty ? '（未配置 Prompt）' : trimmedPrompt;
     return Scaffold(
-      appBar: AppBar(title: Text(agent.name)),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Prompt', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Expanded(
-              child: SingleChildScrollView(
-                child: SelectableText(prompt),
-              ),
+      appBar: AppBar(title: Text(node.name)),
+      body: ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Skills',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onOpenConfig,
-                    child: const Text('修改配置'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: onStartConversation,
-                    child: const Text('发起对话'),
-                  ),
-                ),
-              ],
+          ),
+          const ListTile(
+            leading: Icon(Icons.extension_outlined),
+            title: Text('Skills coming soon'),
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Text(
+              'Agents',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-          ],
-        ),
+          ),
+          if (node.agents.isEmpty)
+            const ListTile(
+              leading: Icon(Icons.smart_toy_outlined),
+              title: Text('No agents'),
+              subtitle: Text('Connect OpenClaw to see agents'),
+            )
+          else
+            ...node.agents.map((agent) {
+              final desc = agent.description?.trim();
+              return ListTile(
+                leading: const Icon(Icons.smart_toy_outlined),
+                title: Text(agent.name),
+                subtitle: Text(
+                  desc == null || desc.isEmpty
+                      ? (agent.isBuiltIn ? '内建 Agent' : '自定义 Agent')
+                      : desc,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: agent.isBuiltIn
+                    ? const Icon(Icons.lock_outline, size: 18)
+                    : null,
+              );
+            }),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }
