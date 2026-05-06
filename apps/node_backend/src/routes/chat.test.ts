@@ -25,6 +25,7 @@ const {
   deleteChatChannelNameMock,
   streamWithUserConfigMock,
   getPlatformNodeByNodeIdMock,
+  listPlatformNodesMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -43,8 +44,8 @@ const {
   listUserScopesMock: vi.fn(async () => []),
   listChatScopeSettingsMock: vi.fn(async () => []),
   resolveChatScopeRoutingMock: vi.fn(
-    async (): Promise<{ router: "default" | "openclaw"; nodeId: string | null }> => ({
-      router: "default",
+    async (): Promise<{ router: "local" | "plugin"; nodeId: string | null }> => ({
+      router: "local",
       nodeId: null,
     }),
   ),
@@ -56,7 +57,7 @@ const {
     scopeType: "channel",
     channelId: "default",
     threadId: null,
-    router: "openclaw",
+    router: "plugin",
     nodeId: "node-default",
     createdAt: "2026-04-17T07:00:00.000Z",
     updatedAt: "2026-04-17T07:00:00.000Z",
@@ -88,6 +89,15 @@ const {
       pluginId: nodeId === "node-2" ? "plugin_node_2" : "plugin_local_main",
     }),
   ),
+  listPlatformNodesMock: vi.fn(async () => [
+    {
+      nodeId: "node-default",
+      displayName: "openclaw 1",
+      pluginId: "plugin_local_main",
+      createdAt: "2026-04-17T07:00:00.000Z",
+      updatedAt: "2026-04-17T07:00:00.000Z",
+    },
+  ]),
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -99,13 +109,17 @@ vi.mock("../services/chatAsyncTransportService.js", () => ({
 }));
 
 vi.mock("../services/chatRouterService.js", () => ({
-  CHAT_ROUTER_DEFAULT: "default",
-  CHAT_ROUTER_OPENCLAW: "openclaw",
+  CHAT_ROUTER_LOCAL: "local",
+  CHAT_ROUTER_PLUGIN: "plugin",
   builtinDefaultNodeRef: () => ({
     nodeId: "node_builtin_default",
     nodeName: "Bricks Default",
-    sourcePlatform: "builtin",
   }),
+  normalizeChatRouterValue: (value: string | null | undefined) => {
+    if (value === "local" || value === "default") return "local";
+    if (value === "plugin" || value === "openclaw") return "plugin";
+    return null;
+  },
   deleteChatScopeSetting: deleteChatScopeSettingMock,
   listChatScopeSettings: listChatScopeSettingsMock,
   resolveChatScopeRouting: resolveChatScopeRoutingMock,
@@ -115,6 +129,7 @@ vi.mock("../services/chatRouterService.js", () => ({
 
 vi.mock("../services/platformNodeService.js", () => ({
   getPlatformNodeByNodeId: getPlatformNodeByNodeIdMock,
+  listPlatformNodes: listPlatformNodesMock,
 }));
 
 vi.mock("../services/chatChannelNameService.js", () => ({
@@ -184,7 +199,7 @@ describe("chat routes", () => {
     listChatScopeSettingsMock.mockClear();
     resolveChatScopeRoutingMock.mockReset();
     resolveChatScopeRoutingMock.mockResolvedValue({
-      router: "default",
+      router: "local",
       nodeId: null,
     });
     upsertChatScopeSettingMock.mockClear();
@@ -206,11 +221,12 @@ describe("chat routes", () => {
         pluginId: nodeId === "node-2" ? "plugin_node_2" : "plugin_local_main",
       }),
     );
+    listPlatformNodesMock.mockClear();
   });
 
-  it("routes OpenClaw scopes to async pending dispatch", async () => {
+  it("routes plugin scopes to async pending dispatch", async () => {
     resolveChatScopeRoutingMock.mockResolvedValueOnce({
-      router: "openclaw",
+      router: "plugin",
       nodeId: "node-default",
     });
 
@@ -250,8 +266,6 @@ describe("chat routes", () => {
           targetNodeId: "node-default",
           targetNodeName: "openclaw 1",
           targetPluginId: "plugin_local_main",
-          targetSourcePlatform: "openclaw",
-          resolvedRouteKind: "platform_openclaw",
           pendingAssistantMessageId: "msg-assistant-1",
         }),
       }),
@@ -274,9 +288,9 @@ describe("chat routes", () => {
     ]);
   });
 
-  it("falls back to Bricks Default when a saved OpenClaw node no longer exists", async () => {
+  it("falls back to Bricks Default when a saved plugin node no longer exists", async () => {
     resolveChatScopeRoutingMock.mockResolvedValueOnce({
-      router: "openclaw",
+      router: "plugin",
       nodeId: "deleted-node",
     });
     getPlatformNodeByNodeIdMock.mockResolvedValueOnce(null);
@@ -303,8 +317,7 @@ describe("chat routes", () => {
           source: "backend.respond",
           targetNodeId: "node_builtin_default",
           targetNodeName: "Bricks Default",
-          targetSourcePlatform: "builtin",
-          resolvedRouteKind: "builtin_default",
+          targetPluginId: null,
         }),
       }),
     ]);
@@ -317,7 +330,7 @@ describe("chat routes", () => {
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
     resolveChatScopeRoutingMock.mockResolvedValueOnce({
-      router: "default",
+      router: "local",
       nodeId: null,
     });
 
@@ -355,8 +368,7 @@ describe("chat routes", () => {
           source: "backend.respond",
           targetNodeId: "node_builtin_default",
           targetNodeName: "Bricks Default",
-          targetSourcePlatform: "builtin",
-          resolvedRouteKind: "builtin_default",
+          targetPluginId: null,
         }),
       }),
     ]);
@@ -394,7 +406,7 @@ describe("chat routes", () => {
 
   it("rejects respond payload when maxTokens exceeds upper bound", async () => {
     resolveChatScopeRoutingMock.mockResolvedValueOnce({
-      router: "default",
+      router: "local",
       nodeId: null,
     });
 
@@ -419,9 +431,9 @@ describe("chat routes", () => {
     expect(streamWithUserConfigMock).not.toHaveBeenCalled();
   });
 
-  it("prefers an explicitly requested OpenClaw node", async () => {
+  it("prefers an explicitly requested plugin node", async () => {
     resolveChatScopeRoutingMock.mockResolvedValueOnce({
-      router: "openclaw",
+      router: "plugin",
       nodeId: "node-default",
     });
     getPlatformNodeByNodeIdMock.mockResolvedValueOnce({
@@ -478,14 +490,62 @@ describe("chat routes", () => {
     });
   });
 
-  it("persists nodeId when saving an OpenClaw scope setting", async () => {
+  it("lists scope settings with resolved target metadata", async () => {
+    listChatScopeSettingsMock.mockResolvedValueOnce([
+      {
+        scopeType: "channel",
+        channelId: "default",
+        threadId: null,
+        router: "plugin",
+        nodeId: "node-default",
+        instructions: null,
+        createdAt: "2026-04-17T07:00:00.000Z",
+        updatedAt: "2026-04-17T07:00:00.000Z",
+      },
+      {
+        scopeType: "thread",
+        channelId: "default",
+        threadId: "main",
+        router: "local",
+        nodeId: null,
+        instructions: null,
+        createdAt: "2026-04-17T07:00:00.000Z",
+        updatedAt: "2026-04-17T07:00:00.000Z",
+      },
+    ]);
+
+    const response = await fetch(`${baseUrl}/api/chat/scope-settings`);
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      settings?: Array<Record<string, unknown>>;
+    };
+    expect(body.settings?.[0]).toEqual(
+      expect.objectContaining({
+        router: "plugin",
+        resolvedTargetNodeId: "node-default",
+        resolvedTargetNodeName: "openclaw 1",
+        resolvedTargetPluginId: "plugin_local_main",
+      }),
+    );
+    expect(body.settings?.[1]).toEqual(
+      expect.objectContaining({
+        router: "local",
+        resolvedTargetNodeId: "node_builtin_default",
+        resolvedTargetNodeName: "Bricks Default",
+        resolvedTargetPluginId: null,
+      }),
+    );
+  });
+
+  it("persists nodeId when saving a plugin scope setting", async () => {
     const response = await fetch(`${baseUrl}/api/chat/scope-settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         scopeType: "channel",
         channelId: "default",
-        router: "openclaw",
+        router: "plugin",
         nodeId: "node-2",
       }),
     });
@@ -496,19 +556,19 @@ describe("chat routes", () => {
       scopeType: "channel",
       channelId: "default",
       threadId: null,
-      router: "openclaw",
+      router: "plugin",
       nodeId: "node-2",
     });
   });
 
-  it("rejects saving an OpenClaw scope setting without nodeId", async () => {
+  it("rejects saving a plugin scope setting without nodeId", async () => {
     const response = await fetch(`${baseUrl}/api/chat/scope-settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         scopeType: "channel",
         channelId: "default",
-        router: "openclaw",
+        router: "plugin",
       }),
     });
 
@@ -597,7 +657,7 @@ describe("chat routes", () => {
 
   it("rate limits respond requests per user and session after 120 requests per minute", async () => {
     resolveChatScopeRoutingMock.mockResolvedValue({
-      router: "openclaw",
+      router: "plugin",
       nodeId: "node-default",
     });
 

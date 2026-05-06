@@ -389,6 +389,9 @@ void main() {
                 'scopeType': 'channel',
                 'channelId': 'default',
                 'router': 'openclaw',
+                'resolvedTargetNodeId': 'node-default',
+                'resolvedTargetNodeName': 'openclaw 1',
+                'resolvedTargetPluginId': 'plugin-local-main',
                 'updatedAt': '2026-04-17T07:00:00.000Z',
               },
             ],
@@ -402,10 +405,10 @@ void main() {
       expect(decoded['scopeType'], equals('thread'));
       expect(decoded['channelId'], equals('default'));
       expect(decoded['threadId'], equals('main'));
-      expect(decoded['router'], equals('default'));
+      expect(decoded['router'], equals('local'));
       return http.Response(
         jsonEncode({
-          'setting': {'router': 'default'},
+          'setting': {'router': 'local'},
         }),
         200,
       );
@@ -418,12 +421,15 @@ void main() {
       scopeType: ChatScopeType.thread,
       channelId: 'default',
       threadId: 'main',
-      router: ChatRouter.defaultRoute,
+      router: ChatRouter.local,
     );
 
     expect(settings, hasLength(1));
     expect(settings.single.scopeType, ChatScopeType.channel);
-    expect(settings.single.router, ChatRouter.openclaw);
+    expect(settings.single.router, ChatRouter.plugin);
+    expect(settings.single.resolvedTargetNodeId, 'node-default');
+    expect(settings.single.resolvedTargetNodeName, 'openclaw 1');
+    expect(settings.single.resolvedTargetPluginId, 'plugin-local-main');
   });
 
   test('loads and saves channel name mappings', () async {
@@ -601,7 +607,8 @@ void main() {
       final decoded = jsonDecode(request.body) as Map<String, dynamic>;
       expect(decoded['scopeType'], equals('channel'));
       expect(decoded['channelId'], equals('ch-1'));
-      expect(decoded['instructions'], equals('channel-level instructions text'));
+      expect(
+          decoded['instructions'], equals('channel-level instructions text'));
       return http.Response(
         jsonEncode({'setting': {}}),
         200,
@@ -613,7 +620,7 @@ void main() {
       token: 'token-1',
       scopeType: ChatScopeType.channel,
       channelId: 'ch-1',
-      router: ChatRouter.defaultRoute,
+      router: ChatRouter.local,
       instructions: 'channel-level instructions text',
     );
   });

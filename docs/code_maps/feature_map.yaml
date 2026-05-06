@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-05-01
+last_updated: 2026-05-06
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -39,18 +39,18 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
         smoke_checks:
           - 发送一条消息后可以看到消息列表更新。
-          - 将路由切到 openclaw 后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
+          - 将路由切到 plugin/OpenClaw 节点后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
           - 当用户拥有多个 OpenClaw 节点时，输入框左侧路由菜单应仅列出真实节点；菜单主标题显示节点名称，副标题显示 `OpenClaw`。
           - 当已保存的 OpenClaw `nodeId` 对应节点已被删除时，聊天页与发送行为应回退到 `Bricks Default`，而不是改投递到其他 OpenClaw 节点。
           - 在聊天页选择某个 OpenClaw 节点后发送消息时，仅所选节点应收到并回复；同用户其他节点不应重复消费同一条消息。
           - 从设置页新增或重命名节点后返回聊天页，路由菜单中的 OpenClaw 节点列表应刷新为最新状态。
-          - 在 openclaw 离线后切回默认路由继续发送时，历史消息应优先按服务端 seqId（不可变插入序）渲染，后到达更新不会打乱对话先后。
+          - 在 OpenClaw 插件离线后切回本地 Bricks Default 路由继续发送时，历史消息应优先按服务端 seqId（不可变插入序）渲染，后到达更新不会打乱对话先后。
           - 当多条消息 createdAt 相同（秒级碰撞）时，消息应按 seqId 稳定从旧到新渲染。
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
-          - default 与 openclaw 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
+          - local 与 plugin 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
           - 发送后 user query 仍先显示“已接受”状态；assistant 身份占位可在 SSE dispatch 占位到达时提前出现，但 assistant 正文气泡仍应等待真实内容开始到达。
-          - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，default/其他远端为第二枚 ✓，openclaw 为单色路由状态图标。
+          - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，local/其他远端为第二枚 ✓，OpenClaw plugin 为单色路由状态图标。
           - user query 的时间/线程与投递状态应显示在气泡内；长按气泡可弹出“复制/分叉（待开发）/重发（待开发）”菜单，并在底部显示 message id 与 task id。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
           - 发送消息后，最新 user 消息会定位在可见区域首条，assistant 回复显示在其后。
@@ -72,13 +72,13 @@ products:
           - 点击任一侧边栏 Agent 后应进入 Prompt 详情页，且底部应提供“修改配置”“发起对话”两个按钮。
           - 在 Prompt 详情页点击“修改配置”后，应进入 Agent 管理流程。
           - 在 Prompt 详情页点击“发起对话”后，应将该 Agent 设为当前会话 Agent。
-          - 输入框不再支持 `@agent` 文本补全；当路由为默认路由时，`@` 按钮显示在路由按钮右侧、配置按钮左侧，点击后下拉展示与侧边栏 Agents 分组一致的 Agent 列表。
+          - 输入框不再支持 `@agent` 文本补全；当路由为 local/Bricks Default 时，`@` 按钮显示在路由按钮右侧、配置按钮左侧，点击后下拉展示与侧边栏 Agents 分组一致的 Agent 列表。
           - 当路由为 OpenClaw 时，`@` 按钮同样可点击并弹出下拉菜单；菜单应展示匹配 OpenClaw node 上报的 agents，选择后将 `@agentId` 插入输入框。
           - 对话页顶部不再显示横向“参与者/Agent 概率”指示条。
           - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
-          - 当路由为默认路由时，输入框左下角应显示配置按钮，且“模型”项副标题展示当前生效模型名。
+          - 当路由为 local/Bricks Default 时，输入框左下角应显示配置按钮，且“模型”项副标题展示当前生效模型名。
           - 当路由为 OpenClaw 时，输入框左下角应额外出现 `/` 斜杠命令按钮，选择命令后应自动填充到输入框。
-          - 未来新增的非默认且非 OpenClaw 路由在未适配前，默认不显示配置按钮。
+          - 未来新增的 plugin 平台（例如 Hermes）应复用 plugin 路由，平台差异留在 node/plugin 配置层。
           - 顶部频道名称应支持下拉切换频道，切换后分区标签与分区列表需同步刷新为目标频道的数据。
           - 频道名称右侧应内嵌分区下拉按钮（显示当前分区名+下箭头），且该菜单与频道标题左对齐，不再使用右上角三个点。
           - 分区菜单应先显示功能组（新建子区、分区改名未实现、分区存档未实现），再以分割线分隔后显示分区列表组（主区+已有子区）；菜单弹出动画应保持快速缩放+淡入。
@@ -90,7 +90,7 @@ products:
           - Markdown/code 内容块应保持 embedded/recessed surface 层级，而不是使用输入框的 elevated surface。
           - 输入框底部动作按钮默认应为白灰层级；发送按钮仅在输入非空时进入高亮激活态。
           - 输入框底部可点击且非禁用的动作按钮（路由、`/`、`@`、配置、发送）应使用一致的白色系 enabled 颜色，除非该状态刻意使用 accent。
-          - OpenClaw 路由与投递状态图标应使用单色图标，不使用彩色 emoji。
+          - OpenClaw plugin 路由与投递状态图标应使用单色图标，不使用彩色 emoji。
           - 用户消息与 assistant 消息正文应共享同一文本样式基线（字号一致）；时间/thread 等 meta 信息应统一为次级灰。
 
       - feature_id: scope_instructions_config
@@ -113,9 +113,9 @@ products:
           - Channel 标签中可编辑并保存频道指令；保存后刷新页面应恢复已保存值。
           - 在主区下打开 Section 标签，应显示"主区仅使用频道指令"的非编辑提示，且 Save 按钮在 Section 标签时应禁用。
           - 在子区下打开 Section 标签，可编辑并保存当前子区指令；保存后切换到该子区应恢复已保存值。
-          - 当频道和子区指令均已保存时，从该子区发送默认路由消息，后端应将 Agent 提示词 + 频道指令 + 子区指令合并为系统提示发送给模型。
+          - 当频道和子区指令均已保存时，从该子区发送 local/Bricks Default 路由消息，后端应将 Agent 提示词 + 频道指令 + 子区指令合并为系统提示发送给模型。
           - 清空指令后保存，刷新页面后该范围不应再贡献任何提示上下文。
-          - OpenClaw 路由下保存或发送消息，OpenClaw 路由行为不变。
+          - plugin/OpenClaw 路由下保存或发送消息，OpenClaw dispatch 行为不变。
 
       - feature_id: model_settings
         name: 模型与提供商配置
@@ -213,11 +213,12 @@ products:
           - 调用 chat 接口时返回结构化响应。
           - provider 配置缺失时给出明确错误。
           - '使用 API Key + X-Bricks-Plugin-Id 可访问 /api/v1/platform/events 并获取 nextCursor。'
-          - '使用 `/api/chat/scope-settings` 为 openclaw 路由保存 nodeId 后，再读取应返回同一 nodeId。'
+          - '使用 `/api/chat/scope-settings` 为 plugin 路由保存 nodeId 后，再读取应返回同一 nodeId；旧值 openclaw 仍应兼容解析。'
+          - '`/api/chat/scope-settings` GET 应返回 resolvedTargetNodeId/resolvedTargetNodeName/resolvedTargetPluginId，便于 UI 展示继承或回退后的有效目标。'
           - '同一用户存在多个 OpenClaw 节点时，`/api/chat/respond` 为消息写入目标节点 metadata 后，仅目标 plugin 可从 `/api/v1/platform/events` 读到该消息。'
           - '非目标 plugin 对其他 plugin 创建的 assistant message 执行 PATCH 时，应返回 403。'
           - '/api/v1/platform/events/ack 禁止 body 中传 pluginId，合法 ACK 可重复调用并返回成功。'
-          - '/api/config/nodes/:nodeId/agents?sourcePlatform=openclaw 在请求时即时执行 OpenClaw CLI 查询 agents，并用于 OpenClaw router 的 @ 下拉菜单。'
+          - '/api/config/nodes/:nodeId/agents?sourcePlatform=openclaw 在请求时即时执行 OpenClaw CLI 查询 agents，并用于 plugin 路由的 OpenClaw @ 下拉菜单。'
           - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
           - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
           - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'

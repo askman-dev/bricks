@@ -197,6 +197,9 @@ class ChatHistoryApiService {
         router: chatRouterFromApi(item['router'] as String?),
         nodeId: item['nodeId'] as String?,
         instructions: item['instructions'] as String?,
+        resolvedTargetNodeId: item['resolvedTargetNodeId'] as String?,
+        resolvedTargetNodeName: item['resolvedTargetNodeName'] as String?,
+        resolvedTargetPluginId: item['resolvedTargetPluginId'] as String?,
         updatedAt: item['updatedAt'] is String
             ? DateTime.tryParse(item['updatedAt'] as String)
             : null,

@@ -545,7 +545,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _currentComposerModelLabel() {
-    if (_effectiveRouterForScope() == ChatRouter.openclaw) {
+    if (_effectiveRouterForScope() == ChatRouter.plugin) {
       return 'OpenClaw';
     }
     final selectedConfig = _activeLlmConfig;
@@ -1121,12 +1121,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   ChatRouter _effectiveChannelRouter({String? channelId}) {
     final resolvedChannelId = channelId ?? _activeChannelId;
-    final router =
-        _channelRouters[resolvedChannelId] ?? ChatRouter.defaultRoute;
-    if (router != ChatRouter.openclaw) return router;
+    final router = _channelRouters[resolvedChannelId] ?? ChatRouter.local;
+    if (router != ChatRouter.plugin) return router;
     return _isKnownPlatformNodeId(_channelNodeIds[resolvedChannelId])
-        ? ChatRouter.openclaw
-        : ChatRouter.defaultRoute;
+        ? ChatRouter.plugin
+        : ChatRouter.local;
   }
 
   ChatRouter? _effectiveExplicitThreadRouter({
@@ -1137,15 +1136,15 @@ class _ChatScreenState extends State<ChatScreen> {
       channelId: channelId,
       threadId: threadId,
     );
-    if (router != ChatRouter.openclaw) return router;
+    if (router != ChatRouter.plugin) return router;
     return _isKnownPlatformNodeId(
       _explicitThreadNodeId(
         channelId: channelId,
         threadId: threadId,
       ),
     )
-        ? ChatRouter.openclaw
-        : ChatRouter.defaultRoute;
+        ? ChatRouter.plugin
+        : ChatRouter.local;
   }
 
   ChatRouter _effectiveRouterForScope({String? channelId, String? threadId}) {
@@ -1172,14 +1171,14 @@ class _ChatScreenState extends State<ChatScreen> {
           channelId: resolvedChannelId,
           threadId: resolvedThreadId,
         ) !=
-        ChatRouter.openclaw) {
+        ChatRouter.plugin) {
       return null;
     }
     if (_effectiveExplicitThreadRouter(
           channelId: resolvedChannelId,
           threadId: resolvedThreadId,
         ) ==
-        ChatRouter.openclaw) {
+        ChatRouter.plugin) {
       return _normalizeNodeId(
         _explicitThreadNodeId(
           channelId: resolvedChannelId,
@@ -1215,9 +1214,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _routerLabel(ChatRouter router) {
     switch (router) {
-      case ChatRouter.defaultRoute:
+      case ChatRouter.local:
         return 'Bricks Default';
-      case ChatRouter.openclaw:
+      case ChatRouter.plugin:
         return 'OpenClaw';
     }
   }
@@ -1228,7 +1227,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   List<ComposerAtAction> _composerAtActions(ChatRouter router) {
-    if (router == ChatRouter.openclaw) {
+    if (router == ChatRouter.plugin) {
       final node = _activeOpenClawNode();
       if (node == null) {
         return const <ComposerAtAction>[
@@ -1259,7 +1258,7 @@ class _ChatScreenState extends State<ChatScreen> {
           )
           .toList();
     }
-    if (router == ChatRouter.defaultRoute) {
+    if (router == ChatRouter.local) {
       return _agents
           .map(
             (agent) => ComposerAtAction(
@@ -1273,7 +1272,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _handleComposerAtSelection(ChatRouter router, String value) {
-    if (router == ChatRouter.openclaw) {
+    if (router == ChatRouter.plugin) {
       if (!value.startsWith('openclaw:')) return;
       final node = _activeOpenClawNode();
       if (node == null) return;
@@ -1284,7 +1283,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (agents.every((agent) => agent.agentId != agentId)) return;
       return;
     }
-    if (router != ChatRouter.defaultRoute) return;
+    if (router != ChatRouter.local) return;
     final agent = _findAgent(value);
     if (agent == null) return;
     _selectAgent(agent);
@@ -1329,7 +1328,15 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String? _sourceFromRespondRouter(String? router) {
-    if (router == null || router.isEmpty || router == 'default') return null;
+    if (router == null ||
+        router.isEmpty ||
+        router == 'default' ||
+        router == 'local') {
+      return null;
+    }
+    if (router == 'openclaw' || router == 'plugin') {
+      return 'backend.respond.openclaw';
+    }
     return 'backend.respond.$router';
   }
 
@@ -1347,11 +1354,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final previousNodeId = _channelNodeIds[channelId];
     final normalizedNodeId = _normalizeNodeId(nodeId);
     final effectiveRouter =
-        router == ChatRouter.openclaw && normalizedNodeId == null
-            ? ChatRouter.defaultRoute
+        router == ChatRouter.plugin && normalizedNodeId == null
+            ? ChatRouter.local
             : router;
     setState(() {
-      if (effectiveRouter == ChatRouter.defaultRoute) {
+      if (effectiveRouter == ChatRouter.local) {
         _channelRouters.remove(channelId);
         _channelNodeIds.remove(channelId);
       } else {
@@ -1370,10 +1377,8 @@ class _ChatScreenState extends State<ChatScreen> {
         token: token,
         scopeType: ChatScopeType.channel,
         channelId: channelId,
-        router:
-            effectiveRouter == ChatRouter.defaultRoute ? null : effectiveRouter,
-        nodeId:
-            effectiveRouter == ChatRouter.openclaw ? normalizedNodeId : null,
+        router: effectiveRouter,
+        nodeId: effectiveRouter == ChatRouter.plugin ? normalizedNodeId : null,
       );
       if (!mounted) return;
     } catch (error) {
@@ -1413,8 +1418,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final previousNodeId = _threadNodeIds[key];
     final normalizedNodeId = _normalizeNodeId(nodeId);
     final effectiveRouter =
-        router == ChatRouter.openclaw && normalizedNodeId == null
-            ? ChatRouter.defaultRoute
+        router == ChatRouter.plugin && normalizedNodeId == null
+            ? ChatRouter.local
             : router;
     setState(() {
       if (effectiveRouter == null) {
@@ -1438,8 +1443,7 @@ class _ChatScreenState extends State<ChatScreen> {
         channelId: channelId,
         threadId: threadId,
         router: effectiveRouter,
-        nodeId:
-            effectiveRouter == ChatRouter.openclaw ? normalizedNodeId : null,
+        nodeId: effectiveRouter == ChatRouter.plugin ? normalizedNodeId : null,
       );
       if (!mounted) return;
     } catch (error) {
@@ -1467,7 +1471,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (value.startsWith('channel:openclaw:')) {
       unawaited(
         _saveChannelRouter(
-          ChatRouter.openclaw,
+          ChatRouter.plugin,
           nodeId: value.substring('channel:openclaw:'.length),
         ),
       );
@@ -1477,7 +1481,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!_isThreadConversation()) return;
       unawaited(
         _saveThreadRouter(
-          ChatRouter.openclaw,
+          ChatRouter.plugin,
           nodeId: value.substring('thread:openclaw:'.length),
         ),
       );
@@ -1485,7 +1489,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     switch (value) {
       case 'channel:default':
-        unawaited(_saveChannelRouter(ChatRouter.defaultRoute));
+        unawaited(_saveChannelRouter(ChatRouter.local));
         return;
       case 'thread:inherit':
         if (!_isThreadConversation()) return;
@@ -1493,7 +1497,7 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       case 'thread:default':
         if (!_isThreadConversation()) return;
-        unawaited(_saveThreadRouter(ChatRouter.defaultRoute));
+        unawaited(_saveThreadRouter(ChatRouter.local));
         return;
     }
   }
@@ -1518,17 +1522,15 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    final effectiveRouter =
-        _channelRouters[channelId] ?? ChatRouter.defaultRoute;
+    final effectiveRouter = _channelRouters[channelId] ?? ChatRouter.local;
 
     try {
       await _chatHistoryApiService.saveScopeSetting(
         token: token,
         scopeType: ChatScopeType.channel,
         channelId: channelId,
-        router:
-            effectiveRouter == ChatRouter.defaultRoute ? null : effectiveRouter,
-        nodeId: effectiveRouter == ChatRouter.openclaw
+        router: effectiveRouter,
+        nodeId: effectiveRouter == ChatRouter.plugin
             ? _channelNodeIds[channelId]
             : null,
         instructions: normalized?.isEmpty ?? true ? null : normalized,
@@ -1573,7 +1575,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    final effectiveRouter = _threadRouters[key] ?? ChatRouter.defaultRoute;
+    final effectiveRouter = _threadRouters[key] ?? ChatRouter.local;
 
     try {
       await _chatHistoryApiService.saveScopeSetting(
@@ -1582,9 +1584,8 @@ class _ChatScreenState extends State<ChatScreen> {
         channelId: channelId,
         threadId: threadId,
         router: effectiveRouter,
-        nodeId: effectiveRouter == ChatRouter.openclaw
-            ? _threadNodeIds[key]
-            : null,
+        nodeId:
+            effectiveRouter == ChatRouter.plugin ? _threadNodeIds[key] : null,
         instructions: normalized?.isEmpty ?? true ? null : normalized,
       );
       if (!mounted) return;
@@ -1697,7 +1698,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _shouldSyncActiveScope() {
     final token = _authToken;
     if (token == null || token.isEmpty) return false;
-    if (_effectiveRouterForScope() == ChatRouter.openclaw) return true;
+    if (_effectiveRouterForScope() == ChatRouter.plugin) return true;
     if (_isSending || _isStreaming) return true;
     return _hasPendingAssistantTasks() || _hasPendingUserTasks();
   }
@@ -2464,9 +2465,9 @@ class _ChatScreenState extends State<ChatScreen> {
           builder: (context) {
             final effectiveRouter = _effectiveRouterForScope();
             final showComposerConfigMenu =
-                effectiveRouter == ChatRouter.defaultRoute ||
-                    effectiveRouter == ChatRouter.openclaw;
-            final slashCommands = effectiveRouter == ChatRouter.openclaw
+                effectiveRouter == ChatRouter.local ||
+                    effectiveRouter == ChatRouter.plugin;
+            final slashCommands = effectiveRouter == ChatRouter.plugin
                 ? _openClawSlashCommands
                 : const <String>[];
             final atActions = _composerAtActions(effectiveRouter);
@@ -2484,7 +2485,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     final channelRouter = _effectiveChannelRouter(
                       channelId: _activeChannelId,
                     );
-                    final channelNodeId = channelRouter == ChatRouter.openclaw
+                    final channelNodeId = channelRouter == ChatRouter.plugin
                         ? _normalizeNodeId(
                             _channelNodeIds[_activeChannelId],
                           )
@@ -2493,7 +2494,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     final explicitThreadRouter =
                         _effectiveExplicitThreadRouter();
                     final explicitThreadNodeId =
-                        explicitThreadRouter == ChatRouter.openclaw
+                        explicitThreadRouter == ChatRouter.plugin
                             ? _normalizeNodeId(_explicitThreadNodeId())
                             : null;
                     return [
@@ -2507,7 +2508,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: _buildRouterMenuOption(
                             context: context,
                             label: 'Bricks Default',
-                            selected: channelRouter == ChatRouter.defaultRoute,
+                            selected: channelRouter == ChatRouter.local,
                           ),
                         ),
                         ..._platformNodes.map(
@@ -2517,7 +2518,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               context: context,
                               label: _platformNodeLabel(node),
                               sublabel: 'OpenClaw',
-                              selected: channelRouter == ChatRouter.openclaw &&
+                              selected: channelRouter == ChatRouter.plugin &&
                                   channelNodeId ==
                                       _normalizeNodeId(node.nodeId),
                             ),
@@ -2534,7 +2535,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: _buildRouterMenuOption(
                             context: context,
                             label: 'Follow channel',
-                            sublabel: channelRouter == ChatRouter.openclaw
+                            sublabel: channelRouter == ChatRouter.plugin
                                 ? '${_nodeLabel(channelNodeId)} · $channelRouterLabel'
                                 : channelRouterLabel,
                             selected: explicitThreadRouter == null,
@@ -2545,8 +2546,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: _buildRouterMenuOption(
                             context: context,
                             label: 'Bricks Default',
-                            selected:
-                                explicitThreadRouter == ChatRouter.defaultRoute,
+                            selected: explicitThreadRouter == ChatRouter.local,
                           ),
                         ),
                         ..._platformNodes.map(
@@ -2557,7 +2557,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               label: _platformNodeLabel(node),
                               sublabel: 'OpenClaw',
                               selected:
-                                  explicitThreadRouter == ChatRouter.openclaw &&
+                                  explicitThreadRouter == ChatRouter.plugin &&
                                       explicitThreadNodeId ==
                                           _normalizeNodeId(node.nodeId),
                             ),
@@ -2569,7 +2569,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   icon: SizedBox.square(
                     dimension: 24,
                     child: Center(
-                      child: _effectiveRouterForScope() == ChatRouter.openclaw
+                      child: _effectiveRouterForScope() == ChatRouter.plugin
                           ? const Icon(Icons.hub_outlined, size: 20)
                           : const Icon(Icons.alt_route, size: 20),
                     ),
@@ -2797,15 +2797,14 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
       ),
       actions: [
         TextButton(
-          onPressed:
-              _isSaving ? null : () => Navigator.of(context).pop(),
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _isSaving ||
-                  (_tabController.index == 1 && !widget.isSubSection)
-              ? null
-              : _save,
+          onPressed:
+              _isSaving || (_tabController.index == 1 && !widget.isSubSection)
+                  ? null
+                  : _save,
           child: _isSaving
               ? const SizedBox.square(
                   dimension: 16,

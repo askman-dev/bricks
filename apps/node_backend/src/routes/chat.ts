@@ -12,10 +12,11 @@ import {
 } from "../services/chatAsyncTransportService.js";
 import {
   builtinDefaultNodeRef,
-  CHAT_ROUTER_DEFAULT,
-  CHAT_ROUTER_OPENCLAW,
+  CHAT_ROUTER_LOCAL,
+  CHAT_ROUTER_PLUGIN,
   deleteChatScopeSetting,
   listChatScopeSettings,
+  normalizeChatRouterValue,
   resolveChatScopeRouting,
   resolveScopeInstructions,
   type ChatRouter,
@@ -29,6 +30,7 @@ import {
 } from "../services/chatChannelNameService.js";
 import {
   getPlatformNodeByNodeId,
+  listPlatformNodes,
 } from "../services/platformNodeService.js";
 import { streamWithUserConfig } from "../llm/llm_service.js";
 import type { LlmProvider } from "../llm/types.js";
@@ -145,10 +147,7 @@ function parseProvider(value: unknown): LlmProvider | undefined {
 }
 
 function parseChatRouter(value: unknown): ChatRouter | null {
-  if (value === CHAT_ROUTER_DEFAULT || value === CHAT_ROUTER_OPENCLAW) {
-    return value;
-  }
-  return null;
+  return typeof value === "string" ? normalizeChatRouterValue(value) : null;
 }
 
 function parseScopeType(value: unknown): ChatScopeType | null {
@@ -499,7 +498,7 @@ router.post(
       });
       let resolvedRouter = resolvedRouting.router;
       let targetNode = null;
-      if (resolvedRouter === CHAT_ROUTER_OPENCLAW) {
+      if (resolvedRouter === CHAT_ROUTER_PLUGIN) {
         if (requestedNodeId) {
           targetNode = await getPlatformNodeByNodeId(userId, requestedNodeId);
           if (!targetNode) {
@@ -511,13 +510,13 @@ router.post(
         } else if (resolvedRouting.nodeId) {
           targetNode = await getPlatformNodeByNodeId(userId, resolvedRouting.nodeId);
           if (!targetNode) {
-            resolvedRouter = CHAT_ROUTER_DEFAULT;
+            resolvedRouter = CHAT_ROUTER_LOCAL;
           }
         } else {
-          resolvedRouter = CHAT_ROUTER_DEFAULT;
+          resolvedRouter = CHAT_ROUTER_LOCAL;
         }
       }
-      if (resolvedRouter === CHAT_ROUTER_OPENCLAW && !targetNode) {
+      if (resolvedRouter === CHAT_ROUTER_PLUGIN && !targetNode) {
         res.status(400).json({
           error: "Invalid payload: nodeId must reference an existing platform node",
         });
@@ -528,21 +527,19 @@ router.post(
       const acceptedSessionId = acceptedTask.sessionId;
 
       const defaultNode = builtinDefaultNodeRef();
-      const isOpenClawRoute = resolvedRouter === CHAT_ROUTER_OPENCLAW;
+      const isPluginRoute = resolvedRouter === CHAT_ROUTER_PLUGIN;
       const userMessageMetadata = {
         resolvedBotId: input.resolvedBotId,
         resolvedSkillId: input.resolvedSkillId,
-        source: isOpenClawRoute ? "backend.respond.openclaw" : "backend.respond",
-        targetNodeId: isOpenClawRoute ? targetNode?.nodeId : defaultNode.nodeId,
-        targetNodeName: isOpenClawRoute ? targetNode?.displayName : defaultNode.nodeName,
-        targetPluginId: isOpenClawRoute ? targetNode?.pluginId : null,
-        targetSourcePlatform: isOpenClawRoute ? CHAT_ROUTER_OPENCLAW : defaultNode.sourcePlatform,
-        resolvedRouteKind: isOpenClawRoute ? "platform_openclaw" : "builtin_default",
+        source: isPluginRoute ? "backend.respond.openclaw" : "backend.respond",
+        targetNodeId: isPluginRoute ? targetNode?.nodeId : defaultNode.nodeId,
+        targetNodeName: isPluginRoute ? targetNode?.displayName : defaultNode.nodeName,
+        targetPluginId: isPluginRoute ? targetNode?.pluginId : null,
         pendingAssistantMessageId:
-          isOpenClawRoute ? assistantMessageId : undefined,
+          isPluginRoute ? assistantMessageId : undefined,
       };
 
-      if (resolvedRouter === CHAT_ROUTER_OPENCLAW) {
+      if (resolvedRouter === CHAT_ROUTER_PLUGIN) {
         const persisted = await upsertMessages(userId, [
           {
             messageId: userMessageId,
@@ -914,7 +911,22 @@ router.get("/scope-settings", async (req: AuthRequest, res: Response) => {
     }
 
     const settings = await listChatScopeSettings(userId);
-    res.json({ settings });
+    const platformNodes = await listPlatformNodes(userId);
+    const platformNodeById = new Map(platformNodes.map((node) => [node.nodeId, node]));
+    const defaultNode = builtinDefaultNodeRef();
+    const enrichedSettings = settings.map((setting) => {
+      const platformNode =
+        setting.router === CHAT_ROUTER_PLUGIN && setting.nodeId
+          ? platformNodeById.get(setting.nodeId) ?? null
+          : null;
+      return {
+        ...setting,
+        resolvedTargetNodeId: platformNode?.nodeId ?? defaultNode.nodeId,
+        resolvedTargetNodeName: platformNode?.displayName ?? defaultNode.nodeName,
+        resolvedTargetPluginId: platformNode?.pluginId ?? null,
+      };
+    });
+    res.json({ settings: enrichedSettings });
   } catch (error) {
     console.error("List chat scope settings error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -1024,15 +1036,15 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
 
     if (body.router !== null && body.router !== undefined && !routerValue) {
       res.status(400).json({
-        error: 'Invalid payload: router must be "default", "openclaw", or null',
+        error: 'Invalid payload: router must be "local", "plugin", "default", "openclaw", or null',
       });
       return;
     }
 
-    if (routerValue === CHAT_ROUTER_OPENCLAW) {
+    if (routerValue === CHAT_ROUTER_PLUGIN) {
       if (!nodeId) {
         res.status(400).json({
-          error: "Invalid payload: nodeId is required for openclaw router",
+          error: "Invalid payload: nodeId is required for plugin router",
         });
         return;
       }
@@ -1060,7 +1072,7 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       channelId,
       threadId,
       router: routerValue,
-      nodeId: routerValue === CHAT_ROUTER_OPENCLAW ? nodeId : null,
+      nodeId: routerValue === CHAT_ROUTER_PLUGIN ? nodeId : null,
       instructions: instructionsRaw,
     });
     res.json({ setting });

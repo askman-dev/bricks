@@ -17,6 +17,7 @@ import {
   listPlatformNodes,
   renamePlatformNode,
 } from '../services/platformNodeService.js';
+import { builtinDefaultNodeRef } from '../services/chatRouterService.js';
 import { listOpenClawRuntimeAgents } from '../services/openclawAgentRuntimeService.js';
 
 const router = express.Router();
@@ -247,7 +248,18 @@ router.get('/nodes', async (req: AuthRequest, res: Response) => {
     }
     await ensureDefaultPlatformNode(userId);
     const nodes = await listPlatformNodes(userId);
-    res.json({ nodes });
+    const builtinDefaultNode = builtinDefaultNodeRef();
+    res.json({
+      nodes,
+      builtinTargets: [
+        {
+          nodeId: builtinDefaultNode.nodeId,
+          displayName: builtinDefaultNode.nodeName,
+          router: 'local',
+          readOnly: true,
+        },
+      ],
+    });
   } catch (error) {
     console.error('List platform nodes error:', error);
     res.status(500).json({ error: 'Internal server error' });

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS chat_scope_settings (
   scope_type VARCHAR(16) NOT NULL CHECK (scope_type IN ('channel', 'thread')),
   channel_id VARCHAR(255) NOT NULL,
   thread_id VARCHAR(255) NOT NULL DEFAULT '',
-  router VARCHAR(32) NOT NULL CHECK (router IN ('default', 'openclaw')),
+  router VARCHAR(32) NOT NULL CHECK (router IN ('local', 'plugin')),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   CHECK (
