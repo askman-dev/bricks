@@ -83,6 +83,13 @@ vi.mock('../services/platformNodeService.js', () => ({
   getPlatformNodeByPluginId: getPlatformNodeByPluginIdMock,
 }));
 
+vi.mock('../services/chatRouterService.js', () => ({
+  builtinDefaultNodeRef: () => ({
+    nodeId: 'node_builtin_default',
+    nodeName: 'Bricks Default',
+  }),
+}));
+
 vi.mock('../services/openclawAgentRuntimeService.js', () => ({
   listOpenClawRuntimeAgents: listOpenClawRuntimeAgentsMock,
 }));
@@ -133,8 +140,18 @@ describe('config node routes', () => {
   it('lists nodes', async () => {
     const response = await fetch(`${baseUrl}/api/config/nodes`);
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { nodes?: Array<{ displayName: string }> };
+    const body = (await response.json()) as {
+      nodes?: Array<{ displayName: string }>;
+      builtinTargets?: Array<{ displayName: string; router: string; readOnly: boolean }>;
+    };
     expect(body.nodes?.[0]?.displayName).toBe('openclaw 1');
+    expect(body.builtinTargets?.[0]).toEqual(
+      expect.objectContaining({
+        displayName: 'Bricks Default',
+        router: 'local',
+        readOnly: true,
+      }),
+    );
   });
 
   it('creates nodes', async () => {

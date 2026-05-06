@@ -1,14 +1,14 @@
-enum ChatRouter { defaultRoute, openclaw }
+enum ChatRouter { local, plugin }
 
 enum ChatScopeType { channel, thread }
 
 extension ChatRouterApi on ChatRouter {
   String get apiValue {
     switch (this) {
-      case ChatRouter.defaultRoute:
-        return 'default';
-      case ChatRouter.openclaw:
-        return 'openclaw';
+      case ChatRouter.local:
+        return 'local';
+      case ChatRouter.plugin:
+        return 'plugin';
     }
   }
 }
@@ -26,11 +26,13 @@ extension ChatScopeTypeApi on ChatScopeType {
 
 ChatRouter chatRouterFromApi(String? value) {
   switch (value) {
+    case 'plugin':
     case 'openclaw':
-      return ChatRouter.openclaw;
+      return ChatRouter.plugin;
+    case 'local':
     case 'default':
     default:
-      return ChatRouter.defaultRoute;
+      return ChatRouter.local;
   }
 }
 
@@ -102,6 +104,9 @@ class ChatScopeSetting {
     this.nodeId,
     this.threadId,
     this.instructions,
+    this.resolvedTargetNodeId,
+    this.resolvedTargetNodeName,
+    this.resolvedTargetPluginId,
     this.updatedAt,
   });
 
@@ -111,6 +116,9 @@ class ChatScopeSetting {
   final ChatRouter router;
   final String? nodeId;
   final String? instructions;
+  final String? resolvedTargetNodeId;
+  final String? resolvedTargetNodeName;
+  final String? resolvedTargetPluginId;
   final DateTime? updatedAt;
 }
 

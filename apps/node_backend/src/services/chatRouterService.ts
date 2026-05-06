@@ -2,8 +2,12 @@ import pool from '../db/index.js';
 
 export const CHAT_ROUTER_DEFAULT = 'default';
 export const CHAT_ROUTER_OPENCLAW = 'openclaw';
+export const CHAT_ROUTER_LOCAL = 'local';
+export const CHAT_ROUTER_PLUGIN = 'plugin';
+export const BUILTIN_DEFAULT_NODE_ID = 'node_builtin_default';
+export const BUILTIN_DEFAULT_NODE_NAME = 'Bricks Default';
 
-export type ChatRouter = typeof CHAT_ROUTER_DEFAULT | typeof CHAT_ROUTER_OPENCLAW;
+export type ChatRouter = typeof CHAT_ROUTER_LOCAL | typeof CHAT_ROUTER_PLUGIN;
 export type ChatScopeType = 'channel' | 'thread';
 
 interface ChatScopeSettingRow {
@@ -45,6 +49,31 @@ export interface ResolvedChatScopeRouting {
   nodeId: string | null;
 }
 
+export interface BuiltinDefaultNodeRef {
+  nodeId: string;
+  nodeName: string;
+}
+
+export function builtinDefaultNodeRef(): BuiltinDefaultNodeRef {
+  return {
+    nodeId: BUILTIN_DEFAULT_NODE_ID,
+    nodeName: BUILTIN_DEFAULT_NODE_NAME,
+  };
+}
+
+export function normalizeChatRouterValue(value: string | null | undefined): ChatRouter | null {
+  switch (value) {
+    case CHAT_ROUTER_LOCAL:
+    case CHAT_ROUTER_DEFAULT:
+      return CHAT_ROUTER_LOCAL;
+    case CHAT_ROUTER_PLUGIN:
+    case CHAT_ROUTER_OPENCLAW:
+      return CHAT_ROUTER_PLUGIN;
+    default:
+      return null;
+  }
+}
+
 export function normalizeChatThreadId(threadId: string | null | undefined): string {
   const trimmed = threadId?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : 'main';
@@ -60,7 +89,7 @@ function toDto(row: ChatScopeSettingRow): ChatScopeSetting {
     scopeType: row.scope_type,
     channelId: row.channel_id,
     threadId: row.scope_type === 'thread' ? row.thread_id : null,
-    router: row.router,
+    router: normalizeChatRouterValue(row.router) ?? CHAT_ROUTER_LOCAL,
     nodeId: row.node_id,
     instructions: row.instructions ?? null,
     createdAt: row.created_at,
@@ -90,6 +119,7 @@ export async function upsertChatScopeSetting(
   const threadId = toStorageThreadId(input.scopeType, input.threadId);
   const nodeId = input.nodeId?.trim() || null;
   const instructions = input.instructions?.trim() || null;
+  const router = normalizeChatRouterValue(input.router) ?? CHAT_ROUTER_LOCAL;
   const result = await pool.query<ChatScopeSettingRow>(
     `INSERT INTO chat_scope_settings (
         user_id,
@@ -107,7 +137,7 @@ export async function upsertChatScopeSetting(
         instructions = EXCLUDED.instructions,
         updated_at = CURRENT_TIMESTAMP
       RETURNING scope_type, channel_id, thread_id, router, node_id, instructions, created_at, updated_at`,
-    [userId, input.scopeType, input.channelId, threadId, input.router, nodeId, instructions],
+    [userId, input.scopeType, input.channelId, threadId, router, nodeId, instructions],
   );
 
   return toDto(result.rows[0]);
@@ -159,7 +189,7 @@ export async function resolveChatScopeRouting(
   );
 
   return {
-    router: result.rows[0]?.router ?? CHAT_ROUTER_DEFAULT,
+    router: normalizeChatRouterValue(result.rows[0]?.router) ?? CHAT_ROUTER_LOCAL,
     nodeId: result.rows[0]?.node_id ?? null,
   };
 }

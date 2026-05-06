@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-05-01
+last_updated: 2026-05-06
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -201,7 +201,7 @@ index:
       - 若 buildComposedSystemPrompt 未对空字符串做 trim/null 检查，发给模型的 system 消息可能含空段落噪音。
       - 若 _hydrateChannelInstructions/_hydrateThreadInstructions 在应用启动时未正确调用，保存值不会在刷新后恢复。
       - _saveChannelInstructions 的乐观更新+失败回滚若 state key 命名与读取不一致，会导致静默数据错位。
-      - OpenClaw 路由走的是 dispatch placeholder 分支，若在该分支误加 system prompt 拼接逻辑，会干扰 OpenClaw 路由行为。
+      - plugin/OpenClaw 路由走的是 dispatch placeholder 分支，若在该分支误加 system prompt 拼接逻辑，会干扰 OpenClaw dispatch 行为。
       - 指令字段在 DB 中允许 NULL；若 DTO 层遗漏 null 转换，可能导致 undefined 被序列化为 undefined 字符串。
 
 
@@ -235,7 +235,7 @@ index:
       - 若 buildComposedSystemPrompt 未对空字符串做 trim/null 检查，发给模型的 system 消息可能含空段落噪音。
       - 若 _hydrateChannelInstructions/_hydrateThreadInstructions 在应用启动时未正确调用，保存值不会在刷新后恢复。
       - _saveChannelInstructions 的乐观更新+失败回滚若 state key 命名与读取不一致，会导致静默数据错位。
-      - OpenClaw 路由走的是 dispatch placeholder 分支，若在该分支误加 system prompt 拼接逻辑，会干扰 OpenClaw 路由行为。
+      - plugin/OpenClaw 路由走的是 dispatch placeholder 分支，若在该分支误加 system prompt 拼接逻辑，会干扰 OpenClaw dispatch 行为。
       - 指令字段在 DB 中允许 NULL；若 DTO 层遗漏 null 转换，可能导致 undefined 被序列化为 undefined 字符串。
 
   - feature_id: model_settings
@@ -374,6 +374,7 @@ index:
       - apps/node_backend/src/middleware/platformAuth.ts
       - apps/node_backend/src/services/platformIntegrationService.ts
       - apps/node_backend/src/db/migrations/012_add_node_id_to_chat_scope_settings.sql
+      - apps/node_backend/src/db/migrations/014_rename_chat_router_values.sql
       - apps/node_openclaw_plugin/src/pluginRunner.ts
       - apps/node_backend/src/llm/llm_service.ts
       - apps/node_backend/src/llm/providers/anthropic_adapter.ts
@@ -385,6 +386,8 @@ index:
       - docs/plans/2026-04-18-00-20-UTC-openclaw-message-routing-current-state.md
       - docs/plans/2026-04-23-17-13-WIB-openclaw-agents-capture-display.md
       - docs/plans/2026-04-23-15-33-openclaw-selected-node-routing.md
+      - docs/plans/2026-05-06-22-42-+08-router-strategy-rename.md
+      - docs/plans/2026-05-06-22-44-+08-post-router-refactor-followup.md
       - apps/node_backend/src/routes/platform.test.ts
       - apps/node_backend/src/routes/config.test.ts
       - apps/node_backend/src/services/chatRouterService.test.ts
@@ -408,6 +411,10 @@ index:
       - events ack
       - OpenClaw runtime agents query
       - targetPluginId
+      - resolvedTargetNodeId
+      - resolvedTargetNodeName
+      - local router
+      - plugin router
       - plugin ownership
       - scope settings
     change_risks:
@@ -418,7 +425,10 @@ index:
       - 平台 JWT 中 pluginId 约束变化可能导致插件隔离失效或合法请求被拒绝。
       - 若后端运行环境没有可用的 `openclaw` CLI 或 CLI 上下文与目标节点不一致，@ 菜单会缺少 agent 或显示错误列表。
       - 若 `/api/chat/respond` 未正确写入 targetPluginId/nodeId metadata，多节点环境下会重新出现一条消息被多个节点同时消费的问题。
+      - 若 `/api/chat/scope-settings` 的 resolved target 字段未与 node 删除回退逻辑保持一致，前端可能显示一个已经失效的 plugin 目标。
       - 若事件查询的 plugin 过滤条件与数据库方言不兼容，可能出现消息漏投递或跨节点串扰。
+      - 若 `default/openclaw` 旧 router 值未兼容归一化为 `local/plugin`，历史 scope settings 会在发送消息或读取设置时失效。
+      - 若将 OpenClaw/Hermes 等平台名重新写入 router 枚举，会再次混淆分发策略与具体 plugin 平台身份。
 
 
   - feature_id: node_openclaw_pull_loop

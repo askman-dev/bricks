@@ -11,10 +11,11 @@ vi.mock('../db/index.js', () => ({
 }));
 
 import {
-  CHAT_ROUTER_DEFAULT,
+  CHAT_ROUTER_LOCAL,
   buildChatSessionId,
   deleteChatScopeSetting,
   listChatScopeSettings,
+  normalizeChatRouterValue,
   normalizeChatThreadId,
   resolveChatScopeRouting,
   resolveChatRouter,
@@ -32,6 +33,14 @@ describe('chatRouterService', () => {
     expect(normalizeChatThreadId('')).toBe('main');
     expect(buildChatSessionId('channel-a', null)).toBe('session:channel-a:main');
     expect(buildChatSessionId('channel-a', 'sub-1')).toBe('session:channel-a:sub-1');
+  });
+
+  it('normalizes legacy router values to dispatch strategy values', () => {
+    expect(normalizeChatRouterValue('default')).toBe('local');
+    expect(normalizeChatRouterValue('openclaw')).toBe('plugin');
+    expect(normalizeChatRouterValue('local')).toBe('local');
+    expect(normalizeChatRouterValue('plugin')).toBe('plugin');
+    expect(normalizeChatRouterValue('unknown')).toBeNull();
   });
 
   it('lists scope settings with nullable channel-level thread id', async () => {
@@ -58,7 +67,7 @@ describe('chatRouterService', () => {
         scopeType: 'channel',
         channelId: 'default',
         threadId: null,
-        router: 'openclaw',
+        router: 'plugin',
         nodeId: 'node_default',
         instructions: null,
         createdAt: '2026-04-17T07:00:00.000Z',
@@ -74,7 +83,7 @@ describe('chatRouterService', () => {
           scope_type: 'thread',
           channel_id: 'default',
           thread_id: 'main',
-          router: 'default',
+          router: 'local',
           node_id: 'node_default',
           instructions: null,
           created_at: '2026-04-17T07:00:00.000Z',
@@ -88,7 +97,7 @@ describe('chatRouterService', () => {
       scopeType: 'thread',
       channelId: 'default',
       threadId: null,
-      router: 'default',
+      router: 'local',
       nodeId: 'node_default',
     });
 
@@ -97,7 +106,7 @@ describe('chatRouterService', () => {
     expect(setting.instructions).toBeNull();
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO chat_scope_settings'),
-      ['u-1', 'thread', 'default', 'main', 'default', 'node_default', null],
+      ['u-1', 'thread', 'default', 'main', 'local', 'node_default', null],
     );
   });
 
@@ -125,7 +134,7 @@ describe('chatRouterService', () => {
       threadId: 'main',
     });
 
-    expect(router).toBe(CHAT_ROUTER_DEFAULT);
+    expect(router).toBe(CHAT_ROUTER_LOCAL);
   });
 
   it('resolves router and node id together for scope routing', async () => {
@@ -140,7 +149,7 @@ describe('chatRouterService', () => {
     });
 
     expect(routing).toEqual({
-      router: 'openclaw',
+      router: 'plugin',
       nodeId: 'node_default',
     });
   });
