@@ -7,6 +7,9 @@ Widget _buildPage({
   ValueChanged<String>? onChannelRename,
   ValueChanged<String>? onChannelArchive,
   ValueChanged<String>? onAgentSelected,
+  ValueChanged<String>? onChannelSelected,
+  VoidCallback? onRequestClose,
+  bool closeOnChannelSelected = true,
   List<ChatAgentItem> agents = const [],
 }) =>
     MaterialApp(
@@ -20,8 +23,11 @@ Widget _buildPage({
           ],
           selectedChannelId: 'default',
           onAgentSelected: onAgentSelected,
+          onChannelSelected: onChannelSelected,
           onChannelRename: onChannelRename,
           onChannelArchive: onChannelArchive,
+          onRequestClose: onRequestClose,
+          closeOnChannelSelected: closeOnChannelSelected,
         ),
       ),
     );
@@ -200,6 +206,63 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(received, ChatNavigationAction.createChannel);
+    });
+
+    testWidgets('channel tap requests close by default', (tester) async {
+      var closeCount = 0;
+      String? selectedChannelId;
+
+      await tester.pumpWidget(
+        _buildPage(
+          onRequestClose: () => closeCount++,
+          onChannelSelected: (id) => selectedChannelId = id,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('项目频道'));
+      await tester.pumpAndSettle();
+
+      expect(closeCount, 1);
+      expect(selectedChannelId, 'project');
+    });
+
+    testWidgets('channel tap can keep inline navigation open', (tester) async {
+      var closeCount = 0;
+      String? selectedChannelId;
+
+      await tester.pumpWidget(
+        _buildPage(
+          onRequestClose: () => closeCount++,
+          closeOnChannelSelected: false,
+          onChannelSelected: (id) => selectedChannelId = id,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('项目频道'));
+      await tester.pumpAndSettle();
+
+      expect(closeCount, 0);
+      expect(selectedChannelId, 'project');
+    });
+
+    testWidgets('back button still requests close when channel tap stays open',
+        (tester) async {
+      var closeCount = 0;
+
+      await tester.pumpWidget(
+        _buildPage(
+          onRequestClose: () => closeCount++,
+          closeOnChannelSelected: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+
+      expect(closeCount, 1);
     });
 
     testWidgets('long press channel can trigger rename', (tester) async {
