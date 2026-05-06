@@ -250,6 +250,8 @@ describe("chat routes", () => {
           targetNodeId: "node-default",
           targetNodeName: "openclaw 1",
           targetPluginId: "plugin_local_main",
+          targetSourcePlatform: "openclaw",
+          resolvedRouteKind: "platform_openclaw",
           pendingAssistantMessageId: "msg-assistant-1",
         }),
       }),

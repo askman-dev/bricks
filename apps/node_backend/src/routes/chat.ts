@@ -536,7 +536,7 @@ router.post(
         targetNodeId: isOpenClawRoute ? targetNode?.nodeId : defaultNode.nodeId,
         targetNodeName: isOpenClawRoute ? targetNode?.displayName : defaultNode.nodeName,
         targetPluginId: isOpenClawRoute ? targetNode?.pluginId : null,
-        targetSourcePlatform: isOpenClawRoute ? "openclaw" : defaultNode.sourcePlatform,
+        targetSourcePlatform: isOpenClawRoute ? CHAT_ROUTER_OPENCLAW : defaultNode.sourcePlatform,
         resolvedRouteKind: isOpenClawRoute ? "platform_openclaw" : "builtin_default",
         pendingAssistantMessageId:
           isOpenClawRoute ? assistantMessageId : undefined,
