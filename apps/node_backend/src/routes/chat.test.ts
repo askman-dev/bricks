@@ -17,6 +17,7 @@ const {
   listUserScopesMock,
   listChatScopeSettingsMock,
   resolveChatScopeRoutingMock,
+  resolveScopeInstructionsMock,
   upsertChatScopeSettingMock,
   deleteChatScopeSettingMock,
   listChatChannelNamesMock,
@@ -47,6 +48,10 @@ const {
       nodeId: null,
     }),
   ),
+  resolveScopeInstructionsMock: vi.fn(async () => ({
+    channelInstructions: null,
+    threadInstructions: null,
+  })),
   upsertChatScopeSettingMock: vi.fn(async () => ({
     scopeType: "channel",
     channelId: "default",
@@ -96,9 +101,15 @@ vi.mock("../services/chatAsyncTransportService.js", () => ({
 vi.mock("../services/chatRouterService.js", () => ({
   CHAT_ROUTER_DEFAULT: "default",
   CHAT_ROUTER_OPENCLAW: "openclaw",
+  builtinDefaultNodeRef: () => ({
+    nodeId: "node_builtin_default",
+    nodeName: "Bricks Default",
+    sourcePlatform: "builtin",
+  }),
   deleteChatScopeSetting: deleteChatScopeSettingMock,
   listChatScopeSettings: listChatScopeSettingsMock,
   resolveChatScopeRouting: resolveChatScopeRoutingMock,
+  resolveScopeInstructions: resolveScopeInstructionsMock,
   upsertChatScopeSetting: upsertChatScopeSettingMock,
 }));
 
@@ -177,6 +188,11 @@ describe("chat routes", () => {
       nodeId: null,
     });
     upsertChatScopeSettingMock.mockClear();
+    resolveScopeInstructionsMock.mockReset();
+    resolveScopeInstructionsMock.mockResolvedValue({
+      channelInstructions: null,
+      threadInstructions: null,
+    });
     deleteChatScopeSettingMock.mockClear();
     listChatChannelNamesMock.mockClear();
     upsertChatChannelNameMock.mockClear();
@@ -248,7 +264,7 @@ describe("chat routes", () => {
         taskState: "dispatched",
         content: "",
         metadata: expect.objectContaining({
-          agentName: "OpenClaw",
+          agentName: "openclaw 1",
           dispatchPlaceholder: true,
           source: "backend.respond.openclaw",
         }),
@@ -283,19 +299,13 @@ describe("chat routes", () => {
         messageId: "msg-user-fallback-1",
         metadata: expect.objectContaining({
           source: "backend.respond",
+          targetNodeId: "node_builtin_default",
+          targetNodeName: "Bricks Default",
+          targetSourcePlatform: "builtin",
+          resolvedRouteKind: "builtin_default",
         }),
       }),
     ]);
-    expect(upsertMessagesMock).not.toHaveBeenCalledWith(
-      "user-123",
-      expect.arrayContaining([
-        expect.objectContaining({
-          metadata: expect.objectContaining({
-            targetNodeId: expect.anything(),
-          }),
-        }),
-      ]),
-    );
 
     await new Promise<void>((resolve) => {
       setTimeout(() => resolve(), 0);
@@ -341,6 +351,10 @@ describe("chat routes", () => {
         taskState: "accepted",
         metadata: expect.objectContaining({
           source: "backend.respond",
+          targetNodeId: "node_builtin_default",
+          targetNodeName: "Bricks Default",
+          targetSourcePlatform: "builtin",
+          resolvedRouteKind: "builtin_default",
         }),
       }),
     ]);

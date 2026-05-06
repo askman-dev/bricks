@@ -2,6 +2,9 @@ import pool from '../db/index.js';
 
 export const CHAT_ROUTER_DEFAULT = 'default';
 export const CHAT_ROUTER_OPENCLAW = 'openclaw';
+export const BUILTIN_DEFAULT_NODE_ID = 'node_builtin_default';
+export const BUILTIN_DEFAULT_NODE_NAME = 'Bricks Default';
+export const BUILTIN_DEFAULT_SOURCE_PLATFORM = 'builtin';
 
 export type ChatRouter = typeof CHAT_ROUTER_DEFAULT | typeof CHAT_ROUTER_OPENCLAW;
 export type ChatScopeType = 'channel' | 'thread';
@@ -43,6 +46,20 @@ export interface ChatScopeSettingInput extends ChatScopeSelector {
 export interface ResolvedChatScopeRouting {
   router: ChatRouter;
   nodeId: string | null;
+}
+
+export interface BuiltinDefaultNodeRef {
+  nodeId: string;
+  nodeName: string;
+  sourcePlatform: string;
+}
+
+export function builtinDefaultNodeRef(): BuiltinDefaultNodeRef {
+  return {
+    nodeId: BUILTIN_DEFAULT_NODE_ID,
+    nodeName: BUILTIN_DEFAULT_NODE_NAME,
+    sourcePlatform: BUILTIN_DEFAULT_SOURCE_PLATFORM,
+  };
 }
 
 export function normalizeChatThreadId(threadId: string | null | undefined): string {

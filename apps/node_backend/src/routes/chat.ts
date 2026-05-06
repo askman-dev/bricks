@@ -11,6 +11,7 @@ import {
   type MessageUpsertInput,
 } from "../services/chatAsyncTransportService.js";
 import {
+  builtinDefaultNodeRef,
   CHAT_ROUTER_DEFAULT,
   CHAT_ROUTER_OPENCLAW,
   deleteChatScopeSetting,
@@ -526,20 +527,19 @@ router.post(
       const acceptedTaskId = acceptedTask.taskId;
       const acceptedSessionId = acceptedTask.sessionId;
 
+      const defaultNode = builtinDefaultNodeRef();
+      const isOpenClawRoute = resolvedRouter === CHAT_ROUTER_OPENCLAW;
       const userMessageMetadata = {
         resolvedBotId: input.resolvedBotId,
         resolvedSkillId: input.resolvedSkillId,
-        source:
-          resolvedRouter === CHAT_ROUTER_OPENCLAW
-            ? "backend.respond.openclaw"
-            : "backend.respond",
-        targetNodeId: targetNode?.nodeId,
-        targetNodeName: targetNode?.displayName,
-        targetPluginId: targetNode?.pluginId,
+        source: isOpenClawRoute ? "backend.respond.openclaw" : "backend.respond",
+        targetNodeId: isOpenClawRoute ? targetNode?.nodeId : defaultNode.nodeId,
+        targetNodeName: isOpenClawRoute ? targetNode?.displayName : defaultNode.nodeName,
+        targetPluginId: isOpenClawRoute ? targetNode?.pluginId : null,
+        targetSourcePlatform: isOpenClawRoute ? "openclaw" : defaultNode.sourcePlatform,
+        resolvedRouteKind: isOpenClawRoute ? "platform_openclaw" : "builtin_default",
         pendingAssistantMessageId:
-          resolvedRouter === CHAT_ROUTER_OPENCLAW
-            ? assistantMessageId
-            : undefined,
+          isOpenClawRoute ? assistantMessageId : undefined,
       };
 
       if (resolvedRouter === CHAT_ROUTER_OPENCLAW) {
