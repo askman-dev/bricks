@@ -275,6 +275,54 @@ void main() {
       expect(textField.enabled, isTrue);
     });
 
+    testWidgets(
+        'text field retains focus when onSend toggles to null after sending',
+        (tester) async {
+      void Function(String)? sendCallback = (_) {};
+      late StateSetter outerSetState;
+
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) {
+            outerSetState = setState;
+            return MaterialApp(
+              home: Scaffold(
+                body: ComposerBar(
+                  agents: const [],
+                  onSend: sendCallback,
+                ),
+              ),
+            );
+          },
+        ),
+      );
+      await tester.pump();
+
+      // Enter a message and submit.
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.pump();
+
+      // Tap Send to submit the message.
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pump(_settle);
+
+      // Simulate the parent removing onSend while processing the sent message
+      // (the original regression: setting onSend = null also disabled the
+      // TextField, which caused the composer to lose focus).
+      outerSetState(() => sendCallback = null);
+      await tester.pump();
+
+      // TextField must remain enabled – this is the core regression guard.
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.enabled, isTrue);
+
+      // Verify the input can still receive and hold keyboard focus when onSend is null.
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      final focusedField = tester.widget<TextField>(find.byType(TextField));
+      expect(focusedField.focusNode?.hasFocus, isTrue);
+    });
+
     testWidgets('send button is present when not streaming', (tester) async {
       await tester.pumpWidget(_buildBar());
       await tester.pump();
