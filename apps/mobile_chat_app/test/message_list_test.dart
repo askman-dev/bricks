@@ -483,6 +483,30 @@ void main() {
       );
       expect(padding.padding, const EdgeInsets.only(left: BricksSpacing.md));
     });
+
+    testWidgets('renders markdown tables as table widgets', (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-markdown-table',
+        role: 'assistant',
+        content: '''
+| 参数 | 含义 |
+|---|---|
+| `flutter run` | Flutter 的开发运行命令 |
+| `-d chrome` | 指定 Chrome 设备 |
+''',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Table), findsOneWidget);
+      expect(find.text('| 参数 | 含义 |'), findsNothing);
+      expect(find.text('参数'), findsOneWidget);
+      expect(find.text('含义'), findsOneWidget);
+      expect(find.text('Flutter 的开发运行命令'), findsOneWidget);
+      expect(find.text('指定 Chrome 设备'), findsOneWidget);
+    });
   });
 
   group('User delivery status', () {

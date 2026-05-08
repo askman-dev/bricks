@@ -769,7 +769,8 @@ class _AssistantMarkdownText extends StatelessWidget {
           ),
         );
 
-    for (final line in lines) {
+    for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      final line = lines[lineIndex];
       final trimmed = line.trimLeft();
       if (trimmed.startsWith('```')) {
         if (inCodeBlock) {
@@ -799,6 +800,67 @@ class _AssistantMarkdownText extends StatelessWidget {
           ),
           child: Text(trimmed.substring(1).trimLeft(), style: baseStyle),
         ));
+        continue;
+      }
+      final table = _MarkdownTable.tryParseAt(lines, lineIndex);
+      if (table != null) {
+        final borderColor = textColor.withValues(alpha: 0.24);
+        widgets.add(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Table(
+              border: TableBorder.all(color: borderColor),
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(
+                    color: quoteBlockColor.withValues(alpha: 0.7),
+                  ),
+                  children: [
+                    for (final cell in table.headers)
+                      Padding(
+                        padding: const EdgeInsets.all(BricksSpacing.xs),
+                        child: Text.rich(
+                          TextSpan(
+                            children: _parseInlineMarkdown(
+                              cell,
+                              baseStyle: baseStyle.copyWith(
+                                  fontWeight: FontWeight.w700),
+                              linkStyle: baseStyle.copyWith(
+                                color: linkColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              headingLike: false,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                for (final row in table.rows)
+                  TableRow(
+                    children: [
+                      for (final cell in row)
+                        Padding(
+                          padding: const EdgeInsets.all(BricksSpacing.xs),
+                          child: Text.rich(
+                            TextSpan(
+                              children: _parseInlineMarkdown(
+                                cell,
+                                baseStyle: baseStyle,
+                                linkStyle: baseStyle.copyWith(color: linkColor),
+                                headingLike: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        );
+        lineIndex = table.lastLineIndex;
         continue;
       }
       final block = _MarkdownBlock.tryParse(line);
@@ -838,6 +900,82 @@ class _AssistantMarkdownText extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: widgets,
     );
+  }
+}
+
+class _MarkdownTable {
+  const _MarkdownTable({
+    required this.headers,
+    required this.rows,
+    required this.lastLineIndex,
+  });
+
+  final List<String> headers;
+  final List<List<String>> rows;
+  final int lastLineIndex;
+
+  static final RegExp _separatorPattern = RegExp(
+    r'^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$',
+  );
+
+  static _MarkdownTable? tryParseAt(List<String> lines, int startIndex) {
+    if (startIndex + 1 >= lines.length) return null;
+    final headerLine = lines[startIndex];
+    final separatorLine = lines[startIndex + 1];
+    if (!_looksLikeTableRow(headerLine) ||
+        !_separatorPattern.hasMatch(separatorLine)) {
+      return null;
+    }
+
+    final headers = _splitCells(headerLine);
+    if (headers.isEmpty) return null;
+
+    final rowLines = <List<String>>[];
+    var currentIndex = startIndex + 2;
+    while (currentIndex < lines.length) {
+      final candidate = lines[currentIndex];
+      if (!_looksLikeTableRow(candidate) || candidate.trim().isEmpty) {
+        break;
+      }
+      final cells = _splitCells(candidate);
+      if (cells.isEmpty) break;
+      rowLines.add(_normalizeCells(cells, headers.length));
+      currentIndex++;
+    }
+
+    return _MarkdownTable(
+      headers: _normalizeCells(headers, headers.length),
+      rows: rowLines,
+      lastLineIndex: currentIndex - 1,
+    );
+  }
+
+  static bool _looksLikeTableRow(String line) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) return false;
+    return trimmed.startsWith('|') || trimmed.endsWith('|');
+  }
+
+  static List<String> _splitCells(String line) {
+    var normalized = line.trim();
+    if (normalized.startsWith('|')) {
+      normalized = normalized.substring(1);
+    }
+    if (normalized.endsWith('|')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized.split('|').map((cell) => cell.trim()).toList();
+  }
+
+  static List<String> _normalizeCells(List<String> cells, int targetLength) {
+    final normalized = List<String>.from(cells);
+    if (normalized.length < targetLength) {
+      normalized
+          .addAll(List<String>.filled(targetLength - normalized.length, ''));
+    } else if (normalized.length > targetLength) {
+      return normalized.sublist(0, targetLength);
+    }
+    return normalized;
   }
 }
 
