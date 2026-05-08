@@ -157,7 +157,7 @@ class _ComposerBarState extends State<ComposerBar>
                   TextField(
                     controller: _controller,
                     focusNode: _focusNode,
-                    enabled: !isSending && !widget.isStreaming,
+                    enabled: !widget.isStreaming,
                     maxLines: 5,
                     minLines: 1,
                     textInputAction: TextInputAction.send,
