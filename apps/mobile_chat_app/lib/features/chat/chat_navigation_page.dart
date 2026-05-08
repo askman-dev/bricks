@@ -99,6 +99,8 @@ class ChatNavigationPage extends StatefulWidget {
 
 class _ChatNavigationPageState extends State<ChatNavigationPage>
     with SingleTickerProviderStateMixin {
+  static const double _closeSwipeVelocityThreshold = -300;
+
   late final TabController _tabController;
 
   @override
@@ -124,6 +126,13 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
   void _selectAction(BuildContext context, ChatNavigationAction action) {
     _closeNavigation(context);
     widget.onActionSelected(action);
+  }
+
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity < _closeSwipeVelocityThreshold) {
+      _closeNavigation(context);
+    }
   }
 
   Future<void> _showChannelMenu(ChatChannelItem channel) async {
@@ -175,8 +184,11 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
         ? widget.selectedChannelId
         : (channels.isNotEmpty ? channels.first.id : null);
 
-    return Column(
-      children: [
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: _handleHorizontalDragEnd,
+      child: Column(
+        children: [
         // Header row
         SizedBox(
           height: kToolbarHeight,
@@ -221,6 +233,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
         Expanded(
           child: TabBarView(
             controller: _tabController,
+            physics: const NeverScrollableScrollPhysics(),
             children: [
               // Channels tab
               ListView(
@@ -303,7 +316,8 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
             ],
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 }
