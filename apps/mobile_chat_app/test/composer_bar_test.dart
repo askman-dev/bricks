@@ -265,6 +265,16 @@ void main() {
   });
 
   group('ComposerBar – send / stop controls', () {
+
+    testWidgets('text field stays enabled when send callback is unavailable',
+        (tester) async {
+      await tester.pumpWidget(_buildBar());
+      await tester.pump();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.enabled, isTrue);
+    });
+
     testWidgets('send button is present when not streaming', (tester) async {
       await tester.pumpWidget(_buildBar());
       await tester.pump();
