@@ -63,6 +63,30 @@ void main() {
       expect(find.text('Nodes'), findsOneWidget);
     });
 
+
+    testWidgets('horizontal swipe does not switch tabs', (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      await tester.fling(find.byType(ChatNavigationPage), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+
+      expect(find.text('新建频道'), findsOneWidget);
+      expect(find.text('No nodes'), findsNothing);
+    });
+
+    testWidgets('right-to-left swipe requests close', (tester) async {
+      var closeCount = 0;
+
+      await tester.pumpWidget(_buildPage(onRequestClose: () => closeCount++));
+      await tester.pumpAndSettle();
+
+      await tester.fling(find.byType(ChatNavigationPage), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+
+      expect(closeCount, 1);
+    });
+
     testWidgets('Current Chat is not present', (tester) async {
       await tester.pumpWidget(_buildPage());
       await tester.pumpAndSettle();
