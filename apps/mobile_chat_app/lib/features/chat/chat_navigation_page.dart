@@ -99,7 +99,7 @@ class ChatNavigationPage extends StatefulWidget {
 
 class _ChatNavigationPageState extends State<ChatNavigationPage>
     with SingleTickerProviderStateMixin {
-  static const double _closeSwipeVelocityThreshold = -300;
+  static const double _closeSwipeVelocityThreshold = 300;
 
   late final TabController _tabController;
 
@@ -130,7 +130,11 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
 
   void _handleHorizontalDragEnd(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
-    if (velocity < _closeSwipeVelocityThreshold) {
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    final shouldClose = isRtl
+        ? velocity > _closeSwipeVelocityThreshold
+        : velocity < -_closeSwipeVelocityThreshold;
+    if (shouldClose) {
       _closeNavigation(context);
     }
   }
@@ -314,8 +318,8 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
                 ],
               ),
             ],
+            ),
           ),
-        ),
         ],
       ),
     );

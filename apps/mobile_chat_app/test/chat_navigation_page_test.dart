@@ -10,22 +10,26 @@ Widget _buildPage({
   VoidCallback? onRequestClose,
   bool closeOnChannelSelected = true,
   List<ChatNodeItem> nodes = const [],
+  TextDirection textDirection = TextDirection.ltr,
 }) =>
     MaterialApp(
-      home: Scaffold(
-        body: ChatNavigationPage(
-          onActionSelected: onActionSelected ?? (_) {},
-          channels: const [
-            ChatChannelItem(id: 'default', name: '默认频道', isDefault: true),
-            ChatChannelItem(id: 'project', name: '项目频道'),
-          ],
-          selectedChannelId: 'default',
-          nodes: nodes,
-          onChannelSelected: onChannelSelected,
-          onChannelRename: onChannelRename,
-          onChannelArchive: onChannelArchive,
-          onRequestClose: onRequestClose,
-          closeOnChannelSelected: closeOnChannelSelected,
+      home: Directionality(
+        textDirection: textDirection,
+        child: Scaffold(
+          body: ChatNavigationPage(
+            onActionSelected: onActionSelected ?? (_) {},
+            channels: const [
+              ChatChannelItem(id: 'default', name: '默认频道', isDefault: true),
+              ChatChannelItem(id: 'project', name: '项目频道'),
+            ],
+            selectedChannelId: 'default',
+            nodes: nodes,
+            onChannelSelected: onChannelSelected,
+            onChannelRename: onChannelRename,
+            onChannelArchive: onChannelArchive,
+            onRequestClose: onRequestClose,
+            closeOnChannelSelected: closeOnChannelSelected,
+          ),
         ),
       ),
     );
@@ -63,25 +67,51 @@ void main() {
       expect(find.text('Nodes'), findsOneWidget);
     });
 
-
     testWidgets('horizontal swipe does not switch tabs', (tester) async {
-      await tester.pumpWidget(_buildPage());
+      var closeCount = 0;
+
+      await tester.pumpWidget(_buildPage(onRequestClose: () => closeCount++));
       await tester.pumpAndSettle();
 
-      await tester.fling(find.byType(ChatNavigationPage), const Offset(-400, 0), 1000);
+      await tester.drag(
+        find.byType(ChatNavigationPage),
+        const Offset(-200, 0),
+      );
       await tester.pumpAndSettle();
 
+      expect(closeCount, 0);
       expect(find.text('新建频道'), findsOneWidget);
       expect(find.text('No nodes'), findsNothing);
     });
 
-    testWidgets('right-to-left swipe requests close', (tester) async {
+    testWidgets('LTR right-to-left swipe requests close', (tester) async {
       var closeCount = 0;
 
       await tester.pumpWidget(_buildPage(onRequestClose: () => closeCount++));
       await tester.pumpAndSettle();
 
       await tester.fling(find.byType(ChatNavigationPage), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+
+      expect(closeCount, 1);
+    });
+
+    testWidgets('RTL left-to-right swipe requests close', (tester) async {
+      var closeCount = 0;
+
+      await tester.pumpWidget(
+        _buildPage(
+          onRequestClose: () => closeCount++,
+          textDirection: TextDirection.rtl,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.fling(
+        find.byType(ChatNavigationPage),
+        const Offset(400, 0),
+        1000,
+      );
       await tester.pumpAndSettle();
 
       expect(closeCount, 1);
