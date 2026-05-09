@@ -52,33 +52,81 @@ void main() {
           lessThan(scrollable.position.maxScrollExtent));
     });
 
-    testWidgets('keeps scroll position when only assistant message is appended',
+    testWidgets(
+        're-focuses latest user message when channel messages are replaced',
         (tester) async {
-      final messages = [
-        ChatMessage(
-          messageId: 'u1',
-          role: 'user',
-          content: 'hello',
-          timestamp: DateTime.utc(2026, 1, 1),
+      final messages = _messages('channel-a', 61);
+      late StateSetter setState;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, stateSetter) {
+                setState = stateSetter;
+                return SizedBox(
+                  height: 320,
+                  child: MessageList(messages: messages),
+                );
+              },
+            ),
+          ),
         ),
-      ];
-      await tester.pumpWidget(_build(messages));
+      );
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
-      final before = scrollable.position.pixels;
+      scrollable.position.jumpTo(0);
+      await tester.pump();
+      expect(scrollable.position.pixels, 0);
+
+      messages
+        ..clear()
+        ..addAll(_messages('channel-b', 61));
+      setState(() {});
+      await tester.pumpAndSettle();
+
+      expect(scrollable.position.pixels, greaterThan(0));
+    });
+
+    testWidgets('keeps scroll position when only assistant message is appended',
+        (tester) async {
+      final messages = _messages('stable', 61);
+      late StateSetter setState;
 
       await tester.pumpWidget(
-        _build([
-          ...messages,
-          ChatMessage(
-            messageId: 'a1',
-            role: 'assistant',
-            content: 'partial answer',
-            timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, stateSetter) {
+                setState = stateSetter;
+                return SizedBox(
+                  height: 320,
+                  child: MessageList(messages: messages),
+                );
+              },
+            ),
           ),
-        ]),
+        ),
       );
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final midOffset = scrollable.position.maxScrollExtent * 0.5;
+      scrollable.position.jumpTo(midOffset);
+      await tester.pump();
+      final before = scrollable.position.pixels;
+      expect(before, greaterThan(0));
+
+      messages.add(
+        ChatMessage(
+          messageId: 'a1',
+          role: 'assistant',
+          content: 'partial answer',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 1, 1),
+        ),
+      );
+      setState(() {});
       await tester.pumpAndSettle();
 
       expect(scrollable.position.pixels, closeTo(before, 0.1));

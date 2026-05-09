@@ -35,6 +35,7 @@ class _MessageListState extends State<MessageList> {
   // when the same List instance is mutated in place (e.g. ChatScreen passes
   // _messages directly and mutates it via ..clear()..addAll / add / [i]=).
   int _prevLength = 0;
+  _LastMessageKey? _prevFirstKey;
   _LastMessageKey? _prevLastKey;
 
   @override
@@ -50,19 +51,34 @@ class _MessageListState extends State<MessageList> {
   void didUpdateWidget(covariant MessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
     final messages = widget.messages;
+    final previousLength = _prevLength;
+    final previousFirstKey = _prevFirstKey;
+    final previousLastKey = _prevLastKey;
     final newLength = messages.length;
+    final newFirstKey =
+        messages.isEmpty ? null : _LastMessageKey.from(messages.first);
     final newKey =
         messages.isEmpty ? null : _LastMessageKey.from(messages.last);
-    if (newLength != _prevLength || newKey != _prevLastKey) {
-      final appendedMessage =
-          newLength > _prevLength && messages.isNotEmpty ? messages.last : null;
+    if (newLength != previousLength ||
+        newFirstKey != previousFirstKey ||
+        newKey != previousLastKey) {
+      final appendedMessage = newLength > previousLength && messages.isNotEmpty
+          ? messages.last
+          : null;
+      final becameNonEmpty = previousLength == 0 && newLength > 0;
+      final switchedConversation =
+          previousLength > 0 && newFirstKey != previousFirstKey;
       _prevLength = newLength;
+      _prevFirstKey = newFirstKey;
       _prevLastKey = newKey;
 
-      // Auto-focus only when a new user message is sent.
+      // Auto-focus on initial population, conversation switches, and when a
+      // new user message is sent.
       // During assistant streaming/progress updates, keep the current viewport
       // stable so the app never fights user scrolling.
-      if (appendedMessage?.role == 'user') {
+      if (becameNonEmpty ||
+          switchedConversation ||
+          appendedMessage?.role == 'user') {
         _focusedIndex = _focusedMessageIndex();
         _scrollToFocusedUserMessage();
       }
@@ -72,6 +88,8 @@ class _MessageListState extends State<MessageList> {
   void _saveSnapshot() {
     final messages = widget.messages;
     _prevLength = messages.length;
+    _prevFirstKey =
+        messages.isEmpty ? null : _LastMessageKey.from(messages.first);
     _prevLastKey =
         messages.isEmpty ? null : _LastMessageKey.from(messages.last);
   }
