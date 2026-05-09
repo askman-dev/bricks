@@ -53,23 +53,16 @@ class _MessageListState extends State<MessageList> {
     final newLength = messages.length;
     final newKey =
         messages.isEmpty ? null : _LastMessageKey.from(messages.last);
-    final wasStreamingTail = _prevLastKey?.isStreaming ?? false;
-    final isStreamingTail = newKey?.isStreaming ?? false;
-    // Use a stable identity that works even when messageId is null (e.g. older
-    // persisted data or server payloads that haven't been assigned an ID yet).
-    // Falls back to a composite of timestamp + role so that a streaming
-    // assistant turn without a messageId is still recognised as "the same tail".
-    final sameTailIdentity = _prevLastKey != null &&
-        newKey != null &&
-        _prevLastKey!.stableId == newKey.stableId;
-    final streamingProgressOnly = newLength == _prevLength &&
-        wasStreamingTail &&
-        isStreamingTail &&
-        sameTailIdentity;
     if (newLength != _prevLength || newKey != _prevLastKey) {
+      final appendedMessage =
+          newLength > _prevLength && messages.isNotEmpty ? messages.last : null;
       _prevLength = newLength;
       _prevLastKey = newKey;
-      if (!streamingProgressOnly) {
+
+      // Auto-focus only when a new user message is sent.
+      // During assistant streaming/progress updates, keep the current viewport
+      // stable so the app never fights user scrolling.
+      if (appendedMessage?.role == 'user') {
         _focusedIndex = _focusedMessageIndex();
         _scrollToFocusedUserMessage();
       }

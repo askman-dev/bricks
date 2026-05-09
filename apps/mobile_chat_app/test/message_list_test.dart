@@ -52,24 +52,40 @@ void main() {
           lessThan(scrollable.position.maxScrollExtent));
     });
 
-    testWidgets('re-focuses latest user message when list content changes',
+    testWidgets('keeps scroll position when only assistant message is appended',
         (tester) async {
-      await tester.pumpWidget(_build(_messages('before', 41)));
+      final messages = [
+        ChatMessage(
+          messageId: 'u1',
+          role: 'user',
+          content: 'hello',
+          timestamp: DateTime.utc(2026, 1, 1),
+        ),
+      ];
+      await tester.pumpWidget(_build(messages));
       await tester.pumpAndSettle();
 
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
-      scrollable.position.jumpTo(0);
-      await tester.pump();
-      expect(scrollable.position.pixels, 0);
+      final before = scrollable.position.pixels;
 
-      await tester.pumpWidget(_build(_messages('after', 41)));
+      await tester.pumpWidget(
+        _build([
+          ...messages,
+          ChatMessage(
+            messageId: 'a1',
+            role: 'assistant',
+            content: 'partial answer',
+            timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+          ),
+        ]),
+      );
       await tester.pumpAndSettle();
 
-      expect(scrollable.position.pixels, greaterThan(0));
+      expect(scrollable.position.pixels, closeTo(before, 0.1));
     });
 
     testWidgets(
-        're-focuses latest user message when rebuilt with same mutated list instance',
+        're-focuses latest user message when a new user message is appended',
         (tester) async {
       final messages = _messages('before', 41);
       late StateSetter setState;
@@ -96,9 +112,14 @@ void main() {
       await tester.pump();
       expect(scrollable.position.pixels, 0);
 
-      messages
-        ..clear()
-        ..addAll(_messages('after', 41));
+      messages.add(
+        ChatMessage(
+          messageId: 'u-new',
+          role: 'user',
+          content: 'new question',
+          timestamp: DateTime.utc(2026, 1, 1, 10),
+        ),
+      );
       setState(() {});
       await tester.pumpAndSettle();
 
