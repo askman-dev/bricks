@@ -58,6 +58,23 @@ const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
 const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 // Minimum interval between incremental DB flushes during model streaming to avoid write amplification.
 const STREAM_FLUSH_INTERVAL_MS = 300;
+const DEFAULT_INTERNAL_LOOP_MAX_STEPS = 4;
+const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 4;
+const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 15000;
+
+function parseBoundedInt(
+  value: unknown,
+  defaults: { fallback: number; min: number; max: number },
+): number {
+  const parsed =
+    typeof value === "number"
+      ? Math.trunc(value)
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return defaults.fallback;
+  return Math.max(defaults.min, Math.min(defaults.max, parsed));
+}
 
 function dispatchPlaceholderMetadata(params: {
   resolvedBotId: string | null;
@@ -313,10 +330,27 @@ async function runDefaultRouterRespondAsync(params: {
     });
     const effectiveToolCalls = requestedToolCalls.length > 0 ? requestedToolCalls : inferredToolCalls;
 
+    const loopMaxSteps = parseBoundedInt(body.maxSteps, {
+      fallback: DEFAULT_INTERNAL_LOOP_MAX_STEPS,
+      min: 1,
+      max: 12,
+    });
+    const loopMaxToolCalls = parseBoundedInt(body.maxToolCalls, {
+      fallback: DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS,
+      min: 1,
+      max: 20,
+    });
+    const loopTimeoutMs = parseBoundedInt(body.timeoutMs, {
+      fallback: DEFAULT_INTERNAL_LOOP_TIMEOUT_MS,
+      min: 1000,
+      max: 120000,
+    });
+
     if (effectiveToolCalls.length > 0) {
       const sequenceResult = await executeInternalToolSequence({
         userId,
-        calls: effectiveToolCalls,
+        calls: effectiveToolCalls.slice(0, loopMaxToolCalls),
+        maxCalls: loopMaxToolCalls,
       });
 
       await upsertMessages(userId, [
@@ -344,6 +378,10 @@ async function runDefaultRouterRespondAsync(params: {
               totalCalls: effectiveToolCalls.length,
               completedCalls: sequenceResult.completedCalls,
               ok: sequenceResult.ok,
+              maxSteps: loopMaxSteps,
+              maxToolCalls: loopMaxToolCalls,
+              timeoutMs: loopTimeoutMs,
+              terminatedBy: sequenceResult.ok ? 'tool_calls_completed' : 'tool_call_failed',
             },
             toolCalls: sequenceResult.calls,
           },
