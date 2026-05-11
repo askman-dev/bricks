@@ -6,6 +6,7 @@ import {
   normalizeChatThreadId,
   upsertChatScopeSetting,
 } from './chatRouterService.js';
+import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
 export const INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET = 'chat.thread.instruction.set';
@@ -325,5 +326,108 @@ export async function executeInternalToolSequence(params: {
     calls: results,
     completedCalls: results.length,
     failedCall: null,
+  };
+}
+
+/**
+ * Builds an AI-SDK-compatible tool set for the four P0 internal tools,
+ * closing over `userId` so each tool can call `executeInternalTool` directly.
+ *
+ * The returned keys use underscores (e.g. `chat_channel_create`) because
+ * OpenAI and Anthropic function-calling APIs do not allow dots in tool names.
+ * The tool implementations delegate to `executeInternalTool` using the
+ * canonical dot-delimited internal names.
+ */
+export function buildAgentTools(userId: string): Record<string, AgentTool> {
+  const runTool = (toolName: string, args: Record<string, unknown>) =>
+    executeInternalTool({ userId, toolName, args });
+
+  return {
+    chat_channel_instruction_set: {
+      description:
+        'Set or update the system instruction for a chat channel. ' +
+        'Use this when the user asks to configure context or behaviour rules for a specific channel.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          instruction: {
+            type: 'string',
+            description: 'The instruction text to apply to the channel.',
+          },
+        },
+        required: ['channelId', 'instruction'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET, args),
+    },
+
+    chat_thread_instruction_set: {
+      description:
+        'Set or update the system instruction for a specific thread (sub-section) within a channel. ' +
+        'Use this when the user asks to configure context or behaviour rules for a specific thread.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          threadId: {
+            type: 'string',
+            description: 'The thread identifier.',
+          },
+          instruction: {
+            type: 'string',
+            description: 'The instruction text to apply to the thread.',
+          },
+        },
+        required: ['channelId', 'threadId', 'instruction'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET, args),
+    },
+
+    chat_channel_create: {
+      description:
+        'Create a new chat channel. Use when the user requests a new channel by name.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The identifier for the new channel.',
+          },
+        },
+        required: ['channelId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_CREATE, args),
+    },
+
+    chat_thread_create: {
+      description:
+        'Create a new thread (sub-section) within an existing channel. ' +
+        'Use when the user requests a new thread or sub-section.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          threadId: {
+            type: 'string',
+            description: 'The identifier for the new thread.',
+          },
+        },
+        required: ['channelId', 'threadId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_CREATE, args),
+    },
   };
 }

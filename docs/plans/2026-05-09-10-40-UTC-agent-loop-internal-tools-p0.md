@@ -56,6 +56,6 @@ Bricks chat backend currently supports async message transport with SSE synchron
 - [x] Integrated local `/api/chat/respond` branch with explicit internal tool payload execution.
 - [x] Added inferred internal tool calls from slash-like user commands.
 - [x] Added route/service tests for explicit and inferred tool execution branches.
-- [ ] Replace request-driven tool execution with model-driven multi-step think→call→observe→final loop controller.
-- [ ] Add first-class loop controls (`maxSteps`, `maxToolCalls`, `timeout`) to route-level configuration and response metadata.
-- [ ] Add step-by-step assistant message updates for each loop phase (not only summary message) to maximize SSE observability.
+- [x] Replace request-driven tool execution with model-driven multi-step think→call→observe→final loop controller. (`buildAgentTools` + `streamWithAgentToolsAndUserConfig` with AI SDK `streamText` tools + `maxSteps`)
+- [x] Add first-class loop controls (`maxSteps`, `maxToolCalls`, `timeout`) to route-level configuration and response metadata.
+- [x] Add step-by-step assistant message updates for each loop phase (not only summary message) to maximize SSE observability. (`onStepFinish` writes per-step tool-call messages with `${assistantMessageId}:ts:N` ids)
