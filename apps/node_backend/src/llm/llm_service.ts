@@ -213,12 +213,40 @@ interface SdkStepFinishEvent {
 }
 
 /**
+ * Minimal subset of a completed AI SDK step, used only by our custom
+ * `stopWhen` condition that counts cumulative tool calls. The full SDK
+ * `StepResult` type is deeply generic and would require importing the
+ * ToolSet type parameter — `toolResults` is the only field we need.
+ */
+interface SdkStepSummary {
+  toolResults?: unknown[];
+}
+
+/**
+ * A synchronous stop condition compatible with the AI SDK `stopWhen` parameter.
+ * The SDK's `StopCondition<TOOLS>` generic type requires knowing the ToolSet at
+ * compile time; we use this local alias with a known-safe shape instead.
+ */
+type AgentStopCondition = (event: { steps?: SdkStepSummary[] }) => boolean;
+
+/** Maximum wall-clock timeout we allow for a single agent-loop invocation (ms). */
+const MAX_AGENT_TIMEOUT_MS = 120_000;
+
+/**
  * Streams a model-driven agent loop that can call internal tools.
  *
  * The AI model decides which tools (if any) to invoke. Each completed step
  * that contains tool results fires `onStepFinish` so that the caller can
  * persist intermediate tool-call messages. The returned `textStream` carries
  * only the model's final text response.
+ *
+ * @param options.maxSteps     - Hard upper bound on the number of LLM call steps.
+ * @param options.maxToolCalls - Optional cap on the cumulative number of tool calls
+ *   across all steps. Evaluated after each step finishes; stops before the next
+ *   step once the cumulative total reaches this limit.
+ * @param options.timeoutMs    - Optional wall-clock timeout (ms), clamped to
+ *   MAX_AGENT_TIMEOUT_MS. The stream is aborted via AbortController when
+ *   triggered; the caller receives an AbortError from the text-stream iterator.
  */
 export async function streamWithAgentToolsAndUserConfig(
   userId: string,
@@ -226,6 +254,8 @@ export async function streamWithAgentToolsAndUserConfig(
   tools: Record<string, AgentTool>,
   options: {
     maxSteps: number;
+    maxToolCalls?: number;
+    timeoutMs?: number;
     onStepFinish?: (stepResults: AgentLoopStepResult[]) => Promise<void>;
   },
   preferredProvider?: LlmProvider,
@@ -234,6 +264,33 @@ export async function streamWithAgentToolsAndUserConfig(
   const { model, modelId } = resolveModel(request, runtimeConfig);
   const sdkTools = buildAiSdkTools(tools);
 
+  // Build stop conditions: always enforce maxSteps; also enforce maxToolCalls when set.
+  // stopWhen is evaluated AFTER each step completes, so `>= limit` means "the budget
+  // was spent in the step that just finished — don't start another step."
+  const stopConditions: AgentStopCondition[] = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    stepCountIs(options.maxSteps) as any,
+  ];
+  if (options.maxToolCalls !== undefined) {
+    const limit = options.maxToolCalls;
+    stopConditions.push((event) => {
+      const total = (event.steps ?? []).reduce(
+        (sum, step) => sum + (step.toolResults?.length ?? 0),
+        0,
+      );
+      return total >= limit;
+    });
+  }
+
+  // Set up AbortController for the timeout. Clamp to MAX_AGENT_TIMEOUT_MS so
+  // a caller cannot schedule an unbounded timer from user-supplied input.
+  const abortController = new AbortController();
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  if (options.timeoutMs && options.timeoutMs > 0) {
+    const safeTimeoutMs = Math.min(options.timeoutMs, MAX_AGENT_TIMEOUT_MS);
+    timeoutHandle = setTimeout(() => abortController.abort(), safeTimeoutMs);
+  }
+
   // The tools object is typed with generics in the AI SDK but our neutral
   // AgentTool format is compatible at runtime — cast is safe here.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -241,7 +298,9 @@ export async function streamWithAgentToolsAndUserConfig(
     model,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools: sdkTools as any,
-    stopWhen: stepCountIs(options.maxSteps),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    stopWhen: stopConditions as any,
+    abortSignal: abortController.signal,
     messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
@@ -266,5 +325,17 @@ export async function streamWithAgentToolsAndUserConfig(
       : undefined,
   });
 
-  return { textStream: result.textStream, provider: runtimeConfig.provider, modelId };
+  // Wrap the textStream in a generator that always clears the timeout handle
+  // when the stream finishes (naturally or via an error/abort).
+  async function* managedStream(): AsyncIterable<string> {
+    try {
+      yield* result.textStream;
+    } finally {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+  }
+
+  return { textStream: managedStream(), provider: runtimeConfig.provider, modelId };
 }

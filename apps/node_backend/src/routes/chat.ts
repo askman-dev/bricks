@@ -351,6 +351,8 @@ async function runDefaultRouterRespondAsync(params: {
       agentTools,
       {
         maxSteps: loopMaxSteps,
+        maxToolCalls: loopMaxToolCalls,
+        timeoutMs: loopTimeoutMs,
         onStepFinish: async (stepResults) => {
           toolStepIndex++;
           const stepMessageId = `${assistantMessageId}:ts:${toolStepIndex}`;
