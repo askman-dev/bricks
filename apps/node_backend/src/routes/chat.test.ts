@@ -454,6 +454,7 @@ describe("chat routes", () => {
     expect(executeInternalToolSequenceMock).toHaveBeenCalledWith({
       userId: 'user-123',
       calls: [{ toolName: 'chat.channel.create', args: { channelId: 'ops' } }],
+      maxCalls: 4,
     });
     expect(streamWithUserConfigMock).not.toHaveBeenCalled();
   });
