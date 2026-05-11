@@ -435,7 +435,7 @@ describe("chat routes", () => {
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
-  it('passes maxSteps from request body to the model-driven agent loop', async () => {
+  it('passes loop control options from request body to the model-driven agent loop', async () => {
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: 'POST',
       headers: {
@@ -451,6 +451,8 @@ describe("chat routes", () => {
         assistantMessageId: 'msg-a-2',
         userMessage: 'hello',
         maxSteps: 6,
+        maxToolCalls: 10,
+        timeoutMs: 30000,
       }),
     });
 
@@ -460,7 +462,7 @@ describe("chat routes", () => {
       'user-123',
       expect.objectContaining({ messages: expect.any(Array) }),
       expect.any(Object),
-      expect.objectContaining({ maxSteps: 6 }),
+      expect.objectContaining({ maxSteps: 6, maxToolCalls: 10, timeoutMs: 30000 }),
       undefined,
     );
   });
