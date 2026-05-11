@@ -32,10 +32,9 @@ import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
 } from "../services/platformNodeService.js";
-import { streamWithUserConfig } from "../llm/llm_service.js";
+import { streamWithAgentToolsAndUserConfig } from '../llm/llm_service.js';
 import {
-  executeInternalToolSequence,
-  inferInternalToolCallsFromMessage,
+  buildAgentTools,
 } from '../services/localAgentLoopService.js';
 import type { LlmProvider } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
@@ -308,28 +307,6 @@ async function runDefaultRouterRespondAsync(params: {
       model: typeof body.model === "string" ? body.model : null,
     });
 
-    const requestedToolCallsRaw = Array.isArray(body.internalToolCalls)
-      ? body.internalToolCalls
-      : body.internalToolCall
-        ? [body.internalToolCall]
-        : [];
-    const requestedToolCalls = requestedToolCallsRaw
-      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-      .map((item) => ({
-        toolName: typeof item.name === 'string' ? item.name : '',
-        args:
-          item.args && typeof item.args === 'object' && !Array.isArray(item.args)
-            ? (item.args as Record<string, unknown>)
-            : {},
-      }));
-
-    const inferredToolCalls = inferInternalToolCallsFromMessage({
-      message: typeof body.userMessage === 'string' ? body.userMessage : '',
-      channelId,
-      threadId,
-    });
-    const effectiveToolCalls = requestedToolCalls.length > 0 ? requestedToolCalls : inferredToolCalls;
-
     const loopMaxSteps = parseBoundedInt(body.maxSteps, {
       fallback: DEFAULT_INTERNAL_LOOP_MAX_STEPS,
       min: 1,
@@ -346,51 +323,6 @@ async function runDefaultRouterRespondAsync(params: {
       max: 120000,
     });
 
-    if (effectiveToolCalls.length > 0) {
-      const sequenceResult = await executeInternalToolSequence({
-        userId,
-        calls: effectiveToolCalls.slice(0, loopMaxToolCalls),
-        maxCalls: loopMaxToolCalls,
-      });
-
-      await upsertMessages(userId, [
-        {
-          messageId: assistantMessageId,
-          taskId: acceptedTaskId,
-          channelId,
-          sessionId: acceptedSessionId,
-          threadId,
-          role: 'assistant',
-          content: sequenceResult.ok
-            ? `Executed ${sequenceResult.completedCalls} internal tool call(s)`
-            : `Tool failed: ${sequenceResult.failedCall?.error?.message ?? 'unknown error'}`,
-          taskState: sequenceResult.ok ? 'completed' : 'failed',
-          checkpointCursor: null,
-          metadata: {
-            ...dispatchPlaceholderMetadata({
-              resolvedBotId,
-              resolvedSkillId,
-              source: 'backend.respond.agent_loop',
-              model: typeof body.model === 'string' ? body.model : null,
-            }),
-            agentLoop: {
-              phase: 'tool_call',
-              totalCalls: effectiveToolCalls.length,
-              completedCalls: sequenceResult.completedCalls,
-              ok: sequenceResult.ok,
-              maxSteps: loopMaxSteps,
-              maxToolCalls: loopMaxToolCalls,
-              timeoutMs: loopTimeoutMs,
-              terminatedBy: sequenceResult.ok ? 'tool_calls_completed' : 'tool_call_failed',
-            },
-            toolCalls: sequenceResult.calls,
-          },
-          createdAt: null,
-        },
-      ]);
-      return;
-    }
-
     const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
       limit: 40,
       maxChars: 10000,
@@ -405,13 +337,60 @@ async function runDefaultRouterRespondAsync(params: {
       ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
       : modelMessages;
 
-    const { textStream, provider, modelId } = await streamWithUserConfig(
+    const agentTools = buildAgentTools(userId);
+    let toolStepIndex = 0;
+
+    const { textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
       userId,
       {
         model: typeof body.model === "string" ? body.model : undefined,
         configId: typeof body.configId === "string" ? body.configId : undefined,
         messages: messagesWithSystem,
         maxTokens,
+      },
+      agentTools,
+      {
+        maxSteps: loopMaxSteps,
+        maxToolCalls: loopMaxToolCalls,
+        timeoutMs: loopTimeoutMs,
+        onStepFinish: async (stepResults) => {
+          toolStepIndex++;
+          const stepMessageId = `${assistantMessageId}:ts:${toolStepIndex}`;
+          const stepContent = stepResults
+            .map((r) => `Tool: ${r.toolName}\nResult: ${JSON.stringify(r.result)}`)
+            .join('\n\n');
+          await upsertMessages(userId, [
+            {
+              messageId: stepMessageId,
+              taskId: acceptedTaskId,
+              channelId,
+              sessionId: acceptedSessionId,
+              threadId,
+              role: 'assistant',
+              content: stepContent,
+              taskState: 'dispatched',
+              checkpointCursor: null,
+              metadata: {
+                ...dispatchPlaceholderMetadata({
+                  resolvedBotId,
+                  resolvedSkillId,
+                  source: 'backend.respond.agent_loop',
+                  model: typeof body.model === 'string' ? body.model : null,
+                }),
+                agentLoop: {
+                  phase: 'tool_call',
+                  stepIndex: toolStepIndex,
+                  completedCalls: stepResults.length,
+                  maxSteps: loopMaxSteps,
+                  maxToolCalls: loopMaxToolCalls,
+                  timeoutMs: loopTimeoutMs,
+                },
+                toolCalls: stepResults,
+              },
+              createdAt: null,
+            },
+          ]);
+        },
       },
       parseProvider(body.provider),
     );

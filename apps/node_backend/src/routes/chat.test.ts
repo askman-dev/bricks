@@ -23,11 +23,10 @@ const {
   listChatChannelNamesMock,
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
-  streamWithUserConfigMock,
+  streamWithAgentToolsAndUserConfigMock,
+  buildAgentToolsMock,
   getPlatformNodeByNodeIdMock,
   listPlatformNodesMock,
-  executeInternalToolSequenceMock,
-  inferInternalToolCallsFromMessageMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -73,7 +72,7 @@ const {
     updatedAt: "2026-04-18T08:00:00.000Z",
   })),
   deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
-  streamWithUserConfigMock: vi.fn(async () => ({
+  streamWithAgentToolsAndUserConfigMock: vi.fn(async () => ({
     textStream: (async function* () {
       yield "sync ";
       yield "reply";
@@ -81,6 +80,7 @@ const {
     provider: "anthropic",
     modelId: "claude-sonnet-4-5",
   })),
+  buildAgentToolsMock: vi.fn(() => ({})),
   getPlatformNodeByNodeIdMock: vi.fn(
     async (
       _userId: string,
@@ -100,20 +100,6 @@ const {
       updatedAt: "2026-04-17T07:00:00.000Z",
     },
   ]),
-  executeInternalToolSequenceMock: vi.fn(async () => ({
-    ok: true,
-    calls: [
-      {
-        ok: true,
-        toolName: 'chat.channel.create',
-        data: { channelId: 'ops', sessionId: 'session:ops:main' },
-        error: null,
-      },
-    ],
-    completedCalls: 1,
-    failedCall: null,
-  })),
-  inferInternalToolCallsFromMessageMock: vi.fn(() => []),
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -155,12 +141,11 @@ vi.mock("../services/chatChannelNameService.js", () => ({
 }));
 
 vi.mock('../services/localAgentLoopService.js', () => ({
-  executeInternalToolSequence: executeInternalToolSequenceMock,
-  inferInternalToolCallsFromMessage: inferInternalToolCallsFromMessageMock,
+  buildAgentTools: buildAgentToolsMock,
 }));
 
 vi.mock("../llm/llm_service.js", () => ({
-  streamWithUserConfig: streamWithUserConfigMock,
+  streamWithAgentToolsAndUserConfig: streamWithAgentToolsAndUserConfigMock,
 }));
 
 vi.mock("../middleware/auth.js", () => ({
@@ -233,7 +218,8 @@ describe("chat routes", () => {
     listChatChannelNamesMock.mockClear();
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
-    streamWithUserConfigMock.mockClear();
+    streamWithAgentToolsAndUserConfigMock.mockClear();
+    buildAgentToolsMock.mockClear();
     getPlatformNodeByNodeIdMock.mockReset();
     getPlatformNodeByNodeIdMock.mockImplementation(
       async (_userId: string, nodeId: string) => ({
@@ -243,8 +229,6 @@ describe("chat routes", () => {
       }),
     );
     listPlatformNodesMock.mockClear();
-    executeInternalToolSequenceMock.mockClear();
-    inferInternalToolCallsFromMessageMock.mockClear();
   });
 
   it("routes plugin scopes to async pending dispatch", async () => {
@@ -278,7 +262,7 @@ describe("chat routes", () => {
     expect(body.state).toBe("accepted");
     expect(body.text).toBe("");
     expect(body.lastSeqId).toBe(7);
-    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).not.toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-user-1",
@@ -348,7 +332,7 @@ describe("chat routes", () => {
     await new Promise<void>((resolve) => {
       setTimeout(() => resolve(), 0);
     });
-    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
@@ -410,7 +394,7 @@ describe("chat routes", () => {
         }),
       }),
     ]);
-    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-assistant-default-1",
@@ -427,7 +411,7 @@ describe("chat routes", () => {
     ]);
   });
 
-  it('executes internal tool call for local respond and skips model stream', async () => {
+  it('uses model-driven agent loop for local respond, passing tools to the streaming function', async () => {
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: 'POST',
       headers: {
@@ -441,29 +425,17 @@ describe("chat routes", () => {
         sessionId: 'session:default:main',
         userMessageId: 'msg-u-1',
         assistantMessageId: 'msg-a-1',
-        userMessage: 'create channel',
-        internalToolCall: {
-          name: 'chat.channel.create',
-          args: { channelId: 'ops' },
-        },
+        userMessage: 'create a channel called ops',
       }),
     });
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(executeInternalToolSequenceMock).toHaveBeenCalledWith({
-      userId: 'user-123',
-      calls: [{ toolName: 'chat.channel.create', args: { channelId: 'ops' } }],
-      maxCalls: 4,
-    });
-    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
-  it('executes inferred internal tool calls when explicit payload is absent', async () => {
-    inferInternalToolCallsFromMessageMock.mockReturnValueOnce([
-      { toolName: 'chat.channel.create', args: { channelId: 'ops' } },
-    ]);
-
+  it('passes loop control options from request body to the model-driven agent loop', async () => {
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: 'POST',
       headers: {
@@ -477,15 +449,22 @@ describe("chat routes", () => {
         sessionId: 'session:default:main',
         userMessageId: 'msg-u-2',
         assistantMessageId: 'msg-a-2',
-        userMessage: '/channel create ops',
+        userMessage: 'hello',
+        maxSteps: 6,
+        maxToolCalls: 10,
+        timeoutMs: 30000,
       }),
     });
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(inferInternalToolCallsFromMessageMock).toHaveBeenCalled();
-    expect(executeInternalToolSequenceMock).toHaveBeenCalled();
-    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalledWith(
+      'user-123',
+      expect.objectContaining({ messages: expect.any(Array) }),
+      expect.any(Object),
+      expect.objectContaining({ maxSteps: 6, maxToolCalls: 10, timeoutMs: 30000 }),
+      undefined,
+    );
   });
 
   it("rejects respond payload when maxTokens exceeds upper bound", async () => {
@@ -512,7 +491,7 @@ describe("chat routes", () => {
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error?: string };
     expect(body.error).toContain("maxTokens");
-    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).not.toHaveBeenCalled();
   });
 
   it("prefers an explicitly requested plugin node", async () => {
