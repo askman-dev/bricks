@@ -33,6 +33,10 @@ import {
   listPlatformNodes,
 } from "../services/platformNodeService.js";
 import { streamWithUserConfig } from "../llm/llm_service.js";
+import {
+  executeInternalToolSequence,
+  inferInternalToolCallsFromMessage,
+} from '../services/localAgentLoopService.js';
 import type { LlmProvider } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
 
@@ -286,6 +290,68 @@ async function runDefaultRouterRespondAsync(params: {
       source: "backend.respond.stream",
       model: typeof body.model === "string" ? body.model : null,
     });
+
+    const requestedToolCallsRaw = Array.isArray(body.internalToolCalls)
+      ? body.internalToolCalls
+      : body.internalToolCall
+        ? [body.internalToolCall]
+        : [];
+    const requestedToolCalls = requestedToolCallsRaw
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+      .map((item) => ({
+        toolName: typeof item.name === 'string' ? item.name : '',
+        args:
+          item.args && typeof item.args === 'object' && !Array.isArray(item.args)
+            ? (item.args as Record<string, unknown>)
+            : {},
+      }));
+
+    const inferredToolCalls = inferInternalToolCallsFromMessage({
+      message: typeof body.userMessage === 'string' ? body.userMessage : '',
+      channelId,
+      threadId,
+    });
+    const effectiveToolCalls = requestedToolCalls.length > 0 ? requestedToolCalls : inferredToolCalls;
+
+    if (effectiveToolCalls.length > 0) {
+      const sequenceResult = await executeInternalToolSequence({
+        userId,
+        calls: effectiveToolCalls,
+      });
+
+      await upsertMessages(userId, [
+        {
+          messageId: assistantMessageId,
+          taskId: acceptedTaskId,
+          channelId,
+          sessionId: acceptedSessionId,
+          threadId,
+          role: 'assistant',
+          content: sequenceResult.ok
+            ? `Executed ${sequenceResult.completedCalls} internal tool call(s)`
+            : `Tool failed: ${sequenceResult.failedCall?.error?.message ?? 'unknown error'}`,
+          taskState: sequenceResult.ok ? 'completed' : 'failed',
+          checkpointCursor: null,
+          metadata: {
+            ...dispatchPlaceholderMetadata({
+              resolvedBotId,
+              resolvedSkillId,
+              source: 'backend.respond.agent_loop',
+              model: typeof body.model === 'string' ? body.model : null,
+            }),
+            agentLoop: {
+              phase: 'tool_call',
+              totalCalls: effectiveToolCalls.length,
+              completedCalls: sequenceResult.completedCalls,
+              ok: sequenceResult.ok,
+            },
+            toolCalls: sequenceResult.calls,
+          },
+          createdAt: null,
+        },
+      ]);
+      return;
+    }
 
     const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
       limit: 40,

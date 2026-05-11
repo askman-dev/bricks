@@ -26,6 +26,8 @@ const {
   streamWithUserConfigMock,
   getPlatformNodeByNodeIdMock,
   listPlatformNodesMock,
+  executeInternalToolSequenceMock,
+  inferInternalToolCallsFromMessageMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -98,6 +100,20 @@ const {
       updatedAt: "2026-04-17T07:00:00.000Z",
     },
   ]),
+  executeInternalToolSequenceMock: vi.fn(async () => ({
+    ok: true,
+    calls: [
+      {
+        ok: true,
+        toolName: 'chat.channel.create',
+        data: { channelId: 'ops', sessionId: 'session:ops:main' },
+        error: null,
+      },
+    ],
+    completedCalls: 1,
+    failedCall: null,
+  })),
+  inferInternalToolCallsFromMessageMock: vi.fn(() => []),
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -136,6 +152,11 @@ vi.mock("../services/chatChannelNameService.js", () => ({
   deleteChatChannelName: deleteChatChannelNameMock,
   listChatChannelNames: listChatChannelNamesMock,
   upsertChatChannelName: upsertChatChannelNameMock,
+}));
+
+vi.mock('../services/localAgentLoopService.js', () => ({
+  executeInternalToolSequence: executeInternalToolSequenceMock,
+  inferInternalToolCallsFromMessage: inferInternalToolCallsFromMessageMock,
 }));
 
 vi.mock("../llm/llm_service.js", () => ({
@@ -222,6 +243,8 @@ describe("chat routes", () => {
       }),
     );
     listPlatformNodesMock.mockClear();
+    executeInternalToolSequenceMock.mockClear();
+    inferInternalToolCallsFromMessageMock.mockClear();
   });
 
   it("routes plugin scopes to async pending dispatch", async () => {
@@ -402,6 +425,66 @@ describe("chat routes", () => {
         content: "sync reply",
       }),
     ]);
+  });
+
+  it('executes internal tool call for local respond and skips model stream', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        taskId: 'task-1',
+        idempotencyKey: 'idem-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-1',
+        assistantMessageId: 'msg-a-1',
+        userMessage: 'create channel',
+        internalToolCall: {
+          name: 'chat.channel.create',
+          args: { channelId: 'ops' },
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(executeInternalToolSequenceMock).toHaveBeenCalledWith({
+      userId: 'user-123',
+      calls: [{ toolName: 'chat.channel.create', args: { channelId: 'ops' } }],
+    });
+    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
+  });
+
+  it('executes inferred internal tool calls when explicit payload is absent', async () => {
+    inferInternalToolCallsFromMessageMock.mockReturnValueOnce([
+      { toolName: 'chat.channel.create', args: { channelId: 'ops' } },
+    ]);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        taskId: 'task-2',
+        idempotencyKey: 'idem-2',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-2',
+        assistantMessageId: 'msg-a-2',
+        userMessage: '/channel create ops',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(inferInternalToolCallsFromMessageMock).toHaveBeenCalled();
+    expect(executeInternalToolSequenceMock).toHaveBeenCalled();
+    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
   });
 
   it("rejects respond payload when maxTokens exceeds upper bound", async () => {
