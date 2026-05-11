@@ -195,6 +195,24 @@ function buildAiSdkTools(tools: Record<string, AgentTool>): Record<string, unkno
 }
 
 /**
+ * Shape of an individual tool result entry in an `OnStepFinishEvent`.
+ * We define this locally to avoid importing the SDK's generic `TypedToolResult`
+ * which requires knowing the full ToolSet type at compile time.
+ */
+interface SdkToolResult {
+  toolName: string;
+  args: unknown;
+  result: unknown;
+}
+
+/**
+ * Minimal subset of the AI SDK `OnStepFinishEvent` we consume.
+ */
+interface SdkStepFinishEvent {
+  toolResults?: SdkToolResult[];
+}
+
+/**
  * Streams a model-driven agent loop that can call internal tools.
  *
  * The AI model decides which tools (if any) to invoke. Each completed step
@@ -216,6 +234,8 @@ export async function streamWithAgentToolsAndUserConfig(
   const { model, modelId } = resolveModel(request, runtimeConfig);
   const sdkTools = buildAiSdkTools(tools);
 
+  // The tools object is typed with generics in the AI SDK but our neutral
+  // AgentTool format is compatible at runtime — cast is safe here.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = streamText({
     model,
@@ -225,20 +245,23 @@ export async function streamWithAgentToolsAndUserConfig(
     messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
+    // The onStepFinish callback shape changed in AI SDK v6; cast the event to
+    // our local interface to access toolResults without pulling in the full
+    // generic ToolSet type.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onStepFinish: options.onStepFinish
-      ? (async (step: any) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const results: AgentLoopStepResult[] = ((step.toolResults ?? []) as any[]).map((tr) => ({
+      ? (async (event: SdkStepFinishEvent) => {
+          const results: AgentLoopStepResult[] = (event.toolResults ?? []).map((tr) => ({
             toolName: String(tr.toolName ?? ''),
             args: (tr.args && typeof tr.args === 'object' && !Array.isArray(tr.args))
               ? (tr.args as Record<string, unknown>)
               : {},
             result: tr.result,
           }));
-          if (results.length > 0 && options.onStepFinish) {
-            await options.onStepFinish(results);
+          if (results.length > 0) {
+            await options.onStepFinish!(results);
           }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         }) as any
       : undefined,
   });
