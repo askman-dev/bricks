@@ -1,9 +1,17 @@
-import { generateText, streamText } from 'ai';
+import { generateText, streamText, jsonSchema, stepCountIs } from 'ai';
 import type { LanguageModel } from 'ai';
 import { getApiConfigs } from '../services/configService.js';
 import { AnthropicAdapter } from './providers/anthropic_adapter.js';
 import { GoogleAiStudioAdapter } from './providers/google_ai_studio_adapter.js';
-import { LlmProvider, LlmProviderAdapter, LlmRuntimeConfig, UnifiedChatRequest, UnifiedChatResponse } from './types.js';
+import {
+  LlmProvider,
+  LlmProviderAdapter,
+  LlmRuntimeConfig,
+  UnifiedChatRequest,
+  UnifiedChatResponse,
+  AgentTool,
+  AgentLoopStepResult,
+} from './types.js';
 
 const adapters: Record<LlmProvider, LlmProviderAdapter> = {
   anthropic: new AnthropicAdapter(),
@@ -168,4 +176,72 @@ function parseProvider(provider: string): LlmProvider | null {
     return provider;
   }
   return null;
+}
+
+/**
+ * Converts our neutral AgentTool map into the AI SDK tool format.
+ * Uses jsonSchema() so that zod is not required.
+ */
+function buildAiSdkTools(tools: Record<string, AgentTool>): Record<string, unknown> {
+  const sdkTools: Record<string, unknown> = {};
+  for (const [name, agentTool] of Object.entries(tools)) {
+    sdkTools[name] = {
+      description: agentTool.description,
+      parameters: jsonSchema(agentTool.parametersSchema),
+      execute: agentTool.execute,
+    };
+  }
+  return sdkTools;
+}
+
+/**
+ * Streams a model-driven agent loop that can call internal tools.
+ *
+ * The AI model decides which tools (if any) to invoke. Each completed step
+ * that contains tool results fires `onStepFinish` so that the caller can
+ * persist intermediate tool-call messages. The returned `textStream` carries
+ * only the model's final text response.
+ */
+export async function streamWithAgentToolsAndUserConfig(
+  userId: string,
+  request: UnifiedChatRequest,
+  tools: Record<string, AgentTool>,
+  options: {
+    maxSteps: number;
+    onStepFinish?: (stepResults: AgentLoopStepResult[]) => Promise<void>;
+  },
+  preferredProvider?: LlmProvider,
+): Promise<{ textStream: AsyncIterable<string>; provider: LlmProvider; modelId: string }> {
+  const runtimeConfig = await resolveRuntimeConfig(userId, preferredProvider, request.configId);
+  const { model, modelId } = resolveModel(request, runtimeConfig);
+  const sdkTools = buildAiSdkTools(tools);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = streamText({
+    model,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools: sdkTools as any,
+    stopWhen: stepCountIs(options.maxSteps),
+    messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature: request.temperature,
+    maxOutputTokens: request.maxTokens ?? 1024,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onStepFinish: options.onStepFinish
+      ? (async (step: any) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const results: AgentLoopStepResult[] = ((step.toolResults ?? []) as any[]).map((tr) => ({
+            toolName: String(tr.toolName ?? ''),
+            args: (tr.args && typeof tr.args === 'object' && !Array.isArray(tr.args))
+              ? (tr.args as Record<string, unknown>)
+              : {},
+            result: tr.result,
+          }));
+          if (results.length > 0 && options.onStepFinish) {
+            await options.onStepFinish(results);
+          }
+        }) as any
+      : undefined,
+  });
+
+  return { textStream: result.textStream, provider: runtimeConfig.provider, modelId };
 }

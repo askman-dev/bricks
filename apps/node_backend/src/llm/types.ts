@@ -32,3 +32,23 @@ export interface LlmProviderAdapter {
   readonly provider: LlmProvider;
   createModel(modelId: string, config: LlmRuntimeConfig): LanguageModel;
 }
+
+/**
+ * A single agent tool definition. The `parametersSchema` is a JSON Schema
+ * object describing the tool's input. The `execute` function receives args
+ * matching that schema and returns an arbitrary result.
+ */
+export interface AgentTool {
+  description: string;
+  parametersSchema: Record<string, unknown>;
+  execute: (args: Record<string, unknown>) => Promise<unknown>;
+}
+
+/**
+ * The result of one tool call within an agent-loop step.
+ */
+export interface AgentLoopStepResult {
+  toolName: string;
+  args: Record<string, unknown>;
+  result: unknown;
+}
