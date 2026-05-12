@@ -391,12 +391,20 @@ export async function streamWithAgentToolsAndUserConfig(
           stepHasToolCalls = true;
           if (options.onToolCallStart) {
             const tc = rawEvent as { type: 'tool-call'; toolName: string; args: unknown };
-            const toolName = String(tc.toolName ?? '');
-            const args =
-              tc.args && typeof tc.args === 'object' && !Array.isArray(tc.args)
-                ? (tc.args as Record<string, unknown>)
-                : {};
-            await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
+            // Skip the callback if the SDK emits a tool-call with no name — an
+            // empty tool name would produce meaningless DB records.
+            if (tc.toolName) {
+              const toolName = String(tc.toolName);
+              // Guard against non-object args (e.g. SDK emits a primitive).
+              // Substitute an empty object rather than crashing, but the
+              // substitution is intentional and the caller is aware of this
+              // contract via the TypeScript signature.
+              const args =
+                tc.args && typeof tc.args === 'object' && !Array.isArray(tc.args)
+                  ? (tc.args as Record<string, unknown>)
+                  : {};
+              await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
+            }
           }
           callIndex++;
         } else if (rawEvent.type === 'step-finish') {
