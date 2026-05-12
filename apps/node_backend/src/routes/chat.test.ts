@@ -840,4 +840,170 @@ describe("chat routes", () => {
     );
     expect(upsertChatChannelNameMock).not.toHaveBeenCalled();
   });
+
+  it('writes tool_call_start DB message when onToolCallStart callback is triggered', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implTc = async (...args: any[]) => {
+      const options = args[3] as {
+        onToolCallStart?: (
+          toolName: string,
+          args: Record<string, unknown>,
+          stepIndex: number,
+          callIndex: number,
+        ) => Promise<void>;
+      };
+      if (options.onToolCallStart) {
+        await options.onToolCallStart('create_channel', { channelId: 'ops' }, 0, 0);
+      }
+      return {
+        textStream: (async function* () {
+          yield 'done';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implTc as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-tc-1',
+        idempotencyKey: 'idem-tc-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-tc-1',
+        assistantMessageId: 'msg-a-tc-1',
+        userMessage: '/create ops',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-tc-1:tc:1:0',
+        role: 'assistant',
+        content: '',
+        taskState: 'dispatched',
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'tool_call_start',
+            stepIndex: 1,
+            callIndex: 0,
+            toolName: 'create_channel',
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('writes reasoning DB message when onReasoningChunk callback is triggered', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implR = async (...args: any[]) => {
+      const options = args[3] as {
+        onReasoningChunk?: (text: string, stepIndex: number) => Promise<void>;
+      };
+      if (options.onReasoningChunk) {
+        await options.onReasoningChunk('Let me think about this carefully.', 0);
+      }
+      return {
+        textStream: (async function* () {
+          yield 'Here is my answer.';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implR as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-r-1',
+        idempotencyKey: 'idem-r-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-r-1',
+        assistantMessageId: 'msg-a-r-1',
+        userMessage: 'what is 2+2?',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-r-1:r:1',
+        role: 'assistant',
+        content: 'Let me think about this carefully.',
+        taskState: 'dispatched',
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'reasoning',
+            stepIndex: 1,
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('writes step_text DB message when onStepTextEnd callback is triggered', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implPt = async (...args: any[]) => {
+      const options = args[3] as {
+        onStepTextEnd?: (text: string, stepIndex: number) => Promise<void>;
+      };
+      if (options.onStepTextEnd) {
+        await options.onStepTextEnd("I'll look that up for you.", 0);
+      }
+      return {
+        textStream: (async function* () {
+          yield 'Here are the results.';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implPt as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-pt-1',
+        idempotencyKey: 'idem-pt-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-pt-1',
+        assistantMessageId: 'msg-a-pt-1',
+        userMessage: 'search for something',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-pt-1:pt:1',
+        role: 'assistant',
+        content: "I'll look that up for you.",
+        taskState: 'dispatched',
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'step_text',
+            stepIndex: 1,
+          }),
+        }),
+      }),
+    ]);
+  });
 });

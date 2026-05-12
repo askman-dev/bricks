@@ -400,6 +400,99 @@ async function runDefaultRouterRespondAsync(params: {
             },
           ]);
         },
+        onToolCallStart: async (toolName, args, stepIndex, callIndex) => {
+          const suffix = `:tc:${stepIndex + 1}:${callIndex}`;
+          const tcMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+          await upsertMessages(userId, [
+            {
+              messageId: tcMessageId,
+              taskId: acceptedTaskId,
+              channelId,
+              sessionId: acceptedSessionId,
+              threadId,
+              role: 'assistant',
+              content: '',
+              taskState: 'dispatched',
+              checkpointCursor: null,
+              metadata: {
+                ...dispatchPlaceholderMetadata({
+                  resolvedBotId,
+                  resolvedSkillId,
+                  source: 'backend.respond.agent_loop',
+                  model: typeof body.model === 'string' ? body.model : null,
+                }),
+                agentLoop: {
+                  phase: 'tool_call_start',
+                  stepIndex: stepIndex + 1,
+                  callIndex,
+                  toolName,
+                  args,
+                },
+              },
+              createdAt: null,
+            },
+          ]);
+        },
+        onReasoningChunk: async (text, stepIndex) => {
+          const suffix = `:r:${stepIndex + 1}`;
+          const rMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+          await upsertMessages(userId, [
+            {
+              messageId: rMessageId,
+              taskId: acceptedTaskId,
+              channelId,
+              sessionId: acceptedSessionId,
+              threadId,
+              role: 'assistant',
+              content: text,
+              taskState: 'dispatched',
+              checkpointCursor: null,
+              metadata: {
+                ...dispatchPlaceholderMetadata({
+                  resolvedBotId,
+                  resolvedSkillId,
+                  source: 'backend.respond.agent_loop',
+                  model: typeof body.model === 'string' ? body.model : null,
+                }),
+                agentLoop: {
+                  phase: 'reasoning',
+                  stepIndex: stepIndex + 1,
+                },
+              },
+              createdAt: null,
+            },
+          ]);
+        },
+        onStepTextEnd: async (text, stepIndex) => {
+          const suffix = `:pt:${stepIndex + 1}`;
+          const ptMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+          await upsertMessages(userId, [
+            {
+              messageId: ptMessageId,
+              taskId: acceptedTaskId,
+              channelId,
+              sessionId: acceptedSessionId,
+              threadId,
+              role: 'assistant',
+              content: text,
+              taskState: 'dispatched',
+              checkpointCursor: null,
+              metadata: {
+                ...dispatchPlaceholderMetadata({
+                  resolvedBotId,
+                  resolvedSkillId,
+                  source: 'backend.respond.agent_loop',
+                  model: typeof body.model === 'string' ? body.model : null,
+                }),
+                agentLoop: {
+                  phase: 'step_text',
+                  stepIndex: stepIndex + 1,
+                },
+              },
+              createdAt: null,
+            },
+          ]);
+        },
       },
       parseProvider(body.provider),
     );
