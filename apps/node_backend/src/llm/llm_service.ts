@@ -386,11 +386,11 @@ export async function streamWithAgentToolsAndUserConfig(
     let stepText = '';
     let reasoningBuffer = '';
 
-    // Fire a callback Promise without blocking the generator. Errors are
-    // logged so failures in non-critical display writes don't crash the loop.
-    const fireAndForget = (p: Promise<void>): void => {
+    // Fire a callback Promise without blocking the generator. The callback
+    // name is included in error logs so failures are easy to diagnose.
+    const fireAndForget = (name: string, p: Promise<void>): void => {
       p.catch((err) => {
-        console.error('[managedStream] callback error:', err);
+        console.error(`[managedStream] ${name} callback error:`, err);
       });
     };
 
@@ -417,7 +417,7 @@ export async function streamWithAgentToolsAndUserConfig(
                   ? (tc.args as Record<string, unknown>)
                   : {};
               // Fire-and-forget: don't block stream/tool execution on DB write.
-              fireAndForget(options.onToolCallStart(toolName, args, streamStepIndex, callIndex));
+              fireAndForget('onToolCallStart', options.onToolCallStart(toolName, args, streamStepIndex, callIndex));
             }
           }
           callIndex++;
@@ -426,7 +426,7 @@ export async function streamWithAgentToolsAndUserConfig(
             // Intermediate step: route text to the :pt:S record, not the main
             // stream, to avoid the same content appearing in both channels.
             if (options.onStepTextEnd && stepText.trim().length > 0) {
-              fireAndForget(options.onStepTextEnd(stepText, streamStepIndex));
+              fireAndForget('onStepTextEnd', options.onStepTextEnd(stepText, streamStepIndex));
             }
           } else {
             // Final / tool-free step: yield the buffered text to the caller.
@@ -435,7 +435,7 @@ export async function streamWithAgentToolsAndUserConfig(
             }
           }
           if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
-            fireAndForget(options.onReasoningChunk(reasoningBuffer, streamStepIndex));
+            fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
           }
           // Advance step counter and reset per-step state.
           streamStepIndex++;
@@ -452,7 +452,7 @@ export async function streamWithAgentToolsAndUserConfig(
         yield stepText;
       }
       if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
-        fireAndForget(options.onReasoningChunk(reasoningBuffer, streamStepIndex));
+        fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
       }
     } finally {
       if (timeoutHandle !== undefined) {
