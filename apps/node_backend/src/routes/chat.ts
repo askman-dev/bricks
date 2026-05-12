@@ -342,8 +342,9 @@ async function runDefaultRouterRespondAsync(params: {
     // Only expose agent tools to the model when the user is issuing a slash
     // command (explicit config-change intent). This prevents the LLM from
     // invoking state-changing tools during ordinary conversation and reduces
-    // prompt-injection risk.
-    const isSlashCommand = userMessage.startsWith('/');
+    // prompt-injection risk. `userMessage` is already trimmed by the caller,
+    // but trimStart() is used here as an extra defensive measure.
+    const isSlashCommand = userMessage.trimStart().startsWith('/');
     const agentTools = isSlashCommand ? buildAgentTools(userId) : {};
     let toolStepIndex = 0;
 
