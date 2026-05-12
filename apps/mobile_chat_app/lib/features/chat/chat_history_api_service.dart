@@ -599,9 +599,15 @@ class ChatHistoryApiService {
     // Extract agentLoop metadata for agent-loop status messages (tool_call_start,
     // reasoning, step_text). Null for regular user/assistant messages.
     final agentLoopRaw = metadata['agentLoop'];
-    final agentLoop = agentLoopRaw is Map
-        ? Map<String, Object?>.from(agentLoopRaw)
-        : null;
+    // Use a try-catch to guard against unexpected key types at runtime.
+    Map<String, Object?>? agentLoop;
+    if (agentLoopRaw is Map) {
+      try {
+        agentLoop = Map<String, Object?>.from(agentLoopRaw);
+      } catch (_) {
+        agentLoop = null;
+      }
+    }
     final agentLoopPhase =
         agentLoop != null && agentLoop['phase'] is String
             ? agentLoop['phase'] as String
