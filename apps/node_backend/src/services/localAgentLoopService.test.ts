@@ -131,6 +131,62 @@ describe('localAgentLoopService', () => {
     expect(result.failedCall?.error?.code).toBe('tool_not_allowed');
   });
 
+  it('rejects channelId longer than 255 chars for channel instruction set tool', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET,
+      args: {
+        channelId: 'a'.repeat(256),
+        instruction: 'Keep concise',
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  it('rejects threadId "main" for thread instruction set tool', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET,
+      args: {
+        channelId: 'default',
+        threadId: 'main',
+        instruction: 'Keep concise',
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  it('does not infer thread instruction tool call when threadId is main', async () => {
+    const { inferInternalToolCallsFromMessage } = await import('./localAgentLoopService.js');
+
+    const calls = inferInternalToolCallsFromMessage({
+      message: '/thread instruction Be concise',
+      channelId: 'ops',
+      threadId: 'main',
+    });
+
+    expect(calls).toEqual([]);
+  });
+
+  it('does not infer thread instruction tool call when threadId is undefined', async () => {
+    const { inferInternalToolCallsFromMessage } = await import('./localAgentLoopService.js');
+
+    const calls = inferInternalToolCallsFromMessage({
+      message: '/thread instruction Be concise',
+      channelId: 'ops',
+    });
+
+    expect(calls).toEqual([]);
+  });
+
   it('infers tool calls from slash-like user commands', async () => {
     const { inferInternalToolCallsFromMessage } = await import('./localAgentLoopService.js');
 

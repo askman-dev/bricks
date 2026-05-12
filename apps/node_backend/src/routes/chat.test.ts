@@ -411,7 +411,7 @@ describe("chat routes", () => {
     ]);
   });
 
-  it('uses model-driven agent loop for local respond, passing tools to the streaming function', async () => {
+  it('uses model-driven agent loop for local respond, passing tools to the streaming function when user issues a slash command', async () => {
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: 'POST',
       headers: {
@@ -425,13 +425,37 @@ describe("chat routes", () => {
         sessionId: 'session:default:main',
         userMessageId: 'msg-u-1',
         assistantMessageId: 'msg-a-1',
-        userMessage: 'create a channel called ops',
+        userMessage: '/channel create ops',
       }),
     });
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
+  });
+
+  it('does not pass agent tools to streaming for ordinary (non-slash) chat messages', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        taskId: 'task-1b',
+        idempotencyKey: 'idem-1b',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-1b',
+        assistantMessageId: 'msg-a-1b',
+        userMessage: 'create a channel called ops',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(buildAgentToolsMock).not.toHaveBeenCalled();
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 

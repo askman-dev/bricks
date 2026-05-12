@@ -95,10 +95,11 @@ export function inferInternalToolCallsFromMessage(input: {
 
   if (lower.startsWith('/thread instruction ')) {
     const instruction = text.substring('/thread instruction '.length).trim();
-    if (instruction) {
+    const effectiveThreadId = input.threadId ?? 'main';
+    if (instruction && effectiveThreadId !== 'main') {
       calls.push({
         toolName: INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET,
-        args: { channelId: input.channelId, threadId: input.threadId ?? 'main', instruction },
+        args: { channelId: input.channelId, threadId: effectiveThreadId, instruction },
       });
     }
   }
@@ -106,11 +107,15 @@ export function inferInternalToolCallsFromMessage(input: {
   return calls;
 }
 
-function readStringArg(args: Record<string, unknown>, key: string): string | null {
+const MAX_IDENTIFIER_LENGTH = 255;
+
+function readStringArg(args: Record<string, unknown>, key: string, maxLength?: number): string | null {
   const raw = args[key];
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  if (trimmed.length === 0) return null;
+  if (maxLength !== undefined && trimmed.length > maxLength) return null;
+  return trimmed;
 }
 
 async function persistInstruction(params: {
@@ -218,7 +223,7 @@ export async function executeInternalTool(
 
   switch (toolName as InternalToolName) {
     case INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET: {
-      const channelId = readStringArg(args, 'channelId');
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
       const instruction = readStringArg(args, 'instruction');
       if (!channelId || !instruction) {
         return {
@@ -239,8 +244,8 @@ export async function executeInternalTool(
       });
     }
     case INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET: {
-      const channelId = readStringArg(args, 'channelId');
-      const threadId = readStringArg(args, 'threadId');
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const threadId = readStringArg(args, 'threadId', MAX_IDENTIFIER_LENGTH);
       const instruction = readStringArg(args, 'instruction');
       if (!channelId || !threadId || !instruction) {
         return {
@@ -253,6 +258,19 @@ export async function executeInternalTool(
           },
         };
       }
+      if (threadId === 'main') {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message:
+              "'main' is not a valid thread identifier for thread instructions; " +
+              'use chat.channel.instruction.set to set channel-level instructions instead',
+          },
+        };
+      }
       return persistInstruction({
         userId,
         scopeType: 'thread',
@@ -262,7 +280,7 @@ export async function executeInternalTool(
       });
     }
     case INTERNAL_TOOL_CHAT_CHANNEL_CREATE: {
-      const channelId = readStringArg(args, 'channelId') ?? readStringArg(args, 'name');
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH) ?? readStringArg(args, 'name', MAX_IDENTIFIER_LENGTH);
       if (!channelId) {
         return {
           ok: false,
@@ -277,8 +295,8 @@ export async function executeInternalTool(
       return createChannelScope({ userId, channelId });
     }
     case INTERNAL_TOOL_CHAT_THREAD_CREATE: {
-      const channelId = readStringArg(args, 'channelId');
-      const threadId = readStringArg(args, 'threadId') ?? readStringArg(args, 'name');
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const threadId = readStringArg(args, 'threadId', MAX_IDENTIFIER_LENGTH) ?? readStringArg(args, 'name', MAX_IDENTIFIER_LENGTH);
       if (!channelId || !threadId) {
         return {
           ok: false,
