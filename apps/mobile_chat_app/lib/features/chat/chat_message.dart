@@ -38,6 +38,8 @@ class ChatMessage {
     this.selectedScore,
     this.candidateScoreSummary,
     this.isRecovered = false,
+    this.agentLoopPhase,
+    this.agentLoopTool,
   }) : timestamp = timestamp ?? DateTime.now();
 
   final String role;
@@ -78,6 +80,15 @@ class ChatMessage {
 
   final bool isRecovered;
 
+  /// The `agentLoop.phase` value from server metadata.
+  /// Present on agent-loop status messages (e.g. `tool_call_start`,
+  /// `reasoning`, `step_text`). Null for normal user/assistant messages.
+  final String? agentLoopPhase;
+
+  /// The tool name associated with a `tool_call_start` phase message.
+  /// Extracted from `agentLoop.toolName` in server metadata.
+  final String? agentLoopTool;
+
   ChatMessage copyWith({
     String? role,
     String? content,
@@ -111,6 +122,8 @@ class ChatMessage {
     double? selectedScore,
     String? candidateScoreSummary,
     bool? isRecovered,
+    String? agentLoopPhase,
+    String? agentLoopTool,
   }) {
     return ChatMessage(
       role: role ?? this.role,
@@ -146,6 +159,8 @@ class ChatMessage {
       candidateScoreSummary:
           candidateScoreSummary ?? this.candidateScoreSummary,
       isRecovered: isRecovered ?? this.isRecovered,
+      agentLoopPhase: agentLoopPhase ?? this.agentLoopPhase,
+      agentLoopTool: agentLoopTool ?? this.agentLoopTool,
     );
   }
 
@@ -183,6 +198,8 @@ class ChatMessage {
       'selectedScore': selectedScore,
       'candidateScoreSummary': candidateScoreSummary,
       'isRecovered': isRecovered,
+      'agentLoopPhase': agentLoopPhase,
+      'agentLoopTool': agentLoopTool,
     };
   }
 
@@ -242,6 +259,8 @@ class ChatMessage {
       selectedScore: (map['selectedScore'] as num?)?.toDouble(),
       candidateScoreSummary: map['candidateScoreSummary'] as String?,
       isRecovered: map['isRecovered'] as bool? ?? false,
+      agentLoopPhase: map['agentLoopPhase'] as String?,
+      agentLoopTool: map['agentLoopTool'] as String?,
     );
   }
 }

@@ -596,10 +596,27 @@ class ChatHistoryApiService {
       nodeType = 'OpenClaw';
     }
 
+    // Extract agentLoop metadata for agent-loop status messages (tool_call_start,
+    // reasoning, step_text). Null for regular user/assistant messages.
+    final agentLoopRaw = metadata['agentLoop'];
+    final agentLoop = agentLoopRaw is Map
+        ? Map<String, Object?>.from(agentLoopRaw)
+        : null;
+    final agentLoopPhase =
+        agentLoop != null && agentLoop['phase'] is String
+            ? agentLoop['phase'] as String
+            : null;
+    final agentLoopTool =
+        agentLoop != null && agentLoop['toolName'] is String
+            ? agentLoop['toolName'] as String
+            : null;
+
     final payload = <String, Object?>{
       ...metadata,
       if (nodeType.isNotEmpty && metadataAgentName.isNotEmpty)
         'nodeType': nodeType,
+      if (agentLoopPhase != null) 'agentLoopPhase': agentLoopPhase,
+      if (agentLoopTool != null) 'agentLoopTool': agentLoopTool,
       'messageId': map['messageId'],
       'seqId': map['seqId'],
       'writeSeq': map['writeSeq'],
