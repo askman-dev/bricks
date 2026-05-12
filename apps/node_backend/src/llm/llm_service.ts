@@ -371,6 +371,13 @@ export async function streamWithAgentToolsAndUserConfig(
   // Iterates fullStream so that reasoning and tool-call events can be
   // forwarded to the optional callbacks while still yielding text deltas to
   // callers that only need the text content.
+  //
+  // Text is buffered per step and only yielded at step-finish to avoid
+  // duplication: text from steps with tool calls goes exclusively to the
+  // onStepTextEnd callback (:pt:S record), while text from tool-free steps
+  // is yielded to the main text stream.  Callbacks (onToolCallStart,
+  // onReasoningChunk, onStepTextEnd) are fired without awaiting so they
+  // don't block the stream or tool execution; errors are logged and swallowed.
   async function* managedStream(): AsyncIterable<string> {
     // Per-step tracking for the optional callbacks.
     let streamStepIndex = 0;
@@ -379,12 +386,21 @@ export async function streamWithAgentToolsAndUserConfig(
     let stepText = '';
     let reasoningBuffer = '';
 
+    // Fire a callback Promise without blocking the generator. Errors are
+    // logged so failures in non-critical display writes don't crash the loop.
+    const fireAndForget = (p: Promise<void>): void => {
+      p.catch((err) => {
+        console.error('[managedStream] callback error:', err);
+      });
+    };
+
     try {
       for await (const rawEvent of result.fullStream as AsyncIterable<SdkFullStreamEvent>) {
         if (rawEvent.type === 'text-delta') {
           const delta = (rawEvent as { type: 'text-delta'; textDelta: string }).textDelta;
+          // Accumulate but don't yield yet — we only yield at step-finish once
+          // we know whether the step included tool calls (see below).
           stepText += delta;
-          yield delta;
         } else if (rawEvent.type === 'reasoning') {
           reasoningBuffer += (rawEvent as { type: 'reasoning'; textDelta: string }).textDelta;
         } else if (rawEvent.type === 'tool-call') {
@@ -396,23 +412,30 @@ export async function streamWithAgentToolsAndUserConfig(
             if (tc.toolName) {
               const toolName = String(tc.toolName);
               // Guard against non-object args (e.g. SDK emits a primitive).
-              // Substitute an empty object rather than crashing, but the
-              // substitution is intentional and the caller is aware of this
-              // contract via the TypeScript signature.
               const args =
                 tc.args && typeof tc.args === 'object' && !Array.isArray(tc.args)
                   ? (tc.args as Record<string, unknown>)
                   : {};
-              await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
+              // Fire-and-forget: don't block stream/tool execution on DB write.
+              fireAndForget(options.onToolCallStart(toolName, args, streamStepIndex, callIndex));
             }
           }
           callIndex++;
         } else if (rawEvent.type === 'step-finish') {
-          if (options.onStepTextEnd && stepHasToolCalls && stepText.trim().length > 0) {
-            await options.onStepTextEnd(stepText, streamStepIndex);
+          if (stepHasToolCalls) {
+            // Intermediate step: route text to the :pt:S record, not the main
+            // stream, to avoid the same content appearing in both channels.
+            if (options.onStepTextEnd && stepText.trim().length > 0) {
+              fireAndForget(options.onStepTextEnd(stepText, streamStepIndex));
+            }
+          } else {
+            // Final / tool-free step: yield the buffered text to the caller.
+            if (stepText.length > 0) {
+              yield stepText;
+            }
           }
           if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
-            await options.onReasoningChunk(reasoningBuffer, streamStepIndex);
+            fireAndForget(options.onReasoningChunk(reasoningBuffer, streamStepIndex));
           }
           // Advance step counter and reset per-step state.
           streamStepIndex++;
@@ -423,10 +446,13 @@ export async function streamWithAgentToolsAndUserConfig(
         }
         // All other event types (tool-result, finish, error, etc.) are ignored.
       }
-      // Flush any reasoning accumulated in a partial final step (e.g. when
-      // the stream ends without emitting a step-finish event).
+      // Flush any remaining text / reasoning accumulated in a partial final
+      // step (e.g. when the stream ends without emitting a step-finish event).
+      if (stepText.length > 0) {
+        yield stepText;
+      }
       if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
-        await options.onReasoningChunk(reasoningBuffer, streamStepIndex);
+        fireAndForget(options.onReasoningChunk(reasoningBuffer, streamStepIndex));
       }
     } finally {
       if (timeoutHandle !== undefined) {

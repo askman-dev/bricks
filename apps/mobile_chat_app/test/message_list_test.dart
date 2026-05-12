@@ -744,4 +744,132 @@ void main() {
       },
     );
   });
+
+  group('Agent-loop status rows', () {
+    testWidgets('tool_call_start renders spinning indicator and label',
+        (tester) async {
+      final msg = ChatMessage(
+        messageId: 'tc-start-1',
+        role: 'assistant',
+        content: '',
+        agentLoopPhase: 'tool_call_start',
+        agentLoopTool: 'search_web',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([msg]));
+      // Use pump() not pumpAndSettle() because CircularProgressIndicator
+      // has an ongoing animation that never fully settles.
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.textContaining('search_web'), findsOneWidget);
+    });
+
+    testWidgets('tool_call_start without toolName renders generic label',
+        (tester) async {
+      final msg = ChatMessage(
+        messageId: 'tc-start-2',
+        role: 'assistant',
+        content: '',
+        agentLoopPhase: 'tool_call_start',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([msg]));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('正在调用工具…'), findsOneWidget);
+    });
+
+    testWidgets('reasoning renders collapsed thought block by default',
+        (tester) async {
+      final msg = ChatMessage(
+        messageId: 'reasoning-1',
+        role: 'assistant',
+        content: 'Step 1: check constraints. Step 2: compute.',
+        agentLoopPhase: 'reasoning',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([msg]));
+      await tester.pumpAndSettle();
+
+      // Header with psychology icon and label visible
+      expect(find.byIcon(Icons.psychology_outlined), findsOneWidget);
+      expect(find.text('思考过程'), findsOneWidget);
+      // Reasoning content is hidden when collapsed
+      expect(find.text('Step 1: check constraints. Step 2: compute.'),
+          findsNothing);
+    });
+
+    testWidgets('reasoning expands and collapses on tap', (tester) async {
+      final msg = ChatMessage(
+        messageId: 'reasoning-2',
+        role: 'assistant',
+        content: 'I reasoned carefully.',
+        agentLoopPhase: 'reasoning',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([msg]));
+      await tester.pumpAndSettle();
+
+      // Initially collapsed
+      expect(find.text('I reasoned carefully.'), findsNothing);
+
+      // Tap the header to expand
+      await tester.tap(find.text('思考过程'));
+      await tester.pumpAndSettle();
+
+      // Content now visible
+      expect(find.text('I reasoned carefully.'), findsOneWidget);
+
+      // Tap again to collapse
+      await tester.tap(find.text('思考过程'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('I reasoned carefully.'), findsNothing);
+    });
+
+    testWidgets('step_text renders text with left accent border',
+        (tester) async {
+      final msg = ChatMessage(
+        messageId: 'pt-1',
+        role: 'assistant',
+        content: 'Let me look that up.',
+        agentLoopPhase: 'step_text',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([msg]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Let me look that up.'), findsOneWidget);
+      // The left border is an IntrinsicHeight → Row containing a narrow
+      // Container followed by the text.
+      expect(find.byType(IntrinsicHeight), findsOneWidget);
+    });
+
+    testWidgets(
+        'tool_call phase falls through to normal assistant bubble rendering',
+        (tester) async {
+      final msg = ChatMessage(
+        messageId: 'tc-result-1',
+        role: 'assistant',
+        content: 'Tool: search\nResult: {"title":"Flutter"}',
+        agentLoopPhase: 'tool_call',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([msg]));
+      await tester.pumpAndSettle();
+
+      // Content visible in the normal rendering path
+      expect(find.textContaining('Tool: search'), findsOneWidget);
+      // No spinner (would only appear for tool_call_start)
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+  });
 }

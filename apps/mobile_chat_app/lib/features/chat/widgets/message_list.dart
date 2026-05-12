@@ -397,13 +397,14 @@ class _MessageListState extends State<MessageList> {
                           bottom: BricksSpacing.xs,
                         ),
                       )
-                    else if (!isUser && msg.agentLoopPhase != null)
+                    else if (!isUser &&
+                        msg.agentLoopPhase != null &&
+                        msg.agentLoopPhase != 'tool_call')
                       _AgentLoopStatusRow(
                         phase: msg.agentLoopPhase!,
                         toolName: msg.agentLoopTool,
                         content: msg.content,
                         chatColors: chatColors,
-                        context: context,
                       )
                     else
                       GestureDetector(
@@ -1302,12 +1303,13 @@ class _MenuItem extends StatelessWidget {
 /// | tool_call_start  | spinning ⚙ icon + "Calling toolName…"          |
 /// | reasoning        | 💭 expandable thought block                     |
 /// | step_text        | assistant text with left accent border          |
-/// | tool_call        | plain assistant text (existing behaviour)       |
+///
+/// Note: `tool_call` phase messages are routed to the standard assistant
+/// bubble renderer (not this widget) so their content renders with markdown.
 class _AgentLoopStatusRow extends StatefulWidget {
   const _AgentLoopStatusRow({
     required this.phase,
     required this.chatColors,
-    required this.context,
     this.toolName,
     this.content = '',
   });
@@ -1316,8 +1318,6 @@ class _AgentLoopStatusRow extends StatefulWidget {
   final String? toolName;
   final String content;
   final ChatColors chatColors;
-  // ignore: diagnostic_describe_all_properties
-  final BuildContext context;
 
   @override
   State<_AgentLoopStatusRow> createState() => _AgentLoopStatusRowState();
@@ -1466,7 +1466,7 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
         );
 
       default:
-        // tool_call and unknown phases: render as plain assistant text.
+        // Unknown/future phases: render as a small muted summary.
         if (widget.content.trim().isEmpty) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.only(

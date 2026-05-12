@@ -625,6 +625,74 @@ void main() {
     );
   });
 
+  test('parses agentLoop metadata into agentLoopPhase and agentLoopTool',
+      () async {
+    final client = MockClient((request) async {
+      return http.Response(
+        jsonEncode({
+          'messages': [
+            {
+              'messageId': 'tc-start',
+              'role': 'assistant',
+              'content': '',
+              'metadata': {
+                'agentLoop': {
+                  'phase': 'tool_call_start',
+                  'toolName': 'search_web',
+                  'stepIndex': 1,
+                },
+              },
+              'sessionId': 'session:default:main',
+              'channelId': 'default',
+            },
+          ],
+          'lastSeqId': 5,
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final snapshot =
+        await service.load(token: 'token-1', sessionId: 'session:default:main');
+
+    expect(snapshot.messages, hasLength(1));
+    final msg = snapshot.messages.first;
+    expect(msg.agentLoopPhase, equals('tool_call_start'));
+    expect(msg.agentLoopTool, equals('search_web'));
+  });
+
+  test('safely ignores malformed agentLoop metadata', () async {
+    final client = MockClient((request) async {
+      return http.Response(
+        jsonEncode({
+          'messages': [
+            {
+              'messageId': 'bad-meta',
+              'role': 'assistant',
+              'content': 'hello',
+              // agentLoop is not a Map — should be silently ignored
+              'metadata': {'agentLoop': 'not-a-map'},
+              'sessionId': 'session:default:main',
+              'channelId': 'default',
+            },
+          ],
+          'lastSeqId': 7,
+        }),
+        200,
+      );
+    });
+
+    final service = ChatHistoryApiService(httpClient: client);
+    final snapshot =
+        await service.load(token: 'token-1', sessionId: 'session:default:main');
+
+    expect(snapshot.messages, hasLength(1));
+    final msg = snapshot.messages.first;
+    expect(msg.agentLoopPhase, isNull);
+    expect(msg.agentLoopTool, isNull);
+  });
+
   test('respond sends systemPrompt when provided', () async {
     final client = MockClient((request) async {
       expect(request.method, equals('POST'));
