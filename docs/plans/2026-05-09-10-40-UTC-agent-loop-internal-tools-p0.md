@@ -25,8 +25,8 @@ Bricks chat backend currently supports async message transport with SSE synchron
 
 ## Phase 2: Implement internal tool execution
 - Implement `chat.channel.instruction.set` and `chat.thread.instruction.set` by calling `upsertChatScopeSetting`.
+- Implement `chat.channel.create` and `chat.thread.create` using `upsertChatScopeSetting` with `scopeType` set appropriately.
 - Return deterministic structured results for all tools.
-- Mark `chat.channel.create` and `chat.thread.create` as not yet implemented with a stable error code.
 
 ## Phase 3: Integrate local respond path
 - Wire local `/api/chat/respond` flow to call the new service before the existing model streaming branch.
@@ -53,9 +53,9 @@ Bricks chat backend currently supports async message transport with SSE synchron
   - `chat.channel.create`
   - `chat.thread.create`
 - [x] Added bounded internal tool sequence execution (`executeInternalToolSequence`) with stop-on-failure behavior.
-- [x] Integrated local `/api/chat/respond` branch with explicit internal tool payload execution.
-- [x] Added inferred internal tool calls from slash-like user commands.
-- [x] Added route/service tests for explicit and inferred tool execution branches.
-- [x] Replace request-driven tool execution with model-driven multi-step think→call→observe→final loop controller. (`buildAgentTools` + `streamWithAgentToolsAndUserConfig` with AI SDK `streamText` tools + `maxSteps`)
+- [x] Added inferred internal tool calls from slash-like user commands (`inferInternalToolCallsFromMessage`).
+- [x] Added route/service tests for tool execution, inference, and argument validation.
+- [x] Replaced request-driven tool execution with model-driven multi-step think→call→observe→final loop controller. (`buildAgentTools` + `streamWithAgentToolsAndUserConfig` with AI SDK `streamText` tools + `maxSteps`)
+- [x] Gated agent tool exposure to slash-command requests only, preventing unintended tool calls during ordinary conversation.
 - [x] Add first-class loop controls (`maxSteps`, `maxToolCalls`, `timeout`) to route-level configuration and response metadata.
-- [x] Add step-by-step assistant message updates for each loop phase (not only summary message) to maximize SSE observability. (`onStepFinish` writes per-step tool-call messages with `${assistantMessageId}:ts:N` ids)
+- [x] Add step-by-step assistant message updates for each loop phase (not only summary message) to maximize SSE observability. (`onStepFinish` writes per-step tool-call messages with bounded `stepMessageId` ≤ 255 chars)

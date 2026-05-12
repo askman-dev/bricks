@@ -32,10 +32,10 @@ import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
 } from "../services/platformNodeService.js";
-import { streamWithAgentToolsAndUserConfig } from '../llm/llm_service.js';
+import { streamWithAgentToolsAndUserConfig } from "../llm/llm_service.js";
 import {
   buildAgentTools,
-} from '../services/localAgentLoopService.js';
+} from "../services/localAgentLoopService.js";
 import type { LlmProvider } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
 
@@ -267,6 +267,7 @@ async function runDefaultRouterRespondAsync(params: {
   threadId: string | null;
   resolvedBotId: string | null;
   resolvedSkillId: string | null;
+  userMessage: string;
   body: Record<string, unknown>;
   maxTokens: number;
   systemPrompt: string | null;
@@ -282,6 +283,7 @@ async function runDefaultRouterRespondAsync(params: {
     threadId,
     resolvedBotId,
     resolvedSkillId,
+    userMessage,
     body,
     maxTokens,
     systemPrompt,
@@ -337,7 +339,12 @@ async function runDefaultRouterRespondAsync(params: {
       ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
       : modelMessages;
 
-    const agentTools = buildAgentTools(userId);
+    // Only expose agent tools to the model when the user is issuing a slash
+    // command (explicit config-change intent). This prevents the LLM from
+    // invoking state-changing tools during ordinary conversation and reduces
+    // prompt-injection risk.
+    const isSlashCommand = userMessage.startsWith('/');
+    const agentTools = isSlashCommand ? buildAgentTools(userId) : {};
     let toolStepIndex = 0;
 
     const { textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
@@ -355,7 +362,8 @@ async function runDefaultRouterRespondAsync(params: {
         timeoutMs: loopTimeoutMs,
         onStepFinish: async (stepResults) => {
           toolStepIndex++;
-          const stepMessageId = `${assistantMessageId}:ts:${toolStepIndex}`;
+          const stepSuffix = `:ts:${toolStepIndex}`;
+          const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
           const stepContent = stepResults
             .map((r) => `Tool: ${r.toolName}\nResult: ${JSON.stringify(r.result)}`)
             .join('\n\n');
@@ -705,6 +713,7 @@ router.post(
         threadId: input.threadId,
         resolvedBotId: input.resolvedBotId,
         resolvedSkillId: input.resolvedSkillId,
+        userMessage,
         body,
         maxTokens: parsedMaxTokens.value,
         systemPrompt,
