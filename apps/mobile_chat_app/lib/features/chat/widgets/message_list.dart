@@ -126,12 +126,11 @@ class _MessageListState extends State<MessageList> {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
       if (_focusedIndex < 0) return;
-
-      // First jump to bottom to ensure trailing children are laid out, then
-      // pin the focused message as the first visible item.
-      final position = _scrollController.position;
-      _scrollController.jumpTo(position.maxScrollExtent);
-
+      // First jump to the bottom so the layout measures the full extent, then
+      // let ensureVisible fine-tune.  With an eager (non-builder) ListView all
+      // items are already in the render tree, so the second callback always
+      // finds _focusedItemKey – no retry loop is needed.
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
         final targetContext = _focusedItemKey.currentContext;
@@ -282,6 +281,258 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
+  // Builds a single message row for the given [index] in [widget.messages].
+  // Extracted from build() so that the non-builder ListView can call it in a
+  // simple for-loop while keeping the item rendering logic in one place.
+  Widget _buildMessageItem(BuildContext context, int index) {
+    final allMessages = widget.messages;
+    final msg = allMessages[index];
+    final isUser = msg.role == 'user';
+    final isAssistantDispatchPlaceholder = _isAssistantDispatchPlaceholder(msg);
+    final deliveryIndicator =
+        isUser ? _deliveryIndicatorForUserMessage(msg, allMessages) : null;
+    // Resolve chat-specific semantic colors from the ThemeExtension.
+    // Falling back to the light defaults keeps plain MaterialApp tests
+    // working without an explicit BricksTheme.
+    final chatColors =
+        Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+    // Attach the focused-item key only to the target row so that
+    // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
+    // without maintaining a GlobalKey for every list item.
+    final itemKey = index == _focusedIndex ? _focusedItemKey : null;
+    return Align(
+      key: itemKey,
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // Show agent attribution chip as soon as assistant identity is
+          // known, including dispatch placeholders pushed by SSE before
+          // any assistant text is available.
+          if (!isUser && (msg.agentName != null || msg.model != null))
+            Padding(
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                bottom: BricksSpacing.xs,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.smart_toy_outlined, size: 14),
+                  const SizedBox(width: BricksSpacing.xs),
+                  Text(
+                    msg.agentName ?? msg.model ?? '',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: chatColors.agentIdentity,
+                        ),
+                  ),
+                  if (msg.nodeType?.trim().isNotEmpty == true) ...[
+                    const SizedBox(width: BricksSpacing.xs),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: chatColors.agentBadgeContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        msg.nodeType!.trim(),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: chatColors.onAgentBadgeContainer,
+                            ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          if (isAssistantDispatchPlaceholder)
+            Padding(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        chatColors.agentAccent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: BricksSpacing.xs),
+                  Text(
+                    '处理中…',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                right: BricksSpacing.xs,
+                bottom: BricksSpacing.xs,
+              ),
+            )
+          else if (!isUser &&
+              msg.agentLoopPhase != null &&
+              msg.agentLoopPhase != 'tool_call')
+            _AgentLoopStatusRow(
+              phase: msg.agentLoopPhase!,
+              toolName: msg.agentLoopTool,
+              content: msg.content,
+              chatColors: chatColors,
+              taskState: msg.taskState,
+            )
+          else
+            GestureDetector(
+              onLongPressStart: isUser
+                  ? (details) => _showUserMessageContextMenu(
+                        context: context,
+                        globalPosition: details.globalPosition,
+                        message: msg,
+                      )
+                  : null,
+              child: Container(
+                key: ValueKey<String>(
+                  'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                ),
+                margin: isUser
+                    ? const EdgeInsets.only(
+                        bottom: BricksSpacing.md,
+                      )
+                    : const EdgeInsets.only(
+                        bottom: BricksSpacing.xs,
+                      ),
+                padding: isUser
+                    ? const EdgeInsets.symmetric(
+                        horizontal: BricksSpacing.md,
+                        vertical: BricksSpacing.sm,
+                      )
+                    : const EdgeInsets.symmetric(
+                        horizontal: BricksSpacing.xs,
+                        vertical: BricksSpacing.xs,
+                      ),
+                width: isUser ? null : double.infinity,
+                constraints: isUser
+                    ? BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.75,
+                      )
+                    : null,
+                decoration: isUser
+                    ? BoxDecoration(
+                        color: chatColors.messageUserBackground,
+                        borderRadius: BorderRadius.circular(BricksRadius.md),
+                      )
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isUser)
+                      _MessageExpandToggle(
+                        key: ValueKey<String>(
+                          'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                        ),
+                        text: msg.content,
+                        textColor: chatColors.onMessageUser,
+                      )
+                    else
+                      _AssistantMarkdownText(
+                        text: msg.content,
+                        textColor: chatColors.onMessageAssistant,
+                        linkColor: chatColors.linkText,
+                        codeBlockColor: chatColors.codeBlockBackground,
+                        quoteBlockColor: chatColors.quoteBackground,
+                        textStyle: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    if (msg.isStreaming)
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isUser
+                                  ? chatColors.onMessageUser
+                                  : chatColors.agentAccent,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (msg.arbitrationMode && msg.resolvedBotId != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: Text(
+                          msg.fallbackToDefaultBot
+                              ? 'fallback→${msg.resolvedBotId}'
+                              : 'selected→${msg.resolvedBotId}',
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: isUser
+                                        ? chatColors.onMessageUser
+                                        : chatColors.agentAccent,
+                                  ),
+                        ),
+                      ),
+                    if (isUser)
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                _messageMetaLine(msg),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: chatColors.onMessageUser
+                                          .withValues(alpha: 0.68),
+                                    ),
+                              ),
+                            ),
+                            if (deliveryIndicator != null) ...[
+                              const SizedBox(width: BricksSpacing.xs),
+                              _UserMessageDeliveryStatus(
+                                indicator: deliveryIndicator,
+                                messageId: msg.messageId,
+                                foregroundColor: chatColors.onMessageUser,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          if (!isUser)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                right: BricksSpacing.xs,
+                bottom: BricksSpacing.md,
+              ),
+              child: Text(
+                _messageMetaLine(msg),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: chatColors.metaText,
+                    ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final messages = widget.messages;
@@ -294,10 +545,14 @@ class _MessageListState extends State<MessageList> {
     _listBottomPadding = BricksSpacing.md +
         MediaQuery.sizeOf(context).height * _kBottomPaddingRatio;
 
+    // All messages in the initial load are bounded (≤ 100 items). Building
+    // them eagerly with a non-builder ListView gives an accurate
+    // maxScrollExtent from the very first frame, so _scrollToFocusedUserMessage
+    // can call Scrollable.ensureVisible directly without any jumpTo/retry hack.
     return Stack(
       children: [
         SelectionArea(
-          child: ListView.builder(
+          child: ListView(
             controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
               BricksSpacing.md,
@@ -305,276 +560,10 @@ class _MessageListState extends State<MessageList> {
               BricksSpacing.md,
               _listBottomPadding,
             ),
-            itemCount: messages.length,
-            itemBuilder: (context, index) {
-              final msg = messages[index];
-              final isUser = msg.role == 'user';
-              final isAssistantDispatchPlaceholder =
-                  _isAssistantDispatchPlaceholder(msg);
-              final deliveryIndicator = isUser
-                  ? _deliveryIndicatorForUserMessage(msg, messages)
-                  : null;
-              // Resolve chat-specific semantic colors from the ThemeExtension.
-              // Falling back to the light defaults keeps plain MaterialApp tests
-              // working without an explicit BricksTheme.
-              final chatColors =
-                  Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
-              // Attach the focused-item key only to the target row so that
-              // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
-              // without maintaining a GlobalKey for every list item.
-              final itemKey = index == _focusedIndex ? _focusedItemKey : null;
-              return Align(
-                key: itemKey,
-                alignment:
-                    isUser ? Alignment.centerRight : Alignment.centerLeft,
-                child: Column(
-                  crossAxisAlignment: isUser
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
-                  children: [
-                    // Show agent attribution chip as soon as assistant identity is
-                    // known, including dispatch placeholders pushed by SSE before
-                    // any assistant text is available.
-                    if (!isUser && (msg.agentName != null || msg.model != null))
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          left: BricksSpacing.xs,
-                          bottom: BricksSpacing.xs,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.smart_toy_outlined, size: 14),
-                            const SizedBox(width: BricksSpacing.xs),
-                            Text(
-                              msg.agentName ?? msg.model ?? '',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: chatColors.agentIdentity,
-                                  ),
-                            ),
-                            if (msg.nodeType?.trim().isNotEmpty == true) ...[
-                              const SizedBox(width: BricksSpacing.xs),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: chatColors.agentBadgeContainer,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  msg.nodeType!.trim(),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                        color: chatColors.onAgentBadgeContainer,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    if (isAssistantDispatchPlaceholder)
-                      Padding(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  chatColors.agentAccent,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: BricksSpacing.xs),
-                            Text(
-                              '处理中…',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.only(
-                          left: BricksSpacing.xs,
-                          right: BricksSpacing.xs,
-                          bottom: BricksSpacing.xs,
-                        ),
-                      )
-                    else if (!isUser &&
-                        msg.agentLoopPhase != null &&
-                        msg.agentLoopPhase != 'tool_call')
-                      _AgentLoopStatusRow(
-                        phase: msg.agentLoopPhase!,
-                        toolName: msg.agentLoopTool,
-                        content: msg.content,
-                        chatColors: chatColors,
-                        taskState: msg.taskState,
-                      )
-                    else
-                      GestureDetector(
-                        onLongPressStart: isUser
-                            ? (details) => _showUserMessageContextMenu(
-                                  context: context,
-                                  globalPosition: details.globalPosition,
-                                  message: msg,
-                                )
-                            : null,
-                        child: Container(
-                          key: ValueKey<String>(
-                            'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                          ),
-                          margin: isUser
-                              ? const EdgeInsets.only(
-                                  bottom: BricksSpacing.md,
-                                )
-                              : const EdgeInsets.only(
-                                  bottom: BricksSpacing.xs,
-                                ),
-                          padding: isUser
-                              ? const EdgeInsets.symmetric(
-                                  horizontal: BricksSpacing.md,
-                                  vertical: BricksSpacing.sm,
-                                )
-                              : const EdgeInsets.symmetric(
-                                  horizontal: BricksSpacing.xs,
-                                  vertical: BricksSpacing.xs,
-                                ),
-                          width: isUser ? null : double.infinity,
-                          constraints: isUser
-                              ? BoxConstraints(
-                                  maxWidth:
-                                      MediaQuery.of(context).size.width * 0.75,
-                                )
-                              : null,
-                          decoration: isUser
-                              ? BoxDecoration(
-                                  color: chatColors.messageUserBackground,
-                                  borderRadius:
-                                      BorderRadius.circular(BricksRadius.md),
-                                )
-                              : null,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (isUser)
-                                _MessageExpandToggle(
-                                  key: ValueKey<String>(
-                                    'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                                  ),
-                                  text: msg.content,
-                                  textColor: chatColors.onMessageUser,
-                                )
-                              else
-                                _AssistantMarkdownText(
-                                  text: msg.content,
-                                  textColor: chatColors.onMessageAssistant,
-                                  linkColor: chatColors.linkText,
-                                  codeBlockColor:
-                                      chatColors.codeBlockBackground,
-                                  quoteBlockColor: chatColors.quoteBackground,
-                                  textStyle:
-                                      Theme.of(context).textTheme.bodyLarge,
-                                ),
-                              if (msg.isStreaming)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      top: BricksSpacing.xs),
-                                  child: SizedBox(
-                                    width: 12,
-                                    height: 12,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        isUser
-                                            ? chatColors.onMessageUser
-                                            : chatColors.agentAccent,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              if (msg.arbitrationMode &&
-                                  msg.resolvedBotId != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      top: BricksSpacing.xs),
-                                  child: Text(
-                                    msg.fallbackToDefaultBot
-                                        ? 'fallback→${msg.resolvedBotId}'
-                                        : 'selected→${msg.resolvedBotId}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
-                                          color: isUser
-                                              ? chatColors.onMessageUser
-                                              : chatColors.agentAccent,
-                                        ),
-                                  ),
-                                ),
-                              if (isUser)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      top: BricksSpacing.xs),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          _messageMetaLine(msg),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall
-                                              ?.copyWith(
-                                                color: chatColors.onMessageUser
-                                                    .withValues(alpha: 0.68),
-                                              ),
-                                        ),
-                                      ),
-                                      if (deliveryIndicator != null) ...[
-                                        const SizedBox(width: BricksSpacing.xs),
-                                        _UserMessageDeliveryStatus(
-                                          indicator: deliveryIndicator,
-                                          messageId: msg.messageId,
-                                          foregroundColor:
-                                              chatColors.onMessageUser,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    if (!isUser)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          left: BricksSpacing.xs,
-                          right: BricksSpacing.xs,
-                          bottom: BricksSpacing.md,
-                        ),
-                        child: Text(
-                          _messageMetaLine(msg),
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: chatColors.metaText,
-                                  ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
+            children: [
+              for (var i = 0; i < messages.length; i++)
+                _buildMessageItem(context, i),
+            ],
           ),
         ),
         Positioned(
