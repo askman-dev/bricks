@@ -32,7 +32,7 @@ import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
 } from "../services/platformNodeService.js";
-import { streamWithAgentToolsAndUserConfig, streamWithUserConfig } from "../llm/llm_service.js";
+import { streamWithAgentToolsAndUserConfig } from "../llm/llm_service.js";
 import {
   buildAgentTools,
 } from "../services/localAgentLoopService.js";
@@ -243,8 +243,18 @@ function buildComposedSystemPrompt(params: {
   systemPrompt: string | null;
   channelInstructions: string | null;
   threadInstructions: string | null;
+  channelId: string;
+  threadId: string | null;
 }): string | null {
   const parts: string[] = [];
+
+  // Inject session context so the LLM knows the internal channel/thread IDs it
+  // must pass to tools like chat_channel_rename, chat_channel_instruction_set, etc.
+  const ctxParts: string[] = [`Channel ID: ${params.channelId}`];
+  if (params.threadId && params.threadId !== 'main') {
+    ctxParts.push(`Thread ID: ${params.threadId}`);
+  }
+  parts.push(`Session context:\n${ctxParts.map((l) => `- ${l}`).join('\n')}`);
 
   const sp = params.systemPrompt?.trim();
   if (sp) parts.push(sp);
@@ -334,28 +344,25 @@ async function runDefaultRouterRespondAsync(params: {
       systemPrompt,
       channelInstructions,
       threadInstructions,
+      channelId,
+      threadId,
     });
     const messagesWithSystem = composedSystemPrompt
       ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
       : modelMessages;
-
-    // Only expose agent tools to the model when the user is issuing a slash
-    // command (explicit config-change intent). This prevents the LLM from
-    // invoking state-changing tools during ordinary conversation and reduces
-    // prompt-injection risk. `userMessage` is already trimmed by the caller,
-    // but trimStart() is used here as an extra defensive measure.
-    const isSlashCommand = userMessage.trimStart().startsWith('/');
 
     let textStream: AsyncIterable<string>;
     let provider: string;
     let modelId: string;
     let toolStepIndex = 0;
 
-    if (isSlashCommand) {
-      // Slash commands: use the agent-loop path so the model can invoke
-      // internal tools (scope creation, instruction updates).
-      const agentTools = buildAgentTools(userId);
-      ({ textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
+    // Always use the agent-loop path so the model is aware of (and can invoke)
+    // internal tools regardless of whether the user typed a slash command or
+    // plain natural language.  The managedStream generator yields text deltas
+    // eagerly for tool-free steps, so streaming UX is equivalent to the direct
+    // streamWithUserConfig path for ordinary chat messages.
+    const agentTools = buildAgentTools(userId);
+    ({ textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
         userId,
         {
           model: typeof body.model === "string" ? body.model : undefined,
@@ -373,7 +380,7 @@ async function runDefaultRouterRespondAsync(params: {
             const stepSuffix = `:ts:${toolStepIndex}`;
             const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
             const stepContent = stepResults
-              .map((r) => `Tool: ${r.toolName}\nResult: ${JSON.stringify(r.result)}`)
+              .map((stepResult) => `**Tool:** \`${stepResult.toolName}\`\n\`\`\`json\n${JSON.stringify(stepResult.result, null, 2)}\n\`\`\``)
               .join('\n\n');
             await upsertMessages(userId, [
               {
@@ -406,6 +413,44 @@ async function runDefaultRouterRespondAsync(params: {
                 createdAt: null,
               },
             ]);
+
+            // Mark each :tc (tool_call_start) message for this step as completed
+            // now that the tool call has finished executing.  Since onToolCallStart
+            // is awaited (not fire-and-forget), these messages are guaranteed to
+            // exist in the DB before we reach this point.
+            for (let ci = 0; ci < stepResults.length; ci++) {
+              const tcSuffix = `:tc:${toolStepIndex}:${ci}`;
+              const tcMsgId = `${assistantMessageId.slice(0, 255 - tcSuffix.length)}${tcSuffix}`;
+              await upsertMessages(userId, [
+                {
+                  messageId: tcMsgId,
+                  taskId: acceptedTaskId,
+                  channelId,
+                  sessionId: acceptedSessionId,
+                  threadId,
+                  role: 'assistant',
+                  content: '',
+                  taskState: 'completed',
+                  checkpointCursor: null,
+                  metadata: {
+                    ...dispatchPlaceholderMetadata({
+                      resolvedBotId,
+                      resolvedSkillId,
+                      source: 'backend.respond.agent_loop',
+                      model: typeof body.model === 'string' ? body.model : null,
+                    }),
+                    agentLoop: {
+                      phase: 'tool_call_start',
+                      stepIndex: toolStepIndex,
+                      callIndex: ci,
+                      toolName: stepResults[ci].toolName,
+                      args: stepResults[ci].args,
+                    },
+                  },
+                  createdAt: null,
+                },
+              ]);
+            }
           },
           onToolCallStart: async (toolName, args, stepIndex, callIndex) => {
             const suffix = `:tc:${stepIndex + 1}:${callIndex}`;
@@ -503,21 +548,6 @@ async function runDefaultRouterRespondAsync(params: {
         },
         parseProvider(body.provider),
       ));
-    } else {
-      // Normal chat: use the direct streaming path for incremental text delivery.
-      // The agent-loop wrapper buffers text per step which would defeat the
-      // 300 ms flush interval and make the UI appear to hang.
-      ({ textStream, provider, modelId } = await streamWithUserConfig(
-        userId,
-        {
-          model: typeof body.model === "string" ? body.model : undefined,
-          configId: typeof body.configId === "string" ? body.configId : undefined,
-          messages: messagesWithSystem,
-          maxTokens,
-        },
-        parseProvider(body.provider),
-      ));
-    }
 
     let assistantContent = "";
     let hasAnyChunk = false;

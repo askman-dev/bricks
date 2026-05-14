@@ -18,6 +18,12 @@ const adapters: Record<LlmProvider, LlmProviderAdapter> = {
   google_ai_studio: new GoogleAiStudioAdapter(),
 };
 
+/** Returns true when `value` is a plain (non-array) object. */
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+
 const ALLOWED_ENDPOINT_HOSTS = new Set([
   'api.anthropic.com',
   'generativelanguage.googleapis.com',
@@ -198,11 +204,15 @@ function buildAiSdkTools(tools: Record<string, AgentTool>): Record<string, unkno
  * Shape of an individual tool result entry in an `OnStepFinishEvent`.
  * We define this locally to avoid importing the SDK's generic `TypedToolResult`
  * which requires knowing the full ToolSet type at compile time.
+ *
+ * AI SDK v6 renamed the fields from v5:
+ *   - args   → input
+ *   - result → output
  */
 interface SdkToolResult {
   toolName: string;
-  args: unknown;
-  result: unknown;
+  input: unknown;
+  output: unknown;
 }
 
 /**
@@ -220,14 +230,14 @@ interface SdkStepFinishEvent {
  * Property names match AI SDK v6 TextStreamPart:
  *   - text-delta:      .text  (not .textDelta)
  *   - reasoning-delta: .text  (not .textDelta; event type was 'reasoning' in v5)
- *   - finish-step:     replaces 'step-finish' from v5
+ *   - finish-step:     replaces 'step-finish' from v5; no toolResults field in v6 stream
  *   - tool-call:       .input (not .args; .toolName is unchanged)
  */
 type SdkFullStreamEvent =
   | { type: 'text-delta'; text: string }
   | { type: 'reasoning-delta'; text: string }
   | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
-  | { type: 'finish-step'; stepType: string; toolResults?: SdkToolResult[] }
+  | { type: 'finish-step'; stepType: string }
   | { type: string };
 
 /**
@@ -359,10 +369,8 @@ export async function streamWithAgentToolsAndUserConfig(
       ? (async (event: SdkStepFinishEvent) => {
           const results: AgentLoopStepResult[] = (event.toolResults ?? []).map((tr) => ({
             toolName: String(tr.toolName ?? ''),
-            args: (tr.args && typeof tr.args === 'object' && !Array.isArray(tr.args))
-              ? (tr.args as Record<string, unknown>)
-              : {},
-            result: tr.result,
+            args: isRecordObject(tr.input) ? tr.input : {},
+            result: tr.output,
           }));
           if (results.length > 0) {
             await options.onStepFinish!(results);
@@ -404,9 +412,17 @@ export async function streamWithAgentToolsAndUserConfig(
       for await (const rawEvent of result.fullStream as AsyncIterable<SdkFullStreamEvent>) {
         if (rawEvent.type === 'text-delta') {
           const delta = (rawEvent as { type: 'text-delta'; text: string }).text;
-          // Accumulate but don't yield yet — we only yield at step-finish once
-          // we know whether the step included tool calls (see below).
           stepText += delta;
+          // Yield immediately when no tool call has been seen yet in this step.
+          // If a tool-call event arrives later, we stop yielding deltas so the
+          // remaining text is routed exclusively to onStepTextEnd.  Any text
+          // already streamed before the tool-call arrives is accepted as minor
+          // overlap (it appears in the main stream and in the :pt:S record);
+          // this edge case (model produces text then calls a tool) is uncommon
+          // and the duplicate in the DB record does not affect client UX.
+          if (!stepHasToolCalls) {
+            yield delta;
+          }
         } else if (rawEvent.type === 'reasoning-delta') {
           reasoningBuffer += (rawEvent as { type: 'reasoning-delta'; text: string }).text;
         } else if (rawEvent.type === 'tool-call') {
@@ -418,12 +434,10 @@ export async function streamWithAgentToolsAndUserConfig(
             if (tc.toolName) {
               const toolName = String(tc.toolName);
               // Guard against non-object args (e.g. SDK emits a primitive).
-              const args =
-                tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input)
-                  ? (tc.input as Record<string, unknown>)
-                  : {};
-              // Fire-and-forget: don't block stream/tool execution on DB write.
-              fireAndForget('onToolCallStart', options.onToolCallStart(toolName, args, streamStepIndex, callIndex));
+              const args = isRecordObject(tc.input) ? tc.input : {};
+              // Await the callback so that the :tc message is written before tool
+              // execution begins, which guarantees correct write_seq ordering.
+              await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
             }
           }
           callIndex++;
@@ -431,15 +445,13 @@ export async function streamWithAgentToolsAndUserConfig(
           if (stepHasToolCalls) {
             // Intermediate step: route text to the :pt:S record, not the main
             // stream, to avoid the same content appearing in both channels.
+            // (Text emitted before the first tool-call in this step may have
+            // already been streamed, which is accepted as minor overlap.)
             if (options.onStepTextEnd && stepText.trim().length > 0) {
               fireAndForget('onStepTextEnd', options.onStepTextEnd(stepText, streamStepIndex));
             }
-          } else {
-            // Final / tool-free step: yield the buffered text to the caller.
-            if (stepText.length > 0) {
-              yield stepText;
-            }
           }
+          // For tool-free steps, all text was already yielded as deltas above; no additional yield needed here.
           if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
             fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
           }
@@ -454,7 +466,9 @@ export async function streamWithAgentToolsAndUserConfig(
       }
       // Flush any remaining text / reasoning accumulated in a partial final
       // step (e.g. when the stream ends without emitting a step-finish event).
-      if (stepText.length > 0) {
+      // Only flush buffered text if tool calls were present in the step —
+      // text-only steps already stream their deltas eagerly above.
+      if (stepText.length > 0 && stepHasToolCalls) {
         yield stepText;
       }
       if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
