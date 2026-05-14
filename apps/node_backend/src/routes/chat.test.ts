@@ -24,7 +24,6 @@ const {
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
   streamWithAgentToolsAndUserConfigMock,
-  streamWithUserConfigMock,
   buildAgentToolsMock,
   getPlatformNodeByNodeIdMock,
   listPlatformNodesMock,
@@ -74,14 +73,6 @@ const {
   })),
   deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
   streamWithAgentToolsAndUserConfigMock: vi.fn(async () => ({
-    textStream: (async function* () {
-      yield "sync ";
-      yield "reply";
-    })(),
-    provider: "anthropic",
-    modelId: "claude-sonnet-4-5",
-  })),
-  streamWithUserConfigMock: vi.fn(async () => ({
     textStream: (async function* () {
       yield "sync ";
       yield "reply";
@@ -155,7 +146,6 @@ vi.mock('../services/localAgentLoopService.js', () => ({
 
 vi.mock("../llm/llm_service.js", () => ({
   streamWithAgentToolsAndUserConfig: streamWithAgentToolsAndUserConfigMock,
-  streamWithUserConfig: streamWithUserConfigMock,
 }));
 
 vi.mock("../middleware/auth.js", () => ({
@@ -229,7 +219,6 @@ describe("chat routes", () => {
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
     streamWithAgentToolsAndUserConfigMock.mockClear();
-    streamWithUserConfigMock.mockClear();
     buildAgentToolsMock.mockClear();
     getPlatformNodeByNodeIdMock.mockReset();
     getPlatformNodeByNodeIdMock.mockImplementation(
@@ -343,7 +332,7 @@ describe("chat routes", () => {
     await new Promise<void>((resolve) => {
       setTimeout(() => resolve(), 0);
     });
-    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
@@ -405,7 +394,7 @@ describe("chat routes", () => {
         }),
       }),
     ]);
-    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-assistant-default-1",
@@ -422,7 +411,7 @@ describe("chat routes", () => {
     ]);
   });
 
-  it('uses model-driven agent loop for local respond, passing tools to the streaming function when user issues a slash command', async () => {
+  it('uses model-driven agent loop for all local respond messages, always passing tools to the streaming function', async () => {
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: 'POST',
       headers: {
@@ -446,7 +435,7 @@ describe("chat routes", () => {
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
-  it('does not pass agent tools to streaming for ordinary (non-slash) chat messages', async () => {
+  it('also passes agent tools for ordinary (non-slash) natural language chat messages', async () => {
     const response = await fetch(`${baseUrl}/api/chat/respond`, {
       method: 'POST',
       headers: {
@@ -466,9 +455,8 @@ describe("chat routes", () => {
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(buildAgentToolsMock).not.toHaveBeenCalled();
-    expect(streamWithAgentToolsAndUserConfigMock).not.toHaveBeenCalled();
-    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
   it('passes loop control options from request body to the model-driven agent loop', async () => {
