@@ -803,6 +803,20 @@ class _ChatScreenState extends State<ChatScreen> {
           _lastSyncedSeq = 0;
         });
         _configureActiveScopeSync();
+        final token = _authToken;
+        if (token != null && token.isNotEmpty) {
+          unawaited(
+            _chatHistoryApiService
+                .saveChannelName(
+              token: token,
+              channelId: id,
+              displayName: name,
+            )
+                .catchError((Object error, StackTrace stackTrace) {
+              debugPrint('Failed to save channel name "$id": $error');
+            }),
+          );
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
