@@ -18,7 +18,12 @@ const adapters: Record<LlmProvider, LlmProviderAdapter> = {
   google_ai_studio: new GoogleAiStudioAdapter(),
 };
 
-const ALLOWED_ENDPOINT_HOSTS = new Set([
+/** Returns true when `value` is a plain (non-array) object. */
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+
   'api.anthropic.com',
   'generativelanguage.googleapis.com',
 ]);
@@ -363,9 +368,7 @@ export async function streamWithAgentToolsAndUserConfig(
       ? (async (event: SdkStepFinishEvent) => {
           const results: AgentLoopStepResult[] = (event.toolResults ?? []).map((tr) => ({
             toolName: String(tr.toolName ?? ''),
-            args: (tr.input && typeof tr.input === 'object' && !Array.isArray(tr.input))
-              ? (tr.input as Record<string, unknown>)
-              : {},
+            args: isRecordObject(tr.input) ? tr.input : {},
             result: tr.output,
           }));
           if (results.length > 0) {
@@ -430,10 +433,7 @@ export async function streamWithAgentToolsAndUserConfig(
             if (tc.toolName) {
               const toolName = String(tc.toolName);
               // Guard against non-object args (e.g. SDK emits a primitive).
-              const args =
-                tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input)
-                  ? (tc.input as Record<string, unknown>)
-                  : {};
+              const args = isRecordObject(tc.input) ? tc.input : {};
               // Await the callback so that the :tc message is written before tool
               // execution begins, which guarantees correct write_seq ordering.
               await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
