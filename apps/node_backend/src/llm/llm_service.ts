@@ -24,6 +24,7 @@ function isRecordObject(value: unknown): value is Record<string, unknown> {
 }
 
 
+const ALLOWED_ENDPOINT_HOSTS = new Set([
   'api.anthropic.com',
   'generativelanguage.googleapis.com',
 ]);
