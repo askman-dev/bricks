@@ -213,6 +213,18 @@ interface SdkStepFinishEvent {
 }
 
 /**
+ * Minimal discriminated-union type for events emitted by `result.fullStream`.
+ * We only declare the event shapes we actually consume; unknown types are
+ * caught by the final `{ type: string }` branch.
+ */
+type SdkFullStreamEvent =
+  | { type: 'text-delta'; textDelta: string }
+  | { type: 'reasoning'; textDelta: string }
+  | { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown }
+  | { type: 'step-finish'; stepType: string; toolResults?: SdkToolResult[] }
+  | { type: string };
+
+/**
  * Minimal subset of a completed AI SDK step, used only by our custom
  * `stopWhen` condition that counts cumulative tool calls. The full SDK
  * `StepResult` type is deeply generic and would require importing the
@@ -257,6 +269,35 @@ export async function streamWithAgentToolsAndUserConfig(
     maxToolCalls?: number;
     timeoutMs?: number;
     onStepFinish?: (stepResults: AgentLoopStepResult[]) => Promise<void>;
+    /**
+     * Called when the model emits a tool-call event (before execution).
+     * @param toolName  - Name of the tool being invoked.
+     * @param args      - Arguments the model passed to the tool.
+     * @param stepIndex - 0-based index of the current agent-loop step.
+     * @param callIndex - 0-based index of this call within the step.
+     */
+    onToolCallStart?: (
+      toolName: string,
+      args: Record<string, unknown>,
+      stepIndex: number,
+      callIndex: number,
+    ) => Promise<void>;
+    /**
+     * Called once per step when the step produced reasoning tokens.
+     * Receives the full accumulated reasoning text for that step.
+     * @param text      - Complete reasoning text for the step.
+     * @param stepIndex - 0-based index of the step.
+     */
+    onReasoningChunk?: (text: string, stepIndex: number) => Promise<void>;
+    /**
+     * Called when a step that also contains tool calls ends with non-empty text.
+     * This text is the model's "pre-tool" commentary within the step.
+     * Not called for the final (tool-free) step — that text is yielded via
+     * the normal textStream.
+     * @param text      - Accumulated text output for the step.
+     * @param stepIndex - 0-based index of the step.
+     */
+    onStepTextEnd?: (text: string, stepIndex: number) => Promise<void>;
   },
   preferredProvider?: LlmProvider,
 ): Promise<{ textStream: AsyncIterable<string>; provider: LlmProvider; modelId: string }> {
@@ -327,9 +368,92 @@ export async function streamWithAgentToolsAndUserConfig(
 
   // Wrap the textStream in a generator that always clears the timeout handle
   // when the stream finishes (naturally or via an error/abort).
+  // Iterates fullStream so that reasoning and tool-call events can be
+  // forwarded to the optional callbacks while still yielding text deltas to
+  // callers that only need the text content.
+  //
+  // Text is buffered per step and only yielded at step-finish to avoid
+  // duplication: text from steps with tool calls goes exclusively to the
+  // onStepTextEnd callback (:pt:S record), while text from tool-free steps
+  // is yielded to the main text stream.  Callbacks (onToolCallStart,
+  // onReasoningChunk, onStepTextEnd) are fired without awaiting so they
+  // don't block the stream or tool execution; errors are logged and swallowed.
   async function* managedStream(): AsyncIterable<string> {
+    // Per-step tracking for the optional callbacks.
+    let streamStepIndex = 0;
+    let callIndex = 0;
+    let stepHasToolCalls = false;
+    let stepText = '';
+    let reasoningBuffer = '';
+
+    // Fire a callback Promise without blocking the generator. The callback
+    // name is included in error logs so failures are easy to diagnose.
+    const fireAndForget = (name: string, p: Promise<void>): void => {
+      p.catch((err) => {
+        console.error(`[managedStream] ${name} callback error:`, err);
+      });
+    };
+
     try {
-      yield* result.textStream;
+      for await (const rawEvent of result.fullStream as AsyncIterable<SdkFullStreamEvent>) {
+        if (rawEvent.type === 'text-delta') {
+          const delta = (rawEvent as { type: 'text-delta'; textDelta: string }).textDelta;
+          // Accumulate but don't yield yet — we only yield at step-finish once
+          // we know whether the step included tool calls (see below).
+          stepText += delta;
+        } else if (rawEvent.type === 'reasoning') {
+          reasoningBuffer += (rawEvent as { type: 'reasoning'; textDelta: string }).textDelta;
+        } else if (rawEvent.type === 'tool-call') {
+          stepHasToolCalls = true;
+          if (options.onToolCallStart) {
+            const tc = rawEvent as { type: 'tool-call'; toolName: string; args: unknown };
+            // Skip the callback if the SDK emits a tool-call with no name — an
+            // empty tool name would produce meaningless DB records.
+            if (tc.toolName) {
+              const toolName = String(tc.toolName);
+              // Guard against non-object args (e.g. SDK emits a primitive).
+              const args =
+                tc.args && typeof tc.args === 'object' && !Array.isArray(tc.args)
+                  ? (tc.args as Record<string, unknown>)
+                  : {};
+              // Fire-and-forget: don't block stream/tool execution on DB write.
+              fireAndForget('onToolCallStart', options.onToolCallStart(toolName, args, streamStepIndex, callIndex));
+            }
+          }
+          callIndex++;
+        } else if (rawEvent.type === 'step-finish') {
+          if (stepHasToolCalls) {
+            // Intermediate step: route text to the :pt:S record, not the main
+            // stream, to avoid the same content appearing in both channels.
+            if (options.onStepTextEnd && stepText.trim().length > 0) {
+              fireAndForget('onStepTextEnd', options.onStepTextEnd(stepText, streamStepIndex));
+            }
+          } else {
+            // Final / tool-free step: yield the buffered text to the caller.
+            if (stepText.length > 0) {
+              yield stepText;
+            }
+          }
+          if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
+            fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
+          }
+          // Advance step counter and reset per-step state.
+          streamStepIndex++;
+          callIndex = 0;
+          stepHasToolCalls = false;
+          stepText = '';
+          reasoningBuffer = '';
+        }
+        // All other event types (tool-result, finish, error, etc.) are ignored.
+      }
+      // Flush any remaining text / reasoning accumulated in a partial final
+      // step (e.g. when the stream ends without emitting a step-finish event).
+      if (stepText.length > 0) {
+        yield stepText;
+      }
+      if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
+        fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
+      }
     } finally {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
