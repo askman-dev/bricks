@@ -380,7 +380,7 @@ async function runDefaultRouterRespondAsync(params: {
             const stepSuffix = `:ts:${toolStepIndex}`;
             const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
             const stepContent = stepResults
-              .map((r) => `Tool: ${r.toolName}\nResult: ${JSON.stringify(r.result)}`)
+              .map((r) => `**Tool:** \`${r.toolName}\`\n\`\`\`json\n${JSON.stringify(r.result, null, 2)}\n\`\`\``)
               .join('\n\n');
             await upsertMessages(userId, [
               {
