@@ -198,11 +198,15 @@ function buildAiSdkTools(tools: Record<string, AgentTool>): Record<string, unkno
  * Shape of an individual tool result entry in an `OnStepFinishEvent`.
  * We define this locally to avoid importing the SDK's generic `TypedToolResult`
  * which requires knowing the full ToolSet type at compile time.
+ *
+ * AI SDK v6 renamed the fields from v5:
+ *   - args   → input
+ *   - result → output
  */
 interface SdkToolResult {
   toolName: string;
-  args: unknown;
-  result: unknown;
+  input: unknown;
+  output: unknown;
 }
 
 /**
@@ -220,14 +224,14 @@ interface SdkStepFinishEvent {
  * Property names match AI SDK v6 TextStreamPart:
  *   - text-delta:      .text  (not .textDelta)
  *   - reasoning-delta: .text  (not .textDelta; event type was 'reasoning' in v5)
- *   - finish-step:     replaces 'step-finish' from v5
+ *   - finish-step:     replaces 'step-finish' from v5; no toolResults field in v6 stream
  *   - tool-call:       .input (not .args; .toolName is unchanged)
  */
 type SdkFullStreamEvent =
   | { type: 'text-delta'; text: string }
   | { type: 'reasoning-delta'; text: string }
   | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
-  | { type: 'finish-step'; stepType: string; toolResults?: SdkToolResult[] }
+  | { type: 'finish-step'; stepType: string }
   | { type: string };
 
 /**
@@ -359,10 +363,10 @@ export async function streamWithAgentToolsAndUserConfig(
       ? (async (event: SdkStepFinishEvent) => {
           const results: AgentLoopStepResult[] = (event.toolResults ?? []).map((tr) => ({
             toolName: String(tr.toolName ?? ''),
-            args: (tr.args && typeof tr.args === 'object' && !Array.isArray(tr.args))
-              ? (tr.args as Record<string, unknown>)
+            args: (tr.input && typeof tr.input === 'object' && !Array.isArray(tr.input))
+              ? (tr.input as Record<string, unknown>)
               : {},
-            result: tr.result,
+            result: tr.output,
           }));
           if (results.length > 0) {
             await options.onStepFinish!(results);
@@ -430,8 +434,9 @@ export async function streamWithAgentToolsAndUserConfig(
                 tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input)
                   ? (tc.input as Record<string, unknown>)
                   : {};
-              // Fire-and-forget: don't block stream/tool execution on DB write.
-              fireAndForget('onToolCallStart', options.onToolCallStart(toolName, args, streamStepIndex, callIndex));
+              // Await the callback so that the :tc message is written before tool
+              // execution begins, which guarantees correct write_seq ordering.
+              await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
             }
           }
           callIndex++;

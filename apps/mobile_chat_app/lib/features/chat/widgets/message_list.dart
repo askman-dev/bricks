@@ -416,6 +416,7 @@ class _MessageListState extends State<MessageList> {
                         toolName: msg.agentLoopTool,
                         content: msg.content,
                         chatColors: chatColors,
+                        taskState: msg.taskState,
                       )
                     else
                       GestureDetector(
@@ -1323,12 +1324,14 @@ class _AgentLoopStatusRow extends StatefulWidget {
     required this.chatColors,
     this.toolName,
     this.content = '',
+    this.taskState,
   });
 
   final String phase;
   final String? toolName;
   final String content;
   final ChatColors chatColors;
+  final ChatTaskState? taskState;
 
   @override
   State<_AgentLoopStatusRow> createState() => _AgentLoopStatusRowState();
@@ -1345,6 +1348,9 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
       case 'tool_call_start':
         final label =
             widget.toolName != null ? '正在调用 ${widget.toolName}…' : '正在调用工具…';
+        final doneLabel =
+            widget.toolName != null ? '已调用 ${widget.toolName}' : '已调用工具';
+        final isDone = widget.taskState == ChatTaskState.completed;
         return Padding(
           padding: const EdgeInsets.only(
             left: BricksSpacing.xs,
@@ -1357,16 +1363,22 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
               SizedBox(
                 width: 12,
                 height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    chatColors.agentAccent,
-                  ),
-                ),
+                child: isDone
+                    ? Icon(
+                        Icons.check_circle_outline,
+                        size: 12,
+                        color: chatColors.agentAccent,
+                      )
+                    : CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          chatColors.agentAccent,
+                        ),
+                      ),
               ),
               const SizedBox(width: BricksSpacing.xs),
               Text(
-                label,
+                isDone ? doneLabel : label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: chatColors.metaText,
                     ),

@@ -5,8 +5,9 @@ import {
   type ChatScopeType,
   normalizeChatThreadId,
   upsertChatScopeSetting,
+  listChatScopeSettings,
 } from './chatRouterService.js';
-import { upsertChatChannelName } from './chatChannelNameService.js';
+import { upsertChatChannelName, listChatChannelNames } from './chatChannelNameService.js';
 import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
@@ -14,6 +15,10 @@ export const INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET = 'chat.thread.instructio
 export const INTERNAL_TOOL_CHAT_CHANNEL_CREATE = 'chat.channel.create';
 export const INTERNAL_TOOL_CHAT_THREAD_CREATE = 'chat.thread.create';
 export const INTERNAL_TOOL_CHAT_CHANNEL_RENAME = 'chat.channel.rename';
+export const INTERNAL_TOOL_CHAT_CHANNEL_LIST = 'chat.channel.list';
+export const INTERNAL_TOOL_CHAT_CHANNEL_GET = 'chat.channel.get';
+export const INTERNAL_TOOL_CHAT_THREAD_LIST = 'chat.thread.list';
+export const INTERNAL_TOOL_CHAT_THREAD_GET = 'chat.thread.get';
 
 export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET,
@@ -21,6 +26,10 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_CREATE,
   INTERNAL_TOOL_CHAT_THREAD_CREATE,
   INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
+  INTERNAL_TOOL_CHAT_CHANNEL_LIST,
+  INTERNAL_TOOL_CHAT_CHANNEL_GET,
+  INTERNAL_TOOL_CHAT_THREAD_LIST,
+  INTERNAL_TOOL_CHAT_THREAD_GET,
 ] as const;
 
 export type InternalToolName = (typeof INTERNAL_TOOLS)[number];
@@ -229,6 +238,124 @@ async function createThreadScope(params: {
   };
 }
 
+async function listChannels(params: {
+  userId: string;
+}): Promise<ExecuteInternalToolResult> {
+  const [scopes, names] = await Promise.all([
+    listChatScopeSettings(params.userId),
+    listChatChannelNames(params.userId),
+  ]);
+
+  const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
+
+  // Collect unique channel IDs from both sources.
+  const channelIds = new Set<string>();
+  for (const s of scopes) channelIds.add(s.channelId);
+  for (const n of names) channelIds.add(n.channelId);
+
+  const channels = Array.from(channelIds)
+    .sort()
+    .map((channelId) => {
+      const scope = scopes.find((s) => s.scopeType === 'channel' && s.channelId === channelId);
+      const threadCount = scopes.filter((s) => s.scopeType === 'thread' && s.channelId === channelId).length;
+      return {
+        channelId,
+        displayName: nameMap.get(channelId) ?? null,
+        instructions: scope?.instructions ?? null,
+        threadCount,
+      };
+    });
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_CHANNEL_LIST,
+    data: { channels },
+    error: null,
+  };
+}
+
+async function getChannel(params: {
+  userId: string;
+  channelId: string;
+}): Promise<ExecuteInternalToolResult> {
+  const [scopes, names] = await Promise.all([
+    listChatScopeSettings(params.userId),
+    listChatChannelNames(params.userId),
+  ]);
+
+  const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
+  const channelScope = scopes.find(
+    (s) => s.scopeType === 'channel' && s.channelId === params.channelId,
+  );
+  const threads = scopes
+    .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId)
+    .map((s) => ({ threadId: s.threadId, instructions: s.instructions }));
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_CHANNEL_GET,
+    data: {
+      channelId: params.channelId,
+      displayName: nameMap.get(params.channelId) ?? null,
+      instructions: channelScope?.instructions ?? null,
+      threads,
+    },
+    error: null,
+  };
+}
+
+async function listThreads(params: {
+  userId: string;
+  channelId: string;
+}): Promise<ExecuteInternalToolResult> {
+  const scopes = await listChatScopeSettings(params.userId);
+  const threads = scopes
+    .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId)
+    .map((s) => ({ threadId: s.threadId, instructions: s.instructions }));
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_THREAD_LIST,
+    data: { channelId: params.channelId, threads },
+    error: null,
+  };
+}
+
+async function getThread(params: {
+  userId: string;
+  channelId: string;
+  threadId: string;
+}): Promise<ExecuteInternalToolResult> {
+  const [scopes, names] = await Promise.all([
+    listChatScopeSettings(params.userId),
+    listChatChannelNames(params.userId),
+  ]);
+
+  const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
+  const threadScope = scopes.find(
+    (s) => s.scopeType === 'thread' && s.channelId === params.channelId && s.threadId === params.threadId,
+  );
+  const channelScope = scopes.find(
+    (s) => s.scopeType === 'channel' && s.channelId === params.channelId,
+  );
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_THREAD_GET,
+    data: {
+      channelId: params.channelId,
+      threadId: params.threadId,
+      instructions: threadScope?.instructions ?? null,
+      parentChannel: {
+        channelId: params.channelId,
+        displayName: nameMap.get(params.channelId) ?? null,
+        instructions: channelScope?.instructions ?? null,
+      },
+    },
+    error: null,
+  };
+}
+
 export async function executeInternalTool(
   input: ExecuteInternalToolInput,
 ): Promise<ExecuteInternalToolResult> {
@@ -350,6 +477,55 @@ export async function executeInternalTool(
         };
       }
       return renameChannel({ userId, channelId, displayName });
+    }
+    case INTERNAL_TOOL_CHAT_CHANNEL_LIST: {
+      return listChannels({ userId });
+    }
+    case INTERNAL_TOOL_CHAT_CHANNEL_GET: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId is a required string argument',
+          },
+        };
+      }
+      return getChannel({ userId, channelId });
+    }
+    case INTERNAL_TOOL_CHAT_THREAD_LIST: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId is a required string argument',
+          },
+        };
+      }
+      return listThreads({ userId, channelId });
+    }
+    case INTERNAL_TOOL_CHAT_THREAD_GET: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const threadId = readStringArg(args, 'threadId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId || !threadId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId and threadId are required string arguments',
+          },
+        };
+      }
+      return getThread({ userId, channelId, threadId });
     }
   }
 }
@@ -509,6 +685,74 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_RENAME, args),
+    },
+
+    chat_channel_list: {
+      description:
+        'List all chat channels available to the user, including their internal IDs, display names, ' +
+        'instructions, and thread counts. Use this to discover channel IDs before calling other channel tools.',
+      parametersSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_LIST, args),
+    },
+
+    chat_channel_get: {
+      description:
+        'Get detailed information about a specific channel, including its display name, instructions, ' +
+        'and the list of threads it contains.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+        },
+        required: ['channelId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_GET, args),
+    },
+
+    chat_thread_list: {
+      description:
+        'List all threads (sub-sections) within a given channel, including their IDs and instructions.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier whose threads to list.',
+          },
+        },
+        required: ['channelId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_LIST, args),
+    },
+
+    chat_thread_get: {
+      description:
+        'Get detailed information about a specific thread, including its instructions and its parent channel info.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          threadId: {
+            type: 'string',
+            description: 'The thread identifier.',
+          },
+        },
+        required: ['channelId', 'threadId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_GET, args),
     },
   };
 }
