@@ -216,12 +216,18 @@ interface SdkStepFinishEvent {
  * Minimal discriminated-union type for events emitted by `result.fullStream`.
  * We only declare the event shapes we actually consume; unknown types are
  * caught by the final `{ type: string }` branch.
+ *
+ * Property names match AI SDK v6 TextStreamPart:
+ *   - text-delta:      .text  (not .textDelta)
+ *   - reasoning-delta: .text  (not .textDelta; event type was 'reasoning' in v5)
+ *   - finish-step:     replaces 'step-finish' from v5
+ *   - tool-call:       .input (not .args; .toolName is unchanged)
  */
 type SdkFullStreamEvent =
-  | { type: 'text-delta'; textDelta: string }
-  | { type: 'reasoning'; textDelta: string }
-  | { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown }
-  | { type: 'step-finish'; stepType: string; toolResults?: SdkToolResult[] }
+  | { type: 'text-delta'; text: string }
+  | { type: 'reasoning-delta'; text: string }
+  | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
+  | { type: 'finish-step'; stepType: string; toolResults?: SdkToolResult[] }
   | { type: string };
 
 /**
@@ -397,31 +403,31 @@ export async function streamWithAgentToolsAndUserConfig(
     try {
       for await (const rawEvent of result.fullStream as AsyncIterable<SdkFullStreamEvent>) {
         if (rawEvent.type === 'text-delta') {
-          const delta = (rawEvent as { type: 'text-delta'; textDelta: string }).textDelta;
+          const delta = (rawEvent as { type: 'text-delta'; text: string }).text;
           // Accumulate but don't yield yet — we only yield at step-finish once
           // we know whether the step included tool calls (see below).
           stepText += delta;
-        } else if (rawEvent.type === 'reasoning') {
-          reasoningBuffer += (rawEvent as { type: 'reasoning'; textDelta: string }).textDelta;
+        } else if (rawEvent.type === 'reasoning-delta') {
+          reasoningBuffer += (rawEvent as { type: 'reasoning-delta'; text: string }).text;
         } else if (rawEvent.type === 'tool-call') {
           stepHasToolCalls = true;
           if (options.onToolCallStart) {
-            const tc = rawEvent as { type: 'tool-call'; toolName: string; args: unknown };
+            const tc = rawEvent as { type: 'tool-call'; toolName: string; input: unknown };
             // Skip the callback if the SDK emits a tool-call with no name — an
             // empty tool name would produce meaningless DB records.
             if (tc.toolName) {
               const toolName = String(tc.toolName);
               // Guard against non-object args (e.g. SDK emits a primitive).
               const args =
-                tc.args && typeof tc.args === 'object' && !Array.isArray(tc.args)
-                  ? (tc.args as Record<string, unknown>)
+                tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input)
+                  ? (tc.input as Record<string, unknown>)
                   : {};
               // Fire-and-forget: don't block stream/tool execution on DB write.
               fireAndForget('onToolCallStart', options.onToolCallStart(toolName, args, streamStepIndex, callIndex));
             }
           }
           callIndex++;
-        } else if (rawEvent.type === 'step-finish') {
+        } else if (rawEvent.type === 'finish-step') {
           if (stepHasToolCalls) {
             // Intermediate step: route text to the :pt:S record, not the main
             // stream, to avoid the same content appearing in both channels.
