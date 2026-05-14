@@ -406,9 +406,12 @@ export async function streamWithAgentToolsAndUserConfig(
           const delta = (rawEvent as { type: 'text-delta'; text: string }).text;
           stepText += delta;
           // Yield immediately when no tool call has been seen yet in this step.
-          // If a tool-call event arrives later we stop yielding deltas so the
+          // If a tool-call event arrives later, we stop yielding deltas so the
           // remaining text is routed exclusively to onStepTextEnd.  Any text
-          // already streamed before the tool-call is accepted as minor overlap.
+          // already streamed before the tool-call arrives is accepted as minor
+          // overlap (it appears in the main stream and in the :pt:S record);
+          // this edge case (model produces text then calls a tool) is uncommon
+          // and the duplicate in the DB record does not affect client UX.
           if (!stepHasToolCalls) {
             yield delta;
           }
@@ -442,7 +445,7 @@ export async function streamWithAgentToolsAndUserConfig(
               fireAndForget('onStepTextEnd', options.onStepTextEnd(stepText, streamStepIndex));
             }
           }
-          // For tool-free steps text was already yielded per delta above; nothing more to yield.
+          // For tool-free steps, all text was already yielded as deltas above; no additional yield needed here.
           if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
             fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
           }
