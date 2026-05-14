@@ -124,7 +124,8 @@ class _MessageListState extends State<MessageList> {
   void _scrollToFocusedUserMessage() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      if (widget.messages.isEmpty || _focusedIndex < 0) return;
+      if (widget.messages.isEmpty) return;
+      if (_focusedIndex < 0) return;
       // First jump to the bottom so the layout measures the full extent, then
       // let ensureVisible fine-tune.  With an eager (non-builder) ListView all
       // items are already in the render tree, so the second callback always
@@ -284,12 +285,12 @@ class _MessageListState extends State<MessageList> {
   // Extracted from build() so that the non-builder ListView can call it in a
   // simple for-loop while keeping the item rendering logic in one place.
   Widget _buildMessageItem(BuildContext context, int index) {
-    final messages = widget.messages;
-    final msg = messages[index];
+    final allMessages = widget.messages;
+    final msg = allMessages[index];
     final isUser = msg.role == 'user';
     final isAssistantDispatchPlaceholder = _isAssistantDispatchPlaceholder(msg);
     final deliveryIndicator =
-        isUser ? _deliveryIndicatorForUserMessage(msg, messages) : null;
+        isUser ? _deliveryIndicatorForUserMessage(msg, allMessages) : null;
     // Resolve chat-specific semantic colors from the ThemeExtension.
     // Falling back to the light defaults keeps plain MaterialApp tests
     // working without an explicit BricksTheme.
