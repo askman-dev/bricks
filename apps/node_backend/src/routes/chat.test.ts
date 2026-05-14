@@ -23,7 +23,8 @@ const {
   listChatChannelNamesMock,
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
-  streamWithUserConfigMock,
+  streamWithAgentToolsAndUserConfigMock,
+  buildAgentToolsMock,
   getPlatformNodeByNodeIdMock,
   listPlatformNodesMock,
 } = vi.hoisted(() => ({
@@ -71,7 +72,7 @@ const {
     updatedAt: "2026-04-18T08:00:00.000Z",
   })),
   deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
-  streamWithUserConfigMock: vi.fn(async () => ({
+  streamWithAgentToolsAndUserConfigMock: vi.fn(async () => ({
     textStream: (async function* () {
       yield "sync ";
       yield "reply";
@@ -79,6 +80,7 @@ const {
     provider: "anthropic",
     modelId: "claude-sonnet-4-5",
   })),
+  buildAgentToolsMock: vi.fn(() => ({})),
   getPlatformNodeByNodeIdMock: vi.fn(
     async (
       _userId: string,
@@ -138,8 +140,12 @@ vi.mock("../services/chatChannelNameService.js", () => ({
   upsertChatChannelName: upsertChatChannelNameMock,
 }));
 
+vi.mock('../services/localAgentLoopService.js', () => ({
+  buildAgentTools: buildAgentToolsMock,
+}));
+
 vi.mock("../llm/llm_service.js", () => ({
-  streamWithUserConfig: streamWithUserConfigMock,
+  streamWithAgentToolsAndUserConfig: streamWithAgentToolsAndUserConfigMock,
 }));
 
 vi.mock("../middleware/auth.js", () => ({
@@ -212,7 +218,8 @@ describe("chat routes", () => {
     listChatChannelNamesMock.mockClear();
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
-    streamWithUserConfigMock.mockClear();
+    streamWithAgentToolsAndUserConfigMock.mockClear();
+    buildAgentToolsMock.mockClear();
     getPlatformNodeByNodeIdMock.mockReset();
     getPlatformNodeByNodeIdMock.mockImplementation(
       async (_userId: string, nodeId: string) => ({
@@ -255,7 +262,7 @@ describe("chat routes", () => {
     expect(body.state).toBe("accepted");
     expect(body.text).toBe("");
     expect(body.lastSeqId).toBe(7);
-    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).not.toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-user-1",
@@ -325,7 +332,7 @@ describe("chat routes", () => {
     await new Promise<void>((resolve) => {
       setTimeout(() => resolve(), 0);
     });
-    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
@@ -387,7 +394,7 @@ describe("chat routes", () => {
         }),
       }),
     ]);
-    expect(streamWithUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-assistant-default-1",
@@ -402,6 +409,86 @@ describe("chat routes", () => {
         content: "sync reply",
       }),
     ]);
+  });
+
+  it('uses model-driven agent loop for all local respond messages, always passing tools to the streaming function', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        taskId: 'task-1',
+        idempotencyKey: 'idem-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-1',
+        assistantMessageId: 'msg-a-1',
+        userMessage: '/channel create ops',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
+  });
+
+  it('also passes agent tools for ordinary (non-slash) natural language chat messages', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        taskId: 'task-1b',
+        idempotencyKey: 'idem-1b',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-1b',
+        assistantMessageId: 'msg-a-1b',
+        userMessage: 'create a channel called ops',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
+  });
+
+  it('passes loop control options from request body to the model-driven agent loop', async () => {
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        taskId: 'task-2',
+        idempotencyKey: 'idem-2',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-2',
+        assistantMessageId: 'msg-a-2',
+        userMessage: '/set instruction be concise',
+        maxSteps: 6,
+        maxToolCalls: 10,
+        timeoutMs: 30000,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalledWith(
+      'user-123',
+      expect.objectContaining({ messages: expect.any(Array) }),
+      expect.any(Object),
+      expect.objectContaining({ maxSteps: 6, maxToolCalls: 10, timeoutMs: 30000 }),
+      undefined,
+    );
   });
 
   it("rejects respond payload when maxTokens exceeds upper bound", async () => {
@@ -428,7 +515,7 @@ describe("chat routes", () => {
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error?: string };
     expect(body.error).toContain("maxTokens");
-    expect(streamWithUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).not.toHaveBeenCalled();
   });
 
   it("prefers an explicitly requested plugin node", async () => {
@@ -752,5 +839,171 @@ describe("chat routes", () => {
       "channel-1",
     );
     expect(upsertChatChannelNameMock).not.toHaveBeenCalled();
+  });
+
+  it('writes tool_call_start DB message when onToolCallStart callback is triggered', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implTc = async (...args: any[]) => {
+      const options = args[3] as {
+        onToolCallStart?: (
+          toolName: string,
+          args: Record<string, unknown>,
+          stepIndex: number,
+          callIndex: number,
+        ) => Promise<void>;
+      };
+      if (options.onToolCallStart) {
+        await options.onToolCallStart('chat_channel_create', { channelId: 'ops' }, 0, 0);
+      }
+      return {
+        textStream: (async function* () {
+          yield 'done';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implTc as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-tc-1',
+        idempotencyKey: 'idem-tc-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-tc-1',
+        assistantMessageId: 'msg-a-tc-1',
+        userMessage: '/create ops',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-tc-1:tc:1:0',
+        role: 'assistant',
+        content: '',
+        taskState: 'dispatched',
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'tool_call_start',
+            stepIndex: 1,
+            callIndex: 0,
+            toolName: 'chat_channel_create',
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('writes reasoning DB message when onReasoningChunk callback is triggered', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implR = async (...args: any[]) => {
+      const options = args[3] as {
+        onReasoningChunk?: (text: string, stepIndex: number) => Promise<void>;
+      };
+      if (options.onReasoningChunk) {
+        await options.onReasoningChunk('Let me think about this carefully.', 0);
+      }
+      return {
+        textStream: (async function* () {
+          yield 'Here is my answer.';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implR as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-r-1',
+        idempotencyKey: 'idem-r-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-r-1',
+        assistantMessageId: 'msg-a-r-1',
+        userMessage: '/what is 2+2?',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-r-1:r:1',
+        role: 'assistant',
+        content: 'Let me think about this carefully.',
+        taskState: 'dispatched',
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'reasoning',
+            stepIndex: 1,
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('writes step_text DB message when onStepTextEnd callback is triggered', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implPt = async (...args: any[]) => {
+      const options = args[3] as {
+        onStepTextEnd?: (text: string, stepIndex: number) => Promise<void>;
+      };
+      if (options.onStepTextEnd) {
+        await options.onStepTextEnd("I'll look that up for you.", 0);
+      }
+      return {
+        textStream: (async function* () {
+          yield 'Here are the results.';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implPt as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-pt-1',
+        idempotencyKey: 'idem-pt-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-pt-1',
+        assistantMessageId: 'msg-a-pt-1',
+        userMessage: '/search for something',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-pt-1:pt:1',
+        role: 'assistant',
+        content: "I'll look that up for you.",
+        taskState: 'dispatched',
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'step_text',
+            stepIndex: 1,
+          }),
+        }),
+      }),
+    ]);
   });
 });

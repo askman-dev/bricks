@@ -176,6 +176,8 @@ class _MessageListState extends State<MessageList> {
   bool _isAssistantDispatchPlaceholder(ChatMessage message) {
     if (message.role != 'assistant') return false;
     if (message.content.trim().isNotEmpty) return false;
+    // Agent-loop status messages (tool_call_start etc.) have their own rendering.
+    if (message.agentLoopPhase != null) return false;
     if (message.taskState != ChatTaskState.dispatched &&
         message.taskState != ChatTaskState.accepted) {
       return false;
@@ -394,6 +396,16 @@ class _MessageListState extends State<MessageList> {
                           right: BricksSpacing.xs,
                           bottom: BricksSpacing.xs,
                         ),
+                      )
+                    else if (!isUser &&
+                        msg.agentLoopPhase != null &&
+                        msg.agentLoopPhase != 'tool_call')
+                      _AgentLoopStatusRow(
+                        phase: msg.agentLoopPhase!,
+                        toolName: msg.agentLoopTool,
+                        content: msg.content,
+                        chatColors: chatColors,
+                        taskState: msg.taskState,
                       )
                     else
                       GestureDetector(
@@ -1278,5 +1290,209 @@ class _MenuItem extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agent-loop status rows for tool_call_start, reasoning, and step_text phases.
+// ---------------------------------------------------------------------------
+
+/// Renders a single agent-loop status message inline within the message list.
+///
+/// | phase            | visual                                          |
+/// |------------------|-------------------------------------------------|
+/// | tool_call_start  | spinning ⚙ icon + "Calling toolName…"          |
+/// | reasoning        | 💭 expandable thought block                     |
+/// | step_text        | assistant text with left accent border          |
+///
+/// Note: `tool_call` phase messages are routed to the standard assistant
+/// bubble renderer (not this widget) so their content renders with markdown.
+class _AgentLoopStatusRow extends StatefulWidget {
+  const _AgentLoopStatusRow({
+    required this.phase,
+    required this.chatColors,
+    this.toolName,
+    this.content = '',
+    this.taskState,
+  });
+
+  final String phase;
+  final String? toolName;
+  final String content;
+  final ChatColors chatColors;
+  final ChatTaskState? taskState;
+
+  @override
+  State<_AgentLoopStatusRow> createState() => _AgentLoopStatusRowState();
+}
+
+class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
+  bool _reasoningExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final chatColors = widget.chatColors;
+
+    switch (widget.phase) {
+      case 'tool_call_start':
+        final label =
+            widget.toolName != null ? '正在调用 ${widget.toolName}…' : '正在调用工具…';
+        final doneLabel =
+            widget.toolName != null ? '已调用 ${widget.toolName}' : '已调用工具';
+        final isDone = widget.taskState == ChatTaskState.completed;
+        return Padding(
+          padding: const EdgeInsets.only(
+            left: BricksSpacing.xs,
+            right: BricksSpacing.xs,
+            bottom: BricksSpacing.xs,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: isDone
+                    ? Icon(
+                        Icons.check_circle_outline,
+                        size: 12,
+                        color: chatColors.agentAccent,
+                      )
+                    : CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          chatColors.agentAccent,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: BricksSpacing.xs),
+              Text(
+                isDone ? doneLabel : label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: chatColors.metaText,
+                    ),
+              ),
+            ],
+          ),
+        );
+
+      case 'reasoning':
+        final hasContent = widget.content.trim().isNotEmpty;
+        return Padding(
+          padding: const EdgeInsets.only(
+            left: BricksSpacing.xs,
+            right: BricksSpacing.xs,
+            bottom: BricksSpacing.xs,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: hasContent
+                    ? () => setState(
+                          () => _reasoningExpanded = !_reasoningExpanded,
+                        )
+                    : null,
+                borderRadius: BorderRadius.circular(BricksRadius.sm),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.psychology_outlined,
+                      size: 14,
+                      color: chatColors.metaText,
+                    ),
+                    const SizedBox(width: BricksSpacing.xs),
+                    Text(
+                      '思考过程',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: chatColors.metaText,
+                          ),
+                    ),
+                    if (hasContent) ...[
+                      const SizedBox(width: BricksSpacing.xs),
+                      Icon(
+                        _reasoningExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        size: 14,
+                        color: chatColors.metaText,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (_reasoningExpanded && hasContent)
+                Padding(
+                  padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(BricksSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: chatColors.quoteBackground,
+                      borderRadius: BorderRadius.circular(BricksRadius.sm),
+                    ),
+                    child: Text(
+                      widget.content,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: chatColors.onMessageAssistant,
+                          ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+
+      case 'step_text':
+        if (widget.content.trim().isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(
+            left: BricksSpacing.xs,
+            right: BricksSpacing.xs,
+            bottom: BricksSpacing.xs,
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 2,
+                  decoration: BoxDecoration(
+                    color: chatColors.agentAccent.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+                const SizedBox(width: BricksSpacing.xs),
+                Expanded(
+                  child: Text(
+                    widget.content,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: chatColors.onMessageAssistant,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+      default:
+        // Unknown/future phases: render as a small muted summary.
+        if (widget.content.trim().isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(
+            left: BricksSpacing.xs,
+            right: BricksSpacing.xs,
+            bottom: BricksSpacing.xs,
+          ),
+          child: Text(
+            widget.content,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: chatColors.metaText,
+                ),
+          ),
+        );
+    }
   }
 }

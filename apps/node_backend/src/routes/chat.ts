@@ -32,7 +32,10 @@ import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
 } from "../services/platformNodeService.js";
-import { streamWithUserConfig } from "../llm/llm_service.js";
+import { streamWithAgentToolsAndUserConfig } from "../llm/llm_service.js";
+import {
+  buildAgentTools,
+} from "../services/localAgentLoopService.js";
 import type { LlmProvider } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
 
@@ -54,6 +57,23 @@ const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
 const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 // Minimum interval between incremental DB flushes during model streaming to avoid write amplification.
 const STREAM_FLUSH_INTERVAL_MS = 300;
+const DEFAULT_INTERNAL_LOOP_MAX_STEPS = 4;
+const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 4;
+const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 15000;
+
+function parseBoundedInt(
+  value: unknown,
+  defaults: { fallback: number; min: number; max: number },
+): number {
+  const parsed =
+    typeof value === "number"
+      ? Math.trunc(value)
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return defaults.fallback;
+  return Math.max(defaults.min, Math.min(defaults.max, parsed));
+}
 
 function dispatchPlaceholderMetadata(params: {
   resolvedBotId: string | null;
@@ -223,8 +243,18 @@ function buildComposedSystemPrompt(params: {
   systemPrompt: string | null;
   channelInstructions: string | null;
   threadInstructions: string | null;
+  channelId: string;
+  threadId: string | null;
 }): string | null {
   const parts: string[] = [];
+
+  // Inject session context so the LLM knows the internal channel/thread IDs it
+  // must pass to tools like chat_channel_rename, chat_channel_instruction_set, etc.
+  const ctxParts: string[] = [`Channel ID: ${params.channelId}`];
+  if (params.threadId && params.threadId !== 'main') {
+    ctxParts.push(`Thread ID: ${params.threadId}`);
+  }
+  parts.push(`Session context:\n${ctxParts.map((l) => `- ${l}`).join('\n')}`);
 
   const sp = params.systemPrompt?.trim();
   if (sp) parts.push(sp);
@@ -247,6 +277,7 @@ async function runDefaultRouterRespondAsync(params: {
   threadId: string | null;
   resolvedBotId: string | null;
   resolvedSkillId: string | null;
+  userMessage: string;
   body: Record<string, unknown>;
   maxTokens: number;
   systemPrompt: string | null;
@@ -262,6 +293,7 @@ async function runDefaultRouterRespondAsync(params: {
     threadId,
     resolvedBotId,
     resolvedSkillId,
+    userMessage,
     body,
     maxTokens,
     systemPrompt,
@@ -287,6 +319,22 @@ async function runDefaultRouterRespondAsync(params: {
       model: typeof body.model === "string" ? body.model : null,
     });
 
+    const loopMaxSteps = parseBoundedInt(body.maxSteps, {
+      fallback: DEFAULT_INTERNAL_LOOP_MAX_STEPS,
+      min: 1,
+      max: 12,
+    });
+    const loopMaxToolCalls = parseBoundedInt(body.maxToolCalls, {
+      fallback: DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS,
+      min: 1,
+      max: 20,
+    });
+    const loopTimeoutMs = parseBoundedInt(body.timeoutMs, {
+      fallback: DEFAULT_INTERNAL_LOOP_TIMEOUT_MS,
+      min: 1000,
+      max: 120000,
+    });
+
     const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
       limit: 40,
       maxChars: 10000,
@@ -296,21 +344,210 @@ async function runDefaultRouterRespondAsync(params: {
       systemPrompt,
       channelInstructions,
       threadInstructions,
+      channelId,
+      threadId,
     });
     const messagesWithSystem = composedSystemPrompt
       ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
       : modelMessages;
 
-    const { textStream, provider, modelId } = await streamWithUserConfig(
-      userId,
-      {
-        model: typeof body.model === "string" ? body.model : undefined,
-        configId: typeof body.configId === "string" ? body.configId : undefined,
-        messages: messagesWithSystem,
-        maxTokens,
-      },
-      parseProvider(body.provider),
-    );
+    let textStream: AsyncIterable<string>;
+    let provider: string;
+    let modelId: string;
+    let toolStepIndex = 0;
+
+    // Always use the agent-loop path so the model is aware of (and can invoke)
+    // internal tools regardless of whether the user typed a slash command or
+    // plain natural language.  The managedStream generator yields text deltas
+    // eagerly for tool-free steps, so streaming UX is equivalent to the direct
+    // streamWithUserConfig path for ordinary chat messages.
+    const agentTools = buildAgentTools(userId);
+    ({ textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
+        userId,
+        {
+          model: typeof body.model === "string" ? body.model : undefined,
+          configId: typeof body.configId === "string" ? body.configId : undefined,
+          messages: messagesWithSystem,
+          maxTokens,
+        },
+        agentTools,
+        {
+          maxSteps: loopMaxSteps,
+          maxToolCalls: loopMaxToolCalls,
+          timeoutMs: loopTimeoutMs,
+          onStepFinish: async (stepResults) => {
+            toolStepIndex++;
+            const stepSuffix = `:ts:${toolStepIndex}`;
+            const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
+            const stepContent = stepResults
+              .map((stepResult) => `**Tool:** \`${stepResult.toolName}\`\n\`\`\`json\n${JSON.stringify(stepResult.result, null, 2)}\n\`\`\``)
+              .join('\n\n');
+            await upsertMessages(userId, [
+              {
+                messageId: stepMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: stepContent,
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'tool_call',
+                    stepIndex: toolStepIndex,
+                    completedCalls: stepResults.length,
+                    maxSteps: loopMaxSteps,
+                    maxToolCalls: loopMaxToolCalls,
+                    timeoutMs: loopTimeoutMs,
+                  },
+                  toolCalls: stepResults,
+                },
+                createdAt: null,
+              },
+            ]);
+
+            // Mark each :tc (tool_call_start) message for this step as completed
+            // now that the tool call has finished executing.  Since onToolCallStart
+            // is awaited (not fire-and-forget), these messages are guaranteed to
+            // exist in the DB before we reach this point.
+            for (let ci = 0; ci < stepResults.length; ci++) {
+              const tcSuffix = `:tc:${toolStepIndex}:${ci}`;
+              const tcMsgId = `${assistantMessageId.slice(0, 255 - tcSuffix.length)}${tcSuffix}`;
+              await upsertMessages(userId, [
+                {
+                  messageId: tcMsgId,
+                  taskId: acceptedTaskId,
+                  channelId,
+                  sessionId: acceptedSessionId,
+                  threadId,
+                  role: 'assistant',
+                  content: '',
+                  taskState: 'completed',
+                  checkpointCursor: null,
+                  metadata: {
+                    ...dispatchPlaceholderMetadata({
+                      resolvedBotId,
+                      resolvedSkillId,
+                      source: 'backend.respond.agent_loop',
+                      model: typeof body.model === 'string' ? body.model : null,
+                    }),
+                    agentLoop: {
+                      phase: 'tool_call_start',
+                      stepIndex: toolStepIndex,
+                      callIndex: ci,
+                      toolName: stepResults[ci].toolName,
+                      args: stepResults[ci].args,
+                    },
+                  },
+                  createdAt: null,
+                },
+              ]);
+            }
+          },
+          onToolCallStart: async (toolName, args, stepIndex, callIndex) => {
+            const suffix = `:tc:${stepIndex + 1}:${callIndex}`;
+            const tcMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+            await upsertMessages(userId, [
+              {
+                messageId: tcMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: '',
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'tool_call_start',
+                    stepIndex: stepIndex + 1,
+                    callIndex,
+                    toolName,
+                    args,
+                  },
+                },
+                createdAt: null,
+              },
+            ]);
+          },
+          onReasoningChunk: async (text, stepIndex) => {
+            const suffix = `:r:${stepIndex + 1}`;
+            const rMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+            await upsertMessages(userId, [
+              {
+                messageId: rMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: text,
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'reasoning',
+                    stepIndex: stepIndex + 1,
+                  },
+                },
+                createdAt: null,
+              },
+            ]);
+          },
+          onStepTextEnd: async (text, stepIndex) => {
+            const suffix = `:pt:${stepIndex + 1}`;
+            const ptMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+            await upsertMessages(userId, [
+              {
+                messageId: ptMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: text,
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'step_text',
+                    stepIndex: stepIndex + 1,
+                  },
+                },
+                createdAt: null,
+              },
+            ]);
+          },
+        },
+        parseProvider(body.provider),
+      ));
 
     let assistantContent = "";
     let hasAnyChunk = false;
@@ -622,6 +859,7 @@ router.post(
         threadId: input.threadId,
         resolvedBotId: input.resolvedBotId,
         resolvedSkillId: input.resolvedSkillId,
+        userMessage,
         body,
         maxTokens: parsedMaxTokens.value,
         systemPrompt,
