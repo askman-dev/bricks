@@ -130,30 +130,92 @@ void main() {
   });
 
   group('compareChatMessagesByCreatedTime', () {
-    test('uses seqId as primary key when present on both messages', () {
-      final olderBySeqId = ChatMessage(
-        messageId: 'msg-user',
+    test('uses writeSeq as primary key, overriding seqId when they disagree',
+        () {
+      // seqId=89 but writeSeq=1754 → the high writeSeq means this message was
+      // updated most recently (e.g. final assistant flush) so it sorts AFTER.
+      final highWriteSeq = ChatMessage(
+        messageId: 'msg-assistant',
         seqId: 89,
         writeSeq: 1754,
-        role: 'user',
-        content: 'query',
-        createdAt: DateTime.utc(2026, 4, 19, 19, 37, 9, 275),
-      );
-      final newerBySeqIdButOlderWriteSeq = ChatMessage(
-        messageId: 'msg-assistant',
-        seqId: 90,
-        writeSeq: 1750,
         role: 'assistant',
         content: 'reply',
         createdAt: DateTime.utc(2026, 4, 19, 11, 37, 11),
       );
+      // seqId=90 but writeSeq=1750 → lower writeSeq sorts first.
+      final lowWriteSeq = ChatMessage(
+        messageId: 'msg-user',
+        seqId: 90,
+        writeSeq: 1750,
+        role: 'user',
+        content: 'query',
+        createdAt: DateTime.utc(2026, 4, 19, 19, 37, 9, 275),
+      );
 
-      final sorted = [newerBySeqIdButOlderWriteSeq, olderBySeqId]
+      final sorted = [highWriteSeq, lowWriteSeq]
         ..sort(compareChatMessagesByCreatedTime);
 
-      expect(sorted.first.messageId, equals('msg-user'));
+      expect(sorted.first.messageId, equals('msg-user'),
+          reason: 'Lower writeSeq sorts first regardless of seqId');
       expect(sorted.last.messageId, equals('msg-assistant'));
     });
+
+    test(
+      'agent-loop: assistant message with highest writeSeq (final update) '
+      'sorts after tool-call messages',
+      () {
+        // Simulates the agent-loop scenario:
+        //   user       → write_seq=10
+        //   :tc insert → write_seq=11  (tool_call_start, later updated)
+        //   :ts insert → write_seq=12  (step result)
+        //   :tc update → write_seq=13  (marked completed)
+        //   assistant  → write_seq=14  (final update after all tool calls done)
+        //
+        // The assistant message may have been *inserted* early (low seq_id)
+        // due to a preamble-text periodic flush, but its FINAL write_seq is
+        // always the highest. writeSeq-first sort produces the correct order.
+        final userMsg = ChatMessage(
+          messageId: 'u1',
+          role: 'user',
+          content: 'rename channel',
+          seqId: 1,
+          writeSeq: 10,
+        );
+        final tcMsg = ChatMessage(
+          messageId: 'a1:tc:1:0',
+          role: 'assistant',
+          content: '',
+          seqId: 2,
+          writeSeq: 13, // bumped when marked completed
+        );
+        final tsMsg = ChatMessage(
+          messageId: 'a1:ts:1',
+          role: 'assistant',
+          content: 'Tool: `chat_channel_rename`\n```json\n{}\n```',
+          seqId: 3,
+          writeSeq: 12,
+        );
+        // The assistant message was *inserted* early (seqId=2 would be wrong;
+        // here we use seqId=0 to simulate the preamble-flush race condition
+        // where it gets inserted before :tc/:ts).
+        final assistantMsg = ChatMessage(
+          messageId: 'a1',
+          role: 'assistant',
+          content: 'Done! Channel renamed.',
+          seqId: 0, // low seqId from early INSERT (preamble flush)
+          writeSeq: 14, // HIGH writeSeq from final update
+        );
+
+        final messages = [assistantMsg, tsMsg, tcMsg, userMsg]
+          ..sort(compareChatMessagesByCreatedTime);
+
+        expect(messages.map((m) => m.messageId).toList(),
+            equals(['u1', 'a1:ts:1', 'a1:tc:1:0', 'a1']),
+            reason:
+                'user → step-result → tool-done → final-response is the '
+                'correct event order when sorted by writeSeq');
+      },
+    );
 
     test('falls back to writeSeq when seqId is absent', () {
       final a = ChatMessage(

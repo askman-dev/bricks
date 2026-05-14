@@ -2,23 +2,30 @@ import 'chat_message.dart';
 
 /// Compares two [ChatMessage]s by creation time for deterministic ordering.
 ///
-/// Primary sort key (when available from server): immutable `seqId`.
-/// Secondary key for synced deltas: `writeSeq` (sync cursor semantics).
+/// Primary sort key: `writeSeq` — bumped on every INSERT **and** UPDATE so
+/// the assistant message's final update (after all tool-call steps complete)
+/// always receives the highest value, placing it after tool-call messages.
+/// Using `seqId` (INSERT-only) as primary was wrong: the assistant message
+/// may be first inserted during a preamble-text flush that fires before any
+/// tool-call message is written, giving it a lower seq_id than later
+/// tool-call rows even though it semantically follows them.
+/// Secondary key: `seqId` (INSERT order) for deterministic tie-breaking when
+/// two messages share the same `writeSeq`.
 /// Fallback key: `createdAt` falling back to `timestamp`.
 /// Final tie-breakers: `role` (user before assistant), then `messageId`.
 int compareChatMessagesByCreatedTime(ChatMessage a, ChatMessage b) {
-  final aSeqId = a.seqId;
-  final bSeqId = b.seqId;
-  if (aSeqId != null && bSeqId != null) {
-    final bySeqId = aSeqId.compareTo(bSeqId);
-    if (bySeqId != 0) return bySeqId;
-  }
-
   final aWriteSeq = a.writeSeq;
   final bWriteSeq = b.writeSeq;
   if (aWriteSeq != null && bWriteSeq != null) {
     final byWriteSeq = aWriteSeq.compareTo(bWriteSeq);
     if (byWriteSeq != 0) return byWriteSeq;
+  }
+
+  final aSeqId = a.seqId;
+  final bSeqId = b.seqId;
+  if (aSeqId != null && bSeqId != null) {
+    final bySeqId = aSeqId.compareTo(bSeqId);
+    if (bySeqId != 0) return bySeqId;
   }
   final aTime = a.createdAt ?? a.timestamp;
   final bTime = b.createdAt ?? b.timestamp;
