@@ -32,7 +32,7 @@ import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
 } from "../services/platformNodeService.js";
-import { streamWithAgentToolsAndUserConfig, streamWithUserConfig } from "../llm/llm_service.js";
+import { streamWithAgentToolsAndUserConfig } from "../llm/llm_service.js";
 import {
   buildAgentTools,
 } from "../services/localAgentLoopService.js";
@@ -339,23 +339,18 @@ async function runDefaultRouterRespondAsync(params: {
       ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
       : modelMessages;
 
-    // Only expose agent tools to the model when the user is issuing a slash
-    // command (explicit config-change intent). This prevents the LLM from
-    // invoking state-changing tools during ordinary conversation and reduces
-    // prompt-injection risk. `userMessage` is already trimmed by the caller,
-    // but trimStart() is used here as an extra defensive measure.
-    const isSlashCommand = userMessage.trimStart().startsWith('/');
-
     let textStream: AsyncIterable<string>;
     let provider: string;
     let modelId: string;
     let toolStepIndex = 0;
 
-    if (isSlashCommand) {
-      // Slash commands: use the agent-loop path so the model can invoke
-      // internal tools (scope creation, instruction updates).
-      const agentTools = buildAgentTools(userId);
-      ({ textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
+    // Always use the agent-loop path so the model is aware of (and can invoke)
+    // internal tools regardless of whether the user typed a slash command or
+    // plain natural language.  The managedStream generator yields text deltas
+    // eagerly for tool-free steps, so streaming UX is equivalent to the direct
+    // streamWithUserConfig path for ordinary chat messages.
+    const agentTools = buildAgentTools(userId);
+    ({ textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
         userId,
         {
           model: typeof body.model === "string" ? body.model : undefined,
@@ -503,21 +498,6 @@ async function runDefaultRouterRespondAsync(params: {
         },
         parseProvider(body.provider),
       ));
-    } else {
-      // Normal chat: use the direct streaming path for incremental text delivery.
-      // The agent-loop wrapper buffers text per step which would defeat the
-      // 300 ms flush interval and make the UI appear to hang.
-      ({ textStream, provider, modelId } = await streamWithUserConfig(
-        userId,
-        {
-          model: typeof body.model === "string" ? body.model : undefined,
-          configId: typeof body.configId === "string" ? body.configId : undefined,
-          messages: messagesWithSystem,
-          maxTokens,
-        },
-        parseProvider(body.provider),
-      ));
-    }
 
     let assistantContent = "";
     let hasAnyChunk = false;

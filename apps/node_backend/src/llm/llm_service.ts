@@ -404,9 +404,14 @@ export async function streamWithAgentToolsAndUserConfig(
       for await (const rawEvent of result.fullStream as AsyncIterable<SdkFullStreamEvent>) {
         if (rawEvent.type === 'text-delta') {
           const delta = (rawEvent as { type: 'text-delta'; text: string }).text;
-          // Accumulate but don't yield yet — we only yield at step-finish once
-          // we know whether the step included tool calls (see below).
           stepText += delta;
+          // Yield immediately when no tool call has been seen yet in this step.
+          // If a tool-call event arrives later we stop yielding deltas so the
+          // remaining text is routed exclusively to onStepTextEnd.  Any text
+          // already streamed before the tool-call is accepted as minor overlap.
+          if (!stepHasToolCalls) {
+            yield delta;
+          }
         } else if (rawEvent.type === 'reasoning-delta') {
           reasoningBuffer += (rawEvent as { type: 'reasoning-delta'; text: string }).text;
         } else if (rawEvent.type === 'tool-call') {
@@ -431,15 +436,13 @@ export async function streamWithAgentToolsAndUserConfig(
           if (stepHasToolCalls) {
             // Intermediate step: route text to the :pt:S record, not the main
             // stream, to avoid the same content appearing in both channels.
+            // (Text emitted before the first tool-call in this step may have
+            // already been streamed, which is accepted as minor overlap.)
             if (options.onStepTextEnd && stepText.trim().length > 0) {
               fireAndForget('onStepTextEnd', options.onStepTextEnd(stepText, streamStepIndex));
             }
-          } else {
-            // Final / tool-free step: yield the buffered text to the caller.
-            if (stepText.length > 0) {
-              yield stepText;
-            }
           }
+          // For tool-free steps text was already yielded per delta above; nothing more to yield.
           if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
             fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
           }
@@ -454,7 +457,9 @@ export async function streamWithAgentToolsAndUserConfig(
       }
       // Flush any remaining text / reasoning accumulated in a partial final
       // step (e.g. when the stream ends without emitting a step-finish event).
-      if (stepText.length > 0) {
+      // Only flush buffered text if tool calls were present in the step —
+      // text-only steps already stream their deltas eagerly above.
+      if (stepText.length > 0 && stepHasToolCalls) {
         yield stepText;
       }
       if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
