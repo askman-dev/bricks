@@ -81,6 +81,7 @@ index:
       - docs/plans/2026-04-26-23-24-+08-chat-dark-colors.md
       - docs/plans/2026-04-27-00-19-+08-design-system-token-alignment.md
       - docs/plans/2026-04-27-00-27-+08-design-system-skill.md
+      - docs/plans/2026-04-27-17-28-UTC-markdown-table-rendering.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
       - apps/mobile_chat_app/test/chat_topology_and_task_protocol_test.dart
@@ -112,6 +113,7 @@ index:
       - menu-animation
       - slash-commands
       - route-aware composer actions
+      - markdown-table
       - long-polling (deprecated, replaced by SSE)
       - SSE (Server-Sent Events)
       - built-in agents
