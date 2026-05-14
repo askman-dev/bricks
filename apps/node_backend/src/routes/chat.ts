@@ -243,8 +243,18 @@ function buildComposedSystemPrompt(params: {
   systemPrompt: string | null;
   channelInstructions: string | null;
   threadInstructions: string | null;
+  channelId: string;
+  threadId: string | null;
 }): string | null {
   const parts: string[] = [];
+
+  // Inject session context so the LLM knows the internal channel/thread IDs it
+  // must pass to tools like chat_channel_rename, chat_channel_instruction_set, etc.
+  const ctxParts: string[] = [`Channel ID: ${params.channelId}`];
+  if (params.threadId && params.threadId !== 'main') {
+    ctxParts.push(`Thread ID: ${params.threadId}`);
+  }
+  parts.push(`Session context:\n${ctxParts.map((l) => `- ${l}`).join('\n')}`);
 
   const sp = params.systemPrompt?.trim();
   if (sp) parts.push(sp);
@@ -334,6 +344,8 @@ async function runDefaultRouterRespondAsync(params: {
       systemPrompt,
       channelInstructions,
       threadInstructions,
+      channelId,
+      threadId,
     });
     const messagesWithSystem = composedSystemPrompt
       ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
@@ -401,6 +413,44 @@ async function runDefaultRouterRespondAsync(params: {
                 createdAt: null,
               },
             ]);
+
+            // Mark each :tc (tool_call_start) message for this step as completed
+            // now that the tool call has finished executing.  Since onToolCallStart
+            // is awaited (not fire-and-forget), these messages are guaranteed to
+            // exist in the DB before we reach this point.
+            for (let ci = 0; ci < stepResults.length; ci++) {
+              const tcSuffix = `:tc:${toolStepIndex}:${ci}`;
+              const tcMsgId = `${assistantMessageId.slice(0, 255 - tcSuffix.length)}${tcSuffix}`;
+              await upsertMessages(userId, [
+                {
+                  messageId: tcMsgId,
+                  taskId: acceptedTaskId,
+                  channelId,
+                  sessionId: acceptedSessionId,
+                  threadId,
+                  role: 'assistant',
+                  content: '',
+                  taskState: 'completed',
+                  checkpointCursor: null,
+                  metadata: {
+                    ...dispatchPlaceholderMetadata({
+                      resolvedBotId,
+                      resolvedSkillId,
+                      source: 'backend.respond.agent_loop',
+                      model: typeof body.model === 'string' ? body.model : null,
+                    }),
+                    agentLoop: {
+                      phase: 'tool_call_start',
+                      stepIndex: toolStepIndex,
+                      callIndex: ci,
+                      toolName: stepResults[ci].toolName,
+                      args: stepResults[ci].args,
+                    },
+                  },
+                  createdAt: null,
+                },
+              ]);
+            }
           },
           onToolCallStart: async (toolName, args, stepIndex, callIndex) => {
             const suffix = `:tc:${stepIndex + 1}:${callIndex}`;
