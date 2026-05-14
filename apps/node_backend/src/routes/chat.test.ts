@@ -24,6 +24,7 @@ const {
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
   streamWithAgentToolsAndUserConfigMock,
+  streamWithUserConfigMock,
   buildAgentToolsMock,
   getPlatformNodeByNodeIdMock,
   listPlatformNodesMock,
@@ -73,6 +74,14 @@ const {
   })),
   deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
   streamWithAgentToolsAndUserConfigMock: vi.fn(async () => ({
+    textStream: (async function* () {
+      yield "sync ";
+      yield "reply";
+    })(),
+    provider: "anthropic",
+    modelId: "claude-sonnet-4-5",
+  })),
+  streamWithUserConfigMock: vi.fn(async () => ({
     textStream: (async function* () {
       yield "sync ";
       yield "reply";
@@ -146,6 +155,7 @@ vi.mock('../services/localAgentLoopService.js', () => ({
 
 vi.mock("../llm/llm_service.js", () => ({
   streamWithAgentToolsAndUserConfig: streamWithAgentToolsAndUserConfigMock,
+  streamWithUserConfig: streamWithUserConfigMock,
 }));
 
 vi.mock("../middleware/auth.js", () => ({
@@ -219,6 +229,7 @@ describe("chat routes", () => {
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
     streamWithAgentToolsAndUserConfigMock.mockClear();
+    streamWithUserConfigMock.mockClear();
     buildAgentToolsMock.mockClear();
     getPlatformNodeByNodeIdMock.mockReset();
     getPlatformNodeByNodeIdMock.mockImplementation(
@@ -332,7 +343,7 @@ describe("chat routes", () => {
     await new Promise<void>((resolve) => {
       setTimeout(() => resolve(), 0);
     });
-    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
+    expect(streamWithUserConfigMock).toHaveBeenCalled();
   });
 
   it("routes default scopes to async accepted and generates reply in background", async () => {
@@ -394,7 +405,7 @@ describe("chat routes", () => {
         }),
       }),
     ]);
-    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
+    expect(streamWithUserConfigMock).toHaveBeenCalled();
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-assistant-default-1",
@@ -456,7 +467,8 @@ describe("chat routes", () => {
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(buildAgentToolsMock).not.toHaveBeenCalled();
-    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).not.toHaveBeenCalled();
+    expect(streamWithUserConfigMock).toHaveBeenCalled();
   });
 
   it('passes loop control options from request body to the model-driven agent loop', async () => {
@@ -473,7 +485,7 @@ describe("chat routes", () => {
         sessionId: 'session:default:main',
         userMessageId: 'msg-u-2',
         assistantMessageId: 'msg-a-2',
-        userMessage: 'hello',
+        userMessage: '/set instruction be concise',
         maxSteps: 6,
         maxToolCalls: 10,
         timeoutMs: 30000,
@@ -853,7 +865,7 @@ describe("chat routes", () => {
         ) => Promise<void>;
       };
       if (options.onToolCallStart) {
-        await options.onToolCallStart('create_channel', { channelId: 'ops' }, 0, 0);
+        await options.onToolCallStart('chat_channel_create', { channelId: 'ops' }, 0, 0);
       }
       return {
         textStream: (async function* () {
@@ -894,7 +906,7 @@ describe("chat routes", () => {
             phase: 'tool_call_start',
             stepIndex: 1,
             callIndex: 0,
-            toolName: 'create_channel',
+            toolName: 'chat_channel_create',
           }),
         }),
       }),
@@ -931,7 +943,7 @@ describe("chat routes", () => {
         sessionId: 'session:default:main',
         userMessageId: 'msg-u-r-1',
         assistantMessageId: 'msg-a-r-1',
-        userMessage: 'what is 2+2?',
+        userMessage: '/what is 2+2?',
       }),
     });
 
@@ -984,7 +996,7 @@ describe("chat routes", () => {
         sessionId: 'session:default:main',
         userMessageId: 'msg-u-pt-1',
         assistantMessageId: 'msg-a-pt-1',
-        userMessage: 'search for something',
+        userMessage: '/search for something',
       }),
     });
 

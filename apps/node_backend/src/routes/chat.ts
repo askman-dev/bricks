@@ -32,7 +32,7 @@ import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
 } from "../services/platformNodeService.js";
-import { streamWithAgentToolsAndUserConfig } from "../llm/llm_service.js";
+import { streamWithAgentToolsAndUserConfig, streamWithUserConfig } from "../llm/llm_service.js";
 import {
   buildAgentTools,
 } from "../services/localAgentLoopService.js";
@@ -345,157 +345,179 @@ async function runDefaultRouterRespondAsync(params: {
     // prompt-injection risk. `userMessage` is already trimmed by the caller,
     // but trimStart() is used here as an extra defensive measure.
     const isSlashCommand = userMessage.trimStart().startsWith('/');
-    const agentTools = isSlashCommand ? buildAgentTools(userId) : {};
+
+    let textStream: AsyncIterable<string>;
+    let provider: string;
+    let modelId: string;
     let toolStepIndex = 0;
 
-    const { textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
-      userId,
-      {
-        model: typeof body.model === "string" ? body.model : undefined,
-        configId: typeof body.configId === "string" ? body.configId : undefined,
-        messages: messagesWithSystem,
-        maxTokens,
-      },
-      agentTools,
-      {
-        maxSteps: loopMaxSteps,
-        maxToolCalls: loopMaxToolCalls,
-        timeoutMs: loopTimeoutMs,
-        onStepFinish: async (stepResults) => {
-          toolStepIndex++;
-          const stepSuffix = `:ts:${toolStepIndex}`;
-          const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
-          const stepContent = stepResults
-            .map((r) => `Tool: ${r.toolName}\nResult: ${JSON.stringify(r.result)}`)
-            .join('\n\n');
-          await upsertMessages(userId, [
-            {
-              messageId: stepMessageId,
-              taskId: acceptedTaskId,
-              channelId,
-              sessionId: acceptedSessionId,
-              threadId,
-              role: 'assistant',
-              content: stepContent,
-              taskState: 'dispatched',
-              checkpointCursor: null,
-              metadata: {
-                ...dispatchPlaceholderMetadata({
-                  resolvedBotId,
-                  resolvedSkillId,
-                  source: 'backend.respond.agent_loop',
-                  model: typeof body.model === 'string' ? body.model : null,
-                }),
-                agentLoop: {
-                  phase: 'tool_call',
-                  stepIndex: toolStepIndex,
-                  completedCalls: stepResults.length,
-                  maxSteps: loopMaxSteps,
-                  maxToolCalls: loopMaxToolCalls,
-                  timeoutMs: loopTimeoutMs,
-                },
-                toolCalls: stepResults,
-              },
-              createdAt: null,
-            },
-          ]);
+    if (isSlashCommand) {
+      // Slash commands: use the agent-loop path so the model can invoke
+      // internal tools (scope creation, instruction updates).
+      const agentTools = buildAgentTools(userId);
+      ({ textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
+        userId,
+        {
+          model: typeof body.model === "string" ? body.model : undefined,
+          configId: typeof body.configId === "string" ? body.configId : undefined,
+          messages: messagesWithSystem,
+          maxTokens,
         },
-        onToolCallStart: async (toolName, args, stepIndex, callIndex) => {
-          const suffix = `:tc:${stepIndex + 1}:${callIndex}`;
-          const tcMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
-          await upsertMessages(userId, [
-            {
-              messageId: tcMessageId,
-              taskId: acceptedTaskId,
-              channelId,
-              sessionId: acceptedSessionId,
-              threadId,
-              role: 'assistant',
-              content: '',
-              taskState: 'dispatched',
-              checkpointCursor: null,
-              metadata: {
-                ...dispatchPlaceholderMetadata({
-                  resolvedBotId,
-                  resolvedSkillId,
-                  source: 'backend.respond.agent_loop',
-                  model: typeof body.model === 'string' ? body.model : null,
-                }),
-                agentLoop: {
-                  phase: 'tool_call_start',
-                  stepIndex: stepIndex + 1,
-                  callIndex,
-                  toolName,
-                  args,
+        agentTools,
+        {
+          maxSteps: loopMaxSteps,
+          maxToolCalls: loopMaxToolCalls,
+          timeoutMs: loopTimeoutMs,
+          onStepFinish: async (stepResults) => {
+            toolStepIndex++;
+            const stepSuffix = `:ts:${toolStepIndex}`;
+            const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
+            const stepContent = stepResults
+              .map((r) => `Tool: ${r.toolName}\nResult: ${JSON.stringify(r.result)}`)
+              .join('\n\n');
+            await upsertMessages(userId, [
+              {
+                messageId: stepMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: stepContent,
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'tool_call',
+                    stepIndex: toolStepIndex,
+                    completedCalls: stepResults.length,
+                    maxSteps: loopMaxSteps,
+                    maxToolCalls: loopMaxToolCalls,
+                    timeoutMs: loopTimeoutMs,
+                  },
+                  toolCalls: stepResults,
                 },
+                createdAt: null,
               },
-              createdAt: null,
-            },
-          ]);
-        },
-        onReasoningChunk: async (text, stepIndex) => {
-          const suffix = `:r:${stepIndex + 1}`;
-          const rMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
-          await upsertMessages(userId, [
-            {
-              messageId: rMessageId,
-              taskId: acceptedTaskId,
-              channelId,
-              sessionId: acceptedSessionId,
-              threadId,
-              role: 'assistant',
-              content: text,
-              taskState: 'dispatched',
-              checkpointCursor: null,
-              metadata: {
-                ...dispatchPlaceholderMetadata({
-                  resolvedBotId,
-                  resolvedSkillId,
-                  source: 'backend.respond.agent_loop',
-                  model: typeof body.model === 'string' ? body.model : null,
-                }),
-                agentLoop: {
-                  phase: 'reasoning',
-                  stepIndex: stepIndex + 1,
+            ]);
+          },
+          onToolCallStart: async (toolName, args, stepIndex, callIndex) => {
+            const suffix = `:tc:${stepIndex + 1}:${callIndex}`;
+            const tcMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+            await upsertMessages(userId, [
+              {
+                messageId: tcMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: '',
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'tool_call_start',
+                    stepIndex: stepIndex + 1,
+                    callIndex,
+                    toolName,
+                    args,
+                  },
                 },
+                createdAt: null,
               },
-              createdAt: null,
-            },
-          ]);
-        },
-        onStepTextEnd: async (text, stepIndex) => {
-          const suffix = `:pt:${stepIndex + 1}`;
-          const ptMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
-          await upsertMessages(userId, [
-            {
-              messageId: ptMessageId,
-              taskId: acceptedTaskId,
-              channelId,
-              sessionId: acceptedSessionId,
-              threadId,
-              role: 'assistant',
-              content: text,
-              taskState: 'dispatched',
-              checkpointCursor: null,
-              metadata: {
-                ...dispatchPlaceholderMetadata({
-                  resolvedBotId,
-                  resolvedSkillId,
-                  source: 'backend.respond.agent_loop',
-                  model: typeof body.model === 'string' ? body.model : null,
-                }),
-                agentLoop: {
-                  phase: 'step_text',
-                  stepIndex: stepIndex + 1,
+            ]);
+          },
+          onReasoningChunk: async (text, stepIndex) => {
+            const suffix = `:r:${stepIndex + 1}`;
+            const rMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+            await upsertMessages(userId, [
+              {
+                messageId: rMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: text,
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'reasoning',
+                    stepIndex: stepIndex + 1,
+                  },
                 },
+                createdAt: null,
               },
-              createdAt: null,
-            },
-          ]);
+            ]);
+          },
+          onStepTextEnd: async (text, stepIndex) => {
+            const suffix = `:pt:${stepIndex + 1}`;
+            const ptMessageId = `${assistantMessageId.slice(0, 255 - suffix.length)}${suffix}`;
+            await upsertMessages(userId, [
+              {
+                messageId: ptMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: text,
+                taskState: 'dispatched',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'step_text',
+                    stepIndex: stepIndex + 1,
+                  },
+                },
+                createdAt: null,
+              },
+            ]);
+          },
         },
-      },
-      parseProvider(body.provider),
-    );
+        parseProvider(body.provider),
+      ));
+    } else {
+      // Normal chat: use the direct streaming path for incremental text delivery.
+      // The agent-loop wrapper buffers text per step which would defeat the
+      // 300 ms flush interval and make the UI appear to hang.
+      ({ textStream, provider, modelId } = await streamWithUserConfig(
+        userId,
+        {
+          model: typeof body.model === "string" ? body.model : undefined,
+          configId: typeof body.configId === "string" ? body.configId : undefined,
+          messages: messagesWithSystem,
+          maxTokens,
+        },
+        parseProvider(body.provider),
+      ));
+    }
 
     let assistantContent = "";
     let hasAnyChunk = false;

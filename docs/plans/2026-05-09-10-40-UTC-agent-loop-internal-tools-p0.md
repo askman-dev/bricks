@@ -29,8 +29,11 @@ Bricks chat backend currently supports async message transport with SSE synchron
 - Return deterministic structured results for all tools.
 
 ## Phase 3: Integrate local respond path
-- Wire local `/api/chat/respond` flow to call the new service before the existing model streaming branch.
+- Wire local `/api/chat/respond` to use a model-driven agent loop (`streamWithAgentToolsAndUserConfig`) for slash commands, exposing tools defined in `buildAgentTools`.
+- Normal (non-slash) messages use the existing `streamWithUserConfig` path for incremental streaming.
 - Preserve current async transport behavior and SSE visibility.
+
+**Note:** `executeInternalToolSequence` and `inferInternalToolCallsFromMessage` are exported from the service but are **not** currently called by the route. The route instead delegates tool selection and execution to the model via `buildAgentTools` / `streamText`. These functions remain available for future explicit or server-side-inferred tool dispatch.
 
 ## Phase 4: Add focused tests
 - Add unit tests for tool dispatch and unsupported-tool behavior.
@@ -52,8 +55,8 @@ Bricks chat backend currently supports async message transport with SSE synchron
 - [x] Implemented scope-creation tools:
   - `chat.channel.create`
   - `chat.thread.create`
-- [x] Added bounded internal tool sequence execution (`executeInternalToolSequence`) with stop-on-failure behavior.
-- [x] Added inferred internal tool calls from slash-like user commands (`inferInternalToolCallsFromMessage`).
+- [x] Added bounded internal tool sequence execution (`executeInternalToolSequence`) with stop-on-failure behavior. *(exported from service; not currently called by route — reserved for future server-side dispatch)*
+- [x] Added inferred internal tool calls from slash-like user commands (`inferInternalToolCallsFromMessage`). *(exported from service; not currently called by route — reserved for future use)*
 - [x] Added route/service tests for tool execution, inference, and argument validation.
 - [x] Replaced request-driven tool execution with model-driven multi-step think→call→observe→final loop controller. (`buildAgentTools` + `streamWithAgentToolsAndUserConfig` with AI SDK `streamText` tools + `maxSteps`)
 - [x] Gated agent tool exposure to slash-command requests only, preventing unintended tool calls during ordinary conversation.
