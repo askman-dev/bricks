@@ -246,12 +246,14 @@ async function listChannels(params: {
     listChatChannelNames(params.userId),
   ]);
 
-  const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
-
-  // Collect unique channel IDs from both sources.
+  // Build the name map and collect unique channel IDs in one pass over `names`.
+  const nameMap = new Map<string, string>();
   const channelIds = new Set<string>();
+  for (const n of names) {
+    nameMap.set(n.channelId, n.displayName);
+    channelIds.add(n.channelId);
+  }
   for (const s of scopes) channelIds.add(s.channelId);
-  for (const n of names) channelIds.add(n.channelId);
 
   const channels = Array.from(channelIds)
     .sort()
