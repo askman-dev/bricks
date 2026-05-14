@@ -22,6 +22,9 @@ class MessageList extends StatefulWidget {
 class _MessageListState extends State<MessageList> {
   final ScrollController _scrollController = ScrollController();
   static const double _kJumpButtonShowScreens = 2;
+  // Maximum number of extra jump-to-bottom retries when the focused item is
+  // not yet in the render tree (ListView.builder underestimated maxScrollExtent).
+  static const int _kMaxScrollRetries = 1;
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
 
@@ -121,21 +124,33 @@ class _MessageListState extends State<MessageList> {
     return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
   }
 
-  void _scrollToFocusedUserMessage() {
+  void _scrollToFocusedUserMessage([int retryCount = 0]) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
       if (_focusedIndex < 0) return;
 
-      // First jump to bottom to ensure trailing children are laid out, then
-      // pin the focused message as the first visible item.
-      final position = _scrollController.position;
-      _scrollController.jumpTo(position.maxScrollExtent);
+      // Jump to the current maxScrollExtent to force the lazy list to lay out
+      // trailing children. For a large ListView.builder the initial
+      // maxScrollExtent is only an estimate based on a few rendered items; if
+      // the estimate is too low the jump lands in the middle of the list and
+      // the focused item is never built. We detect this by checking whether
+      // _focusedItemKey was attached after the layout pass and, if not, retry
+      // up to _kMaxScrollRetries times – by then the sliver has measured more
+      // items and the extent is accurate enough to reach the actual bottom.
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
         final targetContext = _focusedItemKey.currentContext;
-        if (targetContext == null) return;
+        if (targetContext == null) {
+          // The focused item is not yet in the render tree, meaning the jump
+          // undershot the true bottom. Retry with the updated maxScrollExtent.
+          if (retryCount < _kMaxScrollRetries) {
+            _scrollToFocusedUserMessage(retryCount + 1);
+          }
+          return;
+        }
         Scrollable.ensureVisible(
           targetContext,
           duration: Duration.zero,
