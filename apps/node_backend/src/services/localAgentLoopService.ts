@@ -6,18 +6,21 @@ import {
   normalizeChatThreadId,
   upsertChatScopeSetting,
 } from './chatRouterService.js';
+import { upsertChatChannelName } from './chatChannelNameService.js';
 import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
 export const INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET = 'chat.thread.instruction.set';
 export const INTERNAL_TOOL_CHAT_CHANNEL_CREATE = 'chat.channel.create';
 export const INTERNAL_TOOL_CHAT_THREAD_CREATE = 'chat.thread.create';
+export const INTERNAL_TOOL_CHAT_CHANNEL_RENAME = 'chat.channel.rename';
 
 export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET,
   INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET,
   INTERNAL_TOOL_CHAT_CHANNEL_CREATE,
   INTERNAL_TOOL_CHAT_THREAD_CREATE,
+  INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
 ] as const;
 
 export type InternalToolName = (typeof INTERNAL_TOOLS)[number];
@@ -176,6 +179,28 @@ async function createChannelScope(params: {
   };
 }
 
+async function renameChannel(params: {
+  userId: string;
+  channelId: string;
+  displayName: string;
+}): Promise<ExecuteInternalToolResult> {
+  const setting = await upsertChatChannelName(params.userId, {
+    channelId: params.channelId,
+    displayName: params.displayName,
+  });
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
+    data: {
+      channelId: setting.channelId,
+      displayName: setting.displayName,
+      updatedAt: setting.updatedAt,
+    },
+    error: null,
+  };
+}
+
 async function createThreadScope(params: {
   userId: string;
   channelId: string;
@@ -309,6 +334,22 @@ export async function executeInternalTool(
         };
       }
       return createThreadScope({ userId, channelId, threadId });
+    }
+    case INTERNAL_TOOL_CHAT_CHANNEL_RENAME: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const displayName = readStringArg(args, 'displayName', MAX_IDENTIFIER_LENGTH);
+      if (!channelId || !displayName) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId and displayName are required string arguments',
+          },
+        };
+      }
+      return renameChannel({ userId, channelId, displayName });
     }
   }
 }
@@ -446,6 +487,28 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_CREATE, args),
+    },
+
+    chat_channel_rename: {
+      description:
+        'Rename a chat channel by setting its display name. ' +
+        'Use this when the user asks to rename, retitle, or change the name of a channel.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          displayName: {
+            type: 'string',
+            description: 'The new display name for the channel.',
+          },
+        },
+        required: ['channelId', 'displayName'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_RENAME, args),
     },
   };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const upsertChatScopeSettingMock = vi.fn();
+const upsertChatChannelNameMock = vi.fn();
 
 vi.mock('./chatRouterService.js', () => ({
   CHAT_ROUTER_LOCAL: 'local',
@@ -13,9 +14,14 @@ vi.mock('./chatRouterService.js', () => ({
   upsertChatScopeSetting: upsertChatScopeSettingMock,
 }));
 
+vi.mock('./chatChannelNameService.js', () => ({
+  upsertChatChannelName: upsertChatChannelNameMock,
+}));
+
 describe('localAgentLoopService', () => {
   beforeEach(() => {
     upsertChatScopeSettingMock.mockReset();
+    upsertChatChannelNameMock.mockReset();
   });
 
   it('rejects tools outside allowlist', async () => {
@@ -185,6 +191,50 @@ describe('localAgentLoopService', () => {
     });
 
     expect(calls).toEqual([]);
+  });
+
+  it('renames a channel via chat_channel_rename tool', async () => {
+    upsertChatChannelNameMock.mockResolvedValue({
+      channelId: 'default',
+      displayName: 'My Channel',
+      createdAt: '2026-05-09T00:00:00.000Z',
+      updatedAt: '2026-05-09T01:00:00.000Z',
+    });
+
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
+      args: { channelId: 'default', displayName: 'My Channel' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data?.channelId).toBe('default');
+    expect(result.data?.displayName).toBe('My Channel');
+    expect(upsertChatChannelNameMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'default',
+      displayName: 'My Channel',
+    });
+  });
+
+  it('rejects rename when channelId or displayName is missing', async () => {
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
+      args: { channelId: 'default' },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
   });
 
   it('infers tool calls from slash-like user commands', async () => {
