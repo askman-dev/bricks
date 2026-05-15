@@ -5,7 +5,7 @@ import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
 // Must match _kBottomPaddingRatio in message_list.dart
-const double _kTestBottomPaddingRatio = 0.35;
+const double _kTestBottomPaddingRatio = 0.75;
 
 /// Computes the expected latest-content anchor offset using the same formula
 /// as MessageList._latestContentAnchorOffset.
@@ -133,7 +133,7 @@ void main() {
     });
 
     testWidgets(
-        're-focuses latest user message when a new user message is appended',
+        'keeps reading position when a new user message is appended while away from latest',
         (tester) async {
       final messages = _messages('before', 41);
       late StateSetter setState;
@@ -158,7 +158,8 @@ void main() {
       final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
       scrollable.position.jumpTo(0);
       await tester.pump();
-      expect(scrollable.position.pixels, 0);
+      final before = scrollable.position.pixels;
+      expect(before, 0);
 
       messages.add(
         ChatMessage(
@@ -171,7 +172,51 @@ void main() {
       setState(() {});
       await tester.pumpAndSettle();
 
-      expect(scrollable.position.pixels, greaterThan(0));
+      expect(scrollable.position.pixels, closeTo(before, 0.1));
+    });
+
+    testWidgets(
+        're-focuses latest user message when a new user message is appended from latest',
+        (tester) async {
+      final messages = _messages('before-latest', 41);
+      late StateSetter setState;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, stateSetter) {
+                setState = stateSetter;
+                return SizedBox(
+                  height: 320,
+                  child: MessageList(messages: messages),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final latestAnchor = _latestAnchorOffset(tester, scrollable.position);
+      scrollable.position.jumpTo(latestAnchor);
+      await tester.pump();
+      final before = scrollable.position.pixels;
+
+      messages.add(
+        ChatMessage(
+          messageId: 'u-new-latest',
+          role: 'user',
+          content: 'new question from latest',
+          timestamp: DateTime.utc(2026, 1, 1, 10),
+        ),
+      );
+      setState(() {});
+      await tester.pumpAndSettle();
+
+      expect(scrollable.position.pixels, greaterThan(before));
+      expect(find.text('new question from latest'), findsOneWidget);
     });
 
     testWidgets(

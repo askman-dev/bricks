@@ -242,7 +242,7 @@ class ChatHistoryApiService {
   Future<ChatHistorySnapshot> load({
     required String token,
     required String sessionId,
-    int limit = 100,
+    int limit = 20,
   }) async {
     final response = await _client.get(
       _historyUri(sessionId, limit: limit),
@@ -608,14 +608,12 @@ class ChatHistoryApiService {
         agentLoop = null;
       }
     }
-    final agentLoopPhase =
-        agentLoop != null && agentLoop['phase'] is String
-            ? agentLoop['phase'] as String
-            : null;
-    final agentLoopTool =
-        agentLoop != null && agentLoop['toolName'] is String
-            ? agentLoop['toolName'] as String
-            : null;
+    final agentLoopPhase = agentLoop != null && agentLoop['phase'] is String
+        ? agentLoop['phase'] as String
+        : null;
+    final agentLoopTool = agentLoop != null && agentLoop['toolName'] is String
+        ? agentLoop['toolName'] as String
+        : null;
 
     final payload = <String, Object?>{
       ...metadata,

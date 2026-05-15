@@ -4,10 +4,10 @@ import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
 
-// Extra bottom padding as a fraction of screen height, so an incoming
-// assistant reply is visible when the list is anchored on the latest user
-// message. ~35 % of screen height works well across common phone sizes.
-const double _kBottomPaddingRatio = 0.35;
+// Extra bottom padding as a fraction of screen height, so the latest user
+// message can be anchored near the top while leaving room for the assistant
+// reply to stream below it.
+const double _kBottomPaddingRatio = 0.75;
 
 /// Displays the list of chat messages in timeline format.
 class MessageList extends StatefulWidget {
@@ -29,6 +29,7 @@ class _MessageListState extends State<MessageList> {
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
   // every list row.
   final GlobalKey _focusedItemKey = GlobalKey();
+  final GlobalKey _scrollViewKey = GlobalKey();
   int _focusedIndex = -1;
 
   // Persist the previous snapshot in state so comparisons work correctly even
@@ -42,9 +43,9 @@ class _MessageListState extends State<MessageList> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScrollChanged);
-    _focusedIndex = _focusedMessageIndex();
+    _focusedIndex = _focusedUserMessageIndex();
     _saveSnapshot();
-    _scrollToFocusedUserMessage();
+    _scrollToInitialAnchor();
   }
 
   @override
@@ -68,6 +69,8 @@ class _MessageListState extends State<MessageList> {
       final becameNonEmpty = previousLength == 0 && newLength > 0;
       final switchedConversation =
           previousLength > 0 && newFirstKey != previousFirstKey;
+      final shouldAnchorAppendedUser = appendedMessage?.role == 'user' &&
+          (previousLength == 0 || _isLatestResponseEndVisible());
       _prevLength = newLength;
       _prevFirstKey = newFirstKey;
       _prevLastKey = newKey;
@@ -76,11 +79,9 @@ class _MessageListState extends State<MessageList> {
       // new user message is sent.
       // During assistant streaming/progress updates, keep the current viewport
       // stable so the app never fights user scrolling.
-      if (becameNonEmpty ||
-          switchedConversation ||
-          appendedMessage?.role == 'user') {
-        _focusedIndex = _focusedMessageIndex();
-        _scrollToFocusedUserMessage();
+      if (becameNonEmpty || switchedConversation || shouldAnchorAppendedUser) {
+        _focusedIndex = _focusedUserMessageIndex();
+        _scrollToInitialAnchor();
       }
     }
   }
@@ -114,11 +115,39 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
-  int _focusedMessageIndex() {
+  bool _hasUserMessage() =>
+      widget.messages.any((message) => message.role == 'user');
+
+  bool _isLatestResponseEndVisible() {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    final distanceToLatestAnchor = _distanceToLatestContentAnchor(position);
+    return distanceToLatestAnchor <= 24;
+  }
+
+  int _focusedUserMessageIndex() {
     for (var i = widget.messages.length - 1; i >= 0; i--) {
       if (widget.messages[i].role == 'user') return i;
     }
-    return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
+    return -1;
+  }
+
+  void _scrollToInitialAnchor() {
+    if (_focusedIndex >= 0) {
+      _scrollToFocusedUserMessage();
+    } else {
+      _scrollToHistoryEnd();
+    }
+  }
+
+  double _userTailVisibleHeight(BuildContext context, double itemHeight) {
+    final textStyle = Theme.of(context).textTheme.bodyLarge;
+    final fontSize = textStyle?.fontSize ?? 16;
+    final lineHeight = (textStyle?.height ?? 1.35) * fontSize;
+    // Keep roughly the final two text lines plus bubble padding/metadata.
+    return (lineHeight * 2 + BricksSpacing.sm * 2 + BricksSpacing.xs + 20)
+        .clamp(56.0, itemHeight)
+        .toDouble();
   }
 
   void _scrollToFocusedUserMessage() {
@@ -126,22 +155,42 @@ class _MessageListState extends State<MessageList> {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
       if (_focusedIndex < 0) return;
-      // First jump to the bottom so the layout measures the full extent, then
-      // let ensureVisible fine-tune.  With an eager (non-builder) ListView all
-      // items are already in the render tree, so the second callback always
-      // finds _focusedItemKey – no retry loop is needed.
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
         final targetContext = _focusedItemKey.currentContext;
         if (targetContext == null) return;
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: Duration.zero,
-          alignment: 0,
-        );
+        final scrollContext = _scrollViewKey.currentContext;
+        final targetRender = targetContext.findRenderObject();
+        final scrollRender = scrollContext?.findRenderObject();
+        if (targetRender is! RenderBox || scrollRender is! RenderBox) {
+          return;
+        }
+        final targetTop =
+            targetRender.localToGlobal(Offset.zero, ancestor: scrollRender).dy;
+        final targetHeight = targetRender.size.height;
+        final visibleTailHeight =
+            _userTailVisibleHeight(targetContext, targetHeight);
+        final overflowAdjustment =
+            (targetHeight - visibleTailHeight).clamp(0.0, double.infinity);
+        final targetOffset =
+            (_scrollController.position.pixels + targetTop + overflowAdjustment)
+                .clamp(
+                  _scrollController.position.minScrollExtent,
+                  _scrollController.position.maxScrollExtent,
+                )
+                .toDouble();
+        _scrollController.jumpTo(targetOffset);
         _handleScrollChanged();
       });
+    });
+  }
+
+  void _scrollToHistoryEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      _handleScrollChanged();
     });
   }
 
@@ -543,16 +592,19 @@ class _MessageListState extends State<MessageList> {
     }
 
     _listBottomPadding = BricksSpacing.md +
-        MediaQuery.sizeOf(context).height * _kBottomPaddingRatio;
+        (_hasUserMessage()
+            ? MediaQuery.sizeOf(context).height * _kBottomPaddingRatio
+            : 0);
 
-    // All messages in the initial load are bounded (≤ 100 items). Building
+    // All messages in the initial load are bounded (≤ 20 items). Building
     // them eagerly with a non-builder ListView gives an accurate
     // maxScrollExtent from the very first frame, so _scrollToFocusedUserMessage
     // can call Scrollable.ensureVisible directly without any jumpTo/retry hack.
     return Stack(
       children: [
         SelectionArea(
-          child: ListView(
+          child: SingleChildScrollView(
+            key: _scrollViewKey,
             controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
               BricksSpacing.md,
@@ -560,10 +612,12 @@ class _MessageListState extends State<MessageList> {
               BricksSpacing.md,
               _listBottomPadding,
             ),
-            children: [
-              for (var i = 0; i < messages.length; i++)
-                _buildMessageItem(context, i),
-            ],
+            child: Column(
+              children: [
+                for (var i = 0; i < messages.length; i++)
+                  _buildMessageItem(context, i),
+              ],
+            ),
           ),
         ),
         Positioned(
