@@ -9,6 +9,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "migrate": "node dist/db/migrate.js",
+    "fixture:export-chat": "tsx src/scripts/exportChatFixtureDb.ts",
+    "fixture:token": "tsx src/scripts/generateFixtureToken.ts",
     "test": "vitest run",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit"

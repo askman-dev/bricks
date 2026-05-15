@@ -4,10 +4,10 @@ import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
 
-// Extra bottom padding as a fraction of screen height, so an incoming
-// assistant reply is visible when the list is anchored on the latest user
-// message. ~35 % of screen height works well across common phone sizes.
-const double _kBottomPaddingRatio = 0.35;
+// Extra bottom padding as a fraction of screen height, so the latest user
+// message can be anchored near the top while leaving room for the assistant
+// reply to stream below it.
+const double _kBottomPaddingRatio = 0.75;
 
 /// Displays the list of chat messages in timeline format.
 class MessageList extends StatefulWidget {
@@ -29,49 +29,59 @@ class _MessageListState extends State<MessageList> {
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
   // every list row.
   final GlobalKey _focusedItemKey = GlobalKey();
+  final GlobalKey _scrollViewKey = GlobalKey();
   int _focusedIndex = -1;
 
   // Persist the previous snapshot in state so comparisons work correctly even
   // when the same List instance is mutated in place (e.g. ChatScreen passes
   // _messages directly and mutates it via ..clear()..addAll / add / [i]=).
   int _prevLength = 0;
+  _LastMessageKey? _prevFirstKey;
   _LastMessageKey? _prevLastKey;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScrollChanged);
-    _focusedIndex = _focusedMessageIndex();
+    _focusedIndex = _focusedUserMessageIndex();
     _saveSnapshot();
-    _scrollToFocusedUserMessage();
+    _scrollToInitialAnchor();
   }
 
   @override
   void didUpdateWidget(covariant MessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
     final messages = widget.messages;
+    final previousLength = _prevLength;
+    final previousFirstKey = _prevFirstKey;
+    final previousLastKey = _prevLastKey;
     final newLength = messages.length;
+    final newFirstKey =
+        messages.isEmpty ? null : _LastMessageKey.from(messages.first);
     final newKey =
         messages.isEmpty ? null : _LastMessageKey.from(messages.last);
-    final wasStreamingTail = _prevLastKey?.isStreaming ?? false;
-    final isStreamingTail = newKey?.isStreaming ?? false;
-    // Use a stable identity that works even when messageId is null (e.g. older
-    // persisted data or server payloads that haven't been assigned an ID yet).
-    // Falls back to a composite of timestamp + role so that a streaming
-    // assistant turn without a messageId is still recognised as "the same tail".
-    final sameTailIdentity = _prevLastKey != null &&
-        newKey != null &&
-        _prevLastKey!.stableId == newKey.stableId;
-    final streamingProgressOnly = newLength == _prevLength &&
-        wasStreamingTail &&
-        isStreamingTail &&
-        sameTailIdentity;
-    if (newLength != _prevLength || newKey != _prevLastKey) {
+    if (newLength != previousLength ||
+        newFirstKey != previousFirstKey ||
+        newKey != previousLastKey) {
+      final appendedMessage = newLength > previousLength && messages.isNotEmpty
+          ? messages.last
+          : null;
+      final becameNonEmpty = previousLength == 0 && newLength > 0;
+      final switchedConversation =
+          previousLength > 0 && newFirstKey != previousFirstKey;
+      final shouldAnchorAppendedUser = appendedMessage?.role == 'user' &&
+          (previousLength == 0 || _isLatestResponseEndVisible());
       _prevLength = newLength;
+      _prevFirstKey = newFirstKey;
       _prevLastKey = newKey;
-      if (!streamingProgressOnly) {
-        _focusedIndex = _focusedMessageIndex();
-        _scrollToFocusedUserMessage();
+
+      // Auto-focus on initial population, conversation switches, and when a
+      // new user message is sent.
+      // During assistant streaming/progress updates, keep the current viewport
+      // stable so the app never fights user scrolling.
+      if (becameNonEmpty || switchedConversation || shouldAnchorAppendedUser) {
+        _focusedIndex = _focusedUserMessageIndex();
+        _scrollToInitialAnchor();
       }
     }
   }
@@ -79,6 +89,8 @@ class _MessageListState extends State<MessageList> {
   void _saveSnapshot() {
     final messages = widget.messages;
     _prevLength = messages.length;
+    _prevFirstKey =
+        messages.isEmpty ? null : _LastMessageKey.from(messages.first);
     _prevLastKey =
         messages.isEmpty ? null : _LastMessageKey.from(messages.last);
   }
@@ -103,11 +115,39 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
-  int _focusedMessageIndex() {
+  bool _hasUserMessage() =>
+      widget.messages.any((message) => message.role == 'user');
+
+  bool _isLatestResponseEndVisible() {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    final distanceToLatestAnchor = _distanceToLatestContentAnchor(position);
+    return distanceToLatestAnchor <= 24;
+  }
+
+  int _focusedUserMessageIndex() {
     for (var i = widget.messages.length - 1; i >= 0; i--) {
       if (widget.messages[i].role == 'user') return i;
     }
-    return widget.messages.isEmpty ? -1 : widget.messages.length - 1;
+    return -1;
+  }
+
+  void _scrollToInitialAnchor() {
+    if (_focusedIndex >= 0) {
+      _scrollToFocusedUserMessage();
+    } else {
+      _scrollToHistoryEnd();
+    }
+  }
+
+  double _userTailVisibleHeight(BuildContext context, double itemHeight) {
+    final textStyle = Theme.of(context).textTheme.bodyLarge;
+    final fontSize = textStyle?.fontSize ?? 16;
+    final lineHeight = (textStyle?.height ?? 1.35) * fontSize;
+    // Keep roughly the final two text lines plus bubble padding/metadata.
+    return (lineHeight * 2 + BricksSpacing.sm * 2 + BricksSpacing.xs + 20)
+        .clamp(56.0, itemHeight)
+        .toDouble();
   }
 
   void _scrollToFocusedUserMessage() {
@@ -115,23 +155,42 @@ class _MessageListState extends State<MessageList> {
       if (!mounted || !_scrollController.hasClients) return;
       if (widget.messages.isEmpty) return;
       if (_focusedIndex < 0) return;
-
-      // First jump to bottom to ensure trailing children are laid out, then
-      // pin the focused message as the first visible item.
-      final position = _scrollController.position;
-      _scrollController.jumpTo(position.maxScrollExtent);
-
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
         final targetContext = _focusedItemKey.currentContext;
         if (targetContext == null) return;
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: Duration.zero,
-          alignment: 0,
-        );
+        final scrollContext = _scrollViewKey.currentContext;
+        final targetRender = targetContext.findRenderObject();
+        final scrollRender = scrollContext?.findRenderObject();
+        if (targetRender is! RenderBox || scrollRender is! RenderBox) {
+          return;
+        }
+        final targetTop =
+            targetRender.localToGlobal(Offset.zero, ancestor: scrollRender).dy;
+        final targetHeight = targetRender.size.height;
+        final visibleTailHeight =
+            _userTailVisibleHeight(targetContext, targetHeight);
+        final overflowAdjustment =
+            (targetHeight - visibleTailHeight).clamp(0.0, double.infinity);
+        final targetOffset =
+            (_scrollController.position.pixels + targetTop + overflowAdjustment)
+                .clamp(
+                  _scrollController.position.minScrollExtent,
+                  _scrollController.position.maxScrollExtent,
+                )
+                .toDouble();
+        _scrollController.jumpTo(targetOffset);
         _handleScrollChanged();
       });
+    });
+  }
+
+  void _scrollToHistoryEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      _handleScrollChanged();
     });
   }
 
@@ -271,6 +330,258 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
+  // Builds a single message row for the given [index] in [widget.messages].
+  // Extracted from build() so that the non-builder ListView can call it in a
+  // simple for-loop while keeping the item rendering logic in one place.
+  Widget _buildMessageItem(BuildContext context, int index) {
+    final allMessages = widget.messages;
+    final msg = allMessages[index];
+    final isUser = msg.role == 'user';
+    final isAssistantDispatchPlaceholder = _isAssistantDispatchPlaceholder(msg);
+    final deliveryIndicator =
+        isUser ? _deliveryIndicatorForUserMessage(msg, allMessages) : null;
+    // Resolve chat-specific semantic colors from the ThemeExtension.
+    // Falling back to the light defaults keeps plain MaterialApp tests
+    // working without an explicit BricksTheme.
+    final chatColors =
+        Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+    // Attach the focused-item key only to the target row so that
+    // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
+    // without maintaining a GlobalKey for every list item.
+    final itemKey = index == _focusedIndex ? _focusedItemKey : null;
+    return Align(
+      key: itemKey,
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // Show agent attribution chip as soon as assistant identity is
+          // known, including dispatch placeholders pushed by SSE before
+          // any assistant text is available.
+          if (!isUser && (msg.agentName != null || msg.model != null))
+            Padding(
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                bottom: BricksSpacing.xs,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.smart_toy_outlined, size: 14),
+                  const SizedBox(width: BricksSpacing.xs),
+                  Text(
+                    msg.agentName ?? msg.model ?? '',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: chatColors.agentIdentity,
+                        ),
+                  ),
+                  if (msg.nodeType?.trim().isNotEmpty == true) ...[
+                    const SizedBox(width: BricksSpacing.xs),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: chatColors.agentBadgeContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        msg.nodeType!.trim(),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: chatColors.onAgentBadgeContainer,
+                            ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          if (isAssistantDispatchPlaceholder)
+            Padding(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        chatColors.agentAccent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: BricksSpacing.xs),
+                  Text(
+                    '处理中…',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                right: BricksSpacing.xs,
+                bottom: BricksSpacing.xs,
+              ),
+            )
+          else if (!isUser &&
+              msg.agentLoopPhase != null &&
+              msg.agentLoopPhase != 'tool_call')
+            _AgentLoopStatusRow(
+              phase: msg.agentLoopPhase!,
+              toolName: msg.agentLoopTool,
+              content: msg.content,
+              chatColors: chatColors,
+              taskState: msg.taskState,
+            )
+          else
+            GestureDetector(
+              onLongPressStart: isUser
+                  ? (details) => _showUserMessageContextMenu(
+                        context: context,
+                        globalPosition: details.globalPosition,
+                        message: msg,
+                      )
+                  : null,
+              child: Container(
+                key: ValueKey<String>(
+                  'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                ),
+                margin: isUser
+                    ? const EdgeInsets.only(
+                        bottom: BricksSpacing.md,
+                      )
+                    : const EdgeInsets.only(
+                        bottom: BricksSpacing.xs,
+                      ),
+                padding: isUser
+                    ? const EdgeInsets.symmetric(
+                        horizontal: BricksSpacing.md,
+                        vertical: BricksSpacing.sm,
+                      )
+                    : const EdgeInsets.symmetric(
+                        horizontal: BricksSpacing.xs,
+                        vertical: BricksSpacing.xs,
+                      ),
+                width: isUser ? null : double.infinity,
+                constraints: isUser
+                    ? BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.75,
+                      )
+                    : null,
+                decoration: isUser
+                    ? BoxDecoration(
+                        color: chatColors.messageUserBackground,
+                        borderRadius: BorderRadius.circular(BricksRadius.md),
+                      )
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isUser)
+                      _MessageExpandToggle(
+                        key: ValueKey<String>(
+                          'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
+                        ),
+                        text: msg.content,
+                        textColor: chatColors.onMessageUser,
+                      )
+                    else
+                      _AssistantMarkdownText(
+                        text: msg.content,
+                        textColor: chatColors.onMessageAssistant,
+                        linkColor: chatColors.linkText,
+                        codeBlockColor: chatColors.codeBlockBackground,
+                        quoteBlockColor: chatColors.quoteBackground,
+                        textStyle: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    if (msg.isStreaming)
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isUser
+                                  ? chatColors.onMessageUser
+                                  : chatColors.agentAccent,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (msg.arbitrationMode && msg.resolvedBotId != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: Text(
+                          msg.fallbackToDefaultBot
+                              ? 'fallback→${msg.resolvedBotId}'
+                              : 'selected→${msg.resolvedBotId}',
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: isUser
+                                        ? chatColors.onMessageUser
+                                        : chatColors.agentAccent,
+                                  ),
+                        ),
+                      ),
+                    if (isUser)
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                _messageMetaLine(msg),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: chatColors.onMessageUser
+                                          .withValues(alpha: 0.68),
+                                    ),
+                              ),
+                            ),
+                            if (deliveryIndicator != null) ...[
+                              const SizedBox(width: BricksSpacing.xs),
+                              _UserMessageDeliveryStatus(
+                                indicator: deliveryIndicator,
+                                messageId: msg.messageId,
+                                foregroundColor: chatColors.onMessageUser,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          if (!isUser)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                right: BricksSpacing.xs,
+                bottom: BricksSpacing.md,
+              ),
+              child: Text(
+                _messageMetaLine(msg),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: chatColors.metaText,
+                    ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final messages = widget.messages;
@@ -281,12 +592,19 @@ class _MessageListState extends State<MessageList> {
     }
 
     _listBottomPadding = BricksSpacing.md +
-        MediaQuery.sizeOf(context).height * _kBottomPaddingRatio;
+        (_hasUserMessage()
+            ? MediaQuery.sizeOf(context).height * _kBottomPaddingRatio
+            : 0);
 
+    // All messages in the initial load are bounded (≤ 20 items). Building
+    // them eagerly with a non-builder ListView gives an accurate
+    // maxScrollExtent from the very first frame, so _scrollToFocusedUserMessage
+    // can call Scrollable.ensureVisible directly without any jumpTo/retry hack.
     return Stack(
       children: [
         SelectionArea(
-          child: ListView.builder(
+          child: SingleChildScrollView(
+            key: _scrollViewKey,
             controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
               BricksSpacing.md,
@@ -294,276 +612,12 @@ class _MessageListState extends State<MessageList> {
               BricksSpacing.md,
               _listBottomPadding,
             ),
-            itemCount: messages.length,
-            itemBuilder: (context, index) {
-              final msg = messages[index];
-              final isUser = msg.role == 'user';
-              final isAssistantDispatchPlaceholder =
-                  _isAssistantDispatchPlaceholder(msg);
-              final deliveryIndicator = isUser
-                  ? _deliveryIndicatorForUserMessage(msg, messages)
-                  : null;
-              // Resolve chat-specific semantic colors from the ThemeExtension.
-              // Falling back to the light defaults keeps plain MaterialApp tests
-              // working without an explicit BricksTheme.
-              final chatColors =
-                  Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
-              // Attach the focused-item key only to the target row so that
-              // _scrollToFocusedUserMessage can call Scrollable.ensureVisible
-              // without maintaining a GlobalKey for every list item.
-              final itemKey = index == _focusedIndex ? _focusedItemKey : null;
-              return Align(
-                key: itemKey,
-                alignment:
-                    isUser ? Alignment.centerRight : Alignment.centerLeft,
-                child: Column(
-                  crossAxisAlignment: isUser
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
-                  children: [
-                    // Show agent attribution chip as soon as assistant identity is
-                    // known, including dispatch placeholders pushed by SSE before
-                    // any assistant text is available.
-                    if (!isUser && (msg.agentName != null || msg.model != null))
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          left: BricksSpacing.xs,
-                          bottom: BricksSpacing.xs,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.smart_toy_outlined, size: 14),
-                            const SizedBox(width: BricksSpacing.xs),
-                            Text(
-                              msg.agentName ?? msg.model ?? '',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: chatColors.agentIdentity,
-                                  ),
-                            ),
-                            if (msg.nodeType?.trim().isNotEmpty == true) ...[
-                              const SizedBox(width: BricksSpacing.xs),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: chatColors.agentBadgeContainer,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  msg.nodeType!.trim(),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                        color: chatColors.onAgentBadgeContainer,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    if (isAssistantDispatchPlaceholder)
-                      Padding(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  chatColors.agentAccent,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: BricksSpacing.xs),
-                            Text(
-                              '处理中…',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.only(
-                          left: BricksSpacing.xs,
-                          right: BricksSpacing.xs,
-                          bottom: BricksSpacing.xs,
-                        ),
-                      )
-                    else if (!isUser &&
-                        msg.agentLoopPhase != null &&
-                        msg.agentLoopPhase != 'tool_call')
-                      _AgentLoopStatusRow(
-                        phase: msg.agentLoopPhase!,
-                        toolName: msg.agentLoopTool,
-                        content: msg.content,
-                        chatColors: chatColors,
-                        taskState: msg.taskState,
-                      )
-                    else
-                      GestureDetector(
-                        onLongPressStart: isUser
-                            ? (details) => _showUserMessageContextMenu(
-                                  context: context,
-                                  globalPosition: details.globalPosition,
-                                  message: msg,
-                                )
-                            : null,
-                        child: Container(
-                          key: ValueKey<String>(
-                            'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                          ),
-                          margin: isUser
-                              ? const EdgeInsets.only(
-                                  bottom: BricksSpacing.md,
-                                )
-                              : const EdgeInsets.only(
-                                  bottom: BricksSpacing.xs,
-                                ),
-                          padding: isUser
-                              ? const EdgeInsets.symmetric(
-                                  horizontal: BricksSpacing.md,
-                                  vertical: BricksSpacing.sm,
-                                )
-                              : const EdgeInsets.symmetric(
-                                  horizontal: BricksSpacing.xs,
-                                  vertical: BricksSpacing.xs,
-                                ),
-                          width: isUser ? null : double.infinity,
-                          constraints: isUser
-                              ? BoxConstraints(
-                                  maxWidth:
-                                      MediaQuery.of(context).size.width * 0.75,
-                                )
-                              : null,
-                          decoration: isUser
-                              ? BoxDecoration(
-                                  color: chatColors.messageUserBackground,
-                                  borderRadius:
-                                      BorderRadius.circular(BricksRadius.md),
-                                )
-                              : null,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (isUser)
-                                _MessageExpandToggle(
-                                  key: ValueKey<String>(
-                                    'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
-                                  ),
-                                  text: msg.content,
-                                  textColor: chatColors.onMessageUser,
-                                )
-                              else
-                                _AssistantMarkdownText(
-                                  text: msg.content,
-                                  textColor: chatColors.onMessageAssistant,
-                                  linkColor: chatColors.linkText,
-                                  codeBlockColor:
-                                      chatColors.codeBlockBackground,
-                                  quoteBlockColor: chatColors.quoteBackground,
-                                  textStyle:
-                                      Theme.of(context).textTheme.bodyLarge,
-                                ),
-                              if (msg.isStreaming)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      top: BricksSpacing.xs),
-                                  child: SizedBox(
-                                    width: 12,
-                                    height: 12,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        isUser
-                                            ? chatColors.onMessageUser
-                                            : chatColors.agentAccent,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              if (msg.arbitrationMode &&
-                                  msg.resolvedBotId != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      top: BricksSpacing.xs),
-                                  child: Text(
-                                    msg.fallbackToDefaultBot
-                                        ? 'fallback→${msg.resolvedBotId}'
-                                        : 'selected→${msg.resolvedBotId}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
-                                          color: isUser
-                                              ? chatColors.onMessageUser
-                                              : chatColors.agentAccent,
-                                        ),
-                                  ),
-                                ),
-                              if (isUser)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      top: BricksSpacing.xs),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          _messageMetaLine(msg),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall
-                                              ?.copyWith(
-                                                color: chatColors.onMessageUser
-                                                    .withValues(alpha: 0.68),
-                                              ),
-                                        ),
-                                      ),
-                                      if (deliveryIndicator != null) ...[
-                                        const SizedBox(width: BricksSpacing.xs),
-                                        _UserMessageDeliveryStatus(
-                                          indicator: deliveryIndicator,
-                                          messageId: msg.messageId,
-                                          foregroundColor:
-                                              chatColors.onMessageUser,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    if (!isUser)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          left: BricksSpacing.xs,
-                          right: BricksSpacing.xs,
-                          bottom: BricksSpacing.md,
-                        ),
-                        child: Text(
-                          _messageMetaLine(msg),
-                          style:
-                              Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: chatColors.metaText,
-                                  ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
+            child: Column(
+              children: [
+                for (var i = 0; i < messages.length; i++)
+                  _buildMessageItem(context, i),
+              ],
+            ),
           ),
         ),
         Positioned(

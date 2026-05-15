@@ -5,7 +5,7 @@ import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
 // Must match _kBottomPaddingRatio in message_list.dart
-const double _kTestBottomPaddingRatio = 0.35;
+const double _kTestBottomPaddingRatio = 0.75;
 
 /// Computes the expected latest-content anchor offset using the same formula
 /// as MessageList._latestContentAnchorOffset.
@@ -52,26 +52,10 @@ void main() {
           lessThan(scrollable.position.maxScrollExtent));
     });
 
-    testWidgets('re-focuses latest user message when list content changes',
-        (tester) async {
-      await tester.pumpWidget(_build(_messages('before', 41)));
-      await tester.pumpAndSettle();
-
-      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
-      scrollable.position.jumpTo(0);
-      await tester.pump();
-      expect(scrollable.position.pixels, 0);
-
-      await tester.pumpWidget(_build(_messages('after', 41)));
-      await tester.pumpAndSettle();
-
-      expect(scrollable.position.pixels, greaterThan(0));
-    });
-
     testWidgets(
-        're-focuses latest user message when rebuilt with same mutated list instance',
+        're-focuses latest user message when channel messages are replaced',
         (tester) async {
-      final messages = _messages('before', 41);
+      final messages = _messages('channel-a', 61);
       late StateSetter setState;
 
       await tester.pumpWidget(
@@ -98,11 +82,141 @@ void main() {
 
       messages
         ..clear()
-        ..addAll(_messages('after', 41));
+        ..addAll(_messages('channel-b', 61));
       setState(() {});
       await tester.pumpAndSettle();
 
       expect(scrollable.position.pixels, greaterThan(0));
+    });
+
+    testWidgets('keeps scroll position when only assistant message is appended',
+        (tester) async {
+      final messages = _messages('stable', 61);
+      late StateSetter setState;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, stateSetter) {
+                setState = stateSetter;
+                return SizedBox(
+                  height: 320,
+                  child: MessageList(messages: messages),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final midOffset = scrollable.position.maxScrollExtent * 0.5;
+      scrollable.position.jumpTo(midOffset);
+      await tester.pump();
+      final before = scrollable.position.pixels;
+      expect(before, greaterThan(0));
+
+      messages.add(
+        ChatMessage(
+          messageId: 'a1',
+          role: 'assistant',
+          content: 'partial answer',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 1, 1),
+        ),
+      );
+      setState(() {});
+      await tester.pumpAndSettle();
+
+      expect(scrollable.position.pixels, closeTo(before, 0.1));
+    });
+
+    testWidgets(
+        'keeps reading position when a new user message is appended while away from latest',
+        (tester) async {
+      final messages = _messages('before', 41);
+      late StateSetter setState;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, stateSetter) {
+                setState = stateSetter;
+                return SizedBox(
+                  height: 320,
+                  child: MessageList(messages: messages),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      scrollable.position.jumpTo(0);
+      await tester.pump();
+      final before = scrollable.position.pixels;
+      expect(before, 0);
+
+      messages.add(
+        ChatMessage(
+          messageId: 'u-new',
+          role: 'user',
+          content: 'new question',
+          timestamp: DateTime.utc(2026, 1, 1, 10),
+        ),
+      );
+      setState(() {});
+      await tester.pumpAndSettle();
+
+      expect(scrollable.position.pixels, closeTo(before, 0.1));
+    });
+
+    testWidgets(
+        're-focuses latest user message when a new user message is appended from latest',
+        (tester) async {
+      final messages = _messages('before-latest', 41);
+      late StateSetter setState;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, stateSetter) {
+                setState = stateSetter;
+                return SizedBox(
+                  height: 320,
+                  child: MessageList(messages: messages),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      final latestAnchor = _latestAnchorOffset(tester, scrollable.position);
+      scrollable.position.jumpTo(latestAnchor);
+      await tester.pump();
+      final before = scrollable.position.pixels;
+
+      messages.add(
+        ChatMessage(
+          messageId: 'u-new-latest',
+          role: 'user',
+          content: 'new question from latest',
+          timestamp: DateTime.utc(2026, 1, 1, 10),
+        ),
+      );
+      setState(() {});
+      await tester.pumpAndSettle();
+
+      expect(scrollable.position.pixels, greaterThan(before));
+      expect(find.text('new question from latest'), findsOneWidget);
     });
 
     testWidgets(

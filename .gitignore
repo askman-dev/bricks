@@ -6,6 +6,7 @@
 *.swp
 .buildlog/
 .history
+.cache/
 .idea/
 
 # IntelliJ/Melos generated files
