@@ -600,7 +600,7 @@ export async function executeInternalTool(
       return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
     }
     case INTERNAL_TOOL_TODO_LIST: {
-      const includeCompleted = args.includeCompleted !== false;
+      const includeCompleted = (args.includeCompleted ?? true) !== false;
       const todos = await listTodos(userId, { includeCompleted });
       return { ok: true, toolName, data: { todos }, error: null };
     }

@@ -874,7 +874,11 @@ class _AssistantMarkdownText extends StatelessWidget {
     if (text.isEmpty) {
       return Text(text, style: baseStyle);
     }
-    final lines = text.split('\n');
+    // Normalize line endings so that the charOffset accounting below is
+    // consistent. \r\n → \n, lone \r → \n.
+    final normalizedText =
+        text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final lines = normalizedText.split('\n');
     final widgets = <Widget>[];
     var inCodeBlock = false;
     final codeLines = <String>[];
@@ -888,7 +892,7 @@ class _AssistantMarkdownText extends StatelessWidget {
         final bgColor = _parseHighlightColor(h.color);
         var searchStart = 0;
         while (true) {
-          final idx = text.indexOf(h.selectedText, searchStart);
+          final idx = normalizedText.indexOf(h.selectedText, searchStart);
           if (idx == -1) break;
           highlightRanges.add(
             (start: idx, end: idx + h.selectedText.length, bg: bgColor),
@@ -1112,29 +1116,37 @@ class _AssistantMarkdownText extends StatelessWidget {
   }
 
   /// Convert a named or hex highlight color string to a [Color] with reduced
-  /// opacity so the text beneath remains readable.
+  /// opacity so the text beneath remains readable. All named colors use
+  /// alpha = 0.45 as a consistent baseline; yellow is slightly more opaque
+  /// (0.55) because it is brighter and needs higher saturation for contrast.
   static Color _parseHighlightColor(String color) {
     switch (color.toLowerCase()) {
       case 'yellow':
-        return const Color(0xFFFFEB3B).withValues(alpha: 0.5);
+        return const Color(0xFFFFEB3B).withValues(alpha: 0.55);
       case 'green':
-        return const Color(0xFF4CAF50).withValues(alpha: 0.35);
+        return const Color(0xFF4CAF50).withValues(alpha: 0.45);
       case 'blue':
-        return const Color(0xFF2196F3).withValues(alpha: 0.35);
+        return const Color(0xFF2196F3).withValues(alpha: 0.45);
       case 'red':
-        return const Color(0xFFF44336).withValues(alpha: 0.35);
+        return const Color(0xFFF44336).withValues(alpha: 0.45);
       case 'orange':
         return const Color(0xFFFF9800).withValues(alpha: 0.45);
       case 'purple':
-        return const Color(0xFF9C27B0).withValues(alpha: 0.35);
+        return const Color(0xFF9C27B0).withValues(alpha: 0.45);
       default:
-        // Allow hex values like '#FFEB3B'
+        // Allow hex values like '#FFEB3B'. Parse as 6-digit RGB hex and
+        // apply a standard background alpha.
         final hex = color.startsWith('#') ? color.substring(1) : color;
-        final value = int.tryParse(hex, radix: 16);
-        if (value != null) {
-          return Color(0xFF000000 | value).withValues(alpha: 0.45);
+        final rgb = int.tryParse(hex, radix: 16);
+        if (rgb != null && hex.length == 6) {
+          return Color(rgb).withValues(
+            red: ((rgb >> 16) & 0xFF) / 255.0,
+            green: ((rgb >> 8) & 0xFF) / 255.0,
+            blue: (rgb & 0xFF) / 255.0,
+            alpha: 0.45,
+          );
         }
-        return const Color(0xFFFFEB3B).withValues(alpha: 0.5);
+        return const Color(0xFFFFEB3B).withValues(alpha: 0.45);
     }
   }
 }
