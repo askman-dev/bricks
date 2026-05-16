@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'todo_api_service.dart';
 
 /// Actions that can be triggered from the chat navigation page.
@@ -523,17 +522,18 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
       _error = null;
     });
     try {
-      final items = await service.listTodos(
+      final raw = await service.listTodos(
         token: token,
         listId: widget.resource.id,
       );
-      // Sort: incomplete first (by displayOrder), then completed.
-      items.sort((a, b) {
-        if (a.isCompleted != b.isCompleted) {
-          return a.isCompleted ? 1 : -1;
-        }
-        return a.displayOrder.compareTo(b.displayOrder);
-      });
+      // Sort a copy: incomplete first (by displayOrder), then completed.
+      final items = List<TodoItem>.from(raw)
+        ..sort((a, b) {
+          if (a.isCompleted != b.isCompleted) {
+            return a.isCompleted ? 1 : -1;
+          }
+          return a.displayOrder.compareTo(b.displayOrder);
+        });
       if (mounted) {
         setState(() {
           _items = items;
