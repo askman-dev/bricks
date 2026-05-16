@@ -31,6 +31,26 @@ class ChatAgentItem {
   final bool isBuiltIn;
 }
 
+/// Type of resource shown in the Resources tab.
+enum ChatResourceType { todoList, assetTable }
+
+/// A resource item (todo-list or asset table) shown in the Resources tab.
+class ChatResourceItem {
+  const ChatResourceItem({
+    required this.id,
+    required this.type,
+    required this.title,
+    this.notes,
+  });
+
+  final String id;
+  final ChatResourceType type;
+  final String title;
+
+  /// Optional subtitle – notes for a todo-list, or null for an asset table.
+  final String? notes;
+}
+
 /// Represents a connected AI node shown in the Nodes tab.
 class ChatNodeItem {
   const ChatNodeItem({
@@ -49,9 +69,10 @@ class ChatNodeItem {
 /// Navigation content for chat-related routes, intended for use in a
 /// [Drawer].
 ///
-/// The navigation is split into two tabs: **Channels** (a flat list of
-/// channels with a "New Channel" action) and **Nodes** (a flat list of
-/// connected AI nodes).
+/// The navigation is split into three tabs: **Channels** (a flat list of
+/// channels with a "New Channel" action), **Resources** (a flat list of
+/// todo-lists and asset tables), and **Nodes** (a flat list of connected AI
+/// nodes).
 class ChatNavigationPage extends StatefulWidget {
   const ChatNavigationPage({
     super.key,
@@ -59,10 +80,12 @@ class ChatNavigationPage extends StatefulWidget {
     required this.channels,
     required this.selectedChannelId,
     this.nodes = const [],
+    this.resources = const [],
     this.onChannelSelected,
     this.onChannelRename,
     this.onChannelArchive,
     this.onNodeSelected,
+    this.onResourceSelected,
     this.onRequestClose,
     this.closeOnChannelSelected = true,
   });
@@ -74,6 +97,9 @@ class ChatNavigationPage extends StatefulWidget {
   /// Connected AI nodes shown in the Nodes tab.
   final List<ChatNodeItem> nodes;
 
+  /// Todo-lists and asset tables shown in the Resources tab.
+  final List<ChatResourceItem> resources;
+
   final ValueChanged<String>? onChannelSelected;
   final ValueChanged<String>? onChannelRename;
   final ValueChanged<String>? onChannelArchive;
@@ -82,6 +108,11 @@ class ChatNavigationPage extends StatefulWidget {
   /// is passed as the argument. If null, tapping a node navigates to the
   /// [_NodeDetailPage] internally.
   final ValueChanged<String>? onNodeSelected;
+
+  /// Called when a resource is tapped in the Resources tab. The resource's
+  /// [ChatResourceItem.id] is passed. If null, tapping opens
+  /// [_ResourcePreviewPage] internally.
+  final ValueChanged<String>? onResourceSelected;
 
   final bool closeOnChannelSelected;
 
@@ -106,7 +137,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -181,6 +212,14 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
     );
   }
 
+  void _openResourcePreview(ChatResourceItem resource) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _ResourcePreviewPage(resource: resource),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final channels = widget.channels;
@@ -230,6 +269,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
           controller: _tabController,
           tabs: const [
             Tab(text: 'Channels'),
+            Tab(text: 'Resources'),
             Tab(text: 'Nodes'),
           ],
         ),
@@ -286,6 +326,44 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
                             : () {
                                 _showChannelMenu(channel);
                               },
+                      );
+                    }),
+                  const SizedBox(height: 24),
+                ],
+              ),
+              // Resources tab
+              ListView(
+                children: [
+                  if (widget.resources.isEmpty)
+                    const ListTile(
+                      title: Text('No resources'),
+                      subtitle: Text('Todo lists and tables will appear here'),
+                    )
+                  else
+                    ...widget.resources.map((resource) {
+                      final notes = resource.notes?.trim();
+                      return ListTile(
+                        leading: Icon(
+                          resource.type == ChatResourceType.todoList
+                              ? Icons.checklist_outlined
+                              : Icons.table_chart_outlined,
+                        ),
+                        title: Text(resource.title),
+                        subtitle: notes != null && notes.isNotEmpty
+                            ? Text(
+                                notes,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : null,
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          if (widget.onResourceSelected != null) {
+                            widget.onResourceSelected!.call(resource.id);
+                          } else {
+                            _openResourcePreview(resource);
+                          }
+                        },
                       );
                     }),
                   const SizedBox(height: 24),
@@ -381,6 +459,41 @@ class _NodeDetailPage extends StatelessWidget {
                     : null,
               );
             }),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+/// Preview page for a resource item (todo-list or asset table).
+class _ResourcePreviewPage extends StatelessWidget {
+  const _ResourcePreviewPage({required this.resource});
+
+  final ChatResourceItem resource;
+
+  @override
+  Widget build(BuildContext context) {
+    final isTodoList = resource.type == ChatResourceType.todoList;
+    final notes = resource.notes?.trim();
+    return Scaffold(
+      appBar: AppBar(title: Text(resource.title)),
+      body: ListView(
+        children: [
+          ListTile(
+            leading: Icon(
+              isTodoList
+                  ? Icons.checklist_outlined
+                  : Icons.table_chart_outlined,
+            ),
+            title: Text(isTodoList ? 'Todo List' : 'Table'),
+          ),
+          if (notes != null && notes.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.notes_outlined),
+              title: const Text('Notes'),
+              subtitle: Text(notes),
+            ),
           const SizedBox(height: 24),
         ],
       ),
