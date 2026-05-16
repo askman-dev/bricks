@@ -136,15 +136,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadAgents() async {
-    final repoFuture = createAgentsRepository();
+    final customDefinitionsFuture = _loadCustomAgentDefinitionsForStartup();
     final llmConfigsFuture = _llmConfigService.fetchConfigs();
     final tokenFuture = AuthService.getToken();
 
     try {
-      final repo = await repoFuture;
       final llmConfigs = await llmConfigsFuture;
       final authToken = await tokenFuture;
-      final customDefinitions = await _readAgentDefinitions(repo);
+      final customDefinitions = await customDefinitionsFuture;
       final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
@@ -316,6 +315,18 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load chat setup: $error')),
       );
+    }
+  }
+
+  Future<List<AgentDefinition>> _loadCustomAgentDefinitionsForStartup() async {
+    try {
+      final repo = await createAgentsRepository();
+      return _readAgentDefinitions(repo);
+    } catch (e) {
+      debugPrint(
+        'loadCustomAgents failed, continuing with built-in agents only: $e',
+      );
+      return const [];
     }
   }
 
