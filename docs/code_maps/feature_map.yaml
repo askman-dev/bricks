@@ -176,26 +176,30 @@ products:
           - 页面可正常渲染且无崩溃。
 
       - feature_id: conversational_todos
-        name: 对话式待办事项
-        user_value: 用户可用自然语言（如"添加待办：买牛奶"）让 AI 调用工具创建/查询/完成/删除待办事项；AI 返回 Markdown 格式的列表。
+        name: 对话式待办列表与待办事项
+        user_value: 用户可用自然语言让 AI 管理待办列表（topic 分组）及列表下的待办项；每个待办项必须属于一个父列表，不能脱离列表存在。
         entry_paths:
           - service: TodoApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/todo_api_service.dart
-          - route: GET /api/resources/todos
+          - route: GET /api/resources/todo-lists
             route_hint: apps/node_backend/src/routes/resources.ts
-          - route: POST /api/resources/todos
+          - route: POST /api/resources/todo-lists
             route_hint: apps/node_backend/src/routes/resources.ts
-          - route: PATCH /api/resources/todos/:id
+          - route: GET /api/resources/todo-lists/:listId
             route_hint: apps/node_backend/src/routes/resources.ts
-          - route: DELETE /api/resources/todos/:id
+          - route: POST /api/resources/todo-lists/:listId/todos
             route_hint: apps/node_backend/src/routes/resources.ts
+          - route: PATCH /api/resources/todo-lists/:listId/todos/:id
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - tool: todolist_create / todolist_list / todolist_get / todolist_update / todolist_delete
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
           - tool: todo_create / todo_list / todo_complete / todo_update / todo_delete
             route_hint: apps/node_backend/src/services/localAgentLoopService.ts
         smoke_checks:
-          - 用户说"帮我添加一个待办：完成报告"，AI 显示 tool_call_start 气泡，然后回复确认。
-          - 用户说"查看我的待办"，AI 调用 todo_list 工具，并以 Markdown 列表回复。
-          - PATCH /api/resources/todos/:id 可将 isCompleted 更新为 true。
-          - DELETE /api/resources/todos/:id 返回 { deleted: true }。
+          - 用户说"帮我创建一个工作待办列表"，AI 调用 todolist_create 并确认。
+          - 用户说"帮我在工作列表里添加：完成报告"，AI 调用 todo_create（带 listId）并确认。
+          - 用户说"查看我的工作列表"，AI 调用 todolist_get，返回列表及子项。
+          - DELETE /api/resources/todo-lists/:listId 返回 { deleted: true }，同时级联删除所有子项。
 
       - feature_id: asset_tables
         name: AI 驱动的动态资产表格

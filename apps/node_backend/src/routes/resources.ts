@@ -7,6 +7,13 @@ import {
   deleteTodo,
 } from '../services/todoService.js';
 import {
+  listTodoLists,
+  getTodoList,
+  createTodoList,
+  updateTodoList,
+  deleteTodoList,
+} from '../services/todoListService.js';
+import {
   listTables,
   createTable,
   getTable,
@@ -48,17 +55,15 @@ function validPathParam(value: string, maxLength = 255): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Todos
+// Todo Lists (parent entities) + Todo Items (nested under a list)
 // ---------------------------------------------------------------------------
 
-router.get('/todos', async (req: AuthRequest, res) => {
-  const uid = userId(req);
-  const includeCompleted = req.query.includeCompleted !== 'false';
-  const todos = await listTodos(uid, { includeCompleted });
-  res.json({ todos });
+router.get('/todo-lists', async (req: AuthRequest, res) => {
+  const lists = await listTodoLists(userId(req));
+  res.json({ lists });
 });
 
-router.post('/todos', async (req: AuthRequest, res) => {
+router.post('/todo-lists', async (req: AuthRequest, res) => {
   const uid = userId(req);
   const title = readString(req.body?.title);
   if (!title) {
@@ -66,17 +71,100 @@ router.post('/todos', async (req: AuthRequest, res) => {
     return;
   }
   const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() || null : null;
-  const todo = await createTodo(uid, { title, notes });
+  const list = await createTodoList(uid, { title, notes });
+  res.status(201).json(list);
+});
+
+router.get('/todo-lists/:listId', async (req: AuthRequest, res) => {
+  const listId = validPathParam(req.params.listId);
+  if (!listId) {
+    res.status(400).json({ error: 'listId is invalid' });
+    return;
+  }
+  const list = await getTodoList(userId(req), listId);
+  if (!list) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json(list);
+});
+
+router.patch('/todo-lists/:listId', async (req: AuthRequest, res) => {
+  const uid = userId(req);
+  const listId = validPathParam(req.params.listId);
+  if (!listId) {
+    res.status(400).json({ error: 'listId is invalid' });
+    return;
+  }
+  const patch: { title?: string; notes?: string | null } = {};
+  if (typeof req.body?.title === 'string') patch.title = req.body.title;
+  if (req.body?.notes !== undefined) {
+    if (req.body.notes !== null && typeof req.body.notes !== 'string') {
+      res.status(400).json({ error: 'notes must be a string or null' });
+      return;
+    }
+    patch.notes = typeof req.body.notes === 'string' ? req.body.notes.trim() || null : null;
+  }
+  const list = await updateTodoList(uid, listId, patch);
+  if (!list) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json(list);
+});
+
+router.delete('/todo-lists/:listId', async (req: AuthRequest, res) => {
+  const listId = validPathParam(req.params.listId);
+  if (!listId) {
+    res.status(400).json({ error: 'listId is invalid' });
+    return;
+  }
+  const result = await deleteTodoList(userId(req), listId);
+  res.json(result);
+});
+
+// --- Todo items nested under a list ---
+
+router.get('/todo-lists/:listId/todos', async (req: AuthRequest, res) => {
+  const listId = validPathParam(req.params.listId);
+  if (!listId) {
+    res.status(400).json({ error: 'listId is invalid' });
+    return;
+  }
+  const uid = userId(req);
+  const includeCompleted = req.query.includeCompleted !== 'false';
+  const todos = await listTodos(uid, listId, { includeCompleted });
+  res.json({ todos });
+});
+
+router.post('/todo-lists/:listId/todos', async (req: AuthRequest, res) => {
+  const uid = userId(req);
+  const listId = validPathParam(req.params.listId);
+  if (!listId) {
+    res.status(400).json({ error: 'listId is invalid' });
+    return;
+  }
+  const title = readString(req.body?.title);
+  if (!title) {
+    res.status(400).json({ error: 'title is required' });
+    return;
+  }
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() || null : null;
+  const todo = await createTodo(uid, listId, { title, notes });
   res.status(201).json(todo);
 });
 
-router.patch('/todos/:id', async (req: AuthRequest, res) => {
+router.patch('/todo-lists/:listId/todos/:id', async (req: AuthRequest, res) => {
   const uid = userId(req);
-  const { id } = req.params;
+  const listId = validPathParam(req.params.listId);
+  const id = validPathParam(req.params.id);
+  if (!listId || !id) {
+    res.status(400).json({ error: 'listId and id are invalid' });
+    return;
+  }
   const patch: Record<string, unknown> = {};
   if (typeof req.body?.title === 'string') patch.title = req.body.title;
   if (req.body?.notes !== undefined) {
-    // Validate notes: must be string or null; reject other types with 400.
     if (req.body.notes !== null && typeof req.body.notes !== 'string') {
       res.status(400).json({ error: 'notes must be a string or null' });
       return;
@@ -85,7 +173,7 @@ router.patch('/todos/:id', async (req: AuthRequest, res) => {
   }
   if (typeof req.body?.isCompleted === 'boolean') patch.isCompleted = req.body.isCompleted;
   if (typeof req.body?.displayOrder === 'number') patch.displayOrder = req.body.displayOrder;
-  const todo = await updateTodo(uid, id, patch);
+  const todo = await updateTodo(uid, listId, id, patch);
   if (!todo) {
     res.status(404).json({ error: 'Not found' });
     return;
@@ -93,9 +181,15 @@ router.patch('/todos/:id', async (req: AuthRequest, res) => {
   res.json(todo);
 });
 
-router.delete('/todos/:id', async (req: AuthRequest, res) => {
+router.delete('/todo-lists/:listId/todos/:id', async (req: AuthRequest, res) => {
   const uid = userId(req);
-  const result = await deleteTodo(uid, req.params.id);
+  const listId = validPathParam(req.params.listId);
+  const id = validPathParam(req.params.id);
+  if (!listId || !id) {
+    res.status(400).json({ error: 'listId and id are invalid' });
+    return;
+  }
+  const result = await deleteTodo(uid, listId, id);
   res.json(result);
 });
 

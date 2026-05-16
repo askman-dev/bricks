@@ -17,6 +17,14 @@ import {
   type UpdateTodoInput,
 } from './todoService.js';
 import {
+  listTodoLists,
+  getTodoList,
+  createTodoList,
+  updateTodoList,
+  deleteTodoList,
+  type UpdateTodoListInput,
+} from './todoListService.js';
+import {
   listTables,
   createTable,
   getTable,
@@ -39,7 +47,14 @@ export const INTERNAL_TOOL_CHAT_CHANNEL_GET = 'chat.channel.get';
 export const INTERNAL_TOOL_CHAT_THREAD_LIST = 'chat.thread.list';
 export const INTERNAL_TOOL_CHAT_THREAD_GET = 'chat.thread.get';
 
-// Todo tools
+// Todo list tools (parent entities that group todo items)
+export const INTERNAL_TOOL_TODO_LIST_CREATE = 'todolist.create';
+export const INTERNAL_TOOL_TODO_LIST_LIST = 'todolist.list';
+export const INTERNAL_TOOL_TODO_LIST_GET = 'todolist.get';
+export const INTERNAL_TOOL_TODO_LIST_UPDATE = 'todolist.update';
+export const INTERNAL_TOOL_TODO_LIST_DELETE = 'todolist.delete';
+
+// Todo item tools (must reference a parent list id)
 export const INTERNAL_TOOL_TODO_CREATE = 'todo.create';
 export const INTERNAL_TOOL_TODO_LIST = 'todo.list';
 export const INTERNAL_TOOL_TODO_COMPLETE = 'todo.complete';
@@ -69,6 +84,11 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_GET,
   INTERNAL_TOOL_CHAT_THREAD_LIST,
   INTERNAL_TOOL_CHAT_THREAD_GET,
+  INTERNAL_TOOL_TODO_LIST_CREATE,
+  INTERNAL_TOOL_TODO_LIST_LIST,
+  INTERNAL_TOOL_TODO_LIST_GET,
+  INTERNAL_TOOL_TODO_LIST_UPDATE,
+  INTERNAL_TOOL_TODO_LIST_DELETE,
   INTERNAL_TOOL_TODO_CREATE,
   INTERNAL_TOOL_TODO_LIST,
   INTERNAL_TOOL_TODO_COMPLETE,
@@ -607,9 +627,9 @@ export async function executeInternalTool(
     }
 
     // -------------------------------------------------------------------------
-    // Todo tools
+    // Todo list tools (parent entities)
     // -------------------------------------------------------------------------
-    case INTERNAL_TOOL_TODO_CREATE: {
+    case INTERNAL_TOOL_TODO_LIST_CREATE: {
       const title = readStringArg(args, 'title');
       const notes = typeof args.notes === 'string' ? args.notes.trim() || null : null;
       if (!title) {
@@ -620,61 +640,144 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'title is a required string argument' },
         };
       }
-      const todo = await createTodo(userId, { title, notes });
-      return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
+      const list = await createTodoList(userId, { title, notes });
+      return { ok: true, toolName, data: list as unknown as Record<string, unknown>, error: null };
     }
-    case INTERNAL_TOOL_TODO_LIST: {
-      const includeCompleted = (args.includeCompleted ?? true) !== false;
-      const todos = await listTodos(userId, { includeCompleted });
-      return { ok: true, toolName, data: { todos }, error: null };
+    case INTERNAL_TOOL_TODO_LIST_LIST: {
+      const lists = await listTodoLists(userId);
+      return { ok: true, toolName, data: { lists }, error: null };
     }
-    case INTERNAL_TOOL_TODO_COMPLETE: {
-      const id = readStringArg(args, 'id');
-      if (!id) {
+    case INTERNAL_TOOL_TODO_LIST_GET: {
+      const listId = readStringArg(args, 'listId');
+      if (!listId) {
         return {
           ok: false,
           toolName,
           data: null,
-          error: { code: 'invalid_args', message: 'id is a required string argument' },
+          error: { code: 'invalid_args', message: 'listId is a required string argument' },
         };
       }
-      const todo = await completeTodo(userId, id);
+      const list = await getTodoList(userId, listId);
+      if (!list) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Todo list not found' } };
+      }
+      return { ok: true, toolName, data: list as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TODO_LIST_UPDATE: {
+      const listId = readStringArg(args, 'listId');
+      if (!listId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'listId is a required string argument' },
+        };
+      }
+      const update: UpdateTodoListInput = {};
+      if (typeof args.title === 'string') update.title = args.title;
+      if (args.notes !== undefined) update.notes = typeof args.notes === 'string' ? args.notes : null;
+      const list = await updateTodoList(userId, listId, update);
+      if (!list) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Todo list not found' } };
+      }
+      return { ok: true, toolName, data: list as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TODO_LIST_DELETE: {
+      const listId = readStringArg(args, 'listId');
+      if (!listId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'listId is a required string argument' },
+        };
+      }
+      const result = await deleteTodoList(userId, listId);
+      return { ok: true, toolName, data: result, error: null };
+    }
+
+    // -------------------------------------------------------------------------
+    // Todo item tools (each item must belong to a parent todo list)
+    // -------------------------------------------------------------------------
+    case INTERNAL_TOOL_TODO_CREATE: {
+      const listId = readStringArg(args, 'listId');
+      const title = readStringArg(args, 'title');
+      const notes = typeof args.notes === 'string' ? args.notes.trim() || null : null;
+      if (!listId || !title) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'listId and title are required string arguments' },
+        };
+      }
+      const todo = await createTodo(userId, listId, { title, notes });
+      return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TODO_LIST: {
+      const listId = readStringArg(args, 'listId');
+      if (!listId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'listId is a required string argument' },
+        };
+      }
+      const includeCompleted = (args.includeCompleted ?? true) !== false;
+      const todos = await listTodos(userId, listId, { includeCompleted });
+      return { ok: true, toolName, data: { todos }, error: null };
+    }
+    case INTERNAL_TOOL_TODO_COMPLETE: {
+      const listId = readStringArg(args, 'listId');
+      const id = readStringArg(args, 'id');
+      if (!listId || !id) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'listId and id are required string arguments' },
+        };
+      }
+      const todo = await completeTodo(userId, listId, id);
       if (!todo) {
-        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Todo not found' } };
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Todo not found' } };
       }
       return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
     }
     case INTERNAL_TOOL_TODO_UPDATE: {
+      const listId = readStringArg(args, 'listId');
       const id = readStringArg(args, 'id');
-      if (!id) {
+      if (!listId || !id) {
         return {
           ok: false,
           toolName,
           data: null,
-          error: { code: 'invalid_args', message: 'id is a required string argument' },
+          error: { code: 'invalid_args', message: 'listId and id are required string arguments' },
         };
       }
       const update: UpdateTodoInput = {};
       if (typeof args.title === 'string') update.title = args.title;
       if (args.notes !== undefined) update.notes = typeof args.notes === 'string' ? args.notes : null;
       if (typeof args.isCompleted === 'boolean') update.isCompleted = args.isCompleted;
-      const todo = await updateTodo(userId, id, update);
+      const todo = await updateTodo(userId, listId, id, update);
       if (!todo) {
-        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Todo not found' } };
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Todo not found' } };
       }
       return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
     }
     case INTERNAL_TOOL_TODO_DELETE: {
+      const listId = readStringArg(args, 'listId');
       const id = readStringArg(args, 'id');
-      if (!id) {
+      if (!listId || !id) {
         return {
           ok: false,
           toolName,
           data: null,
-          error: { code: 'invalid_args', message: 'id is a required string argument' },
+          error: { code: 'invalid_args', message: 'listId and id are required string arguments' },
         };
       }
-      const result = await deleteTodo(userId, id);
+      const result = await deleteTodo(userId, listId, id);
       return { ok: true, toolName, data: result, error: null };
     }
 
@@ -1028,18 +1131,93 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
     },
 
     // -------------------------------------------------------------------------
-    // Todo tools
+    // Todo list tools (parent entities that group todo items by topic)
     // -------------------------------------------------------------------------
-    todo_create: {
+    todolist_create: {
       description:
-        'Create a new todo item for the user. Use when the user asks to add, create, or save a task or reminder.',
+        'Create a new todo list (a named group for todo items). Use when the user wants to create a todo list, project, or task group. ' +
+        'After creating the list, use todo_create to add items to it.',
       parametersSchema: {
         type: 'object',
         properties: {
+          title: { type: 'string', description: 'Name of the todo list (e.g. "Work tasks", "Shopping").' },
+          notes: { type: 'string', description: 'Optional description for the list.' },
+        },
+        required: ['title'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_LIST_CREATE, args),
+    },
+
+    todolist_list: {
+      description:
+        'List all the user\'s todo lists. Use when the user asks to see their lists or before operating on a specific list.',
+      parametersSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_LIST_LIST, args),
+    },
+
+    todolist_get: {
+      description:
+        'Get a specific todo list with all its items. Use when the user asks to view a particular list and its tasks.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'The UUID of the todo list.' },
+        },
+        required: ['listId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_LIST_GET, args),
+    },
+
+    todolist_update: {
+      description: 'Update the title or notes of an existing todo list.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'The UUID of the todo list to update.' },
+          title: { type: 'string', description: 'New title.' },
+          notes: { type: 'string', description: 'New notes.' },
+        },
+        required: ['listId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_LIST_UPDATE, args),
+    },
+
+    todolist_delete: {
+      description:
+        'Permanently delete a todo list and all its items. Use only when the user explicitly asks to remove an entire list.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'The UUID of the todo list to delete.' },
+        },
+        required: ['listId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_LIST_DELETE, args),
+    },
+
+    // -------------------------------------------------------------------------
+    // Todo item tools (each item must belong to a parent todo list)
+    // -------------------------------------------------------------------------
+    todo_create: {
+      description:
+        'Create a new todo item inside a specific todo list. You must specify the listId of the parent list. ' +
+        'If no list exists yet, call todolist_create first.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          listId: { type: 'string', description: 'The UUID of the parent todo list.' },
           title: { type: 'string', description: 'The todo title or task description.' },
           notes: { type: 'string', description: 'Optional additional notes.' },
         },
-        required: ['title'],
+        required: ['listId', 'title'],
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_TODO_CREATE, args),
@@ -1047,16 +1225,18 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
 
     todo_list: {
       description:
-        'List the user\'s todo items. Use when the user asks to see, show, or query their todos or task list. ' +
+        'List the todo items in a specific todo list. You must specify the listId. ' +
         'Returns items as structured data; format them as a Markdown checklist in your reply.',
       parametersSchema: {
         type: 'object',
         properties: {
+          listId: { type: 'string', description: 'The UUID of the parent todo list.' },
           includeCompleted: {
             type: 'boolean',
             description: 'Whether to include completed todos. Defaults to true.',
           },
         },
+        required: ['listId'],
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_TODO_LIST, args),
@@ -1064,13 +1244,14 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
 
     todo_complete: {
       description:
-        'Mark a todo item as completed. Use when the user says they finished, completed, or checked off a task.',
+        'Mark a todo item as completed. You must specify the listId of the parent list.',
       parametersSchema: {
         type: 'object',
         properties: {
+          listId: { type: 'string', description: 'The UUID of the parent todo list.' },
           id: { type: 'string', description: 'The UUID of the todo item.' },
         },
-        required: ['id'],
+        required: ['listId', 'id'],
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_TODO_COMPLETE, args),
@@ -1078,16 +1259,17 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
 
     todo_update: {
       description:
-        'Update the title, notes, or completion status of an existing todo item.',
+        'Update the title, notes, or completion status of a todo item. You must specify the listId of the parent list.',
       parametersSchema: {
         type: 'object',
         properties: {
+          listId: { type: 'string', description: 'The UUID of the parent todo list.' },
           id: { type: 'string', description: 'The UUID of the todo item to update.' },
           title: { type: 'string', description: 'New title.' },
           notes: { type: 'string', description: 'New notes.' },
           isCompleted: { type: 'boolean', description: 'New completion status.' },
         },
-        required: ['id'],
+        required: ['listId', 'id'],
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_TODO_UPDATE, args),
@@ -1095,13 +1277,14 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
 
     todo_delete: {
       description:
-        'Permanently delete a todo item. Use only when the user explicitly asks to remove or delete a specific task.',
+        'Permanently delete a todo item. You must specify the listId of the parent list.',
       parametersSchema: {
         type: 'object',
         properties: {
+          listId: { type: 'string', description: 'The UUID of the parent todo list.' },
           id: { type: 'string', description: 'The UUID of the todo item.' },
         },
-        required: ['id'],
+        required: ['listId', 'id'],
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_TODO_DELETE, args),
