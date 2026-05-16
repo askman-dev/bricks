@@ -215,6 +215,13 @@ interface SdkToolResult {
   output: unknown;
 }
 
+interface SdkToolError {
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+  error: unknown;
+}
+
 /**
  * Minimal subset of the AI SDK `OnStepFinishEvent` we consume.
  */
@@ -237,6 +244,7 @@ type SdkFullStreamEvent =
   | { type: 'text-delta'; text: string }
   | { type: 'reasoning-delta'; text: string }
   | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
+  | { type: 'tool-error'; toolCallId: string; toolName: string; input: unknown; error: unknown }
   | { type: 'finish-step'; stepType: string }
   | { type: string };
 
@@ -295,6 +303,16 @@ export async function streamWithAgentToolsAndUserConfig(
     onToolCallStart?: (
       toolName: string,
       args: Record<string, unknown>,
+      stepIndex: number,
+      callIndex: number,
+    ) => Promise<void>;
+    /**
+     * Called when tool execution throws and the SDK emits a `tool-error` part.
+     */
+    onToolCallError?: (
+      toolName: string,
+      args: Record<string, unknown>,
+      error: unknown,
       stepIndex: number,
       callIndex: number,
     ) => Promise<void>;
@@ -399,6 +417,7 @@ export async function streamWithAgentToolsAndUserConfig(
     let stepHasToolCalls = false;
     let stepText = '';
     let reasoningBuffer = '';
+    const toolCallIndexes = new Map<string, { stepIndex: number; callIndex: number }>();
 
     // Fire a callback Promise without blocking the generator. The callback
     // name is included in error logs so failures are easy to diagnose.
@@ -428,19 +447,41 @@ export async function streamWithAgentToolsAndUserConfig(
         } else if (rawEvent.type === 'tool-call') {
           stepHasToolCalls = true;
           if (options.onToolCallStart) {
-            const tc = rawEvent as { type: 'tool-call'; toolName: string; input: unknown };
+            const tc = rawEvent as {
+              type: 'tool-call';
+              toolCallId: string;
+              toolName: string;
+              input: unknown;
+            };
             // Skip the callback if the SDK emits a tool-call with no name — an
             // empty tool name would produce meaningless DB records.
             if (tc.toolName) {
               const toolName = String(tc.toolName);
               // Guard against non-object args (e.g. SDK emits a primitive).
               const args = isRecordObject(tc.input) ? tc.input : {};
+              toolCallIndexes.set(tc.toolCallId, { stepIndex: streamStepIndex, callIndex });
               // Await the callback so that the :tc message is written before tool
               // execution begins, which guarantees correct write_seq ordering.
               await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
             }
           }
           callIndex++;
+        } else if (rawEvent.type === 'tool-error') {
+          if (options.onToolCallError) {
+            const te = rawEvent as SdkToolError & { type: 'tool-error' };
+            const indexed = toolCallIndexes.get(te.toolCallId) ?? {
+              stepIndex: streamStepIndex,
+              callIndex: Math.max(0, callIndex - 1),
+            };
+            const args = isRecordObject(te.input) ? te.input : {};
+            await options.onToolCallError(
+              String(te.toolName ?? ''),
+              args,
+              te.error,
+              indexed.stepIndex,
+              indexed.callIndex,
+            );
+          }
         } else if (rawEvent.type === 'finish-step') {
           if (stepHasToolCalls) {
             // Intermediate step: route text to the :pt:S record, not the main

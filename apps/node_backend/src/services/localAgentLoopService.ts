@@ -119,7 +119,7 @@ export interface ExecuteInternalToolResult {
   data: Record<string, unknown> | null;
   error:
     | {
-        code: 'invalid_args' | 'not_implemented' | 'tool_not_allowed';
+        code: 'invalid_args' | 'not_implemented' | 'tool_not_allowed' | 'not_found';
         message: string;
       }
     | null;

@@ -19,6 +19,9 @@
 ## API debugging workflow
 - When debugging API/interface errors, try the `vercel-api-log-context` skill first to collect Vercel deployment log context before proposing fixes.
 
+## Turso / SQLite compatibility
+- Real issue encountered: `table_create` wrote a `tool_call_start` row, then `assetTableService.createTable` failed on Turso with `SQL_INPUT_ERROR: SQLite input error: no such function: NOW` because runtime SQL used PostgreSQL `NOW()`. Since the AI SDK `tool-error` event was not persisted, the UI stayed stuck on "正在调用 table_create".
+
 ## OpenClaw plugin refresh
 - When users ask how to apply newly pulled local code under `apps/node_openclaw_plugin` to their local OpenClaw install, use the `openclaw-plugin-refresh` skill first.
 - The repository skill lives at `.codex/skills/openclaw-plugin-refresh/SKILL.md` and covers rebuild, linked reinstall, gateway restart, and log verification.

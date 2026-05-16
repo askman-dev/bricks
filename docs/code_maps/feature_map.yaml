@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-05-16
+last_updated: 2026-05-17
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -26,6 +26,7 @@ products:
         smoke_checks:
           - Web 打开登录页并发起 GitHub 登录。
           - iOS release 点击 GitHub 登录时默认应打开 `https://bricks.askman.dev` 上的后端 OAuth 授权页。
+          - iOS debug 真机包在没有显式 `BRICKS_API_BASE_URL` 时，也应默认使用 `https://bricks.askman.dev`，避免手机把 `localhost` 当成本机。
           - iOS OAuth 完成后通过 `bricks://auth/github/callback` 回到应用。
           - 完成 token 回调后进入主界面。
 
@@ -66,6 +67,8 @@ products:
           - 侧边栏频道列表与顶部频道下拉菜单均按最新消息时间降序排列；有消息记录的频道排在无消息频道前面；默认频道参与排序，不固定置顶；时间相同时按 id 字典序确定顺序。
           - 顶部标题显示当前频道名且左对齐。
           - iOS/Android 登录完成后，聊天初始化不应因本地 Agents 目录不支持而失败，且应继续加载该账号的历史会话。
+          - iOS 启动聊天初始化时，本地 Agents 目录应从 app sandbox 路径解析，不依赖 `HOME` 环境变量。
+          - 本地自定义 Agent 文件读取失败时，应回退为仅使用内建 Agent，并继续加载线上频道与历史消息。
           - 切换 Agent 后仍可继续会话。
           - 首次安装且未创建自定义 Agent 时，侧边栏 Agents 分组应默认显示内建 Agent 列表（不为空）。
           - 侧边栏应在 Agents 分组上方显示 Skills 分组；当前内容为空并显示“待实现”占位。
@@ -221,6 +224,8 @@ products:
         smoke_checks:
           - 用户说"创建一个叫 Tasks 的表格，列名为 Name 和 Status"，AI 依次调用 table_create 和 table_add_column，完成后回复确认。
           - 用户说"显示 Tasks 表格"，AI 调用 table_get 并以 Markdown 表格回复。
+          - 在 Turso/libSQL 数据库下，table_create / table_add_column / table_add_row / table_update_row / table_delete_row 均应成功执行，不应因 PostgreSQL-only SQL（例如 NOW() 或 ::jsonb）失败。
+          - 当 table_create 执行时抛出数据库错误，聊天历史应显示工具错误结果，并将对应 tool_call_start 标记为已完成，不能永久显示“正在调用”。
           - 添加一列 Priority 后，已有行不变（O(1) schema change）。
           - 软删除行后，table_get 不返回该行。
 
