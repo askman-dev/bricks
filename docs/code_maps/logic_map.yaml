@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-05-15
+last_updated: 2026-05-16
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -57,6 +57,8 @@ index:
       - apps/node_backend/src/services/chatChannelNameService.ts
       - apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+      - packages/platform_bridge/lib/src/io/platform_paths_io.dart
+      - packages/platform_bridge/lib/src/platform_paths.dart
       - packages/design_system/lib/src/bricks_theme.dart
       - packages/design_system/lib/src/chat_colors.dart
       - packages/design_system/lib/src/tokens.dart
@@ -84,6 +86,7 @@ index:
       - docs/plans/2026-04-27-17-28-UTC-markdown-table-rendering.md
       - docs/plans/2026-05-15-16-21-+08-chat-scroll-position-gwt.md
       - docs/plans/2026-05-15-16-54-+08-local-chat-fixture-db.md
+      - docs/plans/2026-05-16-17-58-+08-mobile-agents-directory-setup-fix.md
       - docs/testing/local-chat-fixture-db.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
@@ -143,6 +146,8 @@ index:
       - initial history batch
       - scroll position preservation
       - fixture sqlite db
+      - mobile sandbox path
+      - agents directory
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
@@ -178,6 +183,7 @@ index:
       - 若发送追问时只依赖历史滚动标记而不是当前视野是否看到最新回复结尾，用户读旧回复时可能被强制跳走，或读完后发送无法回到新消息。
       - 若初始历史批次没有 user 消息时仍套用 user 锚点 padding，最后一段 AI/tool/status 内容会被不自然地抬高。
       - 若初始历史加载回退为全量历史而非最后 20 条，会放大长会话进入页面的渲染和滚动定位成本。
+      - 若移动端没有可写的本地 Agents 目录，登录后的 chat setup 会在历史会话加载前失败，表现为同账号移动端看不到网页历史数据。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
       - 若频道最新消息时间未在消息加载、追加、归档时同步更新，侧边栏排序将与实际活跃时间脱节。
       - 若仅对侧边栏频道列表使用 _sortedChannels 而未对顶部频道下拉菜单同步更新，两处展示顺序不一致会混淆用户。

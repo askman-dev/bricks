@@ -16,6 +16,8 @@ abstract interface class PlatformPaths {
   /// are stored.
   ///
   /// Platform-specific:
+  /// - iOS: app sandbox `Library/Application Support/bricks/agents/`
+  /// - Android: app sandbox `files/bricks/agents/`
   /// - macOS: `~/Library/Application Support/bricks/agents/`
   /// - Linux: `~/.local/share/bricks/agents/`
   /// - Windows: `%LOCALAPPDATA%\bricks\agents\`
