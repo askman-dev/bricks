@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'todo_api_service.dart';
+
 /// Actions that can be triggered from the chat navigation page.
 enum ChatNavigationAction { appSettings, sessions, createChannel, manageAgents }
 
@@ -88,6 +90,8 @@ class ChatNavigationPage extends StatefulWidget {
     this.onResourceSelected,
     this.onRequestClose,
     this.closeOnChannelSelected = true,
+    this.todoApiService,
+    this.authToken,
   });
 
   final ValueChanged<ChatNavigationAction> onActionSelected;
@@ -115,6 +119,12 @@ class ChatNavigationPage extends StatefulWidget {
   final ValueChanged<ChatResourceItem>? onResourceSelected;
 
   final bool closeOnChannelSelected;
+
+  /// Optional service used to fetch todo items inside [_ResourcePreviewPage].
+  final TodoApiService? todoApiService;
+
+  /// Auth token forwarded to [_ResourcePreviewPage] for API calls.
+  final String? authToken;
 
   /// Called when the navigation requests to be closed. This is triggered by
   /// the back arrow, action selections (rename/archive), and channel taps when
@@ -215,7 +225,11 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
   void _openResourcePreview(ChatResourceItem resource) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _ResourcePreviewPage(resource: resource),
+        builder: (_) => _ResourcePreviewPage(
+          resource: resource,
+          todoApiService: widget.todoApiService,
+          authToken: widget.authToken,
+        ),
       ),
     );
   }
@@ -467,19 +481,86 @@ class _NodeDetailPage extends StatelessWidget {
 }
 
 /// Preview page for a resource item (todo-list or asset table).
-class _ResourcePreviewPage extends StatelessWidget {
-  const _ResourcePreviewPage({required this.resource});
+///
+/// When the resource is a todo-list and [todoApiService] + [authToken] are
+/// provided, the page fetches the list's todo items and renders them with
+/// their status and creation time.
+class _ResourcePreviewPage extends StatefulWidget {
+  const _ResourcePreviewPage({
+    required this.resource,
+    this.todoApiService,
+    this.authToken,
+  });
 
   final ChatResourceItem resource;
+  final TodoApiService? todoApiService;
+  final String? authToken;
+
+  @override
+  State<_ResourcePreviewPage> createState() => _ResourcePreviewPageState();
+}
+
+class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
+  List<TodoItem>? _items;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.resource.type == ChatResourceType.todoList) {
+      _fetchItems();
+    }
+  }
+
+  Future<void> _fetchItems() async {
+    final service = widget.todoApiService;
+    final token = widget.authToken;
+    if (service == null || token == null || token.isEmpty) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final items = await service.listTodos(
+        token: token,
+        listId: widget.resource.id,
+      );
+      // Sort: incomplete first (by displayOrder), then completed.
+      items.sort((a, b) {
+        if (a.isCompleted != b.isCompleted) {
+          return a.isCompleted ? 1 : -1;
+        }
+        return a.displayOrder.compareTo(b.displayOrder);
+      });
+      if (mounted) {
+        setState(() {
+          _items = items;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final resource = widget.resource;
     final isTodoList = resource.type == ChatResourceType.todoList;
     final notes = resource.notes?.trim();
+
     return Scaffold(
       appBar: AppBar(title: Text(resource.title)),
       body: ListView(
         children: [
+          // Type chip row
           ListTile(
             leading: Icon(
               isTodoList
@@ -494,8 +575,90 @@ class _ResourcePreviewPage extends StatelessWidget {
               title: const Text('Notes'),
               subtitle: Text(notes),
             ),
+          if (isTodoList) ...[
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                'Items',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              ListTile(
+                leading: const Icon(Icons.error_outline),
+                title: const Text('Failed to load items'),
+                subtitle: Text(
+                  _error!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _fetchItems,
+                ),
+              )
+            else if (_items == null || _items!.isEmpty)
+              const ListTile(
+                leading: Icon(Icons.check_circle_outline),
+                title: Text('No items'),
+                subtitle: Text('This list has no todo items yet'),
+              )
+            else
+              ..._items!.map((item) => _TodoItemTile(item: item)),
+          ],
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+}
+
+/// A single row in the todo-list detail view.
+class _TodoItemTile extends StatelessWidget {
+  const _TodoItemTile({required this.item});
+
+  final TodoItem item;
+
+  static String _formatDate(DateTime dt) {
+    // Format as YYYY-MM-DD HH:mm (local time).
+    final local = dt.toLocal();
+    final y = local.year.toString().padLeft(4, '0');
+    final mo = local.month.toString().padLeft(2, '0');
+    final d = local.day.toString().padLeft(2, '0');
+    final h = local.hour.toString().padLeft(2, '0');
+    final mi = local.minute.toString().padLeft(2, '0');
+    return '$y-$mo-$d $h:$mi';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(
+        item.isCompleted
+            ? Icons.check_circle_outline
+            : Icons.radio_button_unchecked,
+        color: item.isCompleted
+            ? Theme.of(context).colorScheme.primary
+            : null,
+      ),
+      title: Text(
+        item.title,
+        style: item.isCompleted
+            ? TextStyle(
+                decoration: TextDecoration.lineThrough,
+                color: Theme.of(context).disabledColor,
+              )
+            : null,
+      ),
+      subtitle: Text(
+        '${item.isCompleted ? "完成" : "待完成"} · 创建于 ${_formatDate(item.createdAt)}',
+        style: Theme.of(context).textTheme.bodySmall,
       ),
     );
   }

@@ -2327,6 +2327,8 @@ class _ChatScreenState extends State<ChatScreen> {
           onChannelArchive: _archiveChannel,
           onRequestClose: onRequestClose,
           closeOnChannelSelected: closeOnChannelSelected,
+          todoApiService: _todoApiService,
+          authToken: _authToken,
           onActionSelected: (action) {
             switch (action) {
               case ChatNavigationAction.appSettings:
