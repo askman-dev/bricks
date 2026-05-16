@@ -1025,6 +1025,7 @@ class _AssistantMarkdownText extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Table(
               border: TableBorder.all(color: borderColor),
+              defaultColumnWidth: const IntrinsicColumnWidth(),
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               children: [
                 TableRow(
