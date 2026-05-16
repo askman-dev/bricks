@@ -41,8 +41,10 @@ export function isAllowedReturnTo(
   }
 
   // Required preview pattern:
-  //   https://bricks-<alnum>-askman-dev.vercel.app
-  if (/^bricks-[A-Za-z0-9]+-askman-dev\.vercel\.app$/u.test(parsed.hostname)) {
+  //   https://bricks-<alnum-or-hyphens>-askman-dev.vercel.app
+  // Hyphens are allowed because Vercel branch-deployment slugs include them
+  // (e.g. bricks-git-copilot-add-text-underline-feature-askman-dev.vercel.app).
+  if (/^bricks-[A-Za-z0-9-]+-askman-dev\.vercel\.app$/u.test(parsed.hostname)) {
     return true;
   }
 

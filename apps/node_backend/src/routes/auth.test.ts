@@ -68,6 +68,31 @@ describe('auth return_to validation', () => {
       })
     ).toBe(true);
   });
+
+  it('allows Vercel preview URLs with alphanumeric-only slugs', () => {
+    expect(
+      isAllowedReturnTo('https://bricks-aoqjuy2sr-askman-dev.vercel.app/', {
+        nodeEnv: 'production',
+      })
+    ).toBe(true);
+  });
+
+  it('allows Vercel preview URLs with git-branch slugs containing hyphens', () => {
+    expect(
+      isAllowedReturnTo(
+        'https://bricks-git-copilot-add-text-underline-feature-askman-dev.vercel.app/',
+        { nodeEnv: 'production' }
+      )
+    ).toBe(true);
+  });
+
+  it('rejects Vercel-looking URLs from other teams', () => {
+    expect(
+      isAllowedReturnTo('https://bricks-abc-other-team.vercel.app/', {
+        nodeEnv: 'production',
+      })
+    ).toBe(false);
+  });
 });
 
 /** Encodes a state payload in the base64url JSON format used by the auth flow. */
