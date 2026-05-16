@@ -45,7 +45,7 @@ function readString(value: unknown, maxLength = 4096): string | null {
 }
 
 function userId(req: AuthRequest): string {
-  return req.user!.id;
+  return req.userId!;
 }
 
 /** Validate a URL path parameter (already a string from express params). */
