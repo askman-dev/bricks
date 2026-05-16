@@ -171,7 +171,11 @@ export async function getTable(
   const columnKeys = new Set(columns.map((c) => c.columnKey));
 
   // Strip orphan keys from cell_data so callers see only active columns.
-  // Also coerce any non-string JSONB values to null to keep the DTO contract.
+  // The cell_data column schema is Record<string, string | null>; non-string
+  // JSONB values are coerced to null. This can only occur if data was written
+  // outside of the official service layer (which enforces string-only values
+  // via sanitizeCellData in localAgentLoopService / request validation in
+  // resources.ts). Coercing preserves the DTO contract for all consumers.
   const rows = rowResult.rows.map((r) => {
     const filtered: Record<string, string | null> = {};
     for (const key of columnKeys) {

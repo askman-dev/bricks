@@ -920,11 +920,11 @@ class _AssistantMarkdownText extends StatelessWidget {
         }
       }
       if (ranges.isEmpty) return [span];
-      // Sort by start position and merge overlapping ranges (keep first color).
+      // Sort by start position and merge overlapping or adjacent ranges (keep first color).
       ranges.sort((a, b) => a.start.compareTo(b.start));
       final merged = <({int start, int end, Color bg})>[];
       for (final r in ranges) {
-        if (merged.isNotEmpty && r.start < merged.last.end) {
+        if (merged.isNotEmpty && r.start <= merged.last.end) {
           final last = merged.removeLast();
           merged.add((
             start: last.start,
