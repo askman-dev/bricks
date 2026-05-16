@@ -18,9 +18,11 @@ class PlatformPathsImpl implements PlatformPaths {
   }
 
   String _androidAppDataDirectory() {
-    final cacheDir = Directory.systemTemp;
-    final appDataDir = cacheDir.parent;
-    return appDataDir.path;
+    return mobileAppDataDirectoryFromTempPath(Directory.systemTemp.path);
+  }
+
+  String _iosAppDataDirectory() {
+    return mobileAppDataDirectoryFromTempPath(Directory.systemTemp.path);
   }
 
   @override
@@ -32,7 +34,7 @@ class PlatformPathsImpl implements PlatformPaths {
       return '${_requiredEnv('USERPROFILE')}\\Documents';
     }
     if (Platform.isIOS) {
-      return '${_requiredEnv('HOME')}/Documents';
+      return '${_iosAppDataDirectory()}/Documents';
     }
     if (Platform.isAndroid) {
       return '${_androidAppDataDirectory()}/files';
@@ -54,7 +56,7 @@ class PlatformPathsImpl implements PlatformPaths {
       return '${_requiredEnv('LOCALAPPDATA')}\\bricks\\cache';
     }
     if (Platform.isIOS) {
-      return '${_requiredEnv('HOME')}/Library/Caches/bricks';
+      return '${_iosAppDataDirectory()}/Library/Caches/bricks';
     }
     if (Platform.isAndroid) {
       return '${_androidAppDataDirectory()}/cache/bricks';
@@ -82,7 +84,7 @@ class PlatformPathsImpl implements PlatformPaths {
       return '${_requiredEnv('LOCALAPPDATA')}\\bricks\\agents';
     }
     if (Platform.isIOS) {
-      return '${_requiredEnv('HOME')}/Library/Application Support/bricks/agents';
+      return '${_iosAppDataDirectory()}/Library/Application Support/bricks/agents';
     }
     if (Platform.isAndroid) {
       return '${_androidAppDataDirectory()}/files/bricks/agents';
@@ -91,4 +93,13 @@ class PlatformPathsImpl implements PlatformPaths {
       'agentsDirectory is not supported on this platform.',
     );
   }
+}
+
+/// Returns the app data container from the platform temp directory.
+///
+/// iOS exposes temp files under `<app-container>/tmp`, and Android exposes
+/// them under `<app-data>/cache`. In both cases the parent is the app data
+/// container that should be used for app-owned files.
+String mobileAppDataDirectoryFromTempPath(String tempPath) {
+  return Directory(tempPath).parent.path;
 }

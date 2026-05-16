@@ -43,7 +43,9 @@ const {
   ),
   upsertMessagesMock: vi.fn(async () => ({ lastSeqId: 7 })),
   listUserScopesMock: vi.fn(async () => []),
-  listChatScopeSettingsMock: vi.fn(async () => []),
+  listChatScopeSettingsMock: vi.fn(
+    async (): Promise<Array<Record<string, unknown>>> => [],
+  ),
   resolveChatScopeRoutingMock: vi.fn(
     async (): Promise<{ router: "local" | "plugin"; nodeId: string | null }> => ({
       router: "local",
@@ -895,6 +897,120 @@ describe("chat routes", () => {
             stepIndex: 1,
             callIndex: 0,
             toolName: 'chat_channel_create',
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('persists tool execution errors and completes the matching tool_call_start message', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implToolError = async (...args: any[]) => {
+      const options = args[3] as {
+        onToolCallStart?: (
+          toolName: string,
+          args: Record<string, unknown>,
+          stepIndex: number,
+          callIndex: number,
+        ) => Promise<void>;
+        onToolCallError?: (
+          toolName: string,
+          args: Record<string, unknown>,
+          error: unknown,
+          stepIndex: number,
+          callIndex: number,
+        ) => Promise<void>;
+      };
+      if (options.onToolCallStart) {
+        await options.onToolCallStart(
+          'table_create',
+          { resourceId: 'sports-day-prep', title: 'Sports Day Preparation' },
+          2,
+          0,
+        );
+      }
+      if (options.onToolCallError) {
+        await options.onToolCallError(
+          'table_create',
+          { resourceId: 'sports-day-prep', title: 'Sports Day Preparation' },
+          new Error('SQL_INPUT_ERROR: SQLite input error: no such function: NOW'),
+          2,
+          0,
+        );
+      }
+      return {
+        textStream: (async function* () {
+          yield 'fallback table';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implToolError as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-tool-error-1',
+        idempotencyKey: 'idem-tool-error-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-tool-error-1',
+        assistantMessageId: 'msg-a-tool-error-1',
+        userMessage: 'show me a table',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-tool-error-1:ts:3',
+        role: 'assistant',
+        taskState: 'failed',
+        content: expect.stringContaining('no such function: NOW'),
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'tool_call',
+            stepIndex: 3,
+            failedCalls: 1,
+          }),
+          toolCalls: [
+            expect.objectContaining({
+              toolName: 'table_create',
+              args: {
+                resourceId: 'sports-day-prep',
+                title: 'Sports Day Preparation',
+              },
+              result: expect.objectContaining({
+                ok: false,
+                error: expect.objectContaining({
+                  message: 'SQL_INPUT_ERROR: SQLite input error: no such function: NOW',
+                }),
+              }),
+            }),
+          ],
+        }),
+      }),
+    ]);
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-tool-error-1:tc:3:0',
+        role: 'assistant',
+        content: '',
+        taskState: 'completed',
+        metadata: expect.objectContaining({
+          agentLoop: expect.objectContaining({
+            phase: 'tool_call_start',
+            stepIndex: 3,
+            callIndex: 0,
+            toolName: 'table_create',
+            error: expect.objectContaining({
+              message: 'SQL_INPUT_ERROR: SQLite input error: no such function: NOW',
+            }),
           }),
         }),
       }),

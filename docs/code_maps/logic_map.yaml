@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-05-16
+last_updated: 2026-05-17
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -36,9 +36,11 @@ index:
       - token
       - auth
       - callback
+      - iOS debug API base URL
     change_risks:
       - Web 与移动端 token 回调分支行为不一致。
       - 登录成功后导航状态未同步。
+      - iOS debug 包若默认使用 localhost，会把请求发到手机本机而不是 Bricks API，导致 GitHub 登录后无法加载线上账号数据。
       - native callback scheme 配置或后端 allowlist 不一致会导致 iOS 登录无法返回应用。
 
   - feature_id: chat_session
@@ -87,6 +89,7 @@ index:
       - docs/plans/2026-05-15-16-21-+08-chat-scroll-position-gwt.md
       - docs/plans/2026-05-15-16-54-+08-local-chat-fixture-db.md
       - docs/plans/2026-05-16-17-58-+08-mobile-agents-directory-setup-fix.md
+      - docs/plans/2026-05-16-23-21-+08-ios-sandbox-path-without-home.md
       - docs/testing/local-chat-fixture-db.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
@@ -97,6 +100,7 @@ index:
       - apps/mobile_chat_app/test/chat_builtin_agents_test.dart
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/composer_bar_test.dart
+      - packages/platform_bridge/test/platform_paths_io_test.dart
       - apps/node_backend/src/routes/chat.test.ts
       - tests/usecases/mobile_chat_openclaw_web_routing.yaml
       - apps/node_backend/src/services/chatAsyncTransportService.test.ts
@@ -148,6 +152,7 @@ index:
       - fixture sqlite db
       - mobile sandbox path
       - agents directory
+      - iOS HOME environment
     change_risks:
       - 改动路由或拓扑后，消息分发链路中断。
       - 会话持久化字段升级时出现向后兼容问题。
@@ -184,6 +189,8 @@ index:
       - 若初始历史批次没有 user 消息时仍套用 user 锚点 padding，最后一段 AI/tool/status 内容会被不自然地抬高。
       - 若初始历史加载回退为全量历史而非最后 20 条，会放大长会话进入页面的渲染和滚动定位成本。
       - 若移动端没有可写的本地 Agents 目录，登录后的 chat setup 会在历史会话加载前失败，表现为同账号移动端看不到网页历史数据。
+      - 若 iOS 本地路径解析依赖 `HOME` 环境变量，真机启动会在 chat setup 阶段失败并阻断历史会话加载。
+      - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
       - 若频道最新消息时间未在消息加载、追加、归档时同步更新，侧边栏排序将与实际活跃时间脱节。
       - 若仅对侧边栏频道列表使用 _sortedChannels 而未对顶部频道下拉菜单同步更新，两处展示顺序不一致会混淆用户。
@@ -551,24 +558,36 @@ index:
       - apps/node_backend/src/db/migrations/016_create_asset_tables.sql
       - apps/node_backend/src/services/assetTableService.ts
       - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/llm/llm_service.ts
+      - apps/node_backend/src/routes/chat.ts
       - apps/node_backend/src/routes/resources.ts
       - apps/mobile_chat_app/lib/features/chat/asset_table_api_service.dart
     doc_index:
       - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
+      - docs/plans/2026-05-17-00-04-+08-table-tool-error-and-turso-compatibility.md
+      - docs/kb/turso-sqlite-compatibility.md
     test_index:
       - apps/node_backend/src/services/localAgentLoopService.test.ts
+      - apps/node_backend/src/services/assetTableService.test.ts
+      - apps/node_backend/src/routes/chat.test.ts
     keywords:
       - asset_table
       - table_create
       - table_add_column
       - table_get
       - JSONB
+      - Turso
+      - libSQL
+      - SQLite compatibility
+      - tool-error
       - sparse storage
       - column registry
     change_risks:
       - getTable 在读取时用 column registry 过滤 cell_data keys；删除列后旧数据仍保留在 JSONB，仅在读时过滤——若直接查询 DB 会看到孤立 key。
       - addRow 使用子查询计算 MAX(display_number)+1，高并发下可能产生重复 display_number（可接受，仅用于排序）。
       - removeColumn 仅删除 asset_table_columns 记录，不清理已有行的 cell_data，需注意存储膨胀。
+      - 运行时 SQL 若使用 PostgreSQL-only 语法（NOW()、::jsonb、JSONB concat）会在 Turso/libSQL 下执行失败，导致工具 start 已落库但无 result。
+      - AI SDK 的 tool-error 事件若未持久化，历史消息会永久显示“正在调用 table_create”，即使工具已经失败。
 
   - feature_id: text_highlights
     capability: 用户选中助手消息文本后通过上下文菜单"划线"持久化高亮；AI 可用 highlight_list 工具查询
