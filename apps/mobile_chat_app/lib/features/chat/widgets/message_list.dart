@@ -666,10 +666,14 @@ class _MessageListState extends State<MessageList> {
                           // contains the selected text and fire the callback.
                           for (final m in widget.messages) {
                             if (m.role != 'assistant') continue;
+                            // Skip messages without a stable ID — we cannot
+                            // persist a highlight without one.
+                            final messageId = m.messageId;
+                            if (messageId == null) continue;
                             final idx = m.content.indexOf(plainText);
                             if (idx != -1) {
                               widget.onHighlight!(
-                                m.messageId ?? '',
+                                messageId,
                                 plainText,
                                 idx,
                                 idx + plainText.length,
@@ -677,8 +681,9 @@ class _MessageListState extends State<MessageList> {
                               return;
                             }
                           }
-                          // Could not pin to a specific message.
-                          widget.onHighlight!('', plainText, null, null);
+                          // No message with a valid ID contains the selected
+                          // text — silently skip rather than emitting an
+                          // invalid (empty) messageId to the backend.
                         },
                       ),
                     ],
@@ -874,8 +879,8 @@ class _AssistantMarkdownText extends StatelessWidget {
     if (text.isEmpty) {
       return Text(text, style: baseStyle);
     }
-    // Normalize line endings so that the charOffset accounting below is
-    // consistent. \r\n → \n, lone \r → \n.
+    // Normalize line endings so that line splitting is consistent.
+    // \r\n → \n, lone \r → \n.
     final normalizedText =
         text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     final lines = normalizedText.split('\n');
@@ -883,76 +888,81 @@ class _AssistantMarkdownText extends StatelessWidget {
     var inCodeBlock = false;
     final codeLines = <String>[];
 
-    // Build a map of highlight ranges for fast lookup during rendering.
-    // For each highlight, we find all occurrences in the full text and store
-    // their start/end character offsets.
-    final highlightRanges = <({int start, int end, Color bg})>[];
+    // Build a list of (selectedText, bgColor) pairs for highlight lookup.
+    // We search directly within each span's rendered text at draw time so
+    // that markdown delimiters (**, _, etc.) never corrupt the match offsets.
+    final highlightItems = <({String text, Color bg})>[];
     if (highlights.isNotEmpty) {
       for (final h in highlights) {
-        final bgColor = _parseHighlightColor(h.color);
-        var searchStart = 0;
-        while (true) {
-          final idx = normalizedText.indexOf(h.selectedText, searchStart);
-          if (idx == -1) break;
-          highlightRanges.add(
-            (start: idx, end: idx + h.selectedText.length, bg: bgColor),
-          );
-          searchStart = idx + h.selectedText.length;
+        if (h.selectedText.isNotEmpty) {
+          highlightItems.add((text: h.selectedText, bg: _parseHighlightColor(h.color)));
         }
       }
-      highlightRanges.sort((a, b) => a.start.compareTo(b.start));
     }
 
-    // Track character offset as we iterate lines so we can map line content
-    // to global offsets and apply highlights.
-    var charOffset = 0;
+    // Split a single TextSpan into highlighted/un-highlighted fragments by
+    // searching for each highlight text directly within the span's plain text.
+    // Because we work on rendered (markdown-stripped) span text, markdown
+    // delimiters do not shift offsets.
+    List<InlineSpan> _splitSpanByHighlights(TextSpan span) {
+      final spanText = span.text ?? '';
+      if (spanText.isEmpty) return [span];
 
-    List<InlineSpan> _applyHighlightsToSpans(
-      List<InlineSpan> spans,
-      int lineStart,
-    ) {
-      if (highlightRanges.isEmpty) return spans;
-      // Rebuild spans inserting background-colored fragments where highlights
-      // overlap this line's content.
+      // Collect all match ranges within this span.
+      final ranges = <({int start, int end, Color bg})>[];
+      for (final h in highlightItems) {
+        var searchStart = 0;
+        while (true) {
+          final idx = spanText.indexOf(h.text, searchStart);
+          if (idx == -1) break;
+          ranges.add((start: idx, end: idx + h.text.length, bg: h.bg));
+          searchStart = idx + h.text.length;
+        }
+      }
+      if (ranges.isEmpty) return [span];
+      // Sort by start position and merge overlapping ranges (keep first color).
+      ranges.sort((a, b) => a.start.compareTo(b.start));
+      final merged = <({int start, int end, Color bg})>[];
+      for (final r in ranges) {
+        if (merged.isNotEmpty && r.start < merged.last.end) {
+          final last = merged.removeLast();
+          merged.add((
+            start: last.start,
+            end: r.end > last.end ? r.end : last.end,
+            bg: last.bg,
+          ));
+        } else {
+          merged.add(r);
+        }
+      }
+      // Slice the span at highlight boundaries.
       final result = <InlineSpan>[];
-      var spanOffset = lineStart;
+      var cursor = 0;
+      for (final r in merged) {
+        if (r.start > cursor) {
+          result.add(TextSpan(text: spanText.substring(cursor, r.start), style: span.style));
+        }
+        result.add(TextSpan(
+          text: spanText.substring(r.start, r.end),
+          style: (span.style ?? baseStyle).copyWith(backgroundColor: r.bg),
+        ));
+        cursor = r.end;
+      }
+      if (cursor < spanText.length) {
+        result.add(TextSpan(text: spanText.substring(cursor), style: span.style));
+      }
+      return result;
+    }
+
+    List<InlineSpan> _applyHighlightsToSpans(List<InlineSpan> spans) {
+      if (highlightItems.isEmpty) return spans;
+      final result = <InlineSpan>[];
       for (final span in spans) {
-        if (span is! TextSpan) {
+        if (span is TextSpan) {
+          result.addAll(_splitSpanByHighlights(span));
+        } else {
           result.add(span);
-          continue;
         }
-        final spanText = span.text ?? '';
-        final spanEnd = spanOffset + spanText.length;
-        var cursor = spanOffset;
-        var textCursor = 0;
-        for (final hr in highlightRanges) {
-          if (hr.end <= cursor || hr.start >= spanEnd) continue;
-          final overlapStart = hr.start.clamp(cursor, spanEnd);
-          final overlapEnd = hr.end.clamp(cursor, spanEnd);
-          if (overlapStart > cursor) {
-            final before = textCursor + (overlapStart - cursor);
-            result.add(TextSpan(
-              text: spanText.substring(textCursor, before),
-              style: span.style,
-            ));
-            textCursor = before;
-          }
-          final hlLen = overlapEnd - overlapStart;
-          result.add(TextSpan(
-            text: spanText.substring(textCursor, textCursor + hlLen),
-            style: (span.style ?? baseStyle)
-                .copyWith(backgroundColor: hr.bg),
-          ));
-          textCursor += hlLen;
-          cursor = overlapEnd;
-        }
-        if (textCursor < spanText.length) {
-          result.add(TextSpan(
-            text: spanText.substring(textCursor),
-            style: span.style,
-          ));
-        }
-        spanOffset = spanEnd;
       }
       return result;
     }
@@ -976,10 +986,6 @@ class _AssistantMarkdownText extends StatelessWidget {
 
     for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       final line = lines[lineIndex];
-      final lineStart = charOffset;
-      // +1 for the '\n' separator (except the last line)
-      charOffset += line.length + (lineIndex < lines.length - 1 ? 1 : 0);
-
       final trimmed = line.trimLeft();
       if (trimmed.startsWith('```')) {
         if (inCodeBlock) {
@@ -1084,8 +1090,7 @@ class _AssistantMarkdownText extends StatelessWidget {
       );
       // Compute the text-only offset of block.text within the line so we can
       // map highlight ranges from the full message text into this span list.
-      final blockTextOffset = lineStart + line.indexOf(block.text);
-      inlineSpans = _applyHighlightsToSpans(inlineSpans, blockTextOffset);
+      inlineSpans = _applyHighlightsToSpans(inlineSpans);
       if (block.type == _MarkdownBlockType.unorderedList ||
           block.type == _MarkdownBlockType.orderedList) {
         widgets.add(Padding(

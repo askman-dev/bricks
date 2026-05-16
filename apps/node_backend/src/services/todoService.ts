@@ -67,7 +67,7 @@ export async function listTodos(
   const { includeCompleted = true } = options;
   const result = await pool.query<TodoRow>(
     `SELECT id, user_id, title, notes, is_completed, display_order, created_at, updated_at
-       FROM user_todos
+       FROM asset_todos
       WHERE user_id = $1
         ${includeCompleted ? '' : 'AND is_completed = FALSE'}
       ORDER BY display_order ASC, created_at ASC`,
@@ -79,7 +79,7 @@ export async function listTodos(
 export async function getTodo(userId: string, id: string): Promise<TodoItem | null> {
   const result = await pool.query<TodoRow>(
     `SELECT id, user_id, title, notes, is_completed, display_order, created_at, updated_at
-       FROM user_todos
+       FROM asset_todos
       WHERE user_id = $1 AND id = $2`,
     [userId, id],
   );
@@ -91,7 +91,7 @@ export async function createTodo(
   input: CreateTodoInput,
 ): Promise<TodoItem> {
   const result = await pool.query<TodoRow>(
-    `INSERT INTO user_todos (user_id, title, notes, display_order)
+    `INSERT INTO asset_todos (user_id, title, notes, display_order)
        VALUES ($1, $2, $3, $4)
        RETURNING id, user_id, title, notes, is_completed, display_order, created_at, updated_at`,
     [userId, input.title.trim(), input.notes ?? null, input.displayOrder ?? 0],
@@ -131,7 +131,7 @@ export async function updateTodo(
   }
 
   const result = await pool.query<TodoRow>(
-    `UPDATE user_todos
+    `UPDATE asset_todos
         SET ${setClauses.join(', ')}
       WHERE user_id = $1 AND id = $2
       RETURNING id, user_id, title, notes, is_completed, display_order, created_at, updated_at`,
@@ -152,7 +152,7 @@ export async function deleteTodo(
   id: string,
 ): Promise<{ deleted: boolean }> {
   const result = await pool.query(
-    `DELETE FROM user_todos WHERE user_id = $1 AND id = $2`,
+    `DELETE FROM asset_todos WHERE user_id = $1 AND id = $2`,
     [userId, id],
   );
   return { deleted: (result.rowCount ?? 0) > 0 };

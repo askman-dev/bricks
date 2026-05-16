@@ -171,10 +171,12 @@ export async function getTable(
   const columnKeys = new Set(columns.map((c) => c.columnKey));
 
   // Strip orphan keys from cell_data so callers see only active columns.
+  // Also coerce any non-string JSONB values to null to keep the DTO contract.
   const rows = rowResult.rows.map((r) => {
     const filtered: Record<string, string | null> = {};
     for (const key of columnKeys) {
-      filtered[key] = r.cell_data?.[key] ?? null;
+      const raw = r.cell_data?.[key];
+      filtered[key] = typeof raw === 'string' ? raw : null;
     }
     return dataRowToDto({ ...r, cell_data: filtered });
   });

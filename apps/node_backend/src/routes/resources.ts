@@ -41,6 +41,12 @@ function userId(req: AuthRequest): string {
   return req.user!.id;
 }
 
+/** Validate a URL path parameter (already a string from express params). */
+function validPathParam(value: string, maxLength = 255): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= maxLength ? trimmed : null;
+}
+
 // ---------------------------------------------------------------------------
 // Todos
 // ---------------------------------------------------------------------------
@@ -69,7 +75,14 @@ router.patch('/todos/:id', async (req: AuthRequest, res) => {
   const { id } = req.params;
   const patch: Record<string, unknown> = {};
   if (typeof req.body?.title === 'string') patch.title = req.body.title;
-  if (req.body?.notes !== undefined) patch.notes = req.body.notes;
+  if (req.body?.notes !== undefined) {
+    // Validate notes: must be string or null; reject other types with 400.
+    if (req.body.notes !== null && typeof req.body.notes !== 'string') {
+      res.status(400).json({ error: 'notes must be a string or null' });
+      return;
+    }
+    patch.notes = typeof req.body.notes === 'string' ? req.body.notes.trim() || null : null;
+  }
   if (typeof req.body?.isCompleted === 'boolean') patch.isCompleted = req.body.isCompleted;
   if (typeof req.body?.displayOrder === 'number') patch.displayOrder = req.body.displayOrder;
   const todo = await updateTodo(uid, id, patch);
@@ -108,7 +121,12 @@ router.post('/tables', async (req: AuthRequest, res) => {
 });
 
 router.get('/tables/:resourceId', async (req: AuthRequest, res) => {
-  const table = await getTable(userId(req), req.params.resourceId);
+  const resourceId = validPathParam(req.params.resourceId);
+  if (!resourceId) {
+    res.status(400).json({ error: 'resourceId is invalid' });
+    return;
+  }
+  const table = await getTable(userId(req), resourceId);
   if (!table) {
     res.status(404).json({ error: 'Not found' });
     return;
@@ -118,7 +136,11 @@ router.get('/tables/:resourceId', async (req: AuthRequest, res) => {
 
 router.post('/tables/:resourceId/columns', async (req: AuthRequest, res) => {
   const uid = userId(req);
-  const { resourceId } = req.params;
+  const resourceId = validPathParam(req.params.resourceId);
+  if (!resourceId) {
+    res.status(400).json({ error: 'resourceId is invalid' });
+    return;
+  }
   const columnKey = readString(req.body?.columnKey, 255);
   const displayName = readString(req.body?.displayName);
   if (!columnKey || !displayName) {
@@ -132,14 +154,23 @@ router.post('/tables/:resourceId/columns', async (req: AuthRequest, res) => {
 
 router.delete('/tables/:resourceId/columns/:columnKey', async (req: AuthRequest, res) => {
   const uid = userId(req);
-  const { resourceId, columnKey } = req.params;
+  const resourceId = validPathParam(req.params.resourceId);
+  const columnKey = validPathParam(req.params.columnKey);
+  if (!resourceId || !columnKey) {
+    res.status(400).json({ error: 'resourceId and columnKey are invalid' });
+    return;
+  }
   const result = await removeColumn(uid, resourceId, columnKey);
   res.json(result);
 });
 
 router.post('/tables/:resourceId/rows', async (req: AuthRequest, res) => {
   const uid = userId(req);
-  const { resourceId } = req.params;
+  const resourceId = validPathParam(req.params.resourceId);
+  if (!resourceId) {
+    res.status(400).json({ error: 'resourceId is invalid' });
+    return;
+  }
   const cellData: Record<string, string | null> =
     req.body?.cellData && typeof req.body.cellData === 'object' && !Array.isArray(req.body.cellData)
       ? (req.body.cellData as Record<string, string | null>)
@@ -150,7 +181,12 @@ router.post('/tables/:resourceId/rows', async (req: AuthRequest, res) => {
 
 router.patch('/tables/:resourceId/rows/:rowId', async (req: AuthRequest, res) => {
   const uid = userId(req);
-  const { resourceId, rowId } = req.params;
+  const resourceId = validPathParam(req.params.resourceId);
+  const rowId = validPathParam(req.params.rowId);
+  if (!resourceId || !rowId) {
+    res.status(400).json({ error: 'resourceId and rowId are invalid' });
+    return;
+  }
   const cellData: Record<string, string | null> =
     req.body?.cellData && typeof req.body.cellData === 'object' && !Array.isArray(req.body.cellData)
       ? (req.body.cellData as Record<string, string | null>)
@@ -165,7 +201,12 @@ router.patch('/tables/:resourceId/rows/:rowId', async (req: AuthRequest, res) =>
 
 router.delete('/tables/:resourceId/rows/:rowId', async (req: AuthRequest, res) => {
   const uid = userId(req);
-  const { resourceId, rowId } = req.params;
+  const resourceId = validPathParam(req.params.resourceId);
+  const rowId = validPathParam(req.params.rowId);
+  if (!resourceId || !rowId) {
+    res.status(400).json({ error: 'resourceId and rowId are invalid' });
+    return;
+  }
   const result = await deleteRow(uid, resourceId, rowId);
   res.json(result);
 });

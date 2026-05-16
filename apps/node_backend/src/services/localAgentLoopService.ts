@@ -14,6 +14,7 @@ import {
   updateTodo,
   completeTodo,
   deleteTodo,
+  type UpdateTodoInput,
 } from './todoService.js';
 import {
   listTables,
@@ -114,6 +115,29 @@ export interface ExecuteInternalToolSequenceResult {
   calls: ExecuteInternalToolResult[];
   completedCalls: number;
   failedCall: ExecuteInternalToolResult | null;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Sanitize LLM-provided cellData: keep only string-or-null values, coercing
+ *  numbers/booleans to strings so downstream DB code always receives the
+ *  declared Record<string, string | null> shape. */
+function sanitizeCellData(raw: unknown): Record<string, string | null> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result: Record<string, string | null> = {};
+  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (val === null || val === undefined) {
+      result[key] = null;
+    } else if (typeof val === 'string') {
+      result[key] = val;
+    } else if (typeof val === 'number' || typeof val === 'boolean') {
+      result[key] = String(val);
+    }
+    // other types (object/array) are dropped
+  }
+  return result;
 }
 
 export function inferInternalToolCallsFromMessage(input: {
@@ -630,7 +654,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'id is a required string argument' },
         };
       }
-      const update: Record<string, unknown> = {};
+      const update: UpdateTodoInput = {};
       if (typeof args.title === 'string') update.title = args.title;
       if (args.notes !== undefined) update.notes = typeof args.notes === 'string' ? args.notes : null;
       if (typeof args.isCompleted === 'boolean') update.isCompleted = args.isCompleted;
@@ -731,10 +755,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'resourceId is a required string argument' },
         };
       }
-      const cellData: Record<string, string | null> =
-        args.cellData && typeof args.cellData === 'object' && !Array.isArray(args.cellData)
-          ? (args.cellData as Record<string, string | null>)
-          : {};
+      const cellData = sanitizeCellData(args.cellData);
       const row = await addRow(userId, resourceId, cellData);
       return { ok: true, toolName, data: row as unknown as Record<string, unknown>, error: null };
     }
@@ -749,10 +770,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'resourceId and rowId are required' },
         };
       }
-      const cellData: Record<string, string | null> =
-        args.cellData && typeof args.cellData === 'object' && !Array.isArray(args.cellData)
-          ? (args.cellData as Record<string, string | null>)
-          : {};
+      const cellData = sanitizeCellData(args.cellData);
       const row = await updateRow(userId, resourceId, rowId, cellData);
       if (!row) {
         return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Row not found' } };

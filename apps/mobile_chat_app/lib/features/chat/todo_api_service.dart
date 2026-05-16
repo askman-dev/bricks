@@ -128,6 +128,13 @@ class TodoApiService {
     );
   }
 
+  /// Convenience wrapper: marks a todo as completed.
+  Future<TodoItem> completeTodo({
+    required String token,
+    required String id,
+  }) =>
+      updateTodo(token: token, id: id, isCompleted: true);
+
   Future<void> deleteTodo({required String token, required String id}) async {
     final response = await _httpClient.delete(
       _todoUri(id),

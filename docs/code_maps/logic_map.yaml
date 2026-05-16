@@ -513,7 +513,7 @@ index:
   - feature_id: conversational_todos
     capability: 用户通过自然语言与 AI 对话创建/查询/完成/删除待办事项，AI 调用 todo_* 内部工具并返回 Markdown 列表
     code_index:
-      - apps/node_backend/src/db/migrations/015_create_user_todos.sql
+      - apps/node_backend/src/db/migrations/015_create_asset_todos.sql
       - apps/node_backend/src/services/todoService.ts
       - apps/node_backend/src/services/localAgentLoopService.ts
       - apps/node_backend/src/routes/resources.ts
@@ -529,7 +529,7 @@ index:
       - INTERNAL_TOOL_TODO_CREATE
       - todo_list
       - todo_complete
-      - user_todos
+      - user_todos (renamed to asset_todos)
     change_risks:
       - 修改 INTERNAL_TOOLS 常量列表若遗漏新工具会导致 tool_not_allowed 错误。
       - todoService 的 updateTodo 使用动态 SET 子句；若新增字段须同步 DTO 和路由 PATCH 处理。

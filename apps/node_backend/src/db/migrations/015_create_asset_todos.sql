@@ -1,7 +1,7 @@
--- Migration: Create user_todos table
+-- Migration: Create asset_todos table
 -- Description: Persistent todo list items per user, manageable via AI tool calls or REST API.
 
-CREATE TABLE user_todos (
+CREATE TABLE asset_todos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -12,9 +12,9 @@ CREATE TABLE user_todos (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_user_todos_user_id ON user_todos(user_id, is_completed);
+CREATE INDEX idx_asset_todos_user_id ON asset_todos(user_id, is_completed);
 
-CREATE TRIGGER update_user_todos_updated_at
-  BEFORE UPDATE ON user_todos
+CREATE TRIGGER update_asset_todos_updated_at
+  BEFORE UPDATE ON asset_todos
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();

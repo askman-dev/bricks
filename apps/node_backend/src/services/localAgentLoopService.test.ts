@@ -283,4 +283,117 @@ describe('localAgentLoopService', () => {
       },
     ]);
   });
+
+  // -------------------------------------------------------------------------
+  // Todo tool tests
+  // -------------------------------------------------------------------------
+
+  it('dispatches todo_create and returns the created todo', async () => {
+    const { createTodo } = await import('./todoService.js');
+    (createTodo as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'todo-42',
+      userId: 'u-1',
+      title: 'Buy milk',
+      notes: null,
+      isCompleted: false,
+      displayOrder: 0,
+      createdAt: '2026-05-16T00:00:00.000Z',
+      updatedAt: '2026-05-16T00:00:00.000Z',
+    });
+
+    const { executeInternalTool, INTERNAL_TOOL_TODO_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_CREATE,
+      args: { title: 'Buy milk' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ id: 'todo-42', title: 'Buy milk' });
+  });
+
+  it('returns invalid_args when todo_create receives no title', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_TODO_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_CREATE,
+      args: {},
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  // -------------------------------------------------------------------------
+  // Asset table tool tests
+  // -------------------------------------------------------------------------
+
+  it('dispatches table_create and returns the created table', async () => {
+    const { createTable } = await import('./assetTableService.js');
+    (createTable as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'tbl-99',
+      userId: 'u-1',
+      resourceId: 'tasks',
+      title: 'My Tasks',
+      createdAt: '2026-05-16T00:00:00.000Z',
+      updatedAt: '2026-05-16T00:00:00.000Z',
+    });
+
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_CREATE,
+      args: { resourceId: 'tasks', title: 'My Tasks' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ resourceId: 'tasks', title: 'My Tasks' });
+  });
+
+  it('sanitizes non-string cellData values when adding a row', async () => {
+    const { addRow } = await import('./assetTableService.js');
+    (addRow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'row-1',
+      displayNumber: 1,
+      cellData: { name: 'Alice', age: null },
+    });
+
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_ADD_ROW } = await import('./localAgentLoopService.js');
+    await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_ADD_ROW,
+      args: {
+        resourceId: 'tasks',
+        cellData: { name: 'Alice', age: 30, active: true, extra: { nested: true } },
+      },
+    });
+
+    // age → '30', active → 'true', extra (object) → dropped
+    expect(addRow).toHaveBeenCalledWith('u-1', 'tasks', {
+      name: 'Alice',
+      age: '30',
+      active: 'true',
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Highlight tool test
+  // -------------------------------------------------------------------------
+
+  it('dispatches highlight_list and returns highlights', async () => {
+    const { listHighlights } = await import('./textHighlightService.js');
+    (listHighlights as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'hl-1', selectedText: 'hello world', color: 'yellow' },
+    ]);
+
+    const { executeInternalTool, INTERNAL_TOOL_HIGHLIGHT_LIST } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_HIGHLIGHT_LIST,
+      args: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect((result.data as { highlights: unknown[] }).highlights).toHaveLength(1);
+  });
 });
