@@ -8,6 +8,24 @@ import {
   listChatScopeSettings,
 } from './chatRouterService.js';
 import { upsertChatChannelName, listChatChannelNames } from './chatChannelNameService.js';
+import {
+  listTodos,
+  createTodo,
+  updateTodo,
+  completeTodo,
+  deleteTodo,
+} from './todoService.js';
+import {
+  listTables,
+  createTable,
+  getTable,
+  addColumn,
+  removeColumn,
+  addRow,
+  updateRow,
+  deleteRow,
+} from './assetTableService.js';
+import { listHighlights } from './textHighlightService.js';
 import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
@@ -20,6 +38,26 @@ export const INTERNAL_TOOL_CHAT_CHANNEL_GET = 'chat.channel.get';
 export const INTERNAL_TOOL_CHAT_THREAD_LIST = 'chat.thread.list';
 export const INTERNAL_TOOL_CHAT_THREAD_GET = 'chat.thread.get';
 
+// Todo tools
+export const INTERNAL_TOOL_TODO_CREATE = 'todo.create';
+export const INTERNAL_TOOL_TODO_LIST = 'todo.list';
+export const INTERNAL_TOOL_TODO_COMPLETE = 'todo.complete';
+export const INTERNAL_TOOL_TODO_UPDATE = 'todo.update';
+export const INTERNAL_TOOL_TODO_DELETE = 'todo.delete';
+
+// Asset table tools
+export const INTERNAL_TOOL_TABLE_CREATE = 'table.create';
+export const INTERNAL_TOOL_TABLE_LIST = 'table.list';
+export const INTERNAL_TOOL_TABLE_GET = 'table.get';
+export const INTERNAL_TOOL_TABLE_ADD_COLUMN = 'table.add_column';
+export const INTERNAL_TOOL_TABLE_REMOVE_COLUMN = 'table.remove_column';
+export const INTERNAL_TOOL_TABLE_ADD_ROW = 'table.add_row';
+export const INTERNAL_TOOL_TABLE_UPDATE_ROW = 'table.update_row';
+export const INTERNAL_TOOL_TABLE_DELETE_ROW = 'table.delete_row';
+
+// Text highlight tools (highlight creation is manual via Flutter; list is AI-accessible)
+export const INTERNAL_TOOL_HIGHLIGHT_LIST = 'highlight.list';
+
 export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET,
   INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET,
@@ -30,6 +68,20 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_GET,
   INTERNAL_TOOL_CHAT_THREAD_LIST,
   INTERNAL_TOOL_CHAT_THREAD_GET,
+  INTERNAL_TOOL_TODO_CREATE,
+  INTERNAL_TOOL_TODO_LIST,
+  INTERNAL_TOOL_TODO_COMPLETE,
+  INTERNAL_TOOL_TODO_UPDATE,
+  INTERNAL_TOOL_TODO_DELETE,
+  INTERNAL_TOOL_TABLE_CREATE,
+  INTERNAL_TOOL_TABLE_LIST,
+  INTERNAL_TOOL_TABLE_GET,
+  INTERNAL_TOOL_TABLE_ADD_COLUMN,
+  INTERNAL_TOOL_TABLE_REMOVE_COLUMN,
+  INTERNAL_TOOL_TABLE_ADD_ROW,
+  INTERNAL_TOOL_TABLE_UPDATE_ROW,
+  INTERNAL_TOOL_TABLE_DELETE_ROW,
+  INTERNAL_TOOL_HIGHLIGHT_LIST,
 ] as const;
 
 export type InternalToolName = (typeof INTERNAL_TOOLS)[number];
@@ -529,6 +581,206 @@ export async function executeInternalTool(
       }
       return getThread({ userId, channelId, threadId });
     }
+
+    // -------------------------------------------------------------------------
+    // Todo tools
+    // -------------------------------------------------------------------------
+    case INTERNAL_TOOL_TODO_CREATE: {
+      const title = readStringArg(args, 'title');
+      const notes = typeof args.notes === 'string' ? args.notes.trim() || null : null;
+      if (!title) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'title is a required string argument' },
+        };
+      }
+      const todo = await createTodo(userId, { title, notes });
+      return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TODO_LIST: {
+      const includeCompleted = args.includeCompleted !== false;
+      const todos = await listTodos(userId, { includeCompleted });
+      return { ok: true, toolName, data: { todos }, error: null };
+    }
+    case INTERNAL_TOOL_TODO_COMPLETE: {
+      const id = readStringArg(args, 'id');
+      if (!id) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'id is a required string argument' },
+        };
+      }
+      const todo = await completeTodo(userId, id);
+      if (!todo) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Todo not found' } };
+      }
+      return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TODO_UPDATE: {
+      const id = readStringArg(args, 'id');
+      if (!id) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'id is a required string argument' },
+        };
+      }
+      const update: Record<string, unknown> = {};
+      if (typeof args.title === 'string') update.title = args.title;
+      if (args.notes !== undefined) update.notes = typeof args.notes === 'string' ? args.notes : null;
+      if (typeof args.isCompleted === 'boolean') update.isCompleted = args.isCompleted;
+      const todo = await updateTodo(userId, id, update);
+      if (!todo) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Todo not found' } };
+      }
+      return { ok: true, toolName, data: todo as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TODO_DELETE: {
+      const id = readStringArg(args, 'id');
+      if (!id) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'id is a required string argument' },
+        };
+      }
+      const result = await deleteTodo(userId, id);
+      return { ok: true, toolName, data: result, error: null };
+    }
+
+    // -------------------------------------------------------------------------
+    // Asset table tools
+    // -------------------------------------------------------------------------
+    case INTERNAL_TOOL_TABLE_CREATE: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      const title = readStringArg(args, 'title');
+      if (!resourceId || !title) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId and title are required string arguments' },
+        };
+      }
+      const table = await createTable(userId, { resourceId, title });
+      return { ok: true, toolName, data: table as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_LIST: {
+      const tables = await listTables(userId);
+      return { ok: true, toolName, data: { tables }, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_GET: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      if (!resourceId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId is a required string argument' },
+        };
+      }
+      const table = await getTable(userId, resourceId);
+      if (!table) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Table not found' } };
+      }
+      return { ok: true, toolName, data: table as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_ADD_COLUMN: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      const columnKey = readStringArg(args, 'columnKey', MAX_IDENTIFIER_LENGTH);
+      const displayName = readStringArg(args, 'displayName');
+      if (!resourceId || !columnKey || !displayName) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId, columnKey, and displayName are required' },
+        };
+      }
+      const columnOrder = typeof args.columnOrder === 'number' ? Math.trunc(args.columnOrder) : 0;
+      const col = await addColumn(userId, resourceId, { columnKey, displayName, columnOrder });
+      return { ok: true, toolName, data: col as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_REMOVE_COLUMN: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      const columnKey = readStringArg(args, 'columnKey', MAX_IDENTIFIER_LENGTH);
+      if (!resourceId || !columnKey) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId and columnKey are required' },
+        };
+      }
+      const result = await removeColumn(userId, resourceId, columnKey);
+      return { ok: true, toolName, data: result, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_ADD_ROW: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      if (!resourceId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId is a required string argument' },
+        };
+      }
+      const cellData: Record<string, string | null> =
+        args.cellData && typeof args.cellData === 'object' && !Array.isArray(args.cellData)
+          ? (args.cellData as Record<string, string | null>)
+          : {};
+      const row = await addRow(userId, resourceId, cellData);
+      return { ok: true, toolName, data: row as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_UPDATE_ROW: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      const rowId = readStringArg(args, 'rowId');
+      if (!resourceId || !rowId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId and rowId are required' },
+        };
+      }
+      const cellData: Record<string, string | null> =
+        args.cellData && typeof args.cellData === 'object' && !Array.isArray(args.cellData)
+          ? (args.cellData as Record<string, string | null>)
+          : {};
+      const row = await updateRow(userId, resourceId, rowId, cellData);
+      if (!row) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Row not found' } };
+      }
+      return { ok: true, toolName, data: row as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_DELETE_ROW: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      const rowId = readStringArg(args, 'rowId');
+      if (!resourceId || !rowId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId and rowId are required' },
+        };
+      }
+      const result = await deleteRow(userId, resourceId, rowId);
+      return { ok: true, toolName, data: result, error: null };
+    }
+
+    // -------------------------------------------------------------------------
+    // Highlight tools
+    // -------------------------------------------------------------------------
+    case INTERNAL_TOOL_HIGHLIGHT_LIST: {
+      const highlights = await listHighlights(userId);
+      return { ok: true, toolName, data: { highlights }, error: null };
+    }
   }
 }
 
@@ -755,6 +1007,241 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_GET, args),
+    },
+
+    // -------------------------------------------------------------------------
+    // Todo tools
+    // -------------------------------------------------------------------------
+    todo_create: {
+      description:
+        'Create a new todo item for the user. Use when the user asks to add, create, or save a task or reminder.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'The todo title or task description.' },
+          notes: { type: 'string', description: 'Optional additional notes.' },
+        },
+        required: ['title'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_CREATE, args),
+    },
+
+    todo_list: {
+      description:
+        'List the user\'s todo items. Use when the user asks to see, show, or query their todos or task list. ' +
+        'Returns items as structured data; format them as a Markdown checklist in your reply.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          includeCompleted: {
+            type: 'boolean',
+            description: 'Whether to include completed todos. Defaults to true.',
+          },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_LIST, args),
+    },
+
+    todo_complete: {
+      description:
+        'Mark a todo item as completed. Use when the user says they finished, completed, or checked off a task.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The UUID of the todo item.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_COMPLETE, args),
+    },
+
+    todo_update: {
+      description:
+        'Update the title, notes, or completion status of an existing todo item.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The UUID of the todo item to update.' },
+          title: { type: 'string', description: 'New title.' },
+          notes: { type: 'string', description: 'New notes.' },
+          isCompleted: { type: 'boolean', description: 'New completion status.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_UPDATE, args),
+    },
+
+    todo_delete: {
+      description:
+        'Permanently delete a todo item. Use only when the user explicitly asks to remove or delete a specific task.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The UUID of the todo item.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TODO_DELETE, args),
+    },
+
+    // -------------------------------------------------------------------------
+    // Asset table tools
+    // -------------------------------------------------------------------------
+    table_create: {
+      description:
+        'Create a new dynamic table resource. Use when the user asks to create a table, spreadsheet, or structured list.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: {
+            type: 'string',
+            description: 'A short stable identifier for the table (e.g. "tasks", "contacts"). Use lowercase-kebab.',
+          },
+          title: { type: 'string', description: 'Display title for the table.' },
+        },
+        required: ['resourceId', 'title'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_CREATE, args),
+    },
+
+    table_list: {
+      description:
+        'List all tables belonging to the user. Use to discover resourceIds before calling other table tools.',
+      parametersSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_LIST, args),
+    },
+
+    table_get: {
+      description:
+        'Get the full content of a table: column definitions and all rows. ' +
+        'Format the result as a Markdown table in your reply.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+        },
+        required: ['resourceId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_GET, args),
+    },
+
+    table_add_column: {
+      description:
+        'Add a new column to a table. This is O(1) and does not modify existing rows. ' +
+        'New cells for this column will default to null.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+          columnKey: {
+            type: 'string',
+            description: 'A stable, unique key for the column (e.g. "status", "due_date"). Use lowercase-snake.',
+          },
+          displayName: { type: 'string', description: 'Human-readable column header.' },
+          columnOrder: {
+            type: 'number',
+            description: 'Display order (lower = left). Defaults to 0.',
+          },
+        },
+        required: ['resourceId', 'columnKey', 'displayName'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_ADD_COLUMN, args),
+    },
+
+    table_remove_column: {
+      description:
+        'Remove a column from a table schema. This is O(1); existing row data for this column ' +
+        'is ignored (lazily orphaned) and will not be returned in future reads.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+          columnKey: { type: 'string', description: 'The column key to remove.' },
+        },
+        required: ['resourceId', 'columnKey'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_REMOVE_COLUMN, args),
+    },
+
+    table_add_row: {
+      description:
+        'Add a new row to a table. Pass cell values as a cellData object whose keys are column keys.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+          cellData: {
+            type: 'object',
+            description: 'Key-value pairs where keys are column keys and values are cell strings.',
+            additionalProperties: { type: 'string' },
+          },
+        },
+        required: ['resourceId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_ADD_ROW, args),
+    },
+
+    table_update_row: {
+      description:
+        'Update one or more cell values in an existing row. Only the supplied keys are changed; others are preserved.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+          rowId: { type: 'string', description: 'The UUID of the row to update.' },
+          cellData: {
+            type: 'object',
+            description: 'Key-value pairs of column keys and new cell values.',
+            additionalProperties: { type: 'string' },
+          },
+        },
+        required: ['resourceId', 'rowId', 'cellData'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_UPDATE_ROW, args),
+    },
+
+    table_delete_row: {
+      description: 'Soft-delete a row from a table. The row will no longer appear in table_get results.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+          rowId: { type: 'string', description: 'The UUID of the row to delete.' },
+        },
+        required: ['resourceId', 'rowId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_DELETE_ROW, args),
+    },
+
+    // -------------------------------------------------------------------------
+    // Highlight tools
+    // -------------------------------------------------------------------------
+    highlight_list: {
+      description:
+        'List all text highlights the user has saved. Use when the user asks what they have highlighted, ' +
+        'what they marked, or what annotations they have made.',
+      parametersSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_HIGHLIGHT_LIST, args),
     },
   };
 }

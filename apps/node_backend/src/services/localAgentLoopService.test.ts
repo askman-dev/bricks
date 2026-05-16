@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const upsertChatScopeSettingMock = vi.fn();
 const upsertChatChannelNameMock = vi.fn();
+const listChatScopeSettingsMock = vi.fn().mockResolvedValue([]);
+const listChatChannelNamesMock = vi.fn().mockResolvedValue([]);
 
 vi.mock('./chatRouterService.js', () => ({
   CHAT_ROUTER_LOCAL: 'local',
@@ -12,10 +14,38 @@ vi.mock('./chatRouterService.js', () => ({
     return t && t.length > 0 ? t : 'main';
   },
   upsertChatScopeSetting: upsertChatScopeSettingMock,
+  listChatScopeSettings: listChatScopeSettingsMock,
 }));
 
 vi.mock('./chatChannelNameService.js', () => ({
   upsertChatChannelName: upsertChatChannelNameMock,
+  listChatChannelNames: listChatChannelNamesMock,
+}));
+
+vi.mock('./todoService.js', () => ({
+  listTodos: vi.fn().mockResolvedValue([]),
+  createTodo: vi.fn().mockResolvedValue({ id: 'todo-1', title: 'Test', isCompleted: false }),
+  updateTodo: vi.fn().mockResolvedValue(null),
+  completeTodo: vi.fn().mockResolvedValue(null),
+  deleteTodo: vi.fn().mockResolvedValue({ deleted: false }),
+}));
+
+vi.mock('./assetTableService.js', () => ({
+  listTables: vi.fn().mockResolvedValue([]),
+  createTable: vi.fn().mockResolvedValue({ id: 'tbl-1', resourceId: 'tasks', title: 'Tasks' }),
+  getTable: vi.fn().mockResolvedValue(null),
+  addColumn: vi.fn().mockResolvedValue({ id: 'col-1', columnKey: 'name', displayName: 'Name' }),
+  removeColumn: vi.fn().mockResolvedValue({ deleted: false }),
+  addRow: vi.fn().mockResolvedValue({ id: 'row-1', displayNumber: 1, cellData: {} }),
+  updateRow: vi.fn().mockResolvedValue(null),
+  deleteRow: vi.fn().mockResolvedValue({ deleted: false }),
+}));
+
+vi.mock('./textHighlightService.js', () => ({
+  listHighlights: vi.fn().mockResolvedValue([]),
+  listHighlightsByMessageId: vi.fn().mockResolvedValue([]),
+  createHighlight: vi.fn().mockResolvedValue({ id: 'hl-1', selectedText: 'hello' }),
+  deleteHighlight: vi.fn().mockResolvedValue({ deleted: false }),
 }));
 
 describe('localAgentLoopService', () => {
