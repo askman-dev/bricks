@@ -109,10 +109,10 @@ class ChatNavigationPage extends StatefulWidget {
   /// [_NodeDetailPage] internally.
   final ValueChanged<String>? onNodeSelected;
 
-  /// Called when a resource is tapped in the Resources tab. The resource's
-  /// [ChatResourceItem.id] is passed. If null, tapping opens
+  /// Called when a resource is tapped in the Resources tab. The full
+  /// [ChatResourceItem] is passed. If null, tapping opens
   /// [_ResourcePreviewPage] internally.
-  final ValueChanged<String>? onResourceSelected;
+  final ValueChanged<ChatResourceItem>? onResourceSelected;
 
   final bool closeOnChannelSelected;
 
@@ -359,7 +359,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
                           if (widget.onResourceSelected != null) {
-                            widget.onResourceSelected!.call(resource.id);
+                            widget.onResourceSelected!.call(resource);
                           } else {
                             _openResourcePreview(resource);
                           }

@@ -126,6 +126,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _disconnectSse();
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
+    _todoApiService.dispose();
+    _assetTableApiService.dispose();
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
