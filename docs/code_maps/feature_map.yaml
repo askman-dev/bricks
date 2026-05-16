@@ -175,6 +175,78 @@ products:
           - 从侧边导航进入每个页面。
           - 页面可正常渲染且无崩溃。
 
+      - feature_id: conversational_todos
+        name: 对话式待办列表与待办事项
+        user_value: 用户可用自然语言让 AI 管理待办列表（topic 分组）及列表下的待办项；每个待办项必须属于一个父列表，不能脱离列表存在。
+        entry_paths:
+          - service: TodoApiService
+            route_hint: apps/mobile_chat_app/lib/features/chat/todo_api_service.dart
+          - route: GET /api/resources/todo-lists
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: POST /api/resources/todo-lists
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: GET /api/resources/todo-lists/:listId
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: POST /api/resources/todo-lists/:listId/todos
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: PATCH /api/resources/todo-lists/:listId/todos/:id
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - tool: todolist_create / todolist_list / todolist_get / todolist_update / todolist_delete
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+          - tool: todo_create / todo_list / todo_complete / todo_update / todo_delete
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - 用户说"帮我创建一个工作待办列表"，AI 调用 todolist_create 并确认。
+          - 用户说"帮我在工作列表里添加：完成报告"，AI 调用 todo_create（带 listId）并确认。
+          - 用户说"查看我的工作列表"，AI 调用 todolist_get，返回列表及子项。
+          - DELETE /api/resources/todo-lists/:listId 返回 { deleted: true }，同时级联删除所有子项。
+
+      - feature_id: asset_tables
+        name: AI 驱动的动态资产表格
+        user_value: 用户可通过自然语言让 AI 创建表格、添加/删除列（O(1)，不修改行数据）、添加/更新/删除行；查询时返回 Markdown 表格。
+        entry_paths:
+          - service: AssetTableApiService
+            route_hint: apps/mobile_chat_app/lib/features/chat/asset_table_api_service.dart
+          - route: GET/POST /api/resources/tables
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: GET /api/resources/tables/:resourceId
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: POST/DELETE /api/resources/tables/:resourceId/columns/:columnKey
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: POST/PATCH/DELETE /api/resources/tables/:resourceId/rows/:rowId
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - tool: table_create / table_list / table_get / table_add_column / table_remove_column / table_add_row / table_update_row / table_delete_row
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - 用户说"创建一个叫 Tasks 的表格，列名为 Name 和 Status"，AI 依次调用 table_create 和 table_add_column，完成后回复确认。
+          - 用户说"显示 Tasks 表格"，AI 调用 table_get 并以 Markdown 表格回复。
+          - 添加一列 Priority 后，已有行不变（O(1) schema change）。
+          - 软删除行后，table_get 不返回该行。
+
+      - feature_id: text_highlights
+        name: 文本划线（手动高亮）
+        user_value: 用户在助手消息中选中文本后，通过右键上下文菜单点击"划线"，该文字出现黄色背景；刷新后仍然可见。AI 可通过 highlight_list 工具回答"我有哪些划线"。
+        entry_paths:
+          - widget: MessageList.onHighlight + contextMenuBuilder
+            route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+          - widget: _AssistantMarkdownText.highlights
+            route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+          - service: TextHighlightApiService
+            route_hint: apps/mobile_chat_app/lib/features/chat/text_highlight_api_service.dart
+          - route: GET /api/resources/highlights
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: POST /api/resources/highlights
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: DELETE /api/resources/highlights/:id
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - tool: highlight_list
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - 在助手消息中选中文字，右键菜单出现"划线"按钮。
+          - 点击"划线"后，选中文字出现黄色背景。
+          - 刷新页面后，高亮仍然显示。
+          - 用户说"我有哪些划线"，AI 调用 highlight_list 工具并列出已保存的文本。
+
   - product_id: node_backend
     name: Node Backend API
     platform:

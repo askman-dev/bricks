@@ -3,17 +3,54 @@ import 'package:flutter/services.dart';
 import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
 import '../chat_message.dart';
+import '../text_highlight_api_service.dart';
 
 // Extra bottom padding as a fraction of screen height, so the latest user
 // message can be anchored near the top while leaving room for the assistant
 // reply to stream below it.
 const double _kBottomPaddingRatio = 0.75;
 
+/// A span of highlighted text within a message, used for rendering.
+class HighlightSpan {
+  const HighlightSpan({
+    required this.highlightId,
+    required this.selectedText,
+    required this.color,
+  });
+
+  final String highlightId;
+  final String selectedText;
+  final String color;
+
+  static HighlightSpan fromHighlight(TextHighlight h) => HighlightSpan(
+        highlightId: h.id,
+        selectedText: h.selectedText,
+        color: h.color,
+      );
+}
+
 /// Displays the list of chat messages in timeline format.
 class MessageList extends StatefulWidget {
-  const MessageList({super.key, required this.messages});
+  const MessageList({
+    super.key,
+    required this.messages,
+    this.highlights = const {},
+    this.onHighlight,
+  });
 
   final List<ChatMessage> messages;
+
+  /// Map from messageId to the list of highlights applied to that message.
+  final Map<String, List<HighlightSpan>> highlights;
+
+  /// Called when the user selects text and taps the Highlight context menu
+  /// action. Provides the messageId, selected text, and approximate offsets.
+  final void Function(
+    String messageId,
+    String selectedText,
+    int? startOffset,
+    int? endOffset,
+  )? onHighlight;
 
   @override
   State<MessageList> createState() => _MessageListState();
@@ -24,6 +61,10 @@ class _MessageListState extends State<MessageList> {
   static const double _kJumpButtonShowScreens = 2;
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
+
+  // Tracks the most recent text selection so the context menu "Highlight"
+  // action can read it without requiring currentSelection from the state.
+  String _lastSelectedText = '';
 
   // A single key attached only to the focused (latest user) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
@@ -496,6 +537,9 @@ class _MessageListState extends State<MessageList> {
                         codeBlockColor: chatColors.codeBlockBackground,
                         quoteBlockColor: chatColors.quoteBackground,
                         textStyle: Theme.of(context).textTheme.bodyLarge,
+                        highlights: msg.messageId != null
+                            ? (widget.highlights[msg.messageId!] ?? const [])
+                            : const [],
                       ),
                     if (msg.isStreaming)
                       Padding(
@@ -603,6 +647,49 @@ class _MessageListState extends State<MessageList> {
     return Stack(
       children: [
         SelectionArea(
+          onSelectionChanged: (value) {
+            _lastSelectedText = value?.plainText ?? '';
+          },
+          contextMenuBuilder: widget.onHighlight != null
+              ? (ctx, selectableRegionState) {
+                  return AdaptiveTextSelectionToolbar.buttonItems(
+                    anchors: selectableRegionState.contextMenuAnchors,
+                    buttonItems: [
+                      ...selectableRegionState.contextMenuButtonItems,
+                      ContextMenuButtonItem(
+                        label: '划线',
+                        onPressed: () {
+                          ContextMenuController.removeAny();
+                          final plainText = _lastSelectedText;
+                          if (plainText.isEmpty) return;
+                          // Find the first assistant message whose content
+                          // contains the selected text and fire the callback.
+                          for (final m in widget.messages) {
+                            if (m.role != 'assistant') continue;
+                            // Skip messages without a stable ID — we cannot
+                            // persist a highlight without one.
+                            final messageId = m.messageId;
+                            if (messageId == null) continue;
+                            final idx = m.content.indexOf(plainText);
+                            if (idx != -1) {
+                              widget.onHighlight!(
+                                messageId,
+                                plainText,
+                                idx,
+                                idx + plainText.length,
+                              );
+                              return;
+                            }
+                          }
+                          // No message with a valid ID contains the selected
+                          // text — silently skip rather than emitting an
+                          // invalid (empty) messageId to the backend.
+                        },
+                      ),
+                    ],
+                  );
+                }
+              : null,
           child: SingleChildScrollView(
             key: _scrollViewKey,
             controller: _scrollController,
@@ -773,6 +860,7 @@ class _AssistantMarkdownText extends StatelessWidget {
     required this.codeBlockColor,
     required this.quoteBlockColor,
     required this.textStyle,
+    this.highlights = const [],
   });
 
   final String text;
@@ -781,6 +869,7 @@ class _AssistantMarkdownText extends StatelessWidget {
   final Color codeBlockColor;
   final Color quoteBlockColor;
   final TextStyle? textStyle;
+  final List<HighlightSpan> highlights;
 
   @override
   Widget build(BuildContext context) {
@@ -790,10 +879,93 @@ class _AssistantMarkdownText extends StatelessWidget {
     if (text.isEmpty) {
       return Text(text, style: baseStyle);
     }
-    final lines = text.split('\n');
+    // Normalize line endings so that line splitting is consistent.
+    // \r\n → \n, lone \r → \n.
+    final normalizedText =
+        text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final lines = normalizedText.split('\n');
     final widgets = <Widget>[];
     var inCodeBlock = false;
     final codeLines = <String>[];
+
+    // Build a list of (selectedText, bgColor) pairs for highlight lookup.
+    // We search directly within each span's rendered text at draw time so
+    // that markdown delimiters (**, _, etc.) never corrupt the match offsets.
+    final highlightItems = <({String text, Color bg})>[];
+    if (highlights.isNotEmpty) {
+      for (final h in highlights) {
+        if (h.selectedText.isNotEmpty) {
+          highlightItems.add((text: h.selectedText, bg: _parseHighlightColor(h.color)));
+        }
+      }
+    }
+
+    // Split a single TextSpan into highlighted/un-highlighted fragments by
+    // searching for each highlight text directly within the span's plain text.
+    // Because we work on rendered (markdown-stripped) span text, markdown
+    // delimiters do not shift offsets.
+    List<InlineSpan> _splitSpanByHighlights(TextSpan span) {
+      final spanText = span.text ?? '';
+      if (spanText.isEmpty) return [span];
+
+      // Collect all match ranges within this span.
+      final ranges = <({int start, int end, Color bg})>[];
+      for (final h in highlightItems) {
+        var searchStart = 0;
+        while (true) {
+          final idx = spanText.indexOf(h.text, searchStart);
+          if (idx == -1) break;
+          ranges.add((start: idx, end: idx + h.text.length, bg: h.bg));
+          searchStart = idx + h.text.length;
+        }
+      }
+      if (ranges.isEmpty) return [span];
+      // Sort by start position and merge overlapping or adjacent ranges (keep first color).
+      ranges.sort((a, b) => a.start.compareTo(b.start));
+      final merged = <({int start, int end, Color bg})>[];
+      for (final r in ranges) {
+        if (merged.isNotEmpty && r.start <= merged.last.end) {
+          final last = merged.removeLast();
+          merged.add((
+            start: last.start,
+            end: r.end > last.end ? r.end : last.end,
+            bg: last.bg,
+          ));
+        } else {
+          merged.add(r);
+        }
+      }
+      // Slice the span at highlight boundaries.
+      final result = <InlineSpan>[];
+      var cursor = 0;
+      for (final r in merged) {
+        if (r.start > cursor) {
+          result.add(TextSpan(text: spanText.substring(cursor, r.start), style: span.style));
+        }
+        result.add(TextSpan(
+          text: spanText.substring(r.start, r.end),
+          style: (span.style ?? baseStyle).copyWith(backgroundColor: r.bg),
+        ));
+        cursor = r.end;
+      }
+      if (cursor < spanText.length) {
+        result.add(TextSpan(text: spanText.substring(cursor), style: span.style));
+      }
+      return result;
+    }
+
+    List<InlineSpan> _applyHighlightsToSpans(List<InlineSpan> spans) {
+      if (highlightItems.isEmpty) return spans;
+      final result = <InlineSpan>[];
+      for (final span in spans) {
+        if (span is TextSpan) {
+          result.addAll(_splitSpanByHighlights(span));
+        } else {
+          result.add(span);
+        }
+      }
+      return result;
+    }
 
     Widget _buildCodeBlock(List<String> codeContent) => Container(
           width: double.infinity,
@@ -910,12 +1082,15 @@ class _AssistantMarkdownText extends StatelessWidget {
       final lineStyle = block.type == _MarkdownBlockType.heading
           ? baseStyle.copyWith(fontWeight: FontWeight.w700)
           : baseStyle;
-      final inlineSpans = _parseInlineMarkdown(
+      var inlineSpans = _parseInlineMarkdown(
         block.text,
         baseStyle: lineStyle,
         linkStyle: lineStyle.copyWith(color: linkColor),
         headingLike: false,
       );
+      // Compute the text-only offset of block.text within the line so we can
+      // map highlight ranges from the full message text into this span list.
+      inlineSpans = _applyHighlightsToSpans(inlineSpans);
       if (block.type == _MarkdownBlockType.unorderedList ||
           block.type == _MarkdownBlockType.orderedList) {
         widgets.add(Padding(
@@ -943,6 +1118,41 @@ class _AssistantMarkdownText extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: widgets,
     );
+  }
+
+  /// Convert a named or hex highlight color string to a [Color] with reduced
+  /// opacity so the text beneath remains readable. All named colors use
+  /// alpha = 0.45 as a consistent baseline; yellow is slightly more opaque
+  /// (0.55) because it is brighter and needs higher saturation for contrast.
+  static Color _parseHighlightColor(String color) {
+    switch (color.toLowerCase()) {
+      case 'yellow':
+        return const Color(0xFFFFEB3B).withValues(alpha: 0.55);
+      case 'green':
+        return const Color(0xFF4CAF50).withValues(alpha: 0.45);
+      case 'blue':
+        return const Color(0xFF2196F3).withValues(alpha: 0.45);
+      case 'red':
+        return const Color(0xFFF44336).withValues(alpha: 0.45);
+      case 'orange':
+        return const Color(0xFFFF9800).withValues(alpha: 0.45);
+      case 'purple':
+        return const Color(0xFF9C27B0).withValues(alpha: 0.45);
+      default:
+        // Allow hex values like '#FFEB3B'. Parse as 6-digit RGB hex and
+        // apply a standard background alpha.
+        final hex = color.startsWith('#') ? color.substring(1) : color;
+        final rgb = int.tryParse(hex, radix: 16);
+        if (rgb != null && hex.length == 6) {
+          return Color(rgb).withValues(
+            red: ((rgb >> 16) & 0xFF) / 255.0,
+            green: ((rgb >> 8) & 0xFF) / 255.0,
+            blue: (rgb & 0xFF) / 255.0,
+            alpha: 0.45,
+          );
+        }
+        return const Color(0xFFFFEB3B).withValues(alpha: 0.45);
+    }
   }
 }
 

@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const upsertChatScopeSettingMock = vi.fn();
 const upsertChatChannelNameMock = vi.fn();
+const listChatScopeSettingsMock = vi.fn().mockResolvedValue([]);
+const listChatChannelNamesMock = vi.fn().mockResolvedValue([]);
 
 vi.mock('./chatRouterService.js', () => ({
   CHAT_ROUTER_LOCAL: 'local',
@@ -12,10 +14,46 @@ vi.mock('./chatRouterService.js', () => ({
     return t && t.length > 0 ? t : 'main';
   },
   upsertChatScopeSetting: upsertChatScopeSettingMock,
+  listChatScopeSettings: listChatScopeSettingsMock,
 }));
 
 vi.mock('./chatChannelNameService.js', () => ({
   upsertChatChannelName: upsertChatChannelNameMock,
+  listChatChannelNames: listChatChannelNamesMock,
+}));
+
+vi.mock('./todoService.js', () => ({
+  listTodos: vi.fn().mockResolvedValue([]),
+  createTodo: vi.fn().mockResolvedValue({ id: 'todo-1', listId: 'list-1', title: 'Test', isCompleted: false }),
+  updateTodo: vi.fn().mockResolvedValue(null),
+  completeTodo: vi.fn().mockResolvedValue(null),
+  deleteTodo: vi.fn().mockResolvedValue({ deleted: false }),
+}));
+
+vi.mock('./todoListService.js', () => ({
+  listTodoLists: vi.fn().mockResolvedValue([]),
+  getTodoList: vi.fn().mockResolvedValue(null),
+  createTodoList: vi.fn().mockResolvedValue({ id: 'list-1', title: 'Work', notes: null }),
+  updateTodoList: vi.fn().mockResolvedValue(null),
+  deleteTodoList: vi.fn().mockResolvedValue({ deleted: false }),
+}));
+
+vi.mock('./assetTableService.js', () => ({
+  listTables: vi.fn().mockResolvedValue([]),
+  createTable: vi.fn().mockResolvedValue({ id: 'tbl-1', resourceId: 'tasks', title: 'Tasks' }),
+  getTable: vi.fn().mockResolvedValue(null),
+  addColumn: vi.fn().mockResolvedValue({ id: 'col-1', columnKey: 'name', displayName: 'Name' }),
+  removeColumn: vi.fn().mockResolvedValue({ deleted: false }),
+  addRow: vi.fn().mockResolvedValue({ id: 'row-1', displayNumber: 1, cellData: {} }),
+  updateRow: vi.fn().mockResolvedValue(null),
+  deleteRow: vi.fn().mockResolvedValue({ deleted: false }),
+}));
+
+vi.mock('./textHighlightService.js', () => ({
+  listHighlights: vi.fn().mockResolvedValue([]),
+  listHighlightsByMessageId: vi.fn().mockResolvedValue([]),
+  createHighlight: vi.fn().mockResolvedValue({ id: 'hl-1', selectedText: 'hello' }),
+  deleteHighlight: vi.fn().mockResolvedValue({ deleted: false }),
 }));
 
 describe('localAgentLoopService', () => {
@@ -252,5 +290,189 @@ describe('localAgentLoopService', () => {
         args: { channelId: 'ops', threadId: 'bugs' },
       },
     ]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Todo list tool tests
+  // -------------------------------------------------------------------------
+
+  it('dispatches todolist_create and returns the created list', async () => {
+    const { createTodoList } = await import('./todoListService.js');
+    (createTodoList as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'list-99',
+      userId: 'u-1',
+      title: 'Work tasks',
+      notes: null,
+      displayOrder: 0,
+      createdAt: '2026-05-16T00:00:00.000Z',
+      updatedAt: '2026-05-16T00:00:00.000Z',
+    });
+
+    const { executeInternalTool, INTERNAL_TOOL_TODO_LIST_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_LIST_CREATE,
+      args: { title: 'Work tasks' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ id: 'list-99', title: 'Work tasks' });
+    expect(createTodoList).toHaveBeenCalledWith('u-1', { title: 'Work tasks', notes: null });
+  });
+
+  it('returns invalid_args when todolist_create receives no title', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_TODO_LIST_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_LIST_CREATE,
+      args: {},
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  it('dispatches todolist_list and returns lists', async () => {
+    const { listTodoLists } = await import('./todoListService.js');
+    (listTodoLists as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'list-1', title: 'Work', notes: null },
+    ]);
+
+    const { executeInternalTool, INTERNAL_TOOL_TODO_LIST_LIST } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_LIST_LIST,
+      args: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect((result.data as { lists: unknown[] }).lists).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Todo item tool tests
+  // -------------------------------------------------------------------------
+
+  it('dispatches todo_create with listId and returns the created todo', async () => {
+    const { createTodo } = await import('./todoService.js');
+    (createTodo as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'todo-42',
+      userId: 'u-1',
+      listId: 'list-1',
+      title: 'Buy milk',
+      notes: null,
+      isCompleted: false,
+      displayOrder: 0,
+      createdAt: '2026-05-16T00:00:00.000Z',
+      updatedAt: '2026-05-16T00:00:00.000Z',
+    });
+
+    const { executeInternalTool, INTERNAL_TOOL_TODO_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_CREATE,
+      args: { listId: 'list-1', title: 'Buy milk' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ id: 'todo-42', title: 'Buy milk' });
+    expect(createTodo).toHaveBeenCalledWith('u-1', 'list-1', { title: 'Buy milk', notes: null });
+  });
+
+  it('returns invalid_args when todo_create is missing listId', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_TODO_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_CREATE,
+      args: { title: 'Buy milk' },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  it('returns invalid_args when todo_create is missing title', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_TODO_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TODO_CREATE,
+      args: {},
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  // -------------------------------------------------------------------------
+  // Asset table tool tests
+  // -------------------------------------------------------------------------
+
+  it('dispatches table_create and returns the created table', async () => {
+    const { createTable } = await import('./assetTableService.js');
+    (createTable as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'tbl-99',
+      userId: 'u-1',
+      resourceId: 'tasks',
+      title: 'My Tasks',
+      createdAt: '2026-05-16T00:00:00.000Z',
+      updatedAt: '2026-05-16T00:00:00.000Z',
+    });
+
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_CREATE,
+      args: { resourceId: 'tasks', title: 'My Tasks' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ resourceId: 'tasks', title: 'My Tasks' });
+  });
+
+  it('sanitizes non-string cellData values when adding a row', async () => {
+    const { addRow } = await import('./assetTableService.js');
+    (addRow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'row-1',
+      displayNumber: 1,
+      cellData: { name: 'Alice', age: null },
+    });
+
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_ADD_ROW } = await import('./localAgentLoopService.js');
+    await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_ADD_ROW,
+      args: {
+        resourceId: 'tasks',
+        cellData: { name: 'Alice', age: 30, active: true, extra: { nested: true } },
+      },
+    });
+
+    // age → '30', active → 'true', extra (object) → dropped
+    expect(addRow).toHaveBeenCalledWith('u-1', 'tasks', {
+      name: 'Alice',
+      age: '30',
+      active: 'true',
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Highlight tool test
+  // -------------------------------------------------------------------------
+
+  it('dispatches highlight_list and returns highlights', async () => {
+    const { listHighlights } = await import('./textHighlightService.js');
+    (listHighlights as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'hl-1', selectedText: 'hello world', color: 'yellow' },
+    ]);
+
+    const { executeInternalTool, INTERNAL_TOOL_HIGHLIGHT_LIST } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_HIGHLIGHT_LIST,
+      args: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect((result.data as { highlights: unknown[] }).highlights).toHaveLength(1);
   });
 });

@@ -510,6 +510,86 @@ index:
       - rewrites 顺序若把 Flutter fallback 放在 `/docs` 之前，会让 docs 路由错误落入 SPA。
       - 若先复制 docs 再执行 Flutter build，`build/web/docs` 可能被 Flutter 构建流程覆盖。
 
+  - feature_id: conversational_todos
+    capability: 用户通过自然语言与 AI 对话创建/查询/完成/删除待办列表及其子项；每个待办项必须属于一个父待办列表；AI 调用 todolist_* 与 todo_* 内部工具
+    code_index:
+      - apps/node_backend/src/db/migrations/015_create_asset_todos.sql
+      - apps/node_backend/src/db/migrations/018_add_todo_lists.sql
+      - apps/node_backend/src/services/todoService.ts
+      - apps/node_backend/src/services/todoListService.ts
+      - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/routes/resources.ts
+      - apps/mobile_chat_app/lib/features/chat/todo_api_service.dart
+    doc_index:
+      - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
+    test_index:
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
+    keywords:
+      - todo
+      - todo list
+      - asset_todos
+      - asset_todo_lists
+      - INTERNAL_TOOL_TODO_LIST_CREATE
+      - INTERNAL_TOOL_TODO_CREATE
+      - todolist.create
+      - todo.create
+    change_risks:
+      - todo.create 等所有 todo item 工具均要求传入 listId；若 AI 不提供 listId 将返回 invalid_args。
+      - todoListService.deleteTodoList 依赖 DB CASCADE 删除子 asset_todos；若 FK 未正确迁移，cascade 不生效。
+      - 修改 INTERNAL_TOOLS 常量列表若遗漏新工具会导致 tool_not_allowed 错误。
+      - todoService 的 updateTodo 使用动态 SET 子句；若新增字段须同步 DTO 和路由 PATCH 处理。
+
+  - feature_id: asset_tables
+    capability: 用户通过自然语言让 AI 管理动态 JSONB 表格（O(1) 列操作，行软删除）；AI 调用 table_* 工具
+    code_index:
+      - apps/node_backend/src/db/migrations/016_create_asset_tables.sql
+      - apps/node_backend/src/services/assetTableService.ts
+      - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/routes/resources.ts
+      - apps/mobile_chat_app/lib/features/chat/asset_table_api_service.dart
+    doc_index:
+      - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
+    test_index:
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
+    keywords:
+      - asset_table
+      - table_create
+      - table_add_column
+      - table_get
+      - JSONB
+      - sparse storage
+      - column registry
+    change_risks:
+      - getTable 在读取时用 column registry 过滤 cell_data keys；删除列后旧数据仍保留在 JSONB，仅在读时过滤——若直接查询 DB 会看到孤立 key。
+      - addRow 使用子查询计算 MAX(display_number)+1，高并发下可能产生重复 display_number（可接受，仅用于排序）。
+      - removeColumn 仅删除 asset_table_columns 记录，不清理已有行的 cell_data，需注意存储膨胀。
+
+  - feature_id: text_highlights
+    capability: 用户选中助手消息文本后通过上下文菜单"划线"持久化高亮；AI 可用 highlight_list 工具查询
+    code_index:
+      - apps/node_backend/src/db/migrations/017_create_text_highlights.sql
+      - apps/node_backend/src/services/textHighlightService.ts
+      - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/routes/resources.ts
+      - apps/mobile_chat_app/lib/features/chat/text_highlight_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+    doc_index:
+      - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
+    test_index:
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
+    keywords:
+      - text_highlight
+      - highlight_list
+      - SelectionArea
+      - contextMenuBuilder
+      - onSelectionChanged
+      - HighlightSpan
+      - _AssistantMarkdownText
+    change_risks:
+      - _AssistantMarkdownText 中的字符偏移计算依赖 '\n' 分隔符 +1 的行间距假设；若 content 包含 \r\n 换行符，offset 会偏移。
+      - onHighlight 回调通过搜索 messages 列表找到第一个包含所选文本的 assistant 消息；若多条消息含相同文本，高亮会绑定到最早一条。
+      - contextMenuBuilder 仅在 widget.onHighlight != null 时启用；父组件若不传 onHighlight，用户不会看到"划线"按钮。
+
 maintenance_rules:
   update_required_when:
     - 新增、删除或重命名用户可见功能入口。
