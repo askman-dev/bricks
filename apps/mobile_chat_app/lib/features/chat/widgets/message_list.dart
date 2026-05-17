@@ -650,46 +650,48 @@ class _MessageListState extends State<MessageList> {
           onSelectionChanged: (value) {
             _lastSelectedText = value?.plainText ?? '';
           },
-          contextMenuBuilder: widget.onHighlight != null
-              ? (ctx, selectableRegionState) {
-                  return AdaptiveTextSelectionToolbar.buttonItems(
-                    anchors: selectableRegionState.contextMenuAnchors,
-                    buttonItems: [
-                      ...selectableRegionState.contextMenuButtonItems,
-                      ContextMenuButtonItem(
-                        label: '划线',
-                        onPressed: () {
-                          ContextMenuController.removeAny();
-                          final plainText = _lastSelectedText;
-                          if (plainText.isEmpty) return;
-                          // Find the first assistant message whose content
-                          // contains the selected text and fire the callback.
-                          for (final m in widget.messages) {
-                            if (m.role != 'assistant') continue;
-                            // Skip messages without a stable ID — we cannot
-                            // persist a highlight without one.
-                            final messageId = m.messageId;
-                            if (messageId == null) continue;
-                            final idx = m.content.indexOf(plainText);
-                            if (idx != -1) {
-                              widget.onHighlight!(
-                                messageId,
-                                plainText,
-                                idx,
-                                idx + plainText.length,
-                              );
-                              return;
-                            }
-                          }
-                          // No message with a valid ID contains the selected
-                          // text — silently skip rather than emitting an
-                          // invalid (empty) messageId to the backend.
-                        },
-                      ),
-                    ],
-                  );
-                }
-              : null,
+          contextMenuBuilder: (ctx, selectableRegionState) {
+            final extraItems = <ContextMenuButtonItem>[
+              if (widget.onHighlight != null)
+                ContextMenuButtonItem(
+                  label: '划线',
+                  onPressed: () {
+                    ContextMenuController.removeAny();
+                    final plainText = _lastSelectedText;
+                    if (plainText.isEmpty) return;
+                    // Find the first assistant message whose content
+                    // contains the selected text and fire the callback.
+                    for (final m in widget.messages) {
+                      if (m.role != 'assistant') continue;
+                      // Skip messages without a stable ID — we cannot
+                      // persist a highlight without one.
+                      final messageId = m.messageId;
+                      if (messageId == null) continue;
+                      final idx = m.content.indexOf(plainText);
+                      if (idx != -1) {
+                        widget.onHighlight!(
+                          messageId,
+                          plainText,
+                          idx,
+                          idx + plainText.length,
+                        );
+                        return;
+                      }
+                    }
+                    // No message with a valid ID contains the selected
+                    // text — silently skip rather than emitting an
+                    // invalid (empty) messageId to the backend.
+                  },
+                ),
+            ];
+            return AdaptiveTextSelectionToolbar.buttonItems(
+              anchors: selectableRegionState.contextMenuAnchors,
+              buttonItems: [
+                ...selectableRegionState.contextMenuButtonItems,
+                ...extraItems,
+              ],
+            );
+          },
           child: SingleChildScrollView(
             key: _scrollViewKey,
             controller: _scrollController,
