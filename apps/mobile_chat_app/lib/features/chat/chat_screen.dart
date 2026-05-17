@@ -1163,6 +1163,26 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Called when the user taps 删除划线 in the floating highlight menu.
+  Future<void> _handleDeleteHighlight(String highlightId) async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+    try {
+      await _highlightApiService.deleteHighlight(token: token, id: highlightId);
+      if (!mounted) return;
+      setState(() {
+        _highlights = {
+          for (final entry in _highlights.entries)
+            entry.key: entry.value
+                .where((h) => h.highlightId != highlightId)
+                .toList(),
+        }..removeWhere((_, v) => v.isEmpty);
+      });
+    } catch (e) {
+      debugPrint('deleteHighlight failed: $e');
+    }
+  }
+
   String _subSectionKey(String channelId, String sectionId) =>
       '$channelId::$sectionId';
 
@@ -2536,6 +2556,7 @@ class _ChatScreenState extends State<ChatScreen> {
             messages: _messages,
             highlights: _highlights,
             onHighlight: _authToken != null ? _handleHighlight : null,
+            onDeleteHighlight: _authToken != null ? _handleDeleteHighlight : null,
           ),
         ),
         Builder(

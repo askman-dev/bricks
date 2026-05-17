@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
@@ -36,6 +37,7 @@ class MessageList extends StatefulWidget {
     required this.messages,
     this.highlights = const {},
     this.onHighlight,
+    this.onDeleteHighlight,
   });
 
   final List<ChatMessage> messages;
@@ -51,6 +53,9 @@ class MessageList extends StatefulWidget {
     int? startOffset,
     int? endOffset,
   )? onHighlight;
+
+  /// Called when the user taps 删除划线 in the floating highlight menu.
+  final void Function(String highlightId)? onDeleteHighlight;
 
   @override
   State<MessageList> createState() => _MessageListState();
@@ -540,6 +545,7 @@ class _MessageListState extends State<MessageList> {
                         highlights: msg.messageId != null
                             ? (widget.highlights[msg.messageId!] ?? const [])
                             : const [],
+                        onDeleteHighlight: widget.onDeleteHighlight,
                       ),
                     if (msg.isStreaming)
                       Padding(
@@ -854,6 +860,37 @@ class _DeliveryStatusIcon extends StatelessWidget {
   }
 }
 
+/// Shows a floating popup menu when the user taps a highlighted span.
+/// The menu offers Copy and 删除划线 (delete highlight) actions.
+void _showHighlightTapMenu({
+  required BuildContext context,
+  required String highlightId,
+  required String text,
+  required Offset position,
+  required void Function(String highlightId) onDeleteHighlight,
+}) {
+  final size = MediaQuery.of(context).size;
+  showMenu<String>(
+    context: context,
+    position: RelativeRect.fromLTRB(
+      position.dx,
+      position.dy,
+      size.width - position.dx,
+      size.height - position.dy,
+    ),
+    items: const [
+      PopupMenuItem<String>(value: 'copy', child: Text('复制')),
+      PopupMenuItem<String>(value: 'delete', child: Text('删除划线')),
+    ],
+  ).then((value) {
+    if (value == 'copy') {
+      Clipboard.setData(ClipboardData(text: text));
+    } else if (value == 'delete') {
+      onDeleteHighlight(highlightId);
+    }
+  });
+}
+
 class _AssistantMarkdownText extends StatelessWidget {
   const _AssistantMarkdownText({
     required this.text,
@@ -863,6 +900,7 @@ class _AssistantMarkdownText extends StatelessWidget {
     required this.quoteBlockColor,
     required this.textStyle,
     this.highlights = const [],
+    this.onDeleteHighlight,
   });
 
   final String text;
@@ -872,6 +910,9 @@ class _AssistantMarkdownText extends StatelessWidget {
   final Color quoteBlockColor;
   final TextStyle? textStyle;
   final List<HighlightSpan> highlights;
+
+  /// Called when the user taps 删除划线 in the floating highlight popup.
+  final void Function(String highlightId)? onDeleteHighlight;
 
   @override
   Widget build(BuildContext context) {
@@ -890,14 +931,18 @@ class _AssistantMarkdownText extends StatelessWidget {
     var inCodeBlock = false;
     final codeLines = <String>[];
 
-    // Build a list of (selectedText, bgColor) pairs for highlight lookup.
+    // Build a list of highlight lookup items (plain text, color, id).
     // We search directly within each span's rendered text at draw time so
     // that markdown delimiters (**, _, etc.) never corrupt the match offsets.
-    final highlightItems = <({String text, Color bg})>[];
+    final highlightItems = <({String text, Color bg, String highlightId})>[];
     if (highlights.isNotEmpty) {
       for (final h in highlights) {
         if (h.selectedText.isNotEmpty) {
-          highlightItems.add((text: h.selectedText, bg: _parseHighlightColor(h.color)));
+          highlightItems.add((
+            text: h.selectedText,
+            bg: _parseHighlightColor(h.color),
+            highlightId: h.highlightId,
+          ));
         }
       }
     }
@@ -911,20 +956,25 @@ class _AssistantMarkdownText extends StatelessWidget {
       if (spanText.isEmpty) return [span];
 
       // Collect all match ranges within this span.
-      final ranges = <({int start, int end, Color bg})>[];
+      final ranges = <({int start, int end, Color bg, String highlightId})>[];
       for (final h in highlightItems) {
         var searchStart = 0;
         while (true) {
           final idx = spanText.indexOf(h.text, searchStart);
           if (idx == -1) break;
-          ranges.add((start: idx, end: idx + h.text.length, bg: h.bg));
+          ranges.add((
+            start: idx,
+            end: idx + h.text.length,
+            bg: h.bg,
+            highlightId: h.highlightId,
+          ));
           searchStart = idx + h.text.length;
         }
       }
       if (ranges.isEmpty) return [span];
-      // Sort by start position and merge overlapping or adjacent ranges (keep first color).
+      // Sort by start position and merge overlapping or adjacent ranges (keep first color/id).
       ranges.sort((a, b) => a.start.compareTo(b.start));
-      final merged = <({int start, int end, Color bg})>[];
+      final merged = <({int start, int end, Color bg, String highlightId})>[];
       for (final r in ranges) {
         if (merged.isNotEmpty && r.start <= merged.last.end) {
           final last = merged.removeLast();
@@ -932,6 +982,7 @@ class _AssistantMarkdownText extends StatelessWidget {
             start: last.start,
             end: r.end > last.end ? r.end : last.end,
             bg: last.bg,
+            highlightId: last.highlightId,
           ));
         } else {
           merged.add(r);
@@ -944,9 +995,33 @@ class _AssistantMarkdownText extends StatelessWidget {
         if (r.start > cursor) {
           result.add(TextSpan(text: spanText.substring(cursor, r.start), style: span.style));
         }
+        final matchText = spanText.substring(r.start, r.end);
+        // Build a tap recognizer so tapping the highlighted span opens the
+        // floating delete/copy menu.
+        TapGestureRecognizer? recognizer;
+        if (onDeleteHighlight != null) {
+          final capturedHighlightId = r.highlightId;
+          final capturedText = matchText;
+          recognizer = TapGestureRecognizer()
+            ..onTapDown = (TapDownDetails details) {
+              _showHighlightTapMenu(
+                context: context,
+                highlightId: capturedHighlightId,
+                text: capturedText,
+                position: details.globalPosition,
+                onDeleteHighlight: onDeleteHighlight!,
+              );
+            };
+        }
         result.add(TextSpan(
-          text: spanText.substring(r.start, r.end),
-          style: (span.style ?? baseStyle).copyWith(backgroundColor: r.bg),
+          text: matchText,
+          style: (span.style ?? baseStyle).copyWith(
+            backgroundColor: r.bg,
+            decoration: TextDecoration.underline,
+            decorationColor: r.bg.withValues(alpha: 1.0),
+            decorationThickness: 2.0,
+          ),
+          recognizer: recognizer,
         ));
         cursor = r.end;
       }
