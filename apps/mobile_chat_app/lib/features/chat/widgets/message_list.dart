@@ -891,7 +891,7 @@ void _showHighlightTapMenu({
   });
 }
 
-class _AssistantMarkdownText extends StatelessWidget {
+class _AssistantMarkdownText extends StatefulWidget {
   const _AssistantMarkdownText({
     required this.text,
     required this.textColor,
@@ -915,7 +915,39 @@ class _AssistantMarkdownText extends StatelessWidget {
   final void Function(String highlightId)? onDeleteHighlight;
 
   @override
+  State<_AssistantMarkdownText> createState() => _AssistantMarkdownTextState();
+}
+
+class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
+  /// Gesture recognizers created during the last build. Disposed before each
+  /// rebuild and on widget removal to prevent memory leaks.
+  final List<GestureRecognizer> _recognizers = [];
+
+  void _disposeRecognizers() {
+    for (final r in _recognizers) {
+      r.dispose();
+    }
+    _recognizers.clear();
+  }
+
+  @override
+  void dispose() {
+    _disposeRecognizers();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Dispose any recognizers from the previous build before allocating new ones.
+    _disposeRecognizers();
+    final text = widget.text;
+    final textColor = widget.textColor;
+    final textStyle = widget.textStyle;
+    final linkColor = widget.linkColor;
+    final codeBlockColor = widget.codeBlockColor;
+    final quoteBlockColor = widget.quoteBlockColor;
+    final highlights = widget.highlights;
+    final onDeleteHighlight = widget.onDeleteHighlight;
     final baseStyle = (textStyle ?? const TextStyle()).copyWith(
       color: textColor,
     );
@@ -997,7 +1029,7 @@ class _AssistantMarkdownText extends StatelessWidget {
         }
         final matchText = spanText.substring(r.start, r.end);
         // Build a tap recognizer so tapping the highlighted span opens the
-        // floating delete/copy menu.
+        // floating delete/copy menu. Track it in _recognizers for disposal.
         TapGestureRecognizer? recognizer;
         if (onDeleteHighlight != null) {
           final capturedHighlightId = r.highlightId;
@@ -1009,9 +1041,10 @@ class _AssistantMarkdownText extends StatelessWidget {
                 highlightId: capturedHighlightId,
                 text: capturedText,
                 position: details.globalPosition,
-                onDeleteHighlight: onDeleteHighlight!,
+                onDeleteHighlight: onDeleteHighlight,
               );
             };
+          _recognizers.add(recognizer);
         }
         result.add(TextSpan(
           text: matchText,
