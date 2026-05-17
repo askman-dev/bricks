@@ -9,6 +9,7 @@ import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
 import 'chat_message_sort.dart';
+import 'text_highlight_api_service.dart';
 
 import '../auth/auth_service.dart';
 import '../agents/agents_screen.dart';
@@ -89,6 +90,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
+  final TextHighlightApiService _highlightApiService = TextHighlightApiService();
+  Map<String, List<HighlightSpan>> _highlights = const {};
   StreamSubscription<ChatHistorySnapshot>? _sseSubscription;
   static const Duration _sseReconnectDelay = Duration(seconds: 3);
   final Map<String, ChatRouter> _channelRouters = {};
@@ -1058,6 +1061,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _messages.clear();
+        _highlights = const {};
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
       });
@@ -1094,14 +1098,68 @@ class _ChatScreenState extends State<ChatScreen> {
         subSection: capturedSubSection,
       );
       _configureActiveScopeSync();
+      unawaited(_loadHighlightsForMessages(token: token));
     } catch (_) {
       if (!mounted || _isScopeStale()) return;
       setState(() {
         _messages.clear();
+        _highlights = const {};
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
       });
       _configureActiveScopeSync();
+    }
+  }
+
+  /// Loads all highlights for the currently loaded messages and refreshes
+  /// the [_highlights] map so [MessageList] can render them.
+  Future<void> _loadHighlightsForMessages({required String token}) async {
+    try {
+      final list = await _highlightApiService.listHighlights(token: token);
+      if (!mounted) return;
+      final updated = <String, List<HighlightSpan>>{};
+      for (final h in list) {
+        updated.putIfAbsent(h.messageId, () => []).add(
+              HighlightSpan.fromHighlight(h),
+            );
+      }
+      setState(() {
+        _highlights = updated;
+      });
+    } catch (e) {
+      debugPrint('loadHighlights failed: $e');
+    }
+  }
+
+  /// Called when the user taps 划线 in the selection context menu.
+  Future<void> _handleHighlight(
+    String messageId,
+    String selectedText,
+    int? startOffset,
+    int? endOffset,
+  ) async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+    try {
+      final created = await _highlightApiService.createHighlight(
+        token: token,
+        messageId: messageId,
+        selectedText: selectedText,
+        startOffset: startOffset,
+        endOffset: endOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _highlights = {
+          ..._highlights,
+          messageId: [
+            ...(_highlights[messageId] ?? []),
+            HighlightSpan.fromHighlight(created),
+          ],
+        };
+      });
+    } catch (e) {
+      debugPrint('createHighlight failed: $e');
     }
   }
 
@@ -2473,7 +2531,13 @@ class _ChatScreenState extends State<ChatScreen> {
     // Message list + composer bar (shared between mobile and desktop).
     final chatContent = Column(
       children: [
-        Expanded(child: MessageList(messages: _messages)),
+        Expanded(
+          child: MessageList(
+            messages: _messages,
+            highlights: _highlights,
+            onHighlight: _authToken != null ? _handleHighlight : null,
+          ),
+        ),
         Builder(
           builder: (context) {
             final effectiveRouter = _effectiveRouterForScope();
