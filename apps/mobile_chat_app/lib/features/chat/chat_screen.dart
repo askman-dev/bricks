@@ -15,6 +15,7 @@ import '../agents/agents_screen.dart';
 import '../settings/llm_config_service.dart';
 import '../settings/settings_screen.dart';
 import '../../services/agents_repository_factory.dart';
+import 'asset_table_api_service.dart';
 import 'chat_arbitration.dart';
 import 'chat_bot_registry.dart';
 import 'chat_task_protocol.dart';
@@ -22,6 +23,7 @@ import 'chat_topology.dart';
 import 'chat_message.dart';
 import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
+import 'todo_api_service.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
 
@@ -69,6 +71,10 @@ class _ChatScreenState extends State<ChatScreen> {
   List<LlmConfig> _llmConfigs = const [];
   List<PlatformNodeConfig> _platformNodes = const [];
   Map<String, List<PlatformAgentConfig>> _openClawAgentsByNodeId = const {};
+  List<TodoList> _todoLists = const [];
+  List<AssetTableSummary> _assetTables = const [];
+  final TodoApiService _todoApiService = TodoApiService();
+  final AssetTableApiService _assetTableApiService = AssetTableApiService();
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
@@ -120,6 +126,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _disconnectSse();
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
+    _todoApiService.dispose();
+    _assetTableApiService.dispose();
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
@@ -142,6 +150,8 @@ class _ChatScreenState extends State<ChatScreen> {
       List<ChatChannelNameSetting> channelNames = const [];
       List<PlatformNodeConfig> platformNodes = const [];
       Map<String, List<PlatformAgentConfig>> openClawAgentsByNodeId = const {};
+      List<TodoList> todoLists = const [];
+      List<AssetTableSummary> assetTables = const [];
       if (authToken != null && authToken.isNotEmpty) {
         try {
           persistedScopes = await _chatHistoryApiService.loadScopes(
@@ -188,6 +198,19 @@ class _ChatScreenState extends State<ChatScreen> {
         } catch (e) {
           debugPrint(
             'loadOpenClawAgents failed, continuing without OpenClaw @ menu agents: $e',
+          );
+        }
+        try {
+          todoLists = await _todoApiService.listTodoLists(token: authToken);
+        } catch (e) {
+          debugPrint('loadTodoLists failed, continuing without todo lists: $e');
+        }
+        try {
+          assetTables =
+              await _assetTableApiService.listTables(token: authToken);
+        } catch (e) {
+          debugPrint(
+            'loadAssetTables failed, continuing without asset tables: $e',
           );
         }
       }
@@ -278,6 +301,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _platformNodes = platformNodes;
         _activeChannelId = resolvedActiveChannel;
         _activeSubSection = restoredActiveSubSection;
+        _todoLists = todoLists;
+        _assetTables = assetTables;
       });
       await _loadMessagesForActiveScope();
     } catch (error) {
@@ -2290,12 +2315,31 @@ class _ChatScreenState extends State<ChatScreen> {
                   .toList(growable: false),
             );
           }).toList(growable: false),
+          resources: [
+            ..._todoLists.map(
+              (t) => ChatResourceItem(
+                id: t.id,
+                type: ChatResourceType.todoList,
+                title: t.title,
+                notes: t.notes,
+              ),
+            ),
+            ..._assetTables.map(
+              (t) => ChatResourceItem(
+                id: t.resourceId,
+                type: ChatResourceType.assetTable,
+                title: t.title,
+              ),
+            ),
+          ],
           selectedChannelId: _activeChannelId,
           onChannelSelected: _switchChannel,
           onChannelRename: _renameChannel,
           onChannelArchive: _archiveChannel,
           onRequestClose: onRequestClose,
           closeOnChannelSelected: closeOnChannelSelected,
+          todoApiService: _todoApiService,
+          authToken: _authToken,
           onActionSelected: (action) {
             switch (action) {
               case ChatNavigationAction.appSettings:
