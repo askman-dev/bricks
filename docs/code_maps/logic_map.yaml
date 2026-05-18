@@ -585,6 +585,7 @@ index:
       - SelectionArea
       - contextMenuBuilder
       - onSelectionChanged
+      - list-level selection toolbar
       - floating toolbar
       - markdown highlight offsets
       - code block highlights
@@ -593,6 +594,7 @@ index:
       - HighlightSpan
       - _AssistantMarkdownText
     change_risks:
+      - Flutter Web 鼠标拖选依赖外层 list-level SelectionArea 弹出工具栏；将 SelectionArea 下放到单条消息会导致 Chrome 选择文本后不显示浮动工具条。
       - 选区 offset 映射依赖前端 markdown renderer 与 rendered-text index 对 markdown 标记、代码块、表格文本的处理保持一致；渲染规则变化时需同步更新映射测试。
       - 表格单元格或重复文本若使用文本搜索而不是 stored startOffset/endOffset，会导致划线显示或删除到错误位置。
       - Flutter Web 上 TextSpan TapGestureRecognizer 会干扰 SelectionArea 拖拽选择；web 删除路径应继续通过选择工具栏实现。

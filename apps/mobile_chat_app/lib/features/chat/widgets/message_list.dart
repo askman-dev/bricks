@@ -74,6 +74,10 @@ class _MessageListState extends State<MessageList> {
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
 
+  // Tracks the most recent text selection so the context menu action can read
+  // it when Flutter invokes contextMenuBuilder.
+  String _lastSelectedText = '';
+
   // A single key attached only to the focused (latest user) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
   // every list row.
@@ -538,25 +542,17 @@ class _MessageListState extends State<MessageList> {
                         textColor: chatColors.onMessageUser,
                       )
                     else
-                      _AssistantMessageSelectionArea(
-                        message: msg,
+                      _AssistantMarkdownText(
+                        text: msg.content,
+                        textColor: chatColors.onMessageAssistant,
+                        linkColor: chatColors.linkText,
+                        codeBlockColor: chatColors.codeBlockBackground,
+                        quoteBlockColor: chatColors.quoteBackground,
+                        textStyle: Theme.of(context).textTheme.bodyLarge,
                         highlights: msg.messageId != null
                             ? (widget.highlights[msg.messageId!] ?? const [])
                             : const [],
-                        onHighlight: widget.onHighlight,
                         onDeleteHighlight: widget.onDeleteHighlight,
-                        child: _AssistantMarkdownText(
-                          text: msg.content,
-                          textColor: chatColors.onMessageAssistant,
-                          linkColor: chatColors.linkText,
-                          codeBlockColor: chatColors.codeBlockBackground,
-                          quoteBlockColor: chatColors.quoteBackground,
-                          textStyle: Theme.of(context).textTheme.bodyLarge,
-                          highlights: msg.messageId != null
-                              ? (widget.highlights[msg.messageId!] ?? const [])
-                              : const [],
-                          onDeleteHighlight: widget.onDeleteHighlight,
-                        ),
                       ),
                     if (msg.isStreaming)
                       Padding(
@@ -663,20 +659,68 @@ class _MessageListState extends State<MessageList> {
     // can call Scrollable.ensureVisible directly without any jumpTo/retry hack.
     return Stack(
       children: [
-        SingleChildScrollView(
-          key: _scrollViewKey,
-          controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(
-            BricksSpacing.md,
-            BricksSpacing.md,
-            BricksSpacing.md,
-            _listBottomPadding,
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < messages.length; i++)
-                _buildMessageItem(context, i),
-            ],
+        SelectionArea(
+          onSelectionChanged: (value) {
+            _lastSelectedText = value?.plainText ?? '';
+          },
+          contextMenuBuilder: (ctx, selectableRegionState) {
+            final resolved = _resolveMessageListSelection(
+              messages: widget.messages,
+              selectedText: _lastSelectedText,
+              highlightsByMessageId: widget.highlights,
+            );
+            final extraItems = <ContextMenuButtonItem>[];
+            final matchingHighlightId = resolved?.matchingHighlightId;
+            if (matchingHighlightId != null &&
+                widget.onDeleteHighlight != null) {
+              extraItems.add(
+                ContextMenuButtonItem(
+                  label: '删除划线',
+                  onPressed: () {
+                    ContextMenuController.removeAny();
+                    widget.onDeleteHighlight!(matchingHighlightId);
+                  },
+                ),
+              );
+            } else if (resolved != null && widget.onHighlight != null) {
+              extraItems.add(
+                ContextMenuButtonItem(
+                  label: '划线',
+                  onPressed: () {
+                    ContextMenuController.removeAny();
+                    widget.onHighlight!(
+                      resolved.messageId,
+                      resolved.selectedText,
+                      resolved.startOffset,
+                      resolved.endOffset,
+                    );
+                  },
+                ),
+              );
+            }
+            return AdaptiveTextSelectionToolbar.buttonItems(
+              anchors: selectableRegionState.contextMenuAnchors,
+              buttonItems: [
+                ...selectableRegionState.contextMenuButtonItems,
+                ...extraItems,
+              ],
+            );
+          },
+          child: SingleChildScrollView(
+            key: _scrollViewKey,
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(
+              BricksSpacing.md,
+              BricksSpacing.md,
+              BricksSpacing.md,
+              _listBottomPadding,
+            ),
+            child: Column(
+              children: [
+                for (var i = 0; i < messages.length; i++)
+                  _buildMessageItem(context, i),
+              ],
+            ),
           ),
         ),
         Positioned(
@@ -826,147 +870,76 @@ class _DeliveryStatusIcon extends StatelessWidget {
 
 class _ResolvedAssistantSelection {
   const _ResolvedAssistantSelection({
+    required this.messageId,
     required this.selectedText,
     required this.startOffset,
     required this.endOffset,
     this.matchingHighlightId,
   });
 
+  final String messageId;
   final String selectedText;
   final int? startOffset;
   final int? endOffset;
   final String? matchingHighlightId;
 }
 
-class _AssistantMessageSelectionArea extends StatefulWidget {
-  const _AssistantMessageSelectionArea({
-    required this.message,
-    required this.highlights,
-    required this.child,
-    this.onHighlight,
-    this.onDeleteHighlight,
-  });
-
-  final ChatMessage message;
-  final List<HighlightSpan> highlights;
-  final Widget child;
-  final void Function(
-    String messageId,
-    String selectedText,
-    int? startOffset,
-    int? endOffset,
-  )? onHighlight;
-  final void Function(String highlightId)? onDeleteHighlight;
-
-  @override
-  State<_AssistantMessageSelectionArea> createState() =>
-      _AssistantMessageSelectionAreaState();
-}
-
-class _AssistantMessageSelectionAreaState
-    extends State<_AssistantMessageSelectionArea> {
-  String _selectedText = '';
-
-  @override
-  Widget build(BuildContext context) {
-    return SelectionArea(
-      onSelectionChanged: (value) {
-        _selectedText = value?.plainText ?? '';
-      },
-      contextMenuBuilder: (ctx, selectableRegionState) {
-        final resolved = _resolveAssistantSelection(
-          messageText: widget.message.content,
-          selectedText: _selectedText,
-          highlights: widget.highlights,
-        );
-        final extraItems = <ContextMenuButtonItem>[];
-        final matchingHighlightId = resolved?.matchingHighlightId;
-        if (matchingHighlightId != null && widget.onDeleteHighlight != null) {
-          extraItems.add(
-            ContextMenuButtonItem(
-              label: '删除划线',
-              onPressed: () {
-                ContextMenuController.removeAny();
-                widget.onDeleteHighlight!(matchingHighlightId);
-              },
-            ),
-          );
-        } else if (resolved != null &&
-            widget.onHighlight != null &&
-            widget.message.messageId != null) {
-          extraItems.add(
-            ContextMenuButtonItem(
-              label: '划线',
-              onPressed: () {
-                ContextMenuController.removeAny();
-                widget.onHighlight!(
-                  widget.message.messageId!,
-                  resolved.selectedText,
-                  resolved.startOffset,
-                  resolved.endOffset,
-                );
-              },
-            ),
-          );
-        }
-        return AdaptiveTextSelectionToolbar.buttonItems(
-          anchors: selectableRegionState.contextMenuAnchors,
-          buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems,
-            ...extraItems,
-          ],
-        );
-      },
-      child: widget.child,
-    );
-  }
-}
-
-_ResolvedAssistantSelection? _resolveAssistantSelection({
-  required String messageText,
+_ResolvedAssistantSelection? _resolveMessageListSelection({
+  required List<ChatMessage> messages,
   required String selectedText,
-  required List<HighlightSpan> highlights,
+  required Map<String, List<HighlightSpan>> highlightsByMessageId,
 }) {
   final normalizedSelection =
       selectedText.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   if (normalizedSelection.trim().isEmpty) return null;
-  final mapping = _RenderedTextIndex.fromMarkdownMessage(messageText);
-  final renderedStart = mapping.text.indexOf(normalizedSelection);
-  int? startOffset;
-  int? endOffset;
-  if (renderedStart != -1) {
-    startOffset = mapping.sourceOffsetAt(renderedStart);
-    endOffset =
-        mapping.sourceOffsetAfter(renderedStart + normalizedSelection.length);
-  } else {
-    final normalizedMessage =
-        messageText.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-    final rawStart = normalizedMessage.indexOf(normalizedSelection);
-    if (rawStart != -1) {
+
+  for (final message in messages) {
+    if (message.role != 'assistant') continue;
+    final messageId = message.messageId;
+    if (messageId == null) continue;
+
+    final mapping = _RenderedTextIndex.fromMarkdownMessage(message.content);
+    final renderedStart = mapping.text.indexOf(normalizedSelection);
+    int? startOffset;
+    int? endOffset;
+    if (renderedStart != -1) {
+      startOffset = mapping.sourceOffsetAt(renderedStart);
+      endOffset = mapping.sourceOffsetAfter(
+        renderedStart + normalizedSelection.length,
+      );
+    } else {
+      final normalizedMessage =
+          message.content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      final rawStart = normalizedMessage.indexOf(normalizedSelection);
+      if (rawStart == -1) continue;
       startOffset = rawStart;
       endOffset = rawStart + normalizedSelection.length;
     }
-  }
 
-  String? matchingHighlightId;
-  for (final highlight in highlights) {
-    if (_highlightMatchesSelection(
-      highlight: highlight,
-      selectedText: normalizedSelection,
-      startOffset: startOffset,
-      endOffset: endOffset,
-    )) {
+    String? matchingHighlightId;
+    for (final highlight in highlightsByMessageId[messageId] ?? const []) {
+      if (!_highlightMatchesSelection(
+        highlight: highlight,
+        selectedText: normalizedSelection,
+        startOffset: startOffset,
+        endOffset: endOffset,
+      )) {
+        continue;
+      }
       matchingHighlightId = highlight.highlightId;
       break;
     }
+
+    return _ResolvedAssistantSelection(
+      messageId: messageId,
+      selectedText: normalizedSelection,
+      startOffset: startOffset,
+      endOffset: endOffset,
+      matchingHighlightId: matchingHighlightId,
+    );
   }
 
-  return _ResolvedAssistantSelection(
-    selectedText: normalizedSelection,
-    startOffset: startOffset,
-    endOffset: endOffset,
-    matchingHighlightId: matchingHighlightId,
-  );
+  return null;
 }
 
 bool _highlightMatchesSelection({
