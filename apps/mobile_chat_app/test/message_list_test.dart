@@ -33,13 +33,45 @@ List<ChatMessage> _messages(String prefix, int count) {
 Widget _build(
   List<ChatMessage> messages, {
   ThemeData? theme,
+  Map<String, List<HighlightSpan>> highlights = const {},
+  void Function(String, String, int?, int?)? onHighlight,
+  void Function(String)? onDeleteHighlight,
 }) =>
     MaterialApp(
       theme: theme,
       home: Scaffold(
-        body: SizedBox(height: 320, child: MessageList(messages: messages)),
+        body: SizedBox(
+          height: 320,
+          child: MessageList(
+            messages: messages,
+            highlights: highlights,
+            onHighlight: onHighlight,
+            onDeleteHighlight: onDeleteHighlight,
+          ),
+        ),
       ),
     );
+
+Iterable<TextSpan> _leafTextSpans(InlineSpan span) sync* {
+  if (span is TextSpan) {
+    final children = span.children;
+    if (children == null || children.isEmpty) {
+      yield span;
+      return;
+    }
+    for (final child in children) {
+      yield* _leafTextSpans(child);
+    }
+  }
+}
+
+List<TextSpan> _decoratedLeafSpans(WidgetTester tester) {
+  return tester
+      .widgetList<RichText>(find.byType(RichText))
+      .expand((richText) => _leafTextSpans(richText.text))
+      .where((span) => span.style?.decoration == TextDecoration.underline)
+      .toList();
+}
 
 void main() {
   group('MessageList auto scroll', () {
@@ -551,6 +583,140 @@ void main() {
       expect(find.text('含义'), findsOneWidget);
       expect(find.text('Flutter 的开发运行命令'), findsOneWidget);
       expect(find.text('指定 Chrome 设备'), findsOneWidget);
+    });
+  });
+
+  group('Assistant highlights', () {
+    testWidgets('uses stored offsets instead of highlighting duplicate text',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-duplicates',
+        role: 'assistant',
+        content: 'repeat repeat',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-duplicates': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'repeat',
+                startOffset: 7,
+                endOffset: 13,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['repeat']);
+    });
+
+    testWidgets('splits one cross-paragraph highlight into subsegments',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-paragraphs',
+        role: 'assistant',
+        content: 'first line\nsecond line',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-paragraphs': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'line\nsecond',
+                startOffset: 6,
+                endOffset: 17,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['line', 'second']);
+    });
+
+    testWidgets('renders stored ranges inside code blocks', (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-code',
+        role: 'assistant',
+        content: '```dart\nfinal answer = 42;\n```',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      const start = '```dart\nfinal '.length;
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-code': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'answer',
+                startOffset: start,
+                endOffset: start + 6,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['answer']);
+      expect(decorated.single.style?.fontFamily, 'monospace');
+    });
+
+    testWidgets('renders stored ranges inside markdown table cells',
+        (tester) async {
+      const content = '''
+| Name | Value |
+|---|---|
+| first | target |
+''';
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-table',
+        role: 'assistant',
+        content: content,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      final start = content.indexOf('target');
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: {
+            'assistant-highlight-table': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'target',
+                startOffset: start,
+                endOffset: start + 'target'.length,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Table), findsOneWidget);
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['target']);
     });
   });
 

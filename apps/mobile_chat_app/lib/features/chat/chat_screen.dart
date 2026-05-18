@@ -90,7 +90,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
-  final TextHighlightApiService _highlightApiService = TextHighlightApiService();
+  final TextHighlightApiService _highlightApiService =
+      TextHighlightApiService();
   Map<String, List<HighlightSpan>> _highlights = const {};
   StreamSubscription<ChatHistorySnapshot>? _sseSubscription;
   static const Duration _sseReconnectDelay = Duration(seconds: 3);
@@ -1173,9 +1174,8 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _highlights = {
           for (final entry in _highlights.entries)
-            entry.key: entry.value
-                .where((h) => h.highlightId != highlightId)
-                .toList(),
+            entry.key:
+                entry.value.where((h) => h.highlightId != highlightId).toList(),
         }..removeWhere((_, v) => v.isEmpty);
       });
     } catch (e) {
@@ -2556,7 +2556,8 @@ class _ChatScreenState extends State<ChatScreen> {
             messages: _messages,
             highlights: _highlights,
             onHighlight: _authToken != null ? _handleHighlight : null,
-            onDeleteHighlight: _authToken != null ? _handleDeleteHighlight : null,
+            onDeleteHighlight:
+                _authToken != null ? _handleDeleteHighlight : null,
           ),
         ),
         Builder(

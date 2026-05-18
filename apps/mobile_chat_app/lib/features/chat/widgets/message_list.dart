@@ -18,15 +18,21 @@ class HighlightSpan {
     required this.highlightId,
     required this.selectedText,
     required this.color,
+    this.startOffset,
+    this.endOffset,
   });
 
   final String highlightId;
   final String selectedText;
+  final int? startOffset;
+  final int? endOffset;
   final String color;
 
   static HighlightSpan fromHighlight(TextHighlight h) => HighlightSpan(
         highlightId: h.id,
         selectedText: h.selectedText,
+        startOffset: h.startOffset,
+        endOffset: h.endOffset,
         color: h.color,
       );
 }
@@ -67,10 +73,6 @@ class _MessageListState extends State<MessageList> {
   static const double _kJumpButtonShowScreens = 2;
   bool _showJumpToLatestButton = false;
   double _listBottomPadding = 0;
-
-  // Tracks the most recent text selection so the context menu "Highlight"
-  // action can read it without requiring currentSelection from the state.
-  String _lastSelectedText = '';
 
   // A single key attached only to the focused (latest user) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
@@ -536,17 +538,25 @@ class _MessageListState extends State<MessageList> {
                         textColor: chatColors.onMessageUser,
                       )
                     else
-                      _AssistantMarkdownText(
-                        text: msg.content,
-                        textColor: chatColors.onMessageAssistant,
-                        linkColor: chatColors.linkText,
-                        codeBlockColor: chatColors.codeBlockBackground,
-                        quoteBlockColor: chatColors.quoteBackground,
-                        textStyle: Theme.of(context).textTheme.bodyLarge,
+                      _AssistantMessageSelectionArea(
+                        message: msg,
                         highlights: msg.messageId != null
                             ? (widget.highlights[msg.messageId!] ?? const [])
                             : const [],
+                        onHighlight: widget.onHighlight,
                         onDeleteHighlight: widget.onDeleteHighlight,
+                        child: _AssistantMarkdownText(
+                          text: msg.content,
+                          textColor: chatColors.onMessageAssistant,
+                          linkColor: chatColors.linkText,
+                          codeBlockColor: chatColors.codeBlockBackground,
+                          quoteBlockColor: chatColors.quoteBackground,
+                          textStyle: Theme.of(context).textTheme.bodyLarge,
+                          highlights: msg.messageId != null
+                              ? (widget.highlights[msg.messageId!] ?? const [])
+                              : const [],
+                          onDeleteHighlight: widget.onDeleteHighlight,
+                        ),
                       ),
                     if (msg.isStreaming)
                       Padding(
@@ -653,97 +663,20 @@ class _MessageListState extends State<MessageList> {
     // can call Scrollable.ensureVisible directly without any jumpTo/retry hack.
     return Stack(
       children: [
-        SelectionArea(
-          onSelectionChanged: (value) {
-            _lastSelectedText = value?.plainText ?? '';
-          },
-          contextMenuBuilder: (ctx, selectableRegionState) {
-            final selectedText = _lastSelectedText;
-
-            // Check if the selected text exactly matches an existing highlight.
-            // On web, tap-on-highlight is unavailable (recognizer is skipped to
-            // avoid gesture-arena competition), so the context menu is the only
-            // way to delete highlights; on native it acts as an additional path.
-            String? matchingHighlightId;
-            if (selectedText.isNotEmpty &&
-                widget.onDeleteHighlight != null) {
-              outer:
-              for (final spans in widget.highlights.values) {
-                for (final span in spans) {
-                  if (span.selectedText == selectedText) {
-                    matchingHighlightId = span.highlightId;
-                    break outer;
-                  }
-                }
-              }
-            }
-
-            final extraItems = <ContextMenuButtonItem>[
-              if (matchingHighlightId != null)
-                // Selected text is an existing highlight → offer deletion.
-                ContextMenuButtonItem(
-                  label: '删除划线',
-                  onPressed: () {
-                    ContextMenuController.removeAny();
-                    widget.onDeleteHighlight!(matchingHighlightId!);
-                  },
-                )
-              else if (widget.onHighlight != null && selectedText.isNotEmpty)
-                // Selected text is not yet highlighted → offer creation.
-                ContextMenuButtonItem(
-                  label: '划线',
-                  onPressed: () {
-                    ContextMenuController.removeAny();
-                    final plainText = selectedText;
-                    if (plainText.isEmpty) return;
-                    // Find the first assistant message whose content
-                    // contains the selected text and fire the callback.
-                    for (final m in widget.messages) {
-                      if (m.role != 'assistant') continue;
-                      // Skip messages without a stable ID — we cannot
-                      // persist a highlight without one.
-                      final messageId = m.messageId;
-                      if (messageId == null) continue;
-                      final idx = m.content.indexOf(plainText);
-                      if (idx != -1) {
-                        widget.onHighlight!(
-                          messageId,
-                          plainText,
-                          idx,
-                          idx + plainText.length,
-                        );
-                        return;
-                      }
-                    }
-                    // No message with a valid ID contains the selected
-                    // text — silently skip rather than emitting an
-                    // invalid (empty) messageId to the backend.
-                  },
-                ),
-            ];
-            return AdaptiveTextSelectionToolbar.buttonItems(
-              anchors: selectableRegionState.contextMenuAnchors,
-              buttonItems: [
-                ...selectableRegionState.contextMenuButtonItems,
-                ...extraItems,
-              ],
-            );
-          },
-          child: SingleChildScrollView(
-            key: _scrollViewKey,
-            controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(
-              BricksSpacing.md,
-              BricksSpacing.md,
-              BricksSpacing.md,
-              _listBottomPadding,
-            ),
-            child: Column(
-              children: [
-                for (var i = 0; i < messages.length; i++)
-                  _buildMessageItem(context, i),
-              ],
-            ),
+        SingleChildScrollView(
+          key: _scrollViewKey,
+          controller: _scrollController,
+          padding: EdgeInsets.fromLTRB(
+            BricksSpacing.md,
+            BricksSpacing.md,
+            BricksSpacing.md,
+            _listBottomPadding,
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < messages.length; i++)
+                _buildMessageItem(context, i),
+            ],
           ),
         ),
         Positioned(
@@ -891,6 +824,167 @@ class _DeliveryStatusIcon extends StatelessWidget {
   }
 }
 
+class _ResolvedAssistantSelection {
+  const _ResolvedAssistantSelection({
+    required this.selectedText,
+    required this.startOffset,
+    required this.endOffset,
+    this.matchingHighlightId,
+  });
+
+  final String selectedText;
+  final int? startOffset;
+  final int? endOffset;
+  final String? matchingHighlightId;
+}
+
+class _AssistantMessageSelectionArea extends StatefulWidget {
+  const _AssistantMessageSelectionArea({
+    required this.message,
+    required this.highlights,
+    required this.child,
+    this.onHighlight,
+    this.onDeleteHighlight,
+  });
+
+  final ChatMessage message;
+  final List<HighlightSpan> highlights;
+  final Widget child;
+  final void Function(
+    String messageId,
+    String selectedText,
+    int? startOffset,
+    int? endOffset,
+  )? onHighlight;
+  final void Function(String highlightId)? onDeleteHighlight;
+
+  @override
+  State<_AssistantMessageSelectionArea> createState() =>
+      _AssistantMessageSelectionAreaState();
+}
+
+class _AssistantMessageSelectionAreaState
+    extends State<_AssistantMessageSelectionArea> {
+  String _selectedText = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      onSelectionChanged: (value) {
+        _selectedText = value?.plainText ?? '';
+      },
+      contextMenuBuilder: (ctx, selectableRegionState) {
+        final resolved = _resolveAssistantSelection(
+          messageText: widget.message.content,
+          selectedText: _selectedText,
+          highlights: widget.highlights,
+        );
+        final extraItems = <ContextMenuButtonItem>[];
+        final matchingHighlightId = resolved?.matchingHighlightId;
+        if (matchingHighlightId != null && widget.onDeleteHighlight != null) {
+          extraItems.add(
+            ContextMenuButtonItem(
+              label: '删除划线',
+              onPressed: () {
+                ContextMenuController.removeAny();
+                widget.onDeleteHighlight!(matchingHighlightId);
+              },
+            ),
+          );
+        } else if (resolved != null &&
+            widget.onHighlight != null &&
+            widget.message.messageId != null) {
+          extraItems.add(
+            ContextMenuButtonItem(
+              label: '划线',
+              onPressed: () {
+                ContextMenuController.removeAny();
+                widget.onHighlight!(
+                  widget.message.messageId!,
+                  resolved.selectedText,
+                  resolved.startOffset,
+                  resolved.endOffset,
+                );
+              },
+            ),
+          );
+        }
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: selectableRegionState.contextMenuAnchors,
+          buttonItems: [
+            ...selectableRegionState.contextMenuButtonItems,
+            ...extraItems,
+          ],
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+_ResolvedAssistantSelection? _resolveAssistantSelection({
+  required String messageText,
+  required String selectedText,
+  required List<HighlightSpan> highlights,
+}) {
+  final normalizedSelection =
+      selectedText.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  if (normalizedSelection.trim().isEmpty) return null;
+  final mapping = _RenderedTextIndex.fromMarkdownMessage(messageText);
+  final renderedStart = mapping.text.indexOf(normalizedSelection);
+  int? startOffset;
+  int? endOffset;
+  if (renderedStart != -1) {
+    startOffset = mapping.sourceOffsetAt(renderedStart);
+    endOffset =
+        mapping.sourceOffsetAfter(renderedStart + normalizedSelection.length);
+  } else {
+    final normalizedMessage =
+        messageText.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final rawStart = normalizedMessage.indexOf(normalizedSelection);
+    if (rawStart != -1) {
+      startOffset = rawStart;
+      endOffset = rawStart + normalizedSelection.length;
+    }
+  }
+
+  String? matchingHighlightId;
+  for (final highlight in highlights) {
+    if (_highlightMatchesSelection(
+      highlight: highlight,
+      selectedText: normalizedSelection,
+      startOffset: startOffset,
+      endOffset: endOffset,
+    )) {
+      matchingHighlightId = highlight.highlightId;
+      break;
+    }
+  }
+
+  return _ResolvedAssistantSelection(
+    selectedText: normalizedSelection,
+    startOffset: startOffset,
+    endOffset: endOffset,
+    matchingHighlightId: matchingHighlightId,
+  );
+}
+
+bool _highlightMatchesSelection({
+  required HighlightSpan highlight,
+  required String selectedText,
+  required int? startOffset,
+  required int? endOffset,
+}) {
+  if (highlight.startOffset != null &&
+      highlight.endOffset != null &&
+      startOffset != null &&
+      endOffset != null) {
+    return highlight.startOffset == startOffset &&
+        highlight.endOffset == endOffset;
+  }
+  return highlight.selectedText == selectedText;
+}
+
 /// Shows a floating popup menu when the user taps a highlighted span.
 /// The menu offers Copy and 删除划线 (delete highlight) actions.
 void _showHighlightTapMenu({
@@ -987,134 +1081,34 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
     }
     // Normalize line endings so that line splitting is consistent.
     // \r\n → \n, lone \r → \n.
-    final normalizedText =
-        text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final normalizedText = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     final lines = normalizedText.split('\n');
     final widgets = <Widget>[];
     var inCodeBlock = false;
-    final codeLines = <String>[];
+    final codeLines = <_SourceLine>[];
 
-    // Build a list of highlight lookup items (plain text, color, id).
-    // We search directly within each span's rendered text at draw time so
-    // that markdown delimiters (**, _, etc.) never corrupt the match offsets.
-    final highlightItems = <({String text, Color bg, String highlightId})>[];
-    if (highlights.isNotEmpty) {
-      for (final h in highlights) {
-        if (h.selectedText.isNotEmpty) {
-          highlightItems.add((
-            text: h.selectedText,
-            bg: _parseHighlightColor(h.color),
-            highlightId: h.highlightId,
-          ));
-        }
+    final highlightRanges = _highlightRangesForMessage(
+      highlights: highlights,
+      normalizedText: normalizedText,
+    );
+
+    List<InlineSpan> _applyHighlightsToSpans(
+      List<_OffsetTextSpan> spans,
+    ) {
+      if (highlightRanges.isEmpty) {
+        return spans.map((span) => span.span).toList();
       }
+      return _splitOffsetSpansByHighlights(
+        spans: spans,
+        highlights: highlightRanges,
+        baseStyle: baseStyle,
+        context: context,
+        onDeleteHighlight: onDeleteHighlight,
+        recognizers: _recognizers,
+      );
     }
 
-    // Split a single TextSpan into highlighted/un-highlighted fragments by
-    // searching for each highlight text directly within the span's plain text.
-    // Because we work on rendered (markdown-stripped) span text, markdown
-    // delimiters do not shift offsets.
-    List<InlineSpan> _splitSpanByHighlights(TextSpan span) {
-      final spanText = span.text ?? '';
-      if (spanText.isEmpty) return [span];
-
-      // Collect all match ranges within this span.
-      final ranges = <({int start, int end, Color bg, String highlightId})>[];
-      for (final h in highlightItems) {
-        var searchStart = 0;
-        while (true) {
-          final idx = spanText.indexOf(h.text, searchStart);
-          if (idx == -1) break;
-          ranges.add((
-            start: idx,
-            end: idx + h.text.length,
-            bg: h.bg,
-            highlightId: h.highlightId,
-          ));
-          searchStart = idx + h.text.length;
-        }
-      }
-      if (ranges.isEmpty) return [span];
-      // Sort by start position and merge overlapping or adjacent ranges (keep first color/id).
-      ranges.sort((a, b) => a.start.compareTo(b.start));
-      final merged = <({int start, int end, Color bg, String highlightId})>[];
-      for (final r in ranges) {
-        if (merged.isNotEmpty && r.start <= merged.last.end) {
-          final last = merged.removeLast();
-          merged.add((
-            start: last.start,
-            end: r.end > last.end ? r.end : last.end,
-            bg: last.bg,
-            highlightId: last.highlightId,
-          ));
-        } else {
-          merged.add(r);
-        }
-      }
-      // Slice the span at highlight boundaries.
-      final result = <InlineSpan>[];
-      var cursor = 0;
-      for (final r in merged) {
-        if (r.start > cursor) {
-          result.add(TextSpan(text: spanText.substring(cursor, r.start), style: span.style));
-        }
-        final matchText = spanText.substring(r.start, r.end);
-        // Build a tap recognizer so tapping the highlighted span opens the
-        // floating delete/copy menu on native platforms. On web, registering
-        // a TapGestureRecognizer on the TextSpan competes in the gesture arena
-        // and prevents SelectionArea from starting a drag-selection gesture,
-        // so we skip it on web and rely solely on the contextMenuBuilder path.
-        TapGestureRecognizer? recognizer;
-        if (!kIsWeb && onDeleteHighlight != null) {
-          final capturedHighlightId = r.highlightId;
-          final capturedText = matchText;
-          // Use onTapUp (provides tap position, fires only after a completed
-          // short tap) so that long-press text selection and drag are
-          // unaffected — unlike onTapDown which fires immediately on touch.
-          recognizer = TapGestureRecognizer()
-            ..onTapUp = (TapUpDetails details) {
-              _showHighlightTapMenu(
-                context: context,
-                highlightId: capturedHighlightId,
-                text: capturedText,
-                position: details.globalPosition,
-                onDeleteHighlight: onDeleteHighlight,
-              );
-            };
-          _recognizers.add(recognizer);
-        }
-        result.add(TextSpan(
-          text: matchText,
-          style: (span.style ?? baseStyle).copyWith(
-            backgroundColor: r.bg,
-            decoration: TextDecoration.underline,
-            decorationColor: r.bg.withValues(alpha: 1.0),
-            decorationThickness: 2.0,
-          ),
-          recognizer: recognizer,
-        ));
-        cursor = r.end;
-      }
-      if (cursor < spanText.length) {
-        result.add(TextSpan(text: spanText.substring(cursor), style: span.style));
-      }
-      return result;
-    }
-
-    List<InlineSpan> _applyHighlightsToSpans(List<InlineSpan> spans) {
-      if (highlightItems.isEmpty) return spans;
-      final result = <InlineSpan>[];
-      for (final span in spans) {
-        if (span is TextSpan) {
-          result.addAll(_splitSpanByHighlights(span));
-        } else {
-          result.add(span);
-        }
-      }
-      return result;
-    }
-
-    Widget _buildCodeBlock(List<String> codeContent) => Container(
+    Widget _buildCodeBlock(List<_SourceLine> codeContent) => Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
           padding: const EdgeInsets.symmetric(
@@ -1125,14 +1119,21 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
             color: codeBlockColor,
             borderRadius: BorderRadius.circular(BricksRadius.sm),
           ),
-          child: Text(
-            codeContent.join('\n'),
-            style: baseStyle.copyWith(fontFamily: 'monospace'),
+          child: Text.rich(
+            TextSpan(
+              children: _applyHighlightsToSpans(
+                _sourceLinesToOffsetSpans(
+                  codeContent,
+                  style: baseStyle.copyWith(fontFamily: 'monospace'),
+                ),
+              ),
+            ),
           ),
         );
 
     for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       final line = lines[lineIndex];
+      final lineStart = _lineStartOffset(lines, lineIndex);
       final trimmed = line.trimLeft();
       if (trimmed.startsWith('```')) {
         if (inCodeBlock) {
@@ -1145,10 +1146,14 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
         continue;
       }
       if (inCodeBlock) {
-        codeLines.add(line);
+        codeLines.add(_SourceLine(text: line, sourceStart: lineStart));
         continue;
       }
       if (trimmed.startsWith('>')) {
+        final textStart = lineStart + line.indexOf('>') + 1;
+        final quoteText = line.substring(line.indexOf('>') + 1);
+        final contentStart =
+            textStart + quoteText.length - quoteText.trimLeft().length;
         widgets.add(Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: BricksSpacing.xs),
@@ -1160,13 +1165,27 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
             color: quoteBlockColor,
             borderRadius: BorderRadius.circular(BricksRadius.sm),
           ),
-          child: Text(trimmed.substring(1).trimLeft(), style: baseStyle),
+          child: Text.rich(
+            TextSpan(
+              children: _applyHighlightsToSpans(
+                _parseInlineMarkdownWithOffsets(
+                  quoteText.trimLeft(),
+                  sourceStart: contentStart,
+                  baseStyle: baseStyle,
+                  linkStyle: baseStyle.copyWith(color: linkColor),
+                  headingLike: false,
+                ),
+              ),
+            ),
+          ),
         ));
         continue;
       }
       final table = _MarkdownTable.tryParseAt(lines, lineIndex);
       if (table != null) {
         final borderColor = textColor.withValues(alpha: 0.24);
+        final headerLine = lines[lineIndex];
+        final headerLineStart = lineStart;
         widgets.add(
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -1185,34 +1204,47 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
                         padding: const EdgeInsets.all(BricksSpacing.xs),
                         child: Text.rich(
                           TextSpan(
-                            children: _parseInlineMarkdown(
-                              cell,
-                              baseStyle: baseStyle.copyWith(
-                                  fontWeight: FontWeight.w700),
-                              linkStyle: baseStyle.copyWith(
-                                color: linkColor,
-                                fontWeight: FontWeight.w700,
+                            children: _applyHighlightsToSpans(
+                              _parseInlineMarkdownWithOffsets(
+                                cell,
+                                sourceStart: headerLineStart +
+                                    _cellSourceOffset(headerLine, cell),
+                                baseStyle: baseStyle.copyWith(
+                                    fontWeight: FontWeight.w700),
+                                linkStyle: baseStyle.copyWith(
+                                  color: linkColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                headingLike: false,
                               ),
-                              headingLike: false,
                             ),
                           ),
                         ),
                       ),
                   ],
                 ),
-                for (final row in table.rows)
+                for (var rowIndex = 0; rowIndex < table.rows.length; rowIndex++)
                   TableRow(
                     children: [
-                      for (final cell in row)
+                      for (final cell in table.rows[rowIndex])
                         Padding(
                           padding: const EdgeInsets.all(BricksSpacing.xs),
                           child: Text.rich(
                             TextSpan(
-                              children: _parseInlineMarkdown(
-                                cell,
-                                baseStyle: baseStyle,
-                                linkStyle: baseStyle.copyWith(color: linkColor),
-                                headingLike: false,
+                              children: _applyHighlightsToSpans(
+                                _parseInlineMarkdownWithOffsets(
+                                  cell,
+                                  sourceStart: _lineStartOffset(
+                                          lines, lineIndex + 2 + rowIndex) +
+                                      _cellSourceOffset(
+                                        lines[lineIndex + 2 + rowIndex],
+                                        cell,
+                                      ),
+                                  baseStyle: baseStyle,
+                                  linkStyle:
+                                      baseStyle.copyWith(color: linkColor),
+                                  headingLike: false,
+                                ),
                               ),
                             ),
                           ),
@@ -1230,15 +1262,16 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
       final lineStyle = block.type == _MarkdownBlockType.heading
           ? baseStyle.copyWith(fontWeight: FontWeight.w700)
           : baseStyle;
-      var inlineSpans = _parseInlineMarkdown(
-        block.text,
-        baseStyle: lineStyle,
-        linkStyle: lineStyle.copyWith(color: linkColor),
-        headingLike: false,
+      final blockSourceStart = lineStart + line.indexOf(block.text);
+      final inlineSpans = _applyHighlightsToSpans(
+        _parseInlineMarkdownWithOffsets(
+          block.text,
+          sourceStart: blockSourceStart,
+          baseStyle: lineStyle,
+          linkStyle: lineStyle.copyWith(color: linkColor),
+          headingLike: false,
+        ),
       );
-      // Compute the text-only offset of block.text within the line so we can
-      // map highlight ranges from the full message text into this span list.
-      inlineSpans = _applyHighlightsToSpans(inlineSpans);
       if (block.type == _MarkdownBlockType.unorderedList ||
           block.type == _MarkdownBlockType.orderedList) {
         widgets.add(Padding(
@@ -1380,6 +1413,295 @@ class _MarkdownTable {
   }
 }
 
+class _SourceLine {
+  const _SourceLine({required this.text, required this.sourceStart});
+
+  final String text;
+  final int sourceStart;
+}
+
+class _HighlightRange {
+  const _HighlightRange({
+    required this.highlightId,
+    required this.selectedText,
+    required this.start,
+    required this.end,
+    required this.backgroundColor,
+  });
+
+  final String highlightId;
+  final String selectedText;
+  final int start;
+  final int end;
+  final Color backgroundColor;
+}
+
+class _OffsetTextSpan {
+  const _OffsetTextSpan({required this.span, required this.sourceStart});
+
+  final TextSpan span;
+  final int sourceStart;
+}
+
+class _RenderedTextIndex {
+  const _RenderedTextIndex(this.text, this._sourceOffsets);
+
+  final String text;
+  final List<int> _sourceOffsets;
+
+  int? sourceOffsetAt(int renderedOffset) {
+    if (renderedOffset < 0 || renderedOffset >= _sourceOffsets.length) {
+      return null;
+    }
+    return _sourceOffsets[renderedOffset];
+  }
+
+  int? sourceOffsetAfter(int renderedOffset) {
+    if (_sourceOffsets.isEmpty) return null;
+    if (renderedOffset <= 0) return _sourceOffsets.first;
+    if (renderedOffset > _sourceOffsets.length) {
+      return _sourceOffsets.last + 1;
+    }
+    return _sourceOffsets[renderedOffset - 1] + 1;
+  }
+
+  static _RenderedTextIndex fromMarkdownMessage(String source) {
+    final normalized = source.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final text = StringBuffer();
+    final offsets = <int>[];
+    final lines = normalized.split('\n');
+    var inCodeBlock = false;
+    for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      final line = lines[lineIndex];
+      final lineStart = _lineStartOffset(lines, lineIndex);
+      final trimmed = line.trimLeft();
+      if (trimmed.startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+      } else if (inCodeBlock) {
+        _appendMappedText(text, offsets, line, lineStart);
+      } else {
+        final block = _MarkdownBlock.tryParse(line);
+        final blockStart = line.indexOf(block.text);
+        _appendInlineMarkdownText(
+          text,
+          offsets,
+          block.text,
+          lineStart + (blockStart < 0 ? 0 : blockStart),
+        );
+      }
+      if (lineIndex < lines.length - 1) {
+        text.write('\n');
+        offsets.add(lineStart + line.length);
+      }
+    }
+    return _RenderedTextIndex(text.toString(), offsets);
+  }
+}
+
+int _lineStartOffset(List<String> lines, int lineIndex) {
+  var offset = 0;
+  for (var i = 0; i < lineIndex; i++) {
+    offset += lines[i].length + 1;
+  }
+  return offset;
+}
+
+int _cellSourceOffset(String line, String cell) {
+  final index = line.indexOf(cell);
+  return index < 0 ? 0 : index;
+}
+
+void _appendMappedText(
+  StringBuffer text,
+  List<int> offsets,
+  String value,
+  int sourceStart,
+) {
+  text.write(value);
+  for (var i = 0; i < value.length; i++) {
+    offsets.add(sourceStart + i);
+  }
+}
+
+void _appendInlineMarkdownText(
+  StringBuffer text,
+  List<int> offsets,
+  String source,
+  int sourceStart,
+) {
+  var bold = false;
+  var italic = false;
+  var i = 0;
+  while (i < source.length) {
+    if (i + 1 < source.length) {
+      final pair = source.substring(i, i + 2);
+      if ((pair == '**' || pair == '__') &&
+          (bold || source.indexOf(pair, i + 2) != -1)) {
+        bold = !bold;
+        i += 2;
+        continue;
+      }
+    }
+    final char = source[i];
+    if ((char == '*' || char == '_') &&
+        (italic || source.indexOf(char, i + 1) != -1)) {
+      italic = !italic;
+      i++;
+      continue;
+    }
+    text.write(char);
+    offsets.add(sourceStart + i);
+    i++;
+  }
+}
+
+List<_OffsetTextSpan> _sourceLinesToOffsetSpans(
+  List<_SourceLine> lines, {
+  required TextStyle style,
+}) {
+  final spans = <_OffsetTextSpan>[];
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    spans.add(
+      _OffsetTextSpan(
+        span: TextSpan(text: line.text, style: style),
+        sourceStart: line.sourceStart,
+      ),
+    );
+    if (i < lines.length - 1) {
+      spans.add(
+        _OffsetTextSpan(
+          span: TextSpan(text: '\n', style: style),
+          sourceStart: line.sourceStart + line.text.length,
+        ),
+      );
+    }
+  }
+  return spans;
+}
+
+List<_HighlightRange> _highlightRangesForMessage({
+  required List<HighlightSpan> highlights,
+  required String normalizedText,
+}) {
+  final ranges = <_HighlightRange>[];
+  for (final highlight in highlights) {
+    final startOffset = highlight.startOffset;
+    final endOffset = highlight.endOffset;
+    final bg =
+        _AssistantMarkdownTextState._parseHighlightColor(highlight.color);
+    if (startOffset != null &&
+        endOffset != null &&
+        startOffset >= 0 &&
+        endOffset > startOffset &&
+        startOffset < normalizedText.length) {
+      ranges.add(
+        _HighlightRange(
+          highlightId: highlight.highlightId,
+          selectedText: highlight.selectedText,
+          start: startOffset,
+          end: endOffset.clamp(0, normalizedText.length),
+          backgroundColor: bg,
+        ),
+      );
+      continue;
+    }
+    if (highlight.selectedText.isEmpty) continue;
+    var searchStart = 0;
+    while (true) {
+      final idx = normalizedText.indexOf(highlight.selectedText, searchStart);
+      if (idx == -1) break;
+      ranges.add(
+        _HighlightRange(
+          highlightId: highlight.highlightId,
+          selectedText: highlight.selectedText,
+          start: idx,
+          end: idx + highlight.selectedText.length,
+          backgroundColor: bg,
+        ),
+      );
+      searchStart = idx + highlight.selectedText.length;
+    }
+  }
+  ranges.sort((a, b) => a.start.compareTo(b.start));
+  return ranges;
+}
+
+List<InlineSpan> _splitOffsetSpansByHighlights({
+  required List<_OffsetTextSpan> spans,
+  required List<_HighlightRange> highlights,
+  required TextStyle baseStyle,
+  required BuildContext context,
+  required void Function(String highlightId)? onDeleteHighlight,
+  required List<GestureRecognizer> recognizers,
+}) {
+  final result = <InlineSpan>[];
+  for (final offsetSpan in spans) {
+    final spanText = offsetSpan.span.text ?? '';
+    if (spanText.isEmpty) {
+      result.add(offsetSpan.span);
+      continue;
+    }
+    var cursor = 0;
+    final spanStart = offsetSpan.sourceStart;
+    final spanEnd = spanStart + spanText.length;
+    for (final highlight in highlights) {
+      final start = highlight.start > spanStart ? highlight.start : spanStart;
+      final end = highlight.end < spanEnd ? highlight.end : spanEnd;
+      if (end <= start) continue;
+      final localStart = start - spanStart;
+      final localEnd = end - spanStart;
+      if (localStart > cursor) {
+        result.add(
+          TextSpan(
+            text: spanText.substring(cursor, localStart),
+            style: offsetSpan.span.style,
+          ),
+        );
+      }
+      final matchText = spanText.substring(localStart, localEnd);
+      TapGestureRecognizer? recognizer;
+      if (!kIsWeb && onDeleteHighlight != null) {
+        final capturedHighlightId = highlight.highlightId;
+        final capturedText = highlight.selectedText;
+        recognizer = TapGestureRecognizer()
+          ..onTapUp = (TapUpDetails details) {
+            _showHighlightTapMenu(
+              context: context,
+              highlightId: capturedHighlightId,
+              text: capturedText,
+              position: details.globalPosition,
+              onDeleteHighlight: onDeleteHighlight,
+            );
+          };
+        recognizers.add(recognizer);
+      }
+      result.add(
+        TextSpan(
+          text: matchText,
+          style: (offsetSpan.span.style ?? baseStyle).copyWith(
+            backgroundColor: highlight.backgroundColor,
+            decoration: TextDecoration.underline,
+            decorationColor: highlight.backgroundColor.withValues(alpha: 1.0),
+            decorationThickness: 2.0,
+          ),
+          recognizer: recognizer,
+        ),
+      );
+      cursor = localEnd;
+    }
+    if (cursor < spanText.length) {
+      result.add(
+        TextSpan(
+          text: spanText.substring(cursor),
+          style: offsetSpan.span.style,
+        ),
+      );
+    }
+  }
+  return result;
+}
+
 enum _MarkdownBlockType { paragraph, heading, unorderedList, orderedList }
 
 class _MarkdownBlock {
@@ -1428,30 +1750,40 @@ class _MarkdownBlock {
   }
 }
 
-List<InlineSpan> _parseInlineMarkdown(
+List<_OffsetTextSpan> _parseInlineMarkdownWithOffsets(
   String source, {
+  required int sourceStart,
   required TextStyle baseStyle,
   required TextStyle linkStyle,
   required bool headingLike,
 }) {
   if (source.isEmpty) {
-    return <InlineSpan>[
-      TextSpan(text: '', style: _styleFor(baseStyle, false, false, headingLike))
+    return <_OffsetTextSpan>[
+      _OffsetTextSpan(
+        span: TextSpan(
+          text: '',
+          style: _styleFor(baseStyle, false, false, headingLike),
+        ),
+        sourceStart: sourceStart,
+      )
     ];
   }
 
-  final spans = <InlineSpan>[];
+  final spans = <_OffsetTextSpan>[];
   final buffer = StringBuffer();
+  var bufferStart = 0;
   var bold = false;
   var italic = false;
   var i = 0;
 
   void flush() {
     if (buffer.isEmpty) return;
-    spans.add(
-      TextSpan(
-        text: buffer.toString(),
+    spans.addAll(
+      _injectLinkOffsetSpans(
+        buffer.toString(),
+        sourceStart: sourceStart + bufferStart,
         style: _styleFor(baseStyle, bold, italic, headingLike),
+        linkStyle: linkStyle,
       ),
     );
     buffer.clear();
@@ -1467,6 +1799,7 @@ List<InlineSpan> _parseInlineMarkdown(
           flush();
           bold = !bold;
           i += 2;
+          bufferStart = i;
           continue;
         }
       }
@@ -1479,56 +1812,66 @@ List<InlineSpan> _parseInlineMarkdown(
         flush();
         italic = !italic;
         i++;
+        bufferStart = i;
         continue;
       }
     }
+    if (buffer.isEmpty) bufferStart = i;
     buffer.write(char);
     i++;
   }
 
   flush();
-  return _injectLinkSpans(spans, baseStyle: baseStyle, linkStyle: linkStyle);
+  return spans;
 }
 
-List<InlineSpan> _injectLinkSpans(
-  List<InlineSpan> spans, {
-  required TextStyle baseStyle,
+List<_OffsetTextSpan> _injectLinkOffsetSpans(
+  String text, {
+  required int sourceStart,
+  required TextStyle style,
   required TextStyle linkStyle,
 }) {
   final urlPattern = RegExp(r'https?://[^\s]+');
-  final expanded = <InlineSpan>[];
-  for (final span in spans) {
-    if (span is! TextSpan || (span.text ?? '').isEmpty) {
-      expanded.add(span);
-      continue;
-    }
-    final text = span.text!;
-    var cursor = 0;
-    for (final match in urlPattern.allMatches(text)) {
-      if (match.start > cursor) {
-        expanded.add(
-          TextSpan(
+  final expanded = <_OffsetTextSpan>[];
+  var cursor = 0;
+  for (final match in urlPattern.allMatches(text)) {
+    if (match.start > cursor) {
+      expanded.add(
+        _OffsetTextSpan(
+          span: TextSpan(
             text: text.substring(cursor, match.start),
-            style: span.style ?? baseStyle,
+            style: style,
           ),
-        );
-      }
-      expanded.add(
-        TextSpan(
-          text: match.group(0),
-          style: (span.style ?? baseStyle).merge(linkStyle),
-        ),
-      );
-      cursor = match.end;
-    }
-    if (cursor < text.length) {
-      expanded.add(
-        TextSpan(
-          text: text.substring(cursor),
-          style: span.style ?? baseStyle,
+          sourceStart: sourceStart + cursor,
         ),
       );
     }
+    expanded.add(
+      _OffsetTextSpan(
+        span: TextSpan(
+          text: text.substring(match.start, match.end),
+          style: linkStyle,
+        ),
+        sourceStart: sourceStart + match.start,
+      ),
+    );
+    cursor = match.end;
+  }
+  if (cursor < text.length) {
+    expanded.add(
+      _OffsetTextSpan(
+        span: TextSpan(text: text.substring(cursor), style: style),
+        sourceStart: sourceStart + cursor,
+      ),
+    );
+  }
+  if (expanded.isEmpty) {
+    expanded.add(
+      _OffsetTextSpan(
+        span: TextSpan(text: text, style: style),
+        sourceStart: sourceStart,
+      ),
+    );
   }
   return expanded;
 }

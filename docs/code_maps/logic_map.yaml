@@ -565,7 +565,7 @@ index:
       - removeColumn 仅删除 asset_table_columns 记录，不清理已有行的 cell_data，需注意存储膨胀。
 
   - feature_id: text_highlights
-    capability: 用户选中助手消息文本后通过上下文菜单"划线"持久化高亮；AI 可用 highlight_list 工具查询
+    capability: 用户选中助手消息文本后通过浮动工具栏"划线"持久化高亮；高亮按消息 offset 渲染，可拆成多个 markdown/code/table subsegment；AI 可用 highlight_list 工具查询
     code_index:
       - apps/node_backend/src/db/migrations/017_create_text_highlights.sql
       - apps/node_backend/src/services/textHighlightService.ts
@@ -575,7 +575,9 @@ index:
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
     doc_index:
       - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
+      - docs/plans/2026-05-18-22-22-+08-highlight-selection-offsets.md
     test_index:
+      - apps/mobile_chat_app/test/message_list_test.dart
       - apps/node_backend/src/services/localAgentLoopService.test.ts
     keywords:
       - text_highlight
@@ -583,12 +585,18 @@ index:
       - SelectionArea
       - contextMenuBuilder
       - onSelectionChanged
+      - floating toolbar
+      - markdown highlight offsets
+      - code block highlights
+      - table cell highlights
+      - subsegment rendering
       - HighlightSpan
       - _AssistantMarkdownText
     change_risks:
-      - _AssistantMarkdownText 中的字符偏移计算依赖 '\n' 分隔符 +1 的行间距假设；若 content 包含 \r\n 换行符，offset 会偏移。
-      - onHighlight 回调通过搜索 messages 列表找到第一个包含所选文本的 assistant 消息；若多条消息含相同文本，高亮会绑定到最早一条。
-      - contextMenuBuilder 仅在 widget.onHighlight != null 时启用；父组件若不传 onHighlight，用户不会看到"划线"按钮。
+      - 选区 offset 映射依赖前端 markdown renderer 与 rendered-text index 对 markdown 标记、代码块、表格文本的处理保持一致；渲染规则变化时需同步更新映射测试。
+      - 表格单元格或重复文本若使用文本搜索而不是 stored startOffset/endOffset，会导致划线显示或删除到错误位置。
+      - Flutter Web 上 TextSpan TapGestureRecognizer 会干扰 SelectionArea 拖拽选择；web 删除路径应继续通过选择工具栏实现。
+      - 旧数据若缺少 startOffset/endOffset，仍会回退为 selectedText 搜索；重复文本场景下旧记录可能显示多处，需要后续数据迁移或重新创建高亮才能完全消除歧义。
 
 maintenance_rules:
   update_required_when:
