@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -657,13 +658,43 @@ class _MessageListState extends State<MessageList> {
             _lastSelectedText = value?.plainText ?? '';
           },
           contextMenuBuilder: (ctx, selectableRegionState) {
+            final selectedText = _lastSelectedText;
+
+            // Check if the selected text exactly matches an existing highlight.
+            // On web, tap-on-highlight is unavailable (recognizer is skipped to
+            // avoid gesture-arena competition), so the context menu is the only
+            // way to delete highlights; on native it acts as an additional path.
+            String? matchingHighlightId;
+            if (selectedText.isNotEmpty &&
+                widget.onDeleteHighlight != null) {
+              outer:
+              for (final spans in widget.highlights.values) {
+                for (final span in spans) {
+                  if (span.selectedText == selectedText) {
+                    matchingHighlightId = span.highlightId;
+                    break outer;
+                  }
+                }
+              }
+            }
+
             final extraItems = <ContextMenuButtonItem>[
-              if (widget.onHighlight != null)
+              if (matchingHighlightId != null)
+                // Selected text is an existing highlight → offer deletion.
+                ContextMenuButtonItem(
+                  label: '删除划线',
+                  onPressed: () {
+                    ContextMenuController.removeAny();
+                    widget.onDeleteHighlight!(matchingHighlightId!);
+                  },
+                )
+              else if (widget.onHighlight != null && selectedText.isNotEmpty)
+                // Selected text is not yet highlighted → offer creation.
                 ContextMenuButtonItem(
                   label: '划线',
                   onPressed: () {
                     ContextMenuController.removeAny();
-                    final plainText = _lastSelectedText;
+                    final plainText = selectedText;
                     if (plainText.isEmpty) return;
                     // Find the first assistant message whose content
                     // contains the selected text and fire the callback.
@@ -1029,9 +1060,12 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
         }
         final matchText = spanText.substring(r.start, r.end);
         // Build a tap recognizer so tapping the highlighted span opens the
-        // floating delete/copy menu. Track it in _recognizers for disposal.
+        // floating delete/copy menu on native platforms. On web, registering
+        // a TapGestureRecognizer on the TextSpan competes in the gesture arena
+        // and prevents SelectionArea from starting a drag-selection gesture,
+        // so we skip it on web and rely solely on the contextMenuBuilder path.
         TapGestureRecognizer? recognizer;
-        if (onDeleteHighlight != null) {
+        if (!kIsWeb && onDeleteHighlight != null) {
           final capturedHighlightId = r.highlightId;
           final capturedText = matchText;
           // Use onTapUp (provides tap position, fires only after a completed
