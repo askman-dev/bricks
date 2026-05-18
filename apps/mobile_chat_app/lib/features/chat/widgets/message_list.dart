@@ -1034,21 +1034,16 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
         if (onDeleteHighlight != null) {
           final capturedHighlightId = r.highlightId;
           final capturedText = matchText;
-          Offset? tapPosition;
+          // Use onTapUp (provides tap position, fires only after a completed
+          // short tap) so that long-press text selection and drag are
+          // unaffected — unlike onTapDown which fires immediately on touch.
           recognizer = TapGestureRecognizer()
-            ..onTapDown = (TapDownDetails details) {
-              // Record position here; the menu is shown only on completed
-              // tap (onTap) so that long-press text selection is unaffected.
-              tapPosition = details.globalPosition;
-            }
-            ..onTap = () {
-              final pos = tapPosition;
-              if (pos == null) return;
+            ..onTapUp = (TapUpDetails details) {
               _showHighlightTapMenu(
                 context: context,
                 highlightId: capturedHighlightId,
                 text: capturedText,
-                position: pos,
+                position: details.globalPosition,
                 onDeleteHighlight: onDeleteHighlight,
               );
             };
