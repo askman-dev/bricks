@@ -197,7 +197,7 @@ index:
       - 若 iOS 本地路径解析依赖 `HOME` 环境变量，真机启动会在 chat setup 阶段失败并阻断历史会话加载。
       - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。
       - ChatHistoryApiService 依赖 AuthenticatedApiClient 注入 token；若重新在 ChatScreen 用 _authToken 阻断 load/respond/SSE，会回到 UI 静默失败路径。
-      - 相邻 tool_call_start/tool_call 消息应在 MessageList 中折叠成一个思考过程标志；如果分组边界跨过普通 assistant/user 消息，会错误隐藏正常对话内容。
+      - 相邻 tool_call_start/tool_call 消息应在 MessageList 中折叠成一个思考过程标志；紧随其后的普通 assistant 文本会隐藏重复 header。如果分组边界跨过普通 assistant/user 消息，会错误隐藏正常对话内容。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
       - 若频道最新消息时间未在消息加载、追加、归档时同步更新，侧边栏排序将与实际活跃时间脱节。
       - 若仅对侧边栏频道列表使用 _sortedChannels 而未对顶部频道下拉菜单同步更新，两处展示顺序不一致会混淆用户。

@@ -230,7 +230,7 @@ products:
           - 用户说"显示 Tasks 表格"，AI 调用 table_get 并以 Markdown 表格回复。
           - 在 Turso/libSQL 数据库下，table_create / table_add_column / table_add_row / table_update_row / table_delete_row 均应成功执行，不应因 PostgreSQL-only SQL（例如 NOW() 或 ::jsonb）失败。
           - 当 table_create 执行时抛出数据库错误，聊天历史应显示工具错误结果，并将对应 tool_call_start 标记为已完成，不能永久显示“正在调用”。
-          - 相邻工具调用在聊天流中应折叠为一个"正在思考/思考过程 completed/total"标志，不直接显示工具名或长 JSON。
+          - 相邻工具调用在聊天流中应折叠为一个"正在思考/思考过程 completed/total"标志，不直接显示工具名或长 JSON；紧随其后的助手文本不重复显示头像/模型名。
           - 添加一列 Priority 后，已有行不变（O(1) schema change）。
           - 软删除行后，table_get 不返回该行。
 

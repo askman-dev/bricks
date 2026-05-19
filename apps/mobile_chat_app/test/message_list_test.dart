@@ -1346,6 +1346,43 @@ void main() {
       expect(find.textContaining('Tool: second'), findsNothing);
     });
 
+    testWidgets('assistant answer after tool group shares the tool header',
+        (tester) async {
+      final messages = [
+        ChatMessage(
+          messageId: 'tc-start-1',
+          role: 'assistant',
+          content: '',
+          agentName: 'gemini-flash-latest',
+          agentLoopPhase: 'tool_call_start',
+          taskState: ChatTaskState.completed,
+          timestamp: DateTime.utc(2026, 1, 1),
+        ),
+        ChatMessage(
+          messageId: 'tc-result-1',
+          role: 'assistant',
+          content: 'Tool: todo_list\nResult: {"ok":true}',
+          agentLoopPhase: 'tool_call',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 1),
+        ),
+        ChatMessage(
+          messageId: 'assistant-final',
+          role: 'assistant',
+          content: '目前你总共有 7 个任务。',
+          agentName: 'gemini-flash-latest',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 2),
+        ),
+      ];
+
+      await tester.pumpWidget(_build(messages));
+      await tester.pumpAndSettle();
+
+      expect(find.text('gemini-flash-latest'), findsOneWidget);
+      expect(find.text('思考过程 1/1'), findsOneWidget);
+      expect(find.text('目前你总共有 7 个任务。'), findsOneWidget);
+      expect(find.textContaining('Tool: todo_list'), findsNothing);
+    });
+
     testWidgets('non-adjacent tool messages remain separate thinking groups',
         (tester) async {
       final messages = [

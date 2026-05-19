@@ -453,8 +453,9 @@ class _MessageListState extends State<MessageList> {
   Widget _buildToolGroupItem(
     BuildContext context,
     int startIndex,
-    int endIndex,
-  ) {
+    int endIndex, {
+    bool hideMeta = false,
+  }) {
     final messages = widget.messages;
     final first = messages[startIndex];
     final groupMessages = messages.sublist(startIndex, endIndex + 1);
@@ -485,43 +486,100 @@ class _MessageListState extends State<MessageList> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (first.agentName != null || first.model != null)
-            Padding(
-              padding: const EdgeInsets.only(
-                left: BricksSpacing.xs,
-                bottom: BricksSpacing.xs,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.smart_toy_outlined, size: 14),
-                  const SizedBox(width: BricksSpacing.xs),
-                  Text(
-                    first.agentName ?? first.model ?? '',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: chatColors.agentIdentity,
-                        ),
-                  ),
-                ],
-              ),
+            _assistantAttributionHeader(
+              context: context,
+              message: first,
+              chatColors: chatColors,
             ),
           _AgentLoopToolGroupRow(
             label: label,
             isFinalized: isFinalized,
             chatColors: chatColors,
           ),
-          Padding(
-            padding: const EdgeInsets.only(
-              left: BricksSpacing.xs,
-              right: BricksSpacing.xs,
-              bottom: BricksSpacing.md,
-            ),
-            child: Text(
-              _messageMetaLine(first),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: chatColors.metaText,
-                  ),
-            ),
+          if (!hideMeta)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                right: BricksSpacing.xs,
+                bottom: BricksSpacing.md,
+              ),
+              child: Text(
+                _messageMetaLine(first),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: chatColors.metaText,
+                    ),
+              ),
+            )
+          else
+            const SizedBox(height: BricksSpacing.xs),
+        ],
+      ),
+    );
+  }
+
+  bool _shouldAttachAssistantTextToPreviousToolGroup(
+    List<ChatMessage> messages,
+    int index,
+  ) {
+    if (index <= 0) return false;
+    final message = messages[index];
+    if (message.role != 'assistant') return false;
+    if (message.agentLoopPhase != null) return false;
+    if (_isAssistantDispatchPlaceholder(message)) return false;
+    return _isToolLoopMessage(messages[index - 1]);
+  }
+
+  bool _toolGroupShouldAttachNextText(
+    List<ChatMessage> messages,
+    int endIndex,
+  ) {
+    if (endIndex + 1 >= messages.length) return false;
+    return _shouldAttachAssistantTextToPreviousToolGroup(
+      messages,
+      endIndex + 1,
+    );
+  }
+
+  Widget _assistantAttributionHeader({
+    required BuildContext context,
+    required ChatMessage message,
+    required ChatColors chatColors,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: BricksSpacing.xs,
+        bottom: BricksSpacing.xs,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.smart_toy_outlined, size: 14),
+          const SizedBox(width: BricksSpacing.xs),
+          Text(
+            message.agentName ?? message.model ?? '',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: chatColors.agentIdentity,
+                ),
           ),
+          if (message.nodeType?.trim().isNotEmpty == true) ...[
+            const SizedBox(width: BricksSpacing.xs),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 1,
+              ),
+              decoration: BoxDecoration(
+                color: chatColors.agentBadgeContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                message.nodeType!.trim(),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: chatColors.onAgentBadgeContainer,
+                    ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -530,7 +588,11 @@ class _MessageListState extends State<MessageList> {
   // Builds a single message row for the given [index] in [widget.messages].
   // Extracted from build() so that the non-builder ListView can call it in a
   // simple for-loop while keeping the item rendering logic in one place.
-  Widget _buildMessageItem(BuildContext context, int index) {
+  Widget _buildMessageItem(
+    BuildContext context,
+    int index, {
+    bool suppressAssistantHeader = false,
+  }) {
     final allMessages = widget.messages;
     final msg = allMessages[index];
     final isUser = msg.role == 'user';
@@ -556,44 +618,13 @@ class _MessageListState extends State<MessageList> {
           // Show agent attribution chip as soon as assistant identity is
           // known, including dispatch placeholders pushed by SSE before
           // any assistant text is available.
-          if (!isUser && (msg.agentName != null || msg.model != null))
-            Padding(
-              padding: const EdgeInsets.only(
-                left: BricksSpacing.xs,
-                bottom: BricksSpacing.xs,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.smart_toy_outlined, size: 14),
-                  const SizedBox(width: BricksSpacing.xs),
-                  Text(
-                    msg.agentName ?? msg.model ?? '',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: chatColors.agentIdentity,
-                        ),
-                  ),
-                  if (msg.nodeType?.trim().isNotEmpty == true) ...[
-                    const SizedBox(width: BricksSpacing.xs),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: chatColors.agentBadgeContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        msg.nodeType!.trim(),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: chatColors.onAgentBadgeContainer,
-                            ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+          if (!isUser &&
+              !suppressAssistantHeader &&
+              (msg.agentName != null || msg.model != null))
+            _assistantAttributionHeader(
+              context: context,
+              message: msg,
+              chatColors: chatColors,
             ),
           if (isAssistantDispatchPlaceholder)
             Padding(
@@ -800,11 +831,25 @@ class _MessageListState extends State<MessageList> {
     for (var i = 0; i < messages.length; i++) {
       if (_isToolLoopMessage(messages[i])) {
         final endIndex = _toolGroupEndIndex(messages, i);
-        messageItems.add(_buildToolGroupItem(context, i, endIndex));
+        messageItems.add(
+          _buildToolGroupItem(
+            context,
+            i,
+            endIndex,
+            hideMeta: _toolGroupShouldAttachNextText(messages, endIndex),
+          ),
+        );
         i = endIndex;
         continue;
       }
-      messageItems.add(_buildMessageItem(context, i));
+      messageItems.add(
+        _buildMessageItem(
+          context,
+          i,
+          suppressAssistantHeader:
+              _shouldAttachAssistantTextToPreviousToolGroup(messages, i),
+        ),
+      );
     }
 
     // All messages in the initial load are bounded (≤ 20 items). Building

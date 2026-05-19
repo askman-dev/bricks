@@ -7,6 +7,7 @@ Tool call result messages can render large JSON payloads inline in the chat stre
 ## Goals
 
 - Collapse adjacent tool call messages into one compact inline status object.
+- Visually attach the assistant answer immediately after a tool group to that group by suppressing the repeated assistant header.
 - Use the user-facing labels `正在思考 completed/total` while the group is active and `思考过程 completed/total` when the group is complete.
 - Do not show tool names, tool types, arguments, or JSON payloads in the outer chat stream.
 - Keep non-adjacent tool groups separate.
@@ -16,8 +17,9 @@ Tool call result messages can render large JSON payloads inline in the chat stre
 1. Identify agent-loop tool messages in `MessageList`, including tool start and tool result phases.
 2. Group only consecutive tool messages during message list rendering.
 3. Render a single status row for each group with completed and total counts.
-4. Keep reasoning and step-text agent-loop phases on their existing rendering path.
-5. Add widget tests for active/completed groups, adjacent merging, and non-adjacent separation.
+4. When a plain assistant text message immediately follows a tool group, suppress its repeated agent header and let its metadata close the combined visual turn.
+5. Keep reasoning and step-text agent-loop phases on their existing rendering path.
+6. Add widget tests for active/completed groups, adjacent merging, non-adjacent separation, and header suppression after a tool group.
 
 ## Acceptance Criteria
 
@@ -25,6 +27,7 @@ Tool call result messages can render large JSON payloads inline in the chat stre
 - A completed tool displays `思考过程 1/1`.
 - Adjacent completed tools display one row, for example `思考过程 2/2`.
 - Non-adjacent tool calls display separate rows.
+- The assistant text immediately after a tool group does not show a duplicate assistant header.
 - Raw `Tool: ...` JSON content is not visible in the chat stream for grouped tool calls.
 
 ## Validation Commands
