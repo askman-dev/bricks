@@ -578,6 +578,8 @@ index:
       - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
       - docs/plans/2026-05-18-22-22-+08-highlight-selection-offsets.md
       - docs/plans/2026-05-19-10-50-+08-unified-authenticated-api-client.md
+      - docs/plans/2026-05-19-11-55-+08-highlight-toolbar-union-ranges.md
+      - docs/design/text-highlight-floating-toolbar.design.md
     test_index:
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/highlight_selection_toolbar_web_test.dart
@@ -593,6 +595,8 @@ index:
       - list-level selection toolbar
       - floating toolbar
       - pointer-down toolbar action
+      - tap highlighted span
+      - highlight range union
       - markdown highlight offsets
       - code block highlights
       - table cell highlights
@@ -604,6 +608,7 @@ index:
     change_risks:
       - Flutter Web 鼠标拖选依赖外层 list-level SelectionArea 弹出工具栏；将 SelectionArea 下放到单条消息会导致 Chrome 选择文本后不显示浮动工具条。
       - 浮动工具栏按钮若依赖 TextButton.onPressed，点击时 SelectionArea 可能先清除选区并销毁按钮，导致复制/划线 action 不触发；应保持 pointer-down 即时触发。
+      - 重叠或相邻 highlight 记录若不先合并为视觉区间并集，TextSpan 切分会重复输出被覆盖的文字。
       - 划线创建和删除依赖 AuthenticatedApiClient 注入 Authorization header；若 UI 层重新用 _authToken gate action，可能再次出现工具栏可见但点击不发请求的静默失败。
       - Backend resources routes must read `AuthRequest.userId`; reading a non-existent `req.user.id` can reject an async Express 4 handler and leave the browser request pending.
       - 选区 offset 映射依赖前端 markdown renderer 与 rendered-text index 对 markdown 标记、代码块、表格文本的处理保持一致；渲染规则变化时需同步更新映射测试。

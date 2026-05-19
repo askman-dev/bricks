@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -1171,26 +1170,50 @@ void _showHighlightTapMenu({
   required Offset position,
   required void Function(String highlightId) onDeleteHighlight,
 }) {
-  final size = MediaQuery.of(context).size;
-  showMenu<String>(
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  showGeneralDialog<void>(
     context: context,
-    position: RelativeRect.fromLTRB(
-      position.dx,
-      position.dy,
-      size.width - position.dx,
-      size.height - position.dy,
-    ),
-    items: const [
-      PopupMenuItem<String>(value: 'copy', child: Text('复制')),
-      PopupMenuItem<String>(value: 'delete', child: Text('删除划线')),
-    ],
-  ).then((value) {
-    if (value == 'copy') {
-      Clipboard.setData(ClipboardData(text: text));
-    } else if (value == 'delete') {
-      onDeleteHighlight(highlightId);
-    }
-  });
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.transparent,
+    transitionDuration: Duration.zero,
+    pageBuilder: (dialogContext, _, __) {
+      const toolbarWidth = 204.0;
+      const toolbarHeight = 52.0;
+      final left = (position.dx - toolbarWidth / 2)
+          .clamp(BricksSpacing.sm, overlay.size.width - toolbarWidth)
+          .toDouble();
+      final top = (position.dy - toolbarHeight - BricksSpacing.xs)
+          .clamp(BricksSpacing.sm, overlay.size.height - toolbarHeight)
+          .toDouble();
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(dialogContext).pop(),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          Positioned(
+            left: left,
+            top: top,
+            child: _SelectionFloatingToolbar(
+              actionLabel: '删除划线',
+              onCopy: () {
+                Clipboard.setData(ClipboardData(text: text));
+                Navigator.of(dialogContext).pop();
+              },
+              onAction: () {
+                onDeleteHighlight(highlightId);
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class _AssistantMarkdownText extends StatefulWidget {
@@ -1801,7 +1824,33 @@ List<_HighlightRange> _highlightRangesForMessage({
     }
   }
   ranges.sort((a, b) => a.start.compareTo(b.start));
-  return ranges;
+  return _mergeHighlightRanges(ranges, normalizedText);
+}
+
+List<_HighlightRange> _mergeHighlightRanges(
+  List<_HighlightRange> ranges,
+  String normalizedText,
+) {
+  if (ranges.length < 2) return ranges;
+  final merged = <_HighlightRange>[];
+  var current = ranges.first;
+  for (final next in ranges.skip(1)) {
+    if (next.start > current.end) {
+      merged.add(current);
+      current = next;
+      continue;
+    }
+    final end = next.end > current.end ? next.end : current.end;
+    current = _HighlightRange(
+      highlightId: current.highlightId,
+      selectedText: normalizedText.substring(current.start, end),
+      start: current.start,
+      end: end,
+      backgroundColor: current.backgroundColor,
+    );
+  }
+  merged.add(current);
+  return merged;
 }
 
 List<InlineSpan> _splitOffsetSpansByHighlights({
@@ -1828,6 +1877,7 @@ List<InlineSpan> _splitOffsetSpansByHighlights({
       if (end <= start) continue;
       final localStart = start - spanStart;
       final localEnd = end - spanStart;
+      if (localEnd <= cursor) continue;
       if (localStart > cursor) {
         result.add(
           TextSpan(
@@ -1836,9 +1886,10 @@ List<InlineSpan> _splitOffsetSpansByHighlights({
           ),
         );
       }
-      final matchText = spanText.substring(localStart, localEnd);
+      final effectiveStart = localStart < cursor ? cursor : localStart;
+      final matchText = spanText.substring(effectiveStart, localEnd);
       TapGestureRecognizer? recognizer;
-      if (!kIsWeb && onDeleteHighlight != null) {
+      if (onDeleteHighlight != null) {
         final capturedHighlightId = highlight.highlightId;
         final capturedText = highlight.selectedText;
         recognizer = TapGestureRecognizer()

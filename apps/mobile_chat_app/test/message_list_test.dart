@@ -718,6 +718,92 @@ void main() {
       final decorated = _decoratedLeafSpans(tester);
       expect(decorated.map((span) => span.text).toList(), ['target']);
     });
+
+    testWidgets('merges overlapping highlights without duplicating text',
+        (tester) async {
+      const content = '0123456789';
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-overlap',
+        role: 'assistant',
+        content: content,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-overlap': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: '2345',
+                startOffset: 2,
+                endOffset: 6,
+                color: 'yellow',
+              ),
+              HighlightSpan(
+                highlightId: 'h2',
+                selectedText: '4567',
+                startOffset: 4,
+                endOffset: 8,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final richText = tester
+          .widgetList<RichText>(find.byType(RichText))
+          .firstWhere((widget) => widget.text.toPlainText() == content);
+      expect(richText.text.toPlainText(), content);
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['234567']);
+    });
+
+    testWidgets('tapping highlighted text shows copy and delete toolbar',
+        (tester) async {
+      String? deletedHighlightId;
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-tap',
+        role: 'assistant',
+        content: 'tap target text',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-tap': [
+              HighlightSpan(
+                highlightId: 'h-delete',
+                selectedText: 'target',
+                startOffset: 4,
+                endOffset: 10,
+                color: 'yellow',
+              ),
+            ],
+          },
+          onDeleteHighlight: (highlightId) {
+            deletedHighlightId = highlightId;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('tap target text'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('复制'), findsOneWidget);
+      expect(find.text('删除划线'), findsOneWidget);
+
+      await tester.tap(find.text('删除划线'));
+      await tester.pumpAndSettle();
+
+      expect(deletedHighlightId, 'h-delete');
+    });
   });
 
   group('User delivery status', () {
