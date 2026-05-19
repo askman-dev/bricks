@@ -6,6 +6,9 @@ enum ChatNavigationAction { appSettings, sessions, createChannel, manageAgents }
 
 enum ChatChannelMenuAction { rename, archive }
 
+/// Type filter for the Resources tab.
+enum ChatResourceTypeFilter { all, todoList, assetTable, textHighlight }
+
 class ChatChannelItem {
   const ChatChannelItem({
     required this.id,
@@ -33,23 +36,71 @@ class ChatAgentItem {
 }
 
 /// Type of resource shown in the Resources tab.
-enum ChatResourceType { todoList, assetTable }
+enum ChatResourceType { todoList, assetTable, textHighlight }
 
-/// A resource item (todo-list or asset table) shown in the Resources tab.
+/// A resource item shown in the Resources tab.
 class ChatResourceItem {
   const ChatResourceItem({
     required this.id,
     required this.type,
     required this.title,
+    required this.updatedAt,
     this.notes,
   });
 
   final String id;
   final ChatResourceType type;
   final String title;
+  final DateTime updatedAt;
 
-  /// Optional subtitle – notes for a todo-list, or null for an asset table.
+  /// Optional subtitle shown under the resource title.
   final String? notes;
+}
+
+ChatResourceTypeFilter _filterForResourceType(ChatResourceType type) {
+  switch (type) {
+    case ChatResourceType.todoList:
+      return ChatResourceTypeFilter.todoList;
+    case ChatResourceType.assetTable:
+      return ChatResourceTypeFilter.assetTable;
+    case ChatResourceType.textHighlight:
+      return ChatResourceTypeFilter.textHighlight;
+  }
+}
+
+String _labelForResourceFilter(ChatResourceTypeFilter filter) {
+  switch (filter) {
+    case ChatResourceTypeFilter.all:
+      return 'All';
+    case ChatResourceTypeFilter.todoList:
+      return 'Todo Lists';
+    case ChatResourceTypeFilter.assetTable:
+      return 'Tables';
+    case ChatResourceTypeFilter.textHighlight:
+      return 'Highlights';
+  }
+}
+
+IconData _iconForResourceType(ChatResourceType type) {
+  switch (type) {
+    case ChatResourceType.todoList:
+      return Icons.checklist_outlined;
+    case ChatResourceType.assetTable:
+      return Icons.table_chart_outlined;
+    case ChatResourceType.textHighlight:
+      return Icons.format_color_text_outlined;
+  }
+}
+
+String _labelForResourceType(ChatResourceType type) {
+  switch (type) {
+    case ChatResourceType.todoList:
+      return 'Todo List';
+    case ChatResourceType.assetTable:
+      return 'Table';
+    case ChatResourceType.textHighlight:
+      return 'Text Highlight';
+  }
 }
 
 /// Represents a connected AI node shown in the Nodes tab.
@@ -138,6 +189,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
   static const double _closeSwipeVelocityThreshold = 300;
 
   late final TabController _tabController;
+  ChatResourceTypeFilter _resourceFilter = ChatResourceTypeFilter.all;
 
   @override
   void initState() {
@@ -234,6 +286,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
     final selected = channels.any((item) => item.id == widget.selectedChannelId)
         ? widget.selectedChannelId
         : (channels.isNotEmpty ? channels.first.id : null);
+    final resources = _filteredResources();
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -344,21 +397,22 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
                 // Resources tab
                 ListView(
                   children: [
-                    if (widget.resources.isEmpty)
+                    _ResourceTypeFilterBar(
+                      selected: _resourceFilter,
+                      onSelected: (filter) {
+                        setState(() => _resourceFilter = filter);
+                      },
+                    ),
+                    if (resources.isEmpty)
                       const ListTile(
                         title: Text('No resources'),
-                        subtitle:
-                            Text('Todo lists and tables will appear here'),
+                        subtitle: Text('Resources will appear here'),
                       )
                     else
-                      ...widget.resources.map((resource) {
+                      ...resources.map((resource) {
                         final notes = resource.notes?.trim();
                         return ListTile(
-                          leading: Icon(
-                            resource.type == ChatResourceType.todoList
-                                ? Icons.checklist_outlined
-                                : Icons.table_chart_outlined,
-                          ),
+                          leading: Icon(_iconForResourceType(resource.type)),
                           title: Text(resource.title),
                           subtitle: notes != null && notes.isNotEmpty
                               ? Text(
@@ -409,6 +463,48 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  List<ChatResourceItem> _filteredResources() {
+    final sorted = List<ChatResourceItem>.from(widget.resources)
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (_resourceFilter == ChatResourceTypeFilter.all) {
+      return sorted;
+    }
+    return sorted
+        .where((item) => _filterForResourceType(item.type) == _resourceFilter)
+        .toList(growable: false);
+  }
+}
+
+class _ResourceTypeFilterBar extends StatelessWidget {
+  const _ResourceTypeFilterBar({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final ChatResourceTypeFilter selected;
+  final ValueChanged<ChatResourceTypeFilter> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final filter in ChatResourceTypeFilter.values)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilterChip(
+                label: Text(_labelForResourceFilter(filter)),
+                selected: selected == filter,
+                onSelected: (_) => onSelected(filter),
+              ),
+            ),
         ],
       ),
     );
@@ -477,7 +573,7 @@ class _NodeDetailPage extends StatelessWidget {
   }
 }
 
-/// Preview page for a resource item (todo-list or asset table).
+/// Preview page for a resource item.
 ///
 /// When the resource is a todo-list and [todoApiService] is provided, the page
 /// fetches the list's todo items and renders them with their status and
@@ -556,12 +652,8 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
         children: [
           // Type chip row
           ListTile(
-            leading: Icon(
-              isTodoList
-                  ? Icons.checklist_outlined
-                  : Icons.table_chart_outlined,
-            ),
-            title: Text(isTodoList ? 'Todo List' : 'Table'),
+            leading: Icon(_iconForResourceType(resource.type)),
+            title: Text(_labelForResourceType(resource.type)),
           ),
           if (notes != null && notes.isNotEmpty)
             ListTile(

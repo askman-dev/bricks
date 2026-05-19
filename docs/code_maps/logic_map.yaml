@@ -351,10 +351,12 @@ index:
       - apps/mobile_chat_app/lib/features/projects/projects_screen.dart
       - apps/mobile_chat_app/lib/features/skills/skills_screen.dart
       - apps/mobile_chat_app/lib/features/resources/resources_screen.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
     doc_index:
       - docs/product/overview.md
       - docs/faq/common-issues.md
       - docs/architecture.md
+      - docs/plans/2026-05-19-17-06-CST-navigation-resources-highlights.md
     test_index:
       - apps/mobile_chat_app/test/app_test.dart
       - apps/mobile_chat_app/test/chat_navigation_page_test.dart
@@ -364,9 +366,15 @@ index:
       - skills
       - resources
       - navigation
+      - resources tab
+      - type filter
+      - updatedAt descending
+      - atomic resources
     change_risks:
       - 侧边栏入口迁移后页面不可达。
       - 页面间返回路径断裂造成死路由。
+      - Resources tab 若按类型分组拼接而不是统一按 updatedAt 排序，会破坏跨资源时间线浏览。
+      - 新资源类型必须提供稳定 updatedAt，否则倒序排序会不确定。
 
   - feature_id: backend_auth
     capability: 后端 GitHub OAuth 认证
@@ -618,6 +626,8 @@ index:
       - apps/node_backend/src/routes/resources.ts
       - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
       - apps/mobile_chat_app/lib/features/chat/text_highlight_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
     doc_index:
       - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
@@ -625,11 +635,13 @@ index:
       - docs/plans/2026-05-19-10-50-+08-unified-authenticated-api-client.md
       - docs/plans/2026-05-19-11-55-+08-highlight-toolbar-union-ranges.md
       - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
+      - docs/plans/2026-05-19-17-06-CST-navigation-resources-highlights.md
       - docs/design/text-highlight-floating-toolbar.design.md
     test_index:
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/highlight_selection_toolbar_web_test.dart
       - apps/mobile_chat_app/test/text_highlight_api_service_test.dart
+      - apps/mobile_chat_app/test/chat_navigation_page_test.dart
       - apps/node_backend/src/routes/resources.test.ts
       - apps/node_backend/src/services/localAgentLoopService.test.ts
     keywords:
@@ -652,6 +664,9 @@ index:
       - _AssistantMarkdownText
       - authenticated API client
       - Authorization header
+      - Resources tab highlight item
+      - text highlight resource
+      - type filter
     change_risks:
       - Flutter Web 鼠标拖选依赖外层 list-level SelectionArea 弹出工具栏；将 SelectionArea 下放到单条消息会导致 Chrome 选择文本后不显示浮动工具条。
       - 浮动工具栏按钮若依赖 TextButton.onPressed，点击时 SelectionArea 可能先清除选区并销毁按钮，导致复制/划线 action 不触发；应保持 pointer-down 即时触发。
@@ -663,6 +678,7 @@ index:
       - 表格单元格或重复文本若使用文本搜索而不是 stored startOffset/endOffset，会导致划线显示或删除到错误位置。
       - Flutter Web 上 TextSpan TapGestureRecognizer 会干扰 SelectionArea 拖拽选择；web 删除路径应继续通过选择工具栏实现。
       - 旧数据若缺少 startOffset/endOffset，仍会回退为 selectedText 搜索；重复文本场景下旧记录可能显示多处，需要后续数据迁移或重新创建高亮才能完全消除歧义。
+      - ChatScreen 必须在 highlight 创建、加载、删除后同步 _textHighlights，否则 Resources tab 可能显示过期划线资源。
 
 maintenance_rules:
   update_required_when:
