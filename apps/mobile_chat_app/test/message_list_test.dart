@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:design_system/design_system.dart';
@@ -803,6 +805,69 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(deletedHighlightId, 'h-delete');
+    });
+
+    testWidgets('delete toolbar sizes to longer action label', (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-toolbar-size',
+        role: 'assistant',
+        content: 'tap target text',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-toolbar-size': [
+              HighlightSpan(
+                highlightId: 'h-delete',
+                selectedText: 'target',
+                startOffset: 4,
+                endOffset: 10,
+                color: 'yellow',
+              ),
+            ],
+          },
+          onHighlight: (_, __, ___, ____) {},
+          onDeleteHighlight: (_) {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.dragFrom(
+        tester.getCenter(find.textContaining('tap target text')),
+        const Offset(48, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      final shortToolbarWidth = tester
+          .getSize(
+            find
+                .ancestor(
+                  of: find.text('划线'),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .width;
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('tap target text'));
+      await tester.pumpAndSettle();
+      final deleteToolbarWidth = tester
+          .getSize(
+            find
+                .ancestor(
+                  of: find.text('删除划线'),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .width;
+
+      expect(deleteToolbarWidth, greaterThan(shortToolbarWidth));
     });
   });
 
