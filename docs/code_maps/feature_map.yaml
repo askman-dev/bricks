@@ -185,6 +185,8 @@ products:
         entry_paths:
           - service: TodoApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/todo_api_service.dart
+          - service: AuthenticatedApiClient
+            route_hint: apps/mobile_chat_app/lib/services/authenticated_api_client.dart
           - route: GET /api/resources/todo-lists
             route_hint: apps/node_backend/src/routes/resources.ts
           - route: POST /api/resources/todo-lists
@@ -211,6 +213,8 @@ products:
         entry_paths:
           - service: AssetTableApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/asset_table_api_service.dart
+          - service: AuthenticatedApiClient
+            route_hint: apps/mobile_chat_app/lib/services/authenticated_api_client.dart
           - route: GET/POST /api/resources/tables
             route_hint: apps/node_backend/src/routes/resources.ts
           - route: GET /api/resources/tables/:resourceId
@@ -257,6 +261,7 @@ products:
           - 点击"划线"后，客户端发出带 Authorization header 的 POST /api/resources/highlights 请求，成功后选中文字出现黄色背景和横线。
           - 缺少 token 或 token 失效时，点击"划线"不应静默无反馈。
           - 当同一消息中存在重复文本时，只应划中用户实际选择的那一段。
+          - 层级 Markdown 列表中的子项应保留更深缩进，且存储 offset 的划线应显示在正确子项文本上。
           - 选区跨 markdown 段落、代码块或表格单元格时，同一条划线应渲染成多个连续 subsegment。
           - 选中已有划线范围时，工具栏应提供"删除划线"。
           - 点击已有黄色划线区域时，应显示同款浮动工具栏，包含"复制"和"删除划线"。

@@ -90,7 +90,6 @@ class ChatNavigationPage extends StatefulWidget {
     this.onRequestClose,
     this.closeOnChannelSelected = true,
     this.todoApiService,
-    this.authToken,
   });
 
   final ValueChanged<ChatNavigationAction> onActionSelected;
@@ -121,9 +120,6 @@ class ChatNavigationPage extends StatefulWidget {
 
   /// Optional service used to fetch todo items inside [_ResourcePreviewPage].
   final TodoApiService? todoApiService;
-
-  /// Auth token forwarded to [_ResourcePreviewPage] for API calls.
-  final String? authToken;
 
   /// Called when the navigation requests to be closed. This is triggered by
   /// the back arrow, action selections (rename/archive), and channel taps when
@@ -227,7 +223,6 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
         builder: (_) => _ResourcePreviewPage(
           resource: resource,
           todoApiService: widget.todoApiService,
-          authToken: widget.authToken,
         ),
       ),
     );
@@ -245,170 +240,173 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
       onHorizontalDragEnd: _handleHorizontalDragEnd,
       child: Column(
         children: [
-        // Header row
-        SizedBox(
-          height: kToolbarHeight,
-          child: Row(
-            children: [
-              SizedBox(
-                width: kToolbarHeight,
-                height: kToolbarHeight,
-                child: IconButton(
-                  onPressed: () => _closeNavigation(context),
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+          // Header row
+          SizedBox(
+            height: kToolbarHeight,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: kToolbarHeight,
+                  height: kToolbarHeight,
+                  child: IconButton(
+                    onPressed: () => _closeNavigation(context),
+                    icon: const Icon(Icons.arrow_back),
+                    tooltip:
+                        MaterialLocalizations.of(context).closeButtonTooltip,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Navigation',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Navigation',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                 ),
-              ),
-              IconButton(
-                onPressed: () =>
-                    _selectAction(context, ChatNavigationAction.appSettings),
-                icon: const Icon(Icons.settings_outlined),
-                tooltip: 'Settings',
-              ),
+                IconButton(
+                  onPressed: () =>
+                      _selectAction(context, ChatNavigationAction.appSettings),
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'Settings',
+                ),
+              ],
+            ),
+          ),
+          // Tab bar
+          TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Channels'),
+              Tab(text: 'Resources'),
+              Tab(text: 'Nodes'),
             ],
           ),
-        ),
-        // Tab bar
-        TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Channels'),
-            Tab(text: 'Resources'),
-            Tab(text: 'Nodes'),
-          ],
-        ),
-        // Tab content
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              // Channels tab
-              ListView(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
-                    child: Row(
-                      children: [
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () => _selectAction(
-                              context, ChatNavigationAction.createChannel),
-                          icon: const Icon(Icons.add_circle_outline, size: 18),
-                          label: const Text('新建频道'),
-                        ),
-                      ],
+          // Tab content
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                // Channels tab
+                ListView(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+                      child: Row(
+                        children: [
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => _selectAction(
+                                context, ChatNavigationAction.createChannel),
+                            icon:
+                                const Icon(Icons.add_circle_outline, size: 18),
+                            label: const Text('新建频道'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (channels.isEmpty)
-                    const ListTile(
-                      title: Text('No channels'),
-                      subtitle: Text('Create your first channel'),
-                    )
-                  else
-                    ...channels.map((channel) {
-                      final isSelected = selected == channel.id;
-                      return ListTile(
-                        leading: Icon(
-                          channel.isDefault
-                              ? Icons.home_filled
-                              : Icons.forum_outlined,
-                        ),
-                        title: Text(channel.name),
-                        subtitle: channel.isDefault
-                            ? const Text('Default channel')
-                            : null,
-                        selected: isSelected,
-                        onTap: () {
-                          if (widget.closeOnChannelSelected) {
-                            _closeNavigation(context);
-                          }
-                          widget.onChannelSelected?.call(channel.id);
-                        },
-                        onLongPress: channel.isDefault
-                            ? null
-                            : () {
-                                _showChannelMenu(channel);
-                              },
-                      );
-                    }),
-                  const SizedBox(height: 24),
-                ],
-              ),
-              // Resources tab
-              ListView(
-                children: [
-                  if (widget.resources.isEmpty)
-                    const ListTile(
-                      title: Text('No resources'),
-                      subtitle: Text('Todo lists and tables will appear here'),
-                    )
-                  else
-                    ...widget.resources.map((resource) {
-                      final notes = resource.notes?.trim();
-                      return ListTile(
-                        leading: Icon(
-                          resource.type == ChatResourceType.todoList
-                              ? Icons.checklist_outlined
-                              : Icons.table_chart_outlined,
-                        ),
-                        title: Text(resource.title),
-                        subtitle: notes != null && notes.isNotEmpty
-                            ? Text(
-                                notes,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              )
-                            : null,
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          if (widget.onResourceSelected != null) {
-                            widget.onResourceSelected!.call(resource);
-                          } else {
-                            _openResourcePreview(resource);
-                          }
-                        },
-                      );
-                    }),
-                  const SizedBox(height: 24),
-                ],
-              ),
-              // Nodes tab
-              ListView(
-                children: [
-                  if (widget.nodes.isEmpty)
-                    const ListTile(
-                      title: Text('No nodes'),
-                      subtitle: Text('Connect an AI node to get started'),
-                    )
-                  else
-                    ...widget.nodes.map((node) {
-                      return ListTile(
-                        leading: const Icon(Icons.memory_outlined),
-                        title: Text(node.name),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          if (widget.onNodeSelected != null) {
-                            widget.onNodeSelected!.call(node.id);
-                          } else {
-                            _openNodeDetail(node);
-                          }
-                        },
-                      );
-                    }),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ],
+                    if (channels.isEmpty)
+                      const ListTile(
+                        title: Text('No channels'),
+                        subtitle: Text('Create your first channel'),
+                      )
+                    else
+                      ...channels.map((channel) {
+                        final isSelected = selected == channel.id;
+                        return ListTile(
+                          leading: Icon(
+                            channel.isDefault
+                                ? Icons.home_filled
+                                : Icons.forum_outlined,
+                          ),
+                          title: Text(channel.name),
+                          subtitle: channel.isDefault
+                              ? const Text('Default channel')
+                              : null,
+                          selected: isSelected,
+                          onTap: () {
+                            if (widget.closeOnChannelSelected) {
+                              _closeNavigation(context);
+                            }
+                            widget.onChannelSelected?.call(channel.id);
+                          },
+                          onLongPress: channel.isDefault
+                              ? null
+                              : () {
+                                  _showChannelMenu(channel);
+                                },
+                        );
+                      }),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+                // Resources tab
+                ListView(
+                  children: [
+                    if (widget.resources.isEmpty)
+                      const ListTile(
+                        title: Text('No resources'),
+                        subtitle:
+                            Text('Todo lists and tables will appear here'),
+                      )
+                    else
+                      ...widget.resources.map((resource) {
+                        final notes = resource.notes?.trim();
+                        return ListTile(
+                          leading: Icon(
+                            resource.type == ChatResourceType.todoList
+                                ? Icons.checklist_outlined
+                                : Icons.table_chart_outlined,
+                          ),
+                          title: Text(resource.title),
+                          subtitle: notes != null && notes.isNotEmpty
+                              ? Text(
+                                  notes,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                )
+                              : null,
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            if (widget.onResourceSelected != null) {
+                              widget.onResourceSelected!.call(resource);
+                            } else {
+                              _openResourcePreview(resource);
+                            }
+                          },
+                        );
+                      }),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+                // Nodes tab
+                ListView(
+                  children: [
+                    if (widget.nodes.isEmpty)
+                      const ListTile(
+                        title: Text('No nodes'),
+                        subtitle: Text('Connect an AI node to get started'),
+                      )
+                    else
+                      ...widget.nodes.map((node) {
+                        return ListTile(
+                          leading: const Icon(Icons.memory_outlined),
+                          title: Text(node.name),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            if (widget.onNodeSelected != null) {
+                              widget.onNodeSelected!.call(node.id);
+                            } else {
+                              _openNodeDetail(node);
+                            }
+                          },
+                        );
+                      }),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -481,19 +479,17 @@ class _NodeDetailPage extends StatelessWidget {
 
 /// Preview page for a resource item (todo-list or asset table).
 ///
-/// When the resource is a todo-list and [todoApiService] + [authToken] are
-/// provided, the page fetches the list's todo items and renders them with
-/// their status and creation time.
+/// When the resource is a todo-list and [todoApiService] is provided, the page
+/// fetches the list's todo items and renders them with their status and
+/// creation time.
 class _ResourcePreviewPage extends StatefulWidget {
   const _ResourcePreviewPage({
     required this.resource,
     this.todoApiService,
-    this.authToken,
   });
 
   final ChatResourceItem resource;
   final TodoApiService? todoApiService;
-  final String? authToken;
 
   @override
   State<_ResourcePreviewPage> createState() => _ResourcePreviewPageState();
@@ -514,8 +510,7 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
 
   Future<void> _fetchItems() async {
     final service = widget.todoApiService;
-    final token = widget.authToken;
-    if (service == null || token == null || token.isEmpty) return;
+    if (service == null) return;
 
     setState(() {
       _loading = true;
@@ -523,7 +518,6 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
     });
     try {
       final raw = await service.listTodos(
-        token: token,
         listId: widget.resource.id,
       );
       // Sort a copy: incomplete first (by displayOrder), then completed.
@@ -643,9 +637,7 @@ class _TodoItemTile extends StatelessWidget {
         item.isCompleted
             ? Icons.check_circle_outline
             : Icons.radio_button_unchecked,
-        color: item.isCompleted
-            ? Theme.of(context).colorScheme.primary
-            : null,
+        color: item.isCompleted ? Theme.of(context).colorScheme.primary : null,
       ),
       title: Text(
         item.title,

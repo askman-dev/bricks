@@ -53,6 +53,7 @@ index:
       - apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
       - apps/mobile_chat_app/lib/features/chat/chat_builtin_agents.dart
       - apps/mobile_chat_app/lib/features/agents/agents_screen.dart
+      - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
       - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
       - apps/mobile_chat_app/lib/features/chat/chat_message_sort.dart
@@ -90,6 +91,7 @@ index:
       - docs/plans/2026-05-15-16-54-+08-local-chat-fixture-db.md
       - docs/plans/2026-05-16-17-58-+08-mobile-agents-directory-setup-fix.md
       - docs/plans/2026-05-16-23-21-+08-ios-sandbox-path-without-home.md
+      - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
       - docs/testing/local-chat-fixture-db.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
@@ -191,6 +193,7 @@ index:
       - 若移动端没有可写的本地 Agents 目录，登录后的 chat setup 会在历史会话加载前失败，表现为同账号移动端看不到网页历史数据。
       - 若 iOS 本地路径解析依赖 `HOME` 环境变量，真机启动会在 chat setup 阶段失败并阻断历史会话加载。
       - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。
+      - ChatHistoryApiService 依赖 AuthenticatedApiClient 注入 token；若重新在 ChatScreen 用 _authToken 阻断 load/respond/SSE，会回到 UI 静默失败路径。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
       - 若频道最新消息时间未在消息加载、追加、归档时同步更新，侧边栏排序将与实际活跃时间脱节。
       - 若仅对侧边栏频道列表使用 _sortedChannels 而未对顶部频道下拉菜单同步更新，两处展示顺序不一致会混淆用户。
@@ -200,6 +203,7 @@ index:
     capability: 频道与分区级别的会话指令配置及提示词组合
     code_index:
       - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+      - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
       - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
       - apps/node_backend/src/routes/chat.ts
@@ -207,6 +211,7 @@ index:
       - apps/node_backend/src/db/migrations/013_add_instructions_to_chat_scope_settings.sql
     doc_index:
       - docs/plans/2026-04-30-17-51-+08-scope-instructions-config.md
+      - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
     test_index:
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
       - apps/node_backend/src/services/chatRouterService.test.ts
@@ -267,6 +272,7 @@ index:
     capability: 模型配置读写
     code_index:
       - apps/mobile_chat_app/lib/features/settings/model_settings_screen.dart
+      - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
       - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
       - apps/node_backend/src/routes/config.ts
       - config/models.yaml
@@ -276,6 +282,7 @@ index:
       - docs/model_settings_plan.md
       - docs/architecture.md
       - docs/openclaw_pull_only_integration_dev_doc.md
+      - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
     test_index:
       - apps/mobile_chat_app/test/model_settings_screen_test.dart
       - apps/mobile_chat_app/test/llm_config_service_test.dart
@@ -290,6 +297,7 @@ index:
       - api url
     change_risks:
       - 字段格式变化导致保存后读取失败。
+      - LlmConfigService 依赖 AuthenticatedApiClient 注入 token；设置页测试应注入 fake service，服务测试应注入测试 token provider。
       - 后端默认模型与前端选择策略不一致。
       - release native API base URL 默认值错误会导致登录、配置读取和聊天请求打到本机 localhost。
 
@@ -298,6 +306,7 @@ index:
     code_index:
       - apps/mobile_chat_app/lib/features/settings/settings_screen.dart
       - apps/mobile_chat_app/lib/features/settings/node_settings_screen.dart
+      - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
       - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
       - apps/node_backend/src/routes/config.ts
@@ -533,8 +542,10 @@ index:
       - apps/node_backend/src/services/localAgentLoopService.ts
       - apps/node_backend/src/routes/resources.ts
       - apps/mobile_chat_app/lib/features/chat/todo_api_service.dart
+      - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
     doc_index:
       - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
+      - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
     test_index:
       - apps/node_backend/src/services/localAgentLoopService.test.ts
     keywords:
@@ -551,6 +562,7 @@ index:
       - todoListService.deleteTodoList 依赖 DB CASCADE 删除子 asset_todos；若 FK 未正确迁移，cascade 不生效。
       - 修改 INTERNAL_TOOLS 常量列表若遗漏新工具会导致 tool_not_allowed 错误。
       - todoService 的 updateTodo 使用动态 SET 子句；若新增字段须同步 DTO 和路由 PATCH 处理。
+      - TodoApiService 不再接收 token 参数；资源预览和聊天页加载应依赖 AuthenticatedApiClient 的统一缺 token/401 错误路径。
 
   - feature_id: asset_tables
     capability: 用户通过自然语言让 AI 管理动态 JSONB 表格（O(1) 列操作，行软删除）；AI 调用 table_* 工具
@@ -562,9 +574,11 @@ index:
       - apps/node_backend/src/routes/chat.ts
       - apps/node_backend/src/routes/resources.ts
       - apps/mobile_chat_app/lib/features/chat/asset_table_api_service.dart
+      - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
     doc_index:
       - docs/plans/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
       - docs/plans/2026-05-17-00-04-+08-table-tool-error-and-turso-compatibility.md
+      - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
       - docs/kb/turso-sqlite-compatibility.md
     test_index:
       - apps/node_backend/src/services/localAgentLoopService.test.ts
@@ -582,12 +596,14 @@ index:
       - tool-error
       - sparse storage
       - column registry
+      - authenticated API client
     change_risks:
       - getTable 在读取时用 column registry 过滤 cell_data keys；删除列后旧数据仍保留在 JSONB，仅在读时过滤——若直接查询 DB 会看到孤立 key。
       - addRow 使用子查询计算 MAX(display_number)+1，高并发下可能产生重复 display_number（可接受，仅用于排序）。
       - removeColumn 仅删除 asset_table_columns 记录，不清理已有行的 cell_data，需注意存储膨胀。
       - 运行时 SQL 若使用 PostgreSQL-only 语法（NOW()、::jsonb、JSONB concat）会在 Turso/libSQL 下执行失败，导致工具 start 已落库但无 result。
       - AI SDK 的 tool-error 事件若未持久化，历史消息会永久显示“正在调用 table_create”，即使工具已经失败。
+      - AssetTableApiService 不再接收 token 参数；资源加载失败应通过统一 authenticated client 错误路径处理。
 
   - feature_id: text_highlights
     capability: 用户选中助手消息文本后通过浮动工具栏"划线"持久化高亮；高亮按消息 offset 渲染，可拆成多个 markdown/code/table subsegment；AI 可用 highlight_list 工具查询
@@ -604,6 +620,7 @@ index:
       - docs/plans/2026-05-18-22-22-+08-highlight-selection-offsets.md
       - docs/plans/2026-05-19-10-50-+08-unified-authenticated-api-client.md
       - docs/plans/2026-05-19-11-55-+08-highlight-toolbar-union-ranges.md
+      - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
       - docs/design/text-highlight-floating-toolbar.design.md
     test_index:
       - apps/mobile_chat_app/test/message_list_test.dart
@@ -623,6 +640,7 @@ index:
       - tap highlighted span
       - highlight range union
       - markdown highlight offsets
+      - nested markdown list highlights
       - code block highlights
       - table cell highlights
       - subsegment rendering
@@ -637,6 +655,7 @@ index:
       - 划线创建和删除依赖 AuthenticatedApiClient 注入 Authorization header；若 UI 层重新用 _authToken gate action，可能再次出现工具栏可见但点击不发请求的静默失败。
       - Backend resources routes must read `AuthRequest.userId`; reading a non-existent `req.user.id` can reject an async Express 4 handler and leave the browser request pending.
       - 选区 offset 映射依赖前端 markdown renderer 与 rendered-text index 对 markdown 标记、代码块、表格文本的处理保持一致；渲染规则变化时需同步更新映射测试。
+      - 层级列表渲染依赖 _MarkdownBlock.listLevel 保留缩进层级；若列表解析规则变化，需要同步 nested list highlight 测试。
       - 表格单元格或重复文本若使用文本搜索而不是 stored startOffset/endOffset，会导致划线显示或删除到错误位置。
       - Flutter Web 上 TextSpan TapGestureRecognizer 会干扰 SelectionArea 拖拽选择；web 删除路径应继续通过选择工具栏实现。
       - 旧数据若缺少 startOffset/endOffset，仍会回退为 selectedText 搜索；重复文本场景下旧记录可能显示多处，需要后续数据迁移或重新创建高亮才能完全消除歧义。

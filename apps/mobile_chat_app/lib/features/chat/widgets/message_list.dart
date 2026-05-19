@@ -1482,8 +1482,9 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
       );
       if (block.type == _MarkdownBlockType.unorderedList ||
           block.type == _MarkdownBlockType.orderedList) {
+        final listLeftPadding = BricksSpacing.md * (block.listLevel + 1);
         widgets.add(Padding(
-          padding: const EdgeInsets.only(left: BricksSpacing.md),
+          padding: EdgeInsets.only(left: listLeftPadding),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1945,15 +1946,17 @@ class _MarkdownBlock {
     required this.type,
     required this.text,
     this.marker = '',
+    this.listLevel = 0,
   });
 
   final _MarkdownBlockType type;
   final String text;
   final String marker;
+  final int listLevel;
 
   static final RegExp _headingPattern = RegExp(r'^\s{0,3}(#{1,6})\s+(.*)$');
-  static final RegExp _unorderedListPattern = RegExp(r'^\s*([-*+])\s+(.*)$');
-  static final RegExp _orderedListPattern = RegExp(r'^\s*(\d+)\.\s+(.*)$');
+  static final RegExp _unorderedListPattern = RegExp(r'^(\s*)([-*+])\s+(.*)$');
+  static final RegExp _orderedListPattern = RegExp(r'^(\s*)(\d+)\.\s+(.*)$');
 
   static _MarkdownBlock tryParse(String line) {
     final headingMatch = _headingPattern.firstMatch(line);
@@ -1968,8 +1971,9 @@ class _MarkdownBlock {
     if (unorderedMatch != null) {
       return _MarkdownBlock(
         type: _MarkdownBlockType.unorderedList,
-        marker: unorderedMatch.group(1) ?? '•',
-        text: unorderedMatch.group(2) ?? '',
+        marker: unorderedMatch.group(2) ?? '•',
+        text: unorderedMatch.group(3) ?? '',
+        listLevel: _listLevelFromIndent(unorderedMatch.group(1) ?? ''),
       );
     }
 
@@ -1977,13 +1981,19 @@ class _MarkdownBlock {
     if (orderedMatch != null) {
       return _MarkdownBlock(
         type: _MarkdownBlockType.orderedList,
-        marker: '${orderedMatch.group(1)}.',
-        text: orderedMatch.group(2) ?? '',
+        marker: '${orderedMatch.group(2)}.',
+        text: orderedMatch.group(3) ?? '',
+        listLevel: _listLevelFromIndent(orderedMatch.group(1) ?? ''),
       );
     }
 
     return _MarkdownBlock(type: _MarkdownBlockType.paragraph, text: line);
   }
+}
+
+int _listLevelFromIndent(String indent) {
+  final spaces = indent.replaceAll('\t', '    ').length;
+  return spaces ~/ 2;
 }
 
 List<_OffsetTextSpan> _parseInlineMarkdownWithOffsets(

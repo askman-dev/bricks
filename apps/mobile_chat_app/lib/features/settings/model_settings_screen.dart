@@ -9,9 +9,9 @@ const kApiKeyStoredHint = '(已设置，出于安全原因未显示)';
 
 class ModelSettingsScreen extends StatefulWidget {
   const ModelSettingsScreen({super.key, LlmConfigService? service})
-      : _service = service ?? const LlmConfigService();
+      : _service = service;
 
-  final LlmConfigService _service;
+  final LlmConfigService? _service;
 
   @override
   State<ModelSettingsScreen> createState() => _ModelSettingsScreenState();
@@ -36,7 +36,7 @@ class _ModelSettingsScreenState extends State<ModelSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _service = widget._service;
+    _service = widget._service ?? LlmConfigService();
     _load();
   }
 

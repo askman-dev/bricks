@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:mobile_chat_app/features/chat/chat_history_api_service.dart';
 import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/chat_topology.dart';
+import 'package:mobile_chat_app/services/authenticated_api_client.dart';
 
 /// A minimal [http.BaseClient] whose [send] method is fully injectable for
 /// testing streaming (SSE) responses that [MockClient] cannot model.
@@ -19,6 +20,17 @@ class _MockStreamedClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) =>
       _handler(request);
 }
+
+ChatHistoryApiService _serviceFor(
+  http.Client client, {
+  String token = 'token-1',
+}) =>
+    ChatHistoryApiService(
+      apiClient: AuthenticatedApiClient(
+        httpClient: client,
+        tokenProvider: () async => token,
+      ),
+    );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -53,10 +65,10 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     final snapshot = await service.load(
-      token: 'token-1',
       sessionId: 'session:default:main',
+      limit: 100,
     );
 
     expect(snapshot.messages, hasLength(2));
@@ -90,9 +102,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     final snapshot = await service.load(
-      token: 'token-1',
       sessionId: 'session:default:main',
     );
 
@@ -130,9 +141,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     final snapshot = await service.sync(
-      token: 'token-1',
       sessionId: 'session:default:main',
       afterSeq: 10,
     );
@@ -165,15 +175,13 @@ void main() {
       return http.Response(jsonEncode({'lastSeqId': 7}), 200);
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     final accepted = await service.acceptTask(
-      token: 'token-1',
       taskId: 'task-1',
       idempotencyKey: 'idem-1',
       scope: const ChatSessionScope(channelId: 'default', threadId: 'main'),
     );
     final lastSeq = await service.upsertMessages(
-      token: 'token-1',
       messages: [
         ChatMessage(
           messageId: 'msg-1',
@@ -202,9 +210,8 @@ void main() {
         return http.Response(jsonEncode({'lastSeqId': 8}), 200);
       });
 
-      final service = ChatHistoryApiService(httpClient: client);
+      final service = _serviceFor(client);
       final lastSeq = await service.upsertMessages(
-        token: 'token-1',
         messages: [
           ChatMessage(
             messageId: 'msg-user',
@@ -247,9 +254,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     final result = await service.respond(
-      token: 'token-1',
       taskId: 'task-2',
       idempotencyKey: 'idem-2',
       scope: const ChatSessionScope(channelId: 'default', threadId: 'main'),
@@ -288,9 +294,8 @@ void main() {
         );
       });
 
-      final service = ChatHistoryApiService(httpClient: client);
+      final service = _serviceFor(client);
       final result = await service.respond(
-        token: 'token-1',
         taskId: 'task-openclaw-accepted',
         idempotencyKey: 'idem-openclaw-accepted',
         scope: const ChatSessionScope(channelId: 'default', threadId: 'main'),
@@ -326,9 +331,8 @@ void main() {
         );
       });
 
-      final service = ChatHistoryApiService(httpClient: client);
+      final service = _serviceFor(client);
       final result = await service.respond(
-        token: 'token-1',
         taskId: 'task-openclaw-completed',
         idempotencyKey: 'idem-openclaw-completed',
         scope: const ChatSessionScope(channelId: 'default', threadId: 'main'),
@@ -369,8 +373,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
-    final scopes = await service.loadScopes(token: 'token-1');
+    final service = _serviceFor(client);
+    final scopes = await service.loadScopes();
 
     expect(scopes, hasLength(2));
     expect(scopes.first.channelId, equals('channel-1'));
@@ -414,10 +418,9 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
-    final settings = await service.loadScopeSettings(token: 'token-1');
+    final service = _serviceFor(client);
+    final settings = await service.loadScopeSettings();
     await service.saveScopeSetting(
-      token: 'token-1',
       scopeType: ChatScopeType.thread,
       channelId: 'default',
       threadId: 'main',
@@ -464,10 +467,9 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
-    final channelNames = await service.loadChannelNames(token: 'token-1');
+    final service = _serviceFor(client);
+    final channelNames = await service.loadChannelNames();
     await service.saveChannelName(
-      token: 'token-1',
       channelId: 'channel-1',
       displayName: 'latest-channel-name',
     );
@@ -488,9 +490,8 @@ void main() {
       return http.StreamedResponse(controller.stream, 200);
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client, token: 'sse-token');
     final events = service.listenEvents(
-      token: 'sse-token',
       sessionId: 'session:default:main',
       afterSeq: 5,
     );
@@ -524,9 +525,8 @@ void main() {
       return http.StreamedResponse(controller.stream, 200);
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     final events = service.listenEvents(
-      token: 'token-1',
       sessionId: 'session:default:main',
       afterSeq: 0,
     );
@@ -581,8 +581,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
-    final settings = await service.loadScopeSettings(token: 'token-1');
+    final service = _serviceFor(client);
+    final settings = await service.loadScopeSettings();
 
     expect(settings, hasLength(3));
     final channelSetting =
@@ -615,9 +615,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     await service.saveScopeSetting(
-      token: 'token-1',
       scopeType: ChatScopeType.channel,
       channelId: 'ch-1',
       router: ChatRouter.local,
@@ -652,9 +651,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
-    final snapshot =
-        await service.load(token: 'token-1', sessionId: 'session:default:main');
+    final service = _serviceFor(client);
+    final snapshot = await service.load(sessionId: 'session:default:main');
 
     expect(snapshot.messages, hasLength(1));
     final msg = snapshot.messages.first;
@@ -683,9 +681,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
-    final snapshot =
-        await service.load(token: 'token-1', sessionId: 'session:default:main');
+    final service = _serviceFor(client);
+    final snapshot = await service.load(sessionId: 'session:default:main');
 
     expect(snapshot.messages, hasLength(1));
     final msg = snapshot.messages.first;
@@ -707,9 +704,8 @@ void main() {
       );
     });
 
-    final service = ChatHistoryApiService(httpClient: client);
+    final service = _serviceFor(client);
     await service.respond(
-      token: 'token-1',
       taskId: 'task-1',
       idempotencyKey: 'idem-1',
       scope: const ChatSessionScope(channelId: 'ch-1', threadId: 'main'),

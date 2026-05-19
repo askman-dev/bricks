@@ -563,6 +563,40 @@ void main() {
       expect(padding.padding, const EdgeInsets.only(left: BricksSpacing.md));
     });
 
+    testWidgets('renders nested markdown list items with deeper indentation',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-markdown-nested-list',
+        role: 'assistant',
+        content: '- parent\n  - child target\n    1. grandchild',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pumpAndSettle();
+
+      EdgeInsets paddingForText(String text) {
+        return tester
+            .widget<Padding>(
+              find
+                  .ancestor(
+                    of: find.text(text),
+                    matching: find.byType(Padding),
+                  )
+                  .first,
+            )
+            .padding as EdgeInsets;
+      }
+
+      final parentPadding = paddingForText('parent');
+      final childPadding = paddingForText('child target');
+      final grandchildPadding = paddingForText('grandchild');
+
+      expect(childPadding.left, greaterThan(parentPadding.left));
+      expect(grandchildPadding.left, greaterThan(childPadding.left));
+      expect(find.text('1.'), findsOneWidget);
+    });
+
     testWidgets('renders markdown tables as table widgets', (tester) async {
       final assistant = ChatMessage(
         messageId: 'assistant-markdown-table',
@@ -717,6 +751,39 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(Table), findsOneWidget);
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['target']);
+    });
+
+    testWidgets('renders stored ranges inside nested markdown list items',
+        (tester) async {
+      const content = '- parent\n  - child target\n    1. grandchild';
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-nested-list',
+        role: 'assistant',
+        content: content,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      final start = content.indexOf('target');
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: {
+            'assistant-highlight-nested-list': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'target',
+                startOffset: start,
+                endOffset: start + 'target'.length,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
       final decorated = _decoratedLeafSpans(tester);
       expect(decorated.map((span) => span.text).toList(), ['target']);
     });
