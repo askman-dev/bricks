@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:design_system/design_system.dart';
@@ -33,13 +35,45 @@ List<ChatMessage> _messages(String prefix, int count) {
 Widget _build(
   List<ChatMessage> messages, {
   ThemeData? theme,
+  Map<String, List<HighlightSpan>> highlights = const {},
+  void Function(String, String, int?, int?)? onHighlight,
+  void Function(String)? onDeleteHighlight,
 }) =>
     MaterialApp(
       theme: theme,
       home: Scaffold(
-        body: SizedBox(height: 320, child: MessageList(messages: messages)),
+        body: SizedBox(
+          height: 320,
+          child: MessageList(
+            messages: messages,
+            highlights: highlights,
+            onHighlight: onHighlight,
+            onDeleteHighlight: onDeleteHighlight,
+          ),
+        ),
       ),
     );
+
+Iterable<TextSpan> _leafTextSpans(InlineSpan span) sync* {
+  if (span is TextSpan) {
+    final children = span.children;
+    if (children == null || children.isEmpty) {
+      yield span;
+      return;
+    }
+    for (final child in children) {
+      yield* _leafTextSpans(child);
+    }
+  }
+}
+
+List<TextSpan> _decoratedLeafSpans(WidgetTester tester) {
+  return tester
+      .widgetList<RichText>(find.byType(RichText))
+      .expand((richText) => _leafTextSpans(richText.text))
+      .where((span) => span.style?.decoration == TextDecoration.underline)
+      .toList();
+}
 
 void main() {
   group('MessageList auto scroll', () {
@@ -551,6 +585,285 @@ void main() {
       expect(find.text('含义'), findsOneWidget);
       expect(find.text('Flutter 的开发运行命令'), findsOneWidget);
       expect(find.text('指定 Chrome 设备'), findsOneWidget);
+    });
+  });
+
+  group('Assistant highlights', () {
+    testWidgets('uses stored offsets instead of highlighting duplicate text',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-duplicates',
+        role: 'assistant',
+        content: 'repeat repeat',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-duplicates': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'repeat',
+                startOffset: 7,
+                endOffset: 13,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['repeat']);
+    });
+
+    testWidgets('splits one cross-paragraph highlight into subsegments',
+        (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-paragraphs',
+        role: 'assistant',
+        content: 'first line\nsecond line',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-paragraphs': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'line\nsecond',
+                startOffset: 6,
+                endOffset: 17,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['line', 'second']);
+    });
+
+    testWidgets('renders stored ranges inside code blocks', (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-code',
+        role: 'assistant',
+        content: '```dart\nfinal answer = 42;\n```',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      const start = '```dart\nfinal '.length;
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-code': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'answer',
+                startOffset: start,
+                endOffset: start + 6,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['answer']);
+      expect(decorated.single.style?.fontFamily, 'monospace');
+    });
+
+    testWidgets('renders stored ranges inside markdown table cells',
+        (tester) async {
+      const content = '''
+| Name | Value |
+|---|---|
+| first | target |
+''';
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-table',
+        role: 'assistant',
+        content: content,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      final start = content.indexOf('target');
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: {
+            'assistant-highlight-table': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: 'target',
+                startOffset: start,
+                endOffset: start + 'target'.length,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Table), findsOneWidget);
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['target']);
+    });
+
+    testWidgets('merges overlapping highlights without duplicating text',
+        (tester) async {
+      const content = '0123456789';
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-overlap',
+        role: 'assistant',
+        content: content,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-overlap': [
+              HighlightSpan(
+                highlightId: 'h1',
+                selectedText: '2345',
+                startOffset: 2,
+                endOffset: 6,
+                color: 'yellow',
+              ),
+              HighlightSpan(
+                highlightId: 'h2',
+                selectedText: '4567',
+                startOffset: 4,
+                endOffset: 8,
+                color: 'yellow',
+              ),
+            ],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final richText = tester
+          .widgetList<RichText>(find.byType(RichText))
+          .firstWhere((widget) => widget.text.toPlainText() == content);
+      expect(richText.text.toPlainText(), content);
+      final decorated = _decoratedLeafSpans(tester);
+      expect(decorated.map((span) => span.text).toList(), ['234567']);
+    });
+
+    testWidgets('tapping highlighted text shows copy and delete toolbar',
+        (tester) async {
+      String? deletedHighlightId;
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-tap',
+        role: 'assistant',
+        content: 'tap target text',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-tap': [
+              HighlightSpan(
+                highlightId: 'h-delete',
+                selectedText: 'target',
+                startOffset: 4,
+                endOffset: 10,
+                color: 'yellow',
+              ),
+            ],
+          },
+          onDeleteHighlight: (highlightId) {
+            deletedHighlightId = highlightId;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('tap target text'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('复制'), findsOneWidget);
+      expect(find.text('删除划线'), findsOneWidget);
+
+      await tester.tap(find.text('删除划线'));
+      await tester.pumpAndSettle();
+
+      expect(deletedHighlightId, 'h-delete');
+    });
+
+    testWidgets('delete toolbar sizes to longer action label', (tester) async {
+      final assistant = ChatMessage(
+        messageId: 'assistant-highlight-toolbar-size',
+        role: 'assistant',
+        content: 'tap target text',
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        _build(
+          [assistant],
+          highlights: const {
+            'assistant-highlight-toolbar-size': [
+              HighlightSpan(
+                highlightId: 'h-delete',
+                selectedText: 'target',
+                startOffset: 4,
+                endOffset: 10,
+                color: 'yellow',
+              ),
+            ],
+          },
+          onHighlight: (_, __, ___, ____) {},
+          onDeleteHighlight: (_) {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.dragFrom(
+        tester.getCenter(find.textContaining('tap target text')),
+        const Offset(48, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      final shortMaterial = find
+          .ancestor(
+            of: find.text('划线'),
+            matching: find.byType(Material),
+          )
+          .first;
+      final shortRightPadding = tester.getRect(shortMaterial).right -
+          tester.getRect(find.text('划线')).right;
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('tap target text'));
+      await tester.pumpAndSettle();
+      final deleteMaterial = find
+          .ancestor(
+            of: find.text('删除划线'),
+            matching: find.byType(Material),
+          )
+          .first;
+      final deleteRightPadding = tester.getRect(deleteMaterial).right -
+          tester.getRect(find.text('删除划线')).right;
+
+      expect(deleteRightPadding, greaterThanOrEqualTo(shortRightPadding));
     });
   });
 

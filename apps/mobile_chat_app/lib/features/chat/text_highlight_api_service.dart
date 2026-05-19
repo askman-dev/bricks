@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../settings/llm_config_service.dart';
+import '../../services/authenticated_api_client.dart';
 
 // ---------------------------------------------------------------------------
 // DTO
@@ -45,10 +46,15 @@ class TextHighlight {
 // ---------------------------------------------------------------------------
 
 class TextHighlightApiService {
-  TextHighlightApiService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client();
+  TextHighlightApiService({
+    http.Client? httpClient,
+    AuthTokenProvider? tokenProvider,
+  }) : _apiClient = AuthenticatedApiClient(
+          httpClient: httpClient,
+          tokenProvider: tokenProvider,
+        );
 
-  final http.Client _httpClient;
+  final AuthenticatedApiClient _apiClient;
 
   String get _base => LlmConfigService.resolveBaseUrl();
   Uri get _highlightsUri => Uri.parse('$_base/api/resources/highlights');
@@ -56,16 +62,12 @@ class TextHighlightApiService {
       Uri.parse('$_base/api/resources/highlights/${Uri.encodeComponent(id)}');
 
   Future<List<TextHighlight>> listHighlights({
-    required String token,
     String? messageId,
   }) async {
     final uri = messageId != null
         ? _highlightsUri.replace(queryParameters: {'messageId': messageId})
         : _highlightsUri;
-    final response = await _httpClient.get(
-      uri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.get(uri);
     if (response.statusCode != 200) {
       throw Exception('Failed to list highlights: ${response.statusCode}');
     }
@@ -78,17 +80,15 @@ class TextHighlightApiService {
   }
 
   Future<TextHighlight> createHighlight({
-    required String token,
     required String messageId,
     required String selectedText,
     int? startOffset,
     int? endOffset,
     String color = 'yellow',
   }) async {
-    final response = await _httpClient.post(
+    final response = await _apiClient.post(
       _highlightsUri,
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -108,13 +108,9 @@ class TextHighlightApiService {
   }
 
   Future<void> deleteHighlight({
-    required String token,
     required String id,
   }) async {
-    final response = await _httpClient.delete(
-      _highlightUri(id),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.delete(_highlightUri(id));
     if (response.statusCode != 200) {
       throw Exception('Failed to delete highlight: ${response.statusCode}');
     }

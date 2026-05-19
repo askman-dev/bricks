@@ -231,14 +231,18 @@ products:
 
       - feature_id: text_highlights
         name: 文本划线（手动高亮）
-        user_value: 用户在助手消息中选中文本后，通过右键上下文菜单点击"划线"，该文字出现黄色背景；刷新后仍然可见。AI 可通过 highlight_list 工具回答"我有哪些划线"。
+        user_value: 用户在助手消息中选中文本后，通过浮动选择工具栏点击"划线"，该文字出现黄色背景与横线；刷新后仍然可见。AI 可通过 highlight_list 工具回答"我有哪些划线"。
         entry_paths:
-          - widget: MessageList.onHighlight + contextMenuBuilder
+          - widget: MessageList.onHighlight + list-level SelectionArea toolbar
             route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
-          - widget: _AssistantMarkdownText.highlights
+          - widget: _AssistantMarkdownText.highlights offset range rendering
             route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+          - design: Text Highlight Floating Toolbar
+            route_hint: docs/design/text-highlight-floating-toolbar.design.md
           - service: TextHighlightApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/text_highlight_api_service.dart
+          - service: AuthenticatedApiClient
+            route_hint: apps/mobile_chat_app/lib/services/authenticated_api_client.dart
           - route: GET /api/resources/highlights
             route_hint: apps/node_backend/src/routes/resources.ts
           - route: POST /api/resources/highlights
@@ -248,8 +252,15 @@ products:
           - tool: highlight_list
             route_hint: apps/node_backend/src/services/localAgentLoopService.ts
         smoke_checks:
-          - 在助手消息中选中文字，右键菜单出现"划线"按钮。
-          - 点击"划线"后，选中文字出现黄色背景。
+          - 在助手消息中选中文字，浮动工具栏出现"划线"按钮。
+          - 点击浮动工具栏"复制"后，系统剪贴板应写入当前选中文本。
+          - 点击"划线"后，客户端发出带 Authorization header 的 POST /api/resources/highlights 请求，成功后选中文字出现黄色背景和横线。
+          - 缺少 token 或 token 失效时，点击"划线"不应静默无反馈。
+          - 当同一消息中存在重复文本时，只应划中用户实际选择的那一段。
+          - 选区跨 markdown 段落、代码块或表格单元格时，同一条划线应渲染成多个连续 subsegment。
+          - 选中已有划线范围时，工具栏应提供"删除划线"。
+          - 点击已有黄色划线区域时，应显示同款浮动工具栏，包含"复制"和"删除划线"。
+          - 新划线与旧划线重叠、覆盖或相邻时，渲染应表现为区间并集，不应重复显示文字。
           - 刷新页面后，高亮仍然显示。
           - 用户说"我有哪些划线"，AI 调用 highlight_list 工具并列出已保存的文本。
 

@@ -9,6 +9,7 @@ import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
 import 'chat_message_sort.dart';
+import 'text_highlight_api_service.dart';
 
 import '../auth/auth_service.dart';
 import '../agents/agents_screen.dart';
@@ -26,6 +27,7 @@ import 'chat_navigation_page.dart';
 import 'todo_api_service.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
+import '../../services/authenticated_api_client.dart';
 
 /// The main chat screen – the app's entry point.
 ///
@@ -95,6 +97,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _latestCheckpointCursor;
   int _lastSyncedSeq = 0;
   final ChatHistoryApiService _chatHistoryApiService = ChatHistoryApiService();
+  final TextHighlightApiService _highlightApiService =
+      TextHighlightApiService();
+  Map<String, List<HighlightSpan>> _highlights = const {};
   StreamSubscription<ChatHistorySnapshot>? _sseSubscription;
   static const Duration _sseReconnectDelay = Duration(seconds: 3);
   final Map<String, ChatRouter> _channelRouters = {};
@@ -1094,6 +1099,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _messages.clear();
+        _highlights = const {};
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
       });
@@ -1130,14 +1136,98 @@ class _ChatScreenState extends State<ChatScreen> {
         subSection: capturedSubSection,
       );
       _configureActiveScopeSync();
+      unawaited(_loadHighlightsForMessages());
     } catch (_) {
       if (!mounted || _isScopeStale()) return;
       setState(() {
         _messages.clear();
+        _highlights = const {};
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
       });
       _configureActiveScopeSync();
+    }
+  }
+
+  /// Loads all highlights for the currently loaded messages and refreshes
+  /// the [_highlights] map so [MessageList] can render them.
+  Future<void> _loadHighlightsForMessages() async {
+    try {
+      final list = await _highlightApiService.listHighlights();
+      if (!mounted) return;
+      final updated = <String, List<HighlightSpan>>{};
+      for (final h in list) {
+        updated.putIfAbsent(h.messageId, () => []).add(
+              HighlightSpan.fromHighlight(h),
+            );
+      }
+      setState(() {
+        _highlights = updated;
+      });
+    } catch (e) {
+      debugPrint('loadHighlights failed: $e');
+    }
+  }
+
+  /// Called when the user taps 划线 in the selection context menu.
+  Future<void> _handleHighlight(
+    String messageId,
+    String selectedText,
+    int? startOffset,
+    int? endOffset,
+  ) async {
+    try {
+      final created = await _highlightApiService.createHighlight(
+        messageId: messageId,
+        selectedText: selectedText,
+        startOffset: startOffset,
+        endOffset: endOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _highlights = {
+          ..._highlights,
+          messageId: [
+            ...(_highlights[messageId] ?? []),
+            HighlightSpan.fromHighlight(created),
+          ],
+        };
+      });
+    } catch (e) {
+      debugPrint('createHighlight failed: $e');
+      if (!mounted) return;
+      final message = switch (e) {
+        MissingAuthTokenException() => 'Missing auth token',
+        UnauthorizedApiException() => 'Authentication expired',
+        _ => 'Failed to create highlight',
+      };
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  /// Called when the user taps 删除划线 in the floating highlight menu.
+  Future<void> _handleDeleteHighlight(String highlightId) async {
+    try {
+      await _highlightApiService.deleteHighlight(id: highlightId);
+      if (!mounted) return;
+      setState(() {
+        _highlights = {
+          for (final entry in _highlights.entries)
+            entry.key:
+                entry.value.where((h) => h.highlightId != highlightId).toList(),
+        }..removeWhere((_, v) => v.isEmpty);
+      });
+    } catch (e) {
+      debugPrint('deleteHighlight failed: $e');
+      if (!mounted) return;
+      final message = switch (e) {
+        MissingAuthTokenException() => 'Missing auth token',
+        UnauthorizedApiException() => 'Authentication expired',
+        _ => 'Failed to delete highlight',
+      };
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -2528,7 +2618,14 @@ class _ChatScreenState extends State<ChatScreen> {
     // Message list + composer bar (shared between mobile and desktop).
     final chatContent = Column(
       children: [
-        Expanded(child: MessageList(messages: _messages)),
+        Expanded(
+          child: MessageList(
+            messages: _messages,
+            highlights: _highlights,
+            onHighlight: _handleHighlight,
+            onDeleteHighlight: _handleDeleteHighlight,
+          ),
+        ),
         Builder(
           builder: (context) {
             final effectiveRouter = _effectiveRouterForScope();
