@@ -69,6 +69,7 @@ const {
   listChatChannelNamesMock: vi.fn(async () => []),
   upsertChatChannelNameMock: vi.fn(async () => ({
     channelId: "channel-1",
+    threadId: null,
     displayName: "项目频道",
     createdAt: "2026-04-18T08:00:00.000Z",
     updatedAt: "2026-04-18T08:00:00.000Z",
@@ -792,6 +793,7 @@ describe("chat routes", () => {
     listChatChannelNamesMock.mockResolvedValueOnce([
       {
         channelId: "channel-1",
+        threadId: null,
         displayName: "重命名频道",
         createdAt: "2026-04-18T08:00:00.000Z",
         updatedAt: "2026-04-18T08:01:00.000Z",
@@ -820,9 +822,29 @@ describe("chat routes", () => {
     expect(response.status).toBe(200);
     expect(upsertChatChannelNameMock).toHaveBeenCalledWith("user-123", {
       channelId: "channel-1",
+      threadId: null,
       displayName: "新频道名",
     });
     expect(deleteChatChannelNameMock).not.toHaveBeenCalled();
+  });
+
+  it("upserts subsection name when threadId is provided", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelId: "channel-1",
+        threadId: "sub-1",
+        displayName: "  新分区名  ",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(upsertChatChannelNameMock).toHaveBeenCalledWith("user-123", {
+      channelId: "channel-1",
+      threadId: "sub-1",
+      displayName: "新分区名",
+    });
   });
 
   it("deletes channel name mapping when displayName is null", async () => {
@@ -839,6 +861,7 @@ describe("chat routes", () => {
     expect(deleteChatChannelNameMock).toHaveBeenCalledWith(
       "user-123",
       "channel-1",
+      null,
     );
     expect(upsertChatChannelNameMock).not.toHaveBeenCalled();
   });

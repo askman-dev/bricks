@@ -69,10 +69,12 @@ class ChatChannelNameSetting {
   const ChatChannelNameSetting({
     required this.channelId,
     required this.displayName,
+    this.threadId,
   });
 
   final String channelId;
   final String displayName;
+  final String? threadId;
 }
 
 class ChatHistoryApiService {
@@ -218,6 +220,7 @@ class ChatHistoryApiService {
           (item) => ChatChannelNameSetting(
             channelId: (item['channelId'] as String?) ?? '',
             displayName: (item['displayName'] as String?) ?? '',
+            threadId: item['threadId'] as String?,
           ),
         )
         .where(
@@ -447,6 +450,7 @@ class ChatHistoryApiService {
   Future<void> saveChannelName({
     required String channelId,
     String? displayName,
+    String? threadId,
   }) async {
     final response = await _apiClient.put(
       _channelNamesUri,
@@ -455,6 +459,7 @@ class ChatHistoryApiService {
       },
       body: jsonEncode({
         'channelId': channelId,
+        if (threadId != null) 'threadId': threadId,
         'displayName': displayName?.trim(),
       }),
     );
