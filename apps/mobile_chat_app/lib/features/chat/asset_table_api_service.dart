@@ -98,17 +98,23 @@ class AssetTableSummary {
     required this.id,
     required this.resourceId,
     required this.title,
+    required this.createdAt,
+    required this.updatedAt,
   });
 
   final String id;
   final String resourceId;
   final String title;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   factory AssetTableSummary.fromJson(Map<String, dynamic> json) {
     return AssetTableSummary(
       id: json['id'] as String,
       resourceId: json['resourceId'] as String,
       title: json['title'] as String,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
   }
 }

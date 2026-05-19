@@ -18,6 +18,7 @@ class TextHighlight {
     this.endOffset,
     required this.color,
     required this.createdAt,
+    required this.updatedAt,
   });
 
   final String id;
@@ -27,8 +28,10 @@ class TextHighlight {
   final int? endOffset;
   final String color;
   final DateTime createdAt;
+  final DateTime updatedAt;
 
   factory TextHighlight.fromJson(Map<String, dynamic> json) {
+    final createdAt = DateTime.parse(json['createdAt'] as String);
     return TextHighlight(
       id: json['id'] as String,
       messageId: json['messageId'] as String,
@@ -36,7 +39,10 @@ class TextHighlight {
       startOffset: (json['startOffset'] as num?)?.toInt(),
       endOffset: (json['endOffset'] as num?)?.toInt(),
       color: json['color'] as String? ?? 'yellow',
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      createdAt: createdAt,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : createdAt,
     );
   }
 }

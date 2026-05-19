@@ -175,9 +175,13 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/skills/skills_screen.dart
           - screen: ResourcesScreen
             route_hint: apps/mobile_chat_app/lib/features/resources/resources_screen.dart
+          - widget: ChatNavigationPage Resources tab
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
         smoke_checks:
           - 从侧边导航进入每个页面。
           - 页面可正常渲染且无崩溃。
+          - Chat navigation 的 Resources tab 将 todo lists、asset tables、text highlights 作为原子资源按更新时间倒序显示。
+          - Resources tab 顶部 type filter 可按资源类型过滤列表。
 
       - feature_id: conversational_todos
         name: 对话式待办列表与待办事项
@@ -246,6 +250,8 @@ products:
             route_hint: docs/design/text-highlight-floating-toolbar.design.md
           - service: TextHighlightApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/text_highlight_api_service.dart
+          - widget: ChatNavigationPage Resources tab highlight item
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
           - service: AuthenticatedApiClient
             route_hint: apps/mobile_chat_app/lib/services/authenticated_api_client.dart
           - route: GET /api/resources/highlights
@@ -268,6 +274,7 @@ products:
           - 点击已有黄色划线区域时，应显示同款浮动工具栏，包含"复制"和"删除划线"。
           - 新划线与旧划线重叠、覆盖或相邻时，渲染应表现为区间并集，不应重复显示文字。
           - 刷新页面后，高亮仍然显示。
+          - Resources tab 选择 Highlights 过滤器后，只显示已保存的划线资源，点击后打开 Text Highlight 预览。
           - 用户说"我有哪些划线"，AI 调用 highlight_list 工具并列出已保存的文本。
 
   - product_id: node_backend

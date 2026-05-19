@@ -100,6 +100,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextHighlightApiService _highlightApiService =
       TextHighlightApiService();
   Map<String, List<HighlightSpan>> _highlights = const {};
+  List<TextHighlight> _textHighlights = const [];
   StreamSubscription<ChatHistorySnapshot>? _sseSubscription;
   static const Duration _sseReconnectDelay = Duration(seconds: 3);
   final Map<String, ChatRouter> _channelRouters = {};
@@ -1107,6 +1108,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.clear();
         _highlights = const {};
+        _textHighlights = const [];
         _latestCheckpointCursor = null;
         _lastSyncedSeq = 0;
       });
@@ -1128,6 +1130,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       setState(() {
         _highlights = updated;
+        _textHighlights = list;
       });
     } catch (e) {
       debugPrint('loadHighlights failed: $e');
@@ -1157,6 +1160,7 @@ class _ChatScreenState extends State<ChatScreen> {
             HighlightSpan.fromHighlight(created),
           ],
         };
+        _textHighlights = [..._textHighlights, created];
       });
     } catch (e) {
       debugPrint('createHighlight failed: $e');
@@ -1182,6 +1186,8 @@ class _ChatScreenState extends State<ChatScreen> {
             entry.key:
                 entry.value.where((h) => h.highlightId != highlightId).toList(),
         }..removeWhere((_, v) => v.isEmpty);
+        _textHighlights =
+            _textHighlights.where((h) => h.id != highlightId).toList();
       });
     } catch (e) {
       debugPrint('deleteHighlight failed: $e');
@@ -2277,6 +2283,14 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  String _highlightResourceTitle(TextHighlight highlight) {
+    final normalized = highlight.selectedText.trim().replaceAll(
+          RegExp(r'\s+'),
+          ' ',
+        );
+    return normalized.isEmpty ? 'Untitled highlight' : normalized;
+  }
+
   Widget _buildNavigationContent({
     required ThemeData theme,
     required Color drawerBackgroundColor,
@@ -2318,6 +2332,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 id: t.id,
                 type: ChatResourceType.todoList,
                 title: t.title,
+                updatedAt: t.updatedAt,
                 notes: t.notes,
               ),
             ),
@@ -2326,6 +2341,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 id: t.resourceId,
                 type: ChatResourceType.assetTable,
                 title: t.title,
+                updatedAt: t.updatedAt,
+              ),
+            ),
+            ..._textHighlights.map(
+              (h) => ChatResourceItem(
+                id: h.id,
+                type: ChatResourceType.textHighlight,
+                title: _highlightResourceTitle(h),
+                updatedAt: h.updatedAt,
+                notes: 'Highlighted text',
               ),
             ),
           ],
