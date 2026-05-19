@@ -797,14 +797,20 @@ class _MessageListState extends State<MessageList> {
               final top = (position.dy - 52)
                   .clamp(BricksSpacing.sm, size.height - 52)
                   .toDouble();
+              final actionLabel = _selectionActionLabelForCallbacks(
+                resolved: resolved,
+                onDeleteHighlight: widget.onDeleteHighlight,
+                onHighlight: widget.onHighlight,
+              );
               return Positioned(
                 left: left,
                 top: top,
                 child: _SelectionFloatingToolbar(
-                  actionLabel:
-                      resolved.matchingHighlightId != null ? '删除划线' : '划线',
+                  actionLabel: actionLabel,
                   onCopy: _copyCurrentSelection,
-                  onAction: () => _handleSelectionToolbarAction(resolved),
+                  onAction: actionLabel == null
+                      ? null
+                      : () => _handleSelectionToolbarAction(resolved),
                 ),
               );
             },
@@ -844,6 +850,22 @@ class _MessageListState extends State<MessageList> {
   }
 }
 
+String? _selectionActionLabelForCallbacks({
+  required _ResolvedAssistantSelection resolved,
+  required void Function(String highlightId)? onDeleteHighlight,
+  required void Function(
+    String messageId,
+    String selectedText,
+    int? startOffset,
+    int? endOffset,
+  )? onHighlight,
+}) {
+  if (resolved.matchingHighlightId != null) {
+    return onDeleteHighlight == null ? null : '删除划线';
+  }
+  return onHighlight == null ? null : '划线';
+}
+
 class _SelectionFloatingToolbar extends StatelessWidget {
   const _SelectionFloatingToolbar({
     required this.actionLabel,
@@ -851,9 +873,9 @@ class _SelectionFloatingToolbar extends StatelessWidget {
     required this.onAction,
   });
 
-  final String actionLabel;
+  final String? actionLabel;
   final VoidCallback onCopy;
-  final VoidCallback onAction;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -884,7 +906,7 @@ class _SelectionFloatingToolbar extends StatelessWidget {
                 foregroundColor: colorScheme.onInverseSurface,
                 minimumSize: const Size(52, 36),
               ),
-              child: Text(actionLabel),
+              child: Text(actionLabel ?? '划线'),
             ),
           ],
         ),

@@ -1132,6 +1132,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<String?> _resolveAuthToken() async {
+    final cached = _authToken;
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+    final token = await AuthService.getToken();
+    if (token != null && token.isNotEmpty && mounted) {
+      setState(() {
+        _authToken = token;
+      });
+    }
+    return token;
+  }
+
   /// Called when the user taps 划线 in the selection context menu.
   Future<void> _handleHighlight(
     String messageId,
@@ -1139,8 +1153,14 @@ class _ChatScreenState extends State<ChatScreen> {
     int? startOffset,
     int? endOffset,
   ) async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
+    final token = await _resolveAuthToken();
+    if (token == null || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
+      return;
+    }
     try {
       final created = await _highlightApiService.createHighlight(
         token: token,
@@ -1166,8 +1186,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Called when the user taps 删除划线 in the floating highlight menu.
   Future<void> _handleDeleteHighlight(String highlightId) async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
+    final token = await _resolveAuthToken();
+    if (token == null || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
+      return;
+    }
     try {
       await _highlightApiService.deleteHighlight(token: token, id: highlightId);
       if (!mounted) return;
@@ -2555,9 +2581,8 @@ class _ChatScreenState extends State<ChatScreen> {
           child: MessageList(
             messages: _messages,
             highlights: _highlights,
-            onHighlight: _authToken != null ? _handleHighlight : null,
-            onDeleteHighlight:
-                _authToken != null ? _handleDeleteHighlight : null,
+            onHighlight: _handleHighlight,
+            onDeleteHighlight: _handleDeleteHighlight,
           ),
         ),
         Builder(
