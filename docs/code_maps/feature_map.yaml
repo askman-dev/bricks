@@ -245,6 +245,7 @@ products:
             route_hint: apps/node_backend/src/services/localAgentLoopService.ts
         smoke_checks:
           - 在助手消息中选中文字，浮动工具栏出现"划线"按钮。
+          - 点击浮动工具栏"复制"后，系统剪贴板应写入当前选中文本。
           - 点击"划线"后，客户端发出带 Authorization header 的 POST /api/resources/highlights 请求，成功后选中文字出现黄色背景和横线。
           - 缺少 token 或 token 失效时，点击"划线"不应静默无反馈。
           - 当同一消息中存在重复文本时，只应划中用户实际选择的那一段。

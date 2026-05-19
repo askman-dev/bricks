@@ -892,23 +892,70 @@ class _SelectionFloatingToolbar extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextButton(
+            _SelectionToolbarButton(
+              label: '复制',
+              foregroundColor: colorScheme.onInverseSurface,
               onPressed: onCopy,
-              style: TextButton.styleFrom(
-                foregroundColor: colorScheme.onInverseSurface,
-                minimumSize: const Size(52, 36),
-              ),
-              child: const Text('复制'),
             ),
-            TextButton(
+            _SelectionToolbarButton(
+              label: actionLabel ?? '划线',
+              foregroundColor: colorScheme.onInverseSurface,
               onPressed: onAction,
-              style: TextButton.styleFrom(
-                foregroundColor: colorScheme.onInverseSurface,
-                minimumSize: const Size(52, 36),
-              ),
-              child: Text(actionLabel ?? '划线'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectionToolbarButton extends StatefulWidget {
+  const _SelectionToolbarButton({
+    required this.label,
+    required this.foregroundColor,
+    required this.onPressed,
+  });
+
+  final String label;
+  final Color foregroundColor;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_SelectionToolbarButton> createState() =>
+      _SelectionToolbarButtonState();
+}
+
+class _SelectionToolbarButtonState extends State<_SelectionToolbarButton> {
+  bool _pressed = false;
+
+  void _trigger() {
+    if (_pressed) return;
+    _pressed = true;
+    widget.onPressed?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onPressed != null;
+    final foregroundColor = enabled
+        ? widget.foregroundColor
+        : widget.foregroundColor.withValues(alpha: 0.38);
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: enabled ? (_) => _trigger() : null,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 52, minHeight: 36),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: foregroundColor,
+                  ),
+            ),
+          ),
         ),
       ),
     );
