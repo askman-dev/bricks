@@ -45,7 +45,11 @@ function readString(value: unknown, maxLength = 4096): string | null {
 }
 
 function userId(req: AuthRequest): string {
-  return req.user!.id;
+  const uid = req.userId;
+  if (!uid) {
+    throw new Error('Authenticated request is missing userId');
+  }
+  return uid;
 }
 
 /** Validate a URL path parameter (already a string from express params). */

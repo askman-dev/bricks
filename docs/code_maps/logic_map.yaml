@@ -582,6 +582,7 @@ index:
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/highlight_selection_toolbar_web_test.dart
       - apps/mobile_chat_app/test/text_highlight_api_service_test.dart
+      - apps/node_backend/src/routes/resources.test.ts
       - apps/node_backend/src/services/localAgentLoopService.test.ts
     keywords:
       - text_highlight
@@ -604,6 +605,7 @@ index:
       - Flutter Web 鼠标拖选依赖外层 list-level SelectionArea 弹出工具栏；将 SelectionArea 下放到单条消息会导致 Chrome 选择文本后不显示浮动工具条。
       - 浮动工具栏按钮若依赖 TextButton.onPressed，点击时 SelectionArea 可能先清除选区并销毁按钮，导致复制/划线 action 不触发；应保持 pointer-down 即时触发。
       - 划线创建和删除依赖 AuthenticatedApiClient 注入 Authorization header；若 UI 层重新用 _authToken gate action，可能再次出现工具栏可见但点击不发请求的静默失败。
+      - Backend resources routes must read `AuthRequest.userId`; reading a non-existent `req.user.id` can reject an async Express 4 handler and leave the browser request pending.
       - 选区 offset 映射依赖前端 markdown renderer 与 rendered-text index 对 markdown 标记、代码块、表格文本的处理保持一致；渲染规则变化时需同步更新映射测试。
       - 表格单元格或重复文本若使用文本搜索而不是 stored startOffset/endOffset，会导致划线显示或删除到错误位置。
       - Flutter Web 上 TextSpan TapGestureRecognizer 会干扰 SelectionArea 拖拽选择；web 删除路径应继续通过选择工具栏实现。
