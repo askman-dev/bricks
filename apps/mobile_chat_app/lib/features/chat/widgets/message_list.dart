@@ -948,13 +948,18 @@ class _SelectionToolbarButtonState extends State<_SelectionToolbarButton> {
         behavior: HitTestBehavior.opaque,
         onPointerDown: enabled ? (_) => _trigger() : null,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 52, minHeight: 36),
+          constraints: const BoxConstraints(minHeight: 36),
           child: Center(
-            child: Text(
-              widget.label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: foregroundColor,
-                  ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: BricksSpacing.sm,
+              ),
+              child: Text(
+                widget.label,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: foregroundColor,
+                    ),
+              ),
             ),
           ),
         ),

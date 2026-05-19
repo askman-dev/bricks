@@ -841,33 +841,29 @@ void main() {
         kind: PointerDeviceKind.mouse,
       );
       await tester.pumpAndSettle(const Duration(milliseconds: 100));
-      final shortToolbarWidth = tester
-          .getSize(
-            find
-                .ancestor(
-                  of: find.text('划线'),
-                  matching: find.byType(Material),
-                )
-                .first,
+      final shortMaterial = find
+          .ancestor(
+            of: find.text('划线'),
+            matching: find.byType(Material),
           )
-          .width;
+          .first;
+      final shortRightPadding = tester.getRect(shortMaterial).right -
+          tester.getRect(find.text('划线')).right;
       await tester.tapAt(Offset.zero);
       await tester.pumpAndSettle();
 
       await tester.tap(find.textContaining('tap target text'));
       await tester.pumpAndSettle();
-      final deleteToolbarWidth = tester
-          .getSize(
-            find
-                .ancestor(
-                  of: find.text('删除划线'),
-                  matching: find.byType(Material),
-                )
-                .first,
+      final deleteMaterial = find
+          .ancestor(
+            of: find.text('删除划线'),
+            matching: find.byType(Material),
           )
-          .width;
+          .first;
+      final deleteRightPadding = tester.getRect(deleteMaterial).right -
+          tester.getRect(find.text('删除划线')).right;
 
-      expect(deleteToolbarWidth, greaterThan(shortToolbarWidth));
+      expect(deleteRightPadding, greaterThanOrEqualTo(shortRightPadding));
     });
   });
 
