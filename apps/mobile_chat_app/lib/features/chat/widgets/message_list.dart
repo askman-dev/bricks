@@ -790,9 +790,6 @@ class _MessageListState extends State<MessageList> {
               if (resolved == null) return const SizedBox.shrink();
               final position = _selectionToolbarPosition!;
               final size = MediaQuery.sizeOf(context);
-              final left = (position.dx - 96)
-                  .clamp(BricksSpacing.sm, size.width - 204)
-                  .toDouble();
               final top = (position.dy - 52)
                   .clamp(BricksSpacing.sm, size.height - 52)
                   .toDouble();
@@ -802,14 +799,19 @@ class _MessageListState extends State<MessageList> {
                 onHighlight: widget.onHighlight,
               );
               return Positioned(
-                left: left,
+                left: BricksSpacing.sm,
+                right: BricksSpacing.sm,
                 top: top,
-                child: _SelectionFloatingToolbar(
-                  actionLabel: actionLabel,
-                  onCopy: _copyCurrentSelection,
-                  onAction: actionLabel == null
-                      ? null
-                      : () => _handleSelectionToolbarAction(resolved),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  widthFactor: 1,
+                  child: _SelectionFloatingToolbar(
+                    actionLabel: actionLabel,
+                    onCopy: _copyCurrentSelection,
+                    onAction: actionLabel == null
+                        ? null
+                        : () => _handleSelectionToolbarAction(resolved),
+                  ),
                 ),
               );
             },
@@ -885,7 +887,7 @@ class _SelectionFloatingToolbar extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-          horizontal: BricksSpacing.xs,
+          horizontal: BricksSpacing.sm,
           vertical: 4,
         ),
         child: Row(
@@ -1178,11 +1180,7 @@ void _showHighlightTapMenu({
     barrierColor: Colors.transparent,
     transitionDuration: Duration.zero,
     pageBuilder: (dialogContext, _, __) {
-      const toolbarWidth = 204.0;
       const toolbarHeight = 52.0;
-      final left = (position.dx - toolbarWidth / 2)
-          .clamp(BricksSpacing.sm, overlay.size.width - toolbarWidth)
-          .toDouble();
       final top = (position.dy - toolbarHeight - BricksSpacing.xs)
           .clamp(BricksSpacing.sm, overlay.size.height - toolbarHeight)
           .toDouble();
@@ -1196,18 +1194,23 @@ void _showHighlightTapMenu({
             ),
           ),
           Positioned(
-            left: left,
+            left: BricksSpacing.sm,
+            right: BricksSpacing.sm,
             top: top,
-            child: _SelectionFloatingToolbar(
-              actionLabel: '删除划线',
-              onCopy: () {
-                Clipboard.setData(ClipboardData(text: text));
-                Navigator.of(dialogContext).pop();
-              },
-              onAction: () {
-                onDeleteHighlight(highlightId);
-                Navigator.of(dialogContext).pop();
-              },
+            child: Align(
+              alignment: Alignment.topCenter,
+              widthFactor: 1,
+              child: _SelectionFloatingToolbar(
+                actionLabel: '删除划线',
+                onCopy: () {
+                  Clipboard.setData(ClipboardData(text: text));
+                  Navigator.of(dialogContext).pop();
+                },
+                onAction: () {
+                  onDeleteHighlight(highlightId);
+                  Navigator.of(dialogContext).pop();
+                },
+              ),
             ),
           ),
         ],
