@@ -77,6 +77,7 @@ class _MessageListState extends State<MessageList> {
   // Tracks the most recent text selection so the context menu action can read
   // it when Flutter invokes contextMenuBuilder.
   String _lastSelectedText = '';
+  Offset? _selectionToolbarPosition;
 
   // A single key attached only to the focused (latest user) item so that
   // Scrollable.ensureVisible can locate it without creating a GlobalKey for
@@ -383,6 +384,58 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
+  void _hideSelectionToolbar() {
+    if (_selectionToolbarPosition == null) return;
+    setState(() {
+      _selectionToolbarPosition = null;
+    });
+  }
+
+  void _showSelectionToolbarAt(Offset globalPosition) {
+    if (_lastSelectedText.trim().isEmpty) {
+      _hideSelectionToolbar();
+      return;
+    }
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final local = renderObject.globalToLocal(globalPosition);
+    setState(() {
+      _selectionToolbarPosition = local;
+    });
+  }
+
+  _ResolvedAssistantSelection? _currentResolvedSelection() {
+    return _resolveMessageListSelection(
+      messages: widget.messages,
+      selectedText: _lastSelectedText,
+      highlightsByMessageId: widget.highlights,
+    );
+  }
+
+  Future<void> _copyCurrentSelection() async {
+    final selectedText = _lastSelectedText;
+    if (selectedText.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: selectedText));
+    _hideSelectionToolbar();
+  }
+
+  void _handleSelectionToolbarAction(_ResolvedAssistantSelection resolved) {
+    final matchingHighlightId = resolved.matchingHighlightId;
+    if (matchingHighlightId != null && widget.onDeleteHighlight != null) {
+      widget.onDeleteHighlight!(matchingHighlightId);
+      _hideSelectionToolbar();
+      return;
+    }
+    if (widget.onHighlight == null) return;
+    widget.onHighlight!(
+      resolved.messageId,
+      resolved.selectedText,
+      resolved.startOffset,
+      resolved.endOffset,
+    );
+    _hideSelectionToolbar();
+  }
+
   // Builds a single message row for the given [index] in [widget.messages].
   // Extracted from build() so that the non-builder ListView can call it in a
   // simple for-loop while keeping the item rendering logic in one place.
@@ -659,70 +712,103 @@ class _MessageListState extends State<MessageList> {
     // can call Scrollable.ensureVisible directly without any jumpTo/retry hack.
     return Stack(
       children: [
-        SelectionArea(
-          onSelectionChanged: (value) {
-            _lastSelectedText = value?.plainText ?? '';
+        Listener(
+          onPointerDown: (_) => _hideSelectionToolbar(),
+          onPointerUp: (event) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _showSelectionToolbarAt(event.position);
+            });
           },
-          contextMenuBuilder: (ctx, selectableRegionState) {
-            final resolved = _resolveMessageListSelection(
-              messages: widget.messages,
-              selectedText: _lastSelectedText,
-              highlightsByMessageId: widget.highlights,
-            );
-            final extraItems = <ContextMenuButtonItem>[];
-            final matchingHighlightId = resolved?.matchingHighlightId;
-            if (matchingHighlightId != null &&
-                widget.onDeleteHighlight != null) {
-              extraItems.add(
-                ContextMenuButtonItem(
-                  label: '删除划线',
-                  onPressed: () {
-                    ContextMenuController.removeAny();
-                    widget.onDeleteHighlight!(matchingHighlightId);
-                  },
-                ),
+          child: SelectionArea(
+            onSelectionChanged: (value) {
+              _lastSelectedText = value?.plainText ?? '';
+              if (_lastSelectedText.trim().isEmpty) {
+                _hideSelectionToolbar();
+              }
+            },
+            contextMenuBuilder: (ctx, selectableRegionState) {
+              final resolved = _currentResolvedSelection();
+              final extraItems = <ContextMenuButtonItem>[];
+              final matchingHighlightId = resolved?.matchingHighlightId;
+              if (matchingHighlightId != null &&
+                  widget.onDeleteHighlight != null) {
+                extraItems.add(
+                  ContextMenuButtonItem(
+                    label: '删除划线',
+                    onPressed: () {
+                      ContextMenuController.removeAny();
+                      widget.onDeleteHighlight!(matchingHighlightId);
+                    },
+                  ),
+                );
+              } else if (resolved != null && widget.onHighlight != null) {
+                extraItems.add(
+                  ContextMenuButtonItem(
+                    label: '划线',
+                    onPressed: () {
+                      ContextMenuController.removeAny();
+                      widget.onHighlight!(
+                        resolved.messageId,
+                        resolved.selectedText,
+                        resolved.startOffset,
+                        resolved.endOffset,
+                      );
+                    },
+                  ),
+                );
+              }
+              return AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: selectableRegionState.contextMenuAnchors,
+                buttonItems: [
+                  ...selectableRegionState.contextMenuButtonItems,
+                  ...extraItems,
+                ],
               );
-            } else if (resolved != null && widget.onHighlight != null) {
-              extraItems.add(
-                ContextMenuButtonItem(
-                  label: '划线',
-                  onPressed: () {
-                    ContextMenuController.removeAny();
-                    widget.onHighlight!(
-                      resolved.messageId,
-                      resolved.selectedText,
-                      resolved.startOffset,
-                      resolved.endOffset,
-                    );
-                  },
-                ),
-              );
-            }
-            return AdaptiveTextSelectionToolbar.buttonItems(
-              anchors: selectableRegionState.contextMenuAnchors,
-              buttonItems: [
-                ...selectableRegionState.contextMenuButtonItems,
-                ...extraItems,
-              ],
-            );
-          },
-          child: SingleChildScrollView(
-            key: _scrollViewKey,
-            controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(
-              BricksSpacing.md,
-              BricksSpacing.md,
-              BricksSpacing.md,
-              _listBottomPadding,
-            ),
-            child: Column(
-              children: [
-                for (var i = 0; i < messages.length; i++)
-                  _buildMessageItem(context, i),
-              ],
+            },
+            child: SingleChildScrollView(
+              key: _scrollViewKey,
+              controller: _scrollController,
+              padding: EdgeInsets.fromLTRB(
+                BricksSpacing.md,
+                BricksSpacing.md,
+                BricksSpacing.md,
+                _listBottomPadding,
+              ),
+              child: Column(
+                children: [
+                  for (var i = 0; i < messages.length; i++)
+                    _buildMessageItem(context, i),
+                ],
+              ),
             ),
           ),
         ),
+        if (_selectionToolbarPosition != null)
+          Builder(
+            builder: (context) {
+              final resolved = _currentResolvedSelection();
+              if (resolved == null) return const SizedBox.shrink();
+              final position = _selectionToolbarPosition!;
+              final size = MediaQuery.sizeOf(context);
+              final left = (position.dx - 96)
+                  .clamp(BricksSpacing.sm, size.width - 204)
+                  .toDouble();
+              final top = (position.dy - 52)
+                  .clamp(BricksSpacing.sm, size.height - 52)
+                  .toDouble();
+              return Positioned(
+                left: left,
+                top: top,
+                child: _SelectionFloatingToolbar(
+                  actionLabel:
+                      resolved.matchingHighlightId != null ? '删除划线' : '划线',
+                  onCopy: _copyCurrentSelection,
+                  onAction: () => _handleSelectionToolbarAction(resolved),
+                ),
+              );
+            },
+          ),
         Positioned(
           left: 0,
           right: 0,
@@ -754,6 +840,55 @@ class _MessageListState extends State<MessageList> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SelectionFloatingToolbar extends StatelessWidget {
+  const _SelectionFloatingToolbar({
+    required this.actionLabel,
+    required this.onCopy,
+    required this.onAction,
+  });
+
+  final String actionLabel;
+  final VoidCallback onCopy;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      elevation: 8,
+      color: colorScheme.inverseSurface,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: BricksSpacing.xs,
+          vertical: 4,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: onCopy,
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.onInverseSurface,
+                minimumSize: const Size(52, 36),
+              ),
+              child: const Text('复制'),
+            ),
+            TextButton(
+              onPressed: onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.onInverseSurface,
+                minimumSize: const Size(52, 36),
+              ),
+              child: Text(actionLabel),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

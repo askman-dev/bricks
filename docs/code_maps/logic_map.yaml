@@ -578,6 +578,7 @@ index:
       - docs/plans/2026-05-18-22-22-+08-highlight-selection-offsets.md
     test_index:
       - apps/mobile_chat_app/test/message_list_test.dart
+      - apps/mobile_chat_app/test/highlight_selection_toolbar_web_test.dart
       - apps/node_backend/src/services/localAgentLoopService.test.ts
     keywords:
       - text_highlight
