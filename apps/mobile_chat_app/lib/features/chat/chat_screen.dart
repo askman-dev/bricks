@@ -1464,12 +1464,23 @@ class _ChatScreenState extends State<ChatScreen> {
   List<PopupMenuEntry<String>> _buildSubSectionMenuItems(
     BuildContext context,
   ) {
-    final items = <PopupMenuEntry<String>>[
+    final items = <PopupMenuEntry<String>>[];
+
+    if (_isThreadConversation()) {
+      items.add(
+        const PopupMenuItem<String>(
+          value: 'main',
+          child: Text('回到主区'),
+        ),
+      );
+    }
+
+    items.add(
       const PopupMenuItem<String>(
         value: _createSubSectionMenuValue,
         child: Text('新建子区'),
       ),
-    ];
+    );
 
     if (_isThreadConversation()) {
       items.add(const PopupMenuDivider());
@@ -1488,19 +1499,17 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    items.add(const PopupMenuDivider());
-    items.addAll([
-      const PopupMenuItem<String>(
-        value: 'main',
-        child: Text('回到主区'),
-      ),
-      ..._activeSubSections.map(
-        (item) => PopupMenuItem<String>(
-          value: item.id,
-          child: Text(item.name),
+    if (_activeSubSections.isNotEmpty) {
+      items.add(const PopupMenuDivider());
+      items.addAll(
+        _activeSubSections.map(
+          (item) => PopupMenuItem<String>(
+            value: item.id,
+            child: Text(item.name),
+          ),
         ),
-      ),
-    ]);
+      );
+    }
     return items;
   }
 
