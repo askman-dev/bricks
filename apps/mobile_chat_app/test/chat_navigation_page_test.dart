@@ -10,6 +10,7 @@ Widget _buildPage({
   VoidCallback? onRequestClose,
   bool closeOnChannelSelected = true,
   List<ChatNodeItem> nodes = const [],
+  List<ChatResourceItem> resources = const [],
   TextDirection textDirection = TextDirection.ltr,
 }) =>
     MaterialApp(
@@ -24,6 +25,7 @@ Widget _buildPage({
             ],
             selectedChannelId: 'default',
             nodes: nodes,
+            resources: resources,
             onChannelSelected: onChannelSelected,
             onChannelRename: onChannelRename,
             onChannelArchive: onChannelArchive,
@@ -59,11 +61,13 @@ void main() {
       expect(find.text('Navigation'), findsOneWidget);
     });
 
-    testWidgets('two tabs are visible: Channels and Nodes', (tester) async {
+    testWidgets('three tabs are visible: Channels, Resources, and Nodes',
+        (tester) async {
       await tester.pumpWidget(_buildPage());
       await tester.pumpAndSettle();
 
       expect(find.text('Channels'), findsOneWidget);
+      expect(find.text('Resources'), findsOneWidget);
       expect(find.text('Nodes'), findsOneWidget);
     });
 
@@ -229,6 +233,70 @@ void main() {
       expect(find.text('Planner'), findsOneWidget);
       expect(find.text('Reviewer'), findsOneWidget);
       expect(find.text('Custom reviewer'), findsOneWidget);
+    });
+
+    testWidgets('Resources tab shows empty state when no resources',
+        (tester) async {
+      await tester.pumpWidget(_buildPage());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No resources'), findsOneWidget);
+    });
+
+    testWidgets('Resources tab shows flat list of todo-lists and tables',
+        (tester) async {
+      await tester.pumpWidget(_buildPage(
+        resources: const [
+          ChatResourceItem(
+            id: 'todo_1',
+            type: ChatResourceType.todoList,
+            title: 'My Todo List',
+            notes: 'Some notes',
+          ),
+          ChatResourceItem(
+            id: 'table_1',
+            type: ChatResourceType.assetTable,
+            title: 'Asset Table',
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('My Todo List'), findsOneWidget);
+      expect(find.text('Asset Table'), findsOneWidget);
+      expect(find.byIcon(Icons.checklist_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.table_chart_outlined), findsOneWidget);
+    });
+
+    testWidgets('tapping resource item opens resource preview page',
+        (tester) async {
+      await tester.pumpWidget(_buildPage(
+        resources: const [
+          ChatResourceItem(
+            id: 'todo_1',
+            type: ChatResourceType.todoList,
+            title: 'My Todo List',
+            notes: 'A note',
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('My Todo List'));
+      await tester.pumpAndSettle();
+
+      // Preview page opens with the resource title in AppBar and type info
+      expect(find.text('Todo List'), findsOneWidget);
+      expect(find.text('A note'), findsOneWidget);
     });
 
     testWidgets('tapping 新建频道 fires createChannel action', (tester) async {

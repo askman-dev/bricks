@@ -2,7 +2,9 @@
 
 **The agent console for tinkerers.**
 
-Bricks is a native console for connecting external agent platforms, running multiple agent threads side by side, and keeping each run observable and controllable.
+- Connect your OpenClaw and run multiple agent threads side by side
+- Manage your todo lists and data tables (like Notion) through conversation
+- Fully open-source: frontend, backend, iOS, and Android
 
 ## Documentation
 

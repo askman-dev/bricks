@@ -1,0 +1,177 @@
+name: Build iOS IPA and Upload to TestFlight
+
+on:
+  pull_request:
+    branches: [testflight-beta]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: ios-testflight-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  ios-testflight:
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.base.ref == 'testflight-beta' &&
+        github.event.pull_request.draft == false
+      )
+    runs-on: macos-26
+    # macos-26 ships with Xcode 26 / iOS 26 SDK (required for App Store submission).
+    # The setup-xcode step below pins to a specific Xcode release for reproducibility.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Select Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.7"
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: apps/mobile_chat_app
+        run: flutter pub get
+
+      - name: Configure iOS app identifiers for CI
+        working-directory: apps/mobile_chat_app
+        run: |
+          set -euo pipefail
+          if [ -z "${IOS_APP_BUNDLE_ID}" ]; then
+            echo "Missing IOS_APP_BUNDLE_ID secret" >&2
+            exit 1
+          fi
+          if [ -z "${IOS_DEVELOPMENT_TEAM}" ]; then
+            echo "Missing IOS_DEVELOPMENT_TEAM secret" >&2
+            exit 1
+          fi
+          sed -i.bak "s|^APP_BUNDLE_IDENTIFIER =.*$|APP_BUNDLE_IDENTIFIER = ${IOS_APP_BUNDLE_ID}|" ios/Flutter/Release.xcconfig
+          sed -i.bak "s|^APP_DEVELOPMENT_TEAM =.*$|APP_DEVELOPMENT_TEAM = ${IOS_DEVELOPMENT_TEAM}|" ios/Flutter/Release.xcconfig
+          rm -f ios/Flutter/Release.xcconfig.bak
+          perl -0pi -e "s/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = ${IOS_DEVELOPMENT_TEAM};/g" ios/Runner.xcodeproj/project.pbxproj
+          grep -qF "APP_BUNDLE_IDENTIFIER = ${IOS_APP_BUNDLE_ID}" ios/Flutter/Release.xcconfig \
+            || { echo "Failed to set APP_BUNDLE_IDENTIFIER in Release.xcconfig" >&2; exit 1; }
+          grep -qF "APP_DEVELOPMENT_TEAM = ${IOS_DEVELOPMENT_TEAM}" ios/Flutter/Release.xcconfig \
+            || { echo "Failed to set APP_DEVELOPMENT_TEAM in Release.xcconfig" >&2; exit 1; }
+          grep -qF "DEVELOPMENT_TEAM = ${IOS_DEVELOPMENT_TEAM};" ios/Runner.xcodeproj/project.pbxproj \
+            || { echo "Failed to set DEVELOPMENT_TEAM in project.pbxproj" >&2; exit 1; }
+          echo "Using bundle id ${IOS_APP_BUNDLE_ID} and team ${IOS_DEVELOPMENT_TEAM}"
+        env:
+          IOS_APP_BUNDLE_ID: ${{ secrets.IOS_APP_BUNDLE_ID }}
+          IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
+
+      - name: Install CocoaPods
+        working-directory: apps/mobile_chat_app/ios
+        run: pod install --repo-update
+
+      - name: Install Codemagic CLI tools
+        run: |
+          pipx install codemagic-cli-tools==0.66.0
+          pipx ensurepath
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize temporary keychain
+        run: keychain initialize
+        env:
+          CERTIFICATE_PRIVATE_KEY: ${{ secrets.IOS_CERT_PRIVATE_KEY }}
+
+      - name: Fetch App Store distribution signing files
+        working-directory: apps/mobile_chat_app
+        run: |
+          app-store-connect fetch-signing-files "$IOS_APP_BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+          keychain add-certificates
+          xcode-project use-profiles
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          CERTIFICATE_PRIVATE_KEY: ${{ secrets.IOS_CERT_PRIVATE_KEY }}
+          IOS_APP_BUNDLE_ID: ${{ secrets.IOS_APP_BUNDLE_ID }}
+
+      - name: Build IPA
+        working-directory: apps/mobile_chat_app
+        run: |
+          BUILD_NUMBER=$(( ${{ github.run_number }} * 100 + ${{ github.run_attempt }} ))
+          flutter build ipa --release \
+            --build-number="$BUILD_NUMBER" \
+            --export-options-plist="$HOME/export_options.plist"
+
+      - name: Upload IPA to App Store Connect
+        working-directory: apps/mobile_chat_app
+        run: |
+          IPA_PATH=$(find "$PWD/build/ios/ipa" -name "*.ipa" -print -quit)
+          if [ -z "$IPA_PATH" ]; then
+            echo "Error: No IPA found in build/ios/ipa" >&2
+            exit 1
+          fi
+          echo "Uploading $IPA_PATH"
+          app-store-connect publish --path "$IPA_PATH"
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+
+      - name: Restore login keychain
+        if: always()
+        run: keychain use-login
+
+      - name: Label associated PR as uploaded
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABEL_NAME: testflight-uploaded
+        run: |
+          set -euo pipefail
+          gh label create "$LABEL_NAME" \
+            --color "0E8A16" \
+            --description "Uploaded to TestFlight by CI" \
+            --force
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          else
+            PR_NUMBER="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                --jq '.[0].number // empty'
+            )"
+
+            if [ -z "$PR_NUMBER" ]; then
+              PR_NUMBER="$(
+                gh pr list \
+                  --head "${GITHUB_REF_NAME}" \
+                  --state open \
+                  --json number \
+                  --jq '.[0].number // empty'
+              )"
+            fi
+          fi
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No associated open PR found for ${GITHUB_SHA}; skipping label."
+            exit 0
+          fi
+
+          gh pr edit "$PR_NUMBER" --add-label "$LABEL_NAME"
+          echo "Added ${LABEL_NAME} to PR #${PR_NUMBER}."

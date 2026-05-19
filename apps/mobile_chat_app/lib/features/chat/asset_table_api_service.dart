@@ -118,9 +118,17 @@ class AssetTableSummary {
 
 class AssetTableApiService {
   AssetTableApiService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client();
+      : _httpClient = httpClient ?? http.Client(),
+        _ownsHttpClient = httpClient == null;
 
   final http.Client _httpClient;
+  final bool _ownsHttpClient;
+
+  void dispose() {
+    if (_ownsHttpClient) {
+      _httpClient.close();
+    }
+  }
 
   String get _base => LlmConfigService.resolveBaseUrl();
   Uri get _tablesUri => Uri.parse('$_base/api/resources/tables');

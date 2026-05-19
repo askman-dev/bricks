@@ -1,8 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/settings/llm_config_service.dart';
 
 void main() {
   group('LlmConfigService base URL', () {
+    tearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+    });
+
     test('documents the production native release default', () {
       expect(
         LlmConfigService.productionApiBaseUrl,
@@ -14,6 +19,15 @@ void main() {
       expect(
         LlmConfigService.resolveBaseUrl(),
         equals('http://localhost:3000'),
+      );
+    });
+
+    test('uses production API for iOS debug builds by default', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+
+      expect(
+        LlmConfigService.resolveBaseUrl(),
+        equals(LlmConfigService.productionApiBaseUrl),
       );
     });
   });

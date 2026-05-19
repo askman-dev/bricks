@@ -45,6 +45,14 @@ class TodoList {
   }
 }
 
+/// SQLite/Turso stores BOOLEAN as INTEGER (0 = false, non-zero = true).
+/// This helper tolerates both [bool] and [int] values from JSON.
+bool _parseBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is int) return value != 0;
+  return false;
+}
+
 class TodoItem {
   const TodoItem({
     required this.id,
@@ -72,7 +80,7 @@ class TodoItem {
       listId: json['listId'] as String,
       title: json['title'] as String,
       notes: json['notes'] as String?,
-      isCompleted: json['isCompleted'] as bool? ?? false,
+      isCompleted: _parseBool(json['isCompleted']),
       displayOrder: (json['displayOrder'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
@@ -86,9 +94,17 @@ class TodoItem {
 
 class TodoApiService {
   TodoApiService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client();
+      : _httpClient = httpClient ?? http.Client(),
+        _ownsHttpClient = httpClient == null;
 
   final http.Client _httpClient;
+  final bool _ownsHttpClient;
+
+  void dispose() {
+    if (_ownsHttpClient) {
+      _httpClient.close();
+    }
+  }
 
   String get _base => LlmConfigService.resolveBaseUrl();
   Uri get _todoListsUri => Uri.parse('$_base/api/resources/todo-lists');

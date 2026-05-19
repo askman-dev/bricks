@@ -75,6 +75,20 @@ function parseBoundedInt(
   return Math.max(defaults.min, Math.min(defaults.max, parsed));
 }
 
+function formatToolExecutionError(error: unknown): { code: string; message: string } {
+  if (error instanceof Error) {
+    return { code: error.name || "tool_execution_error", message: error.message };
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    return {
+      code: "tool_execution_error",
+      message: typeof message === "string" ? message : String(error),
+    };
+  }
+  return { code: "tool_execution_error", message: String(error) };
+}
+
 function dispatchPlaceholderMetadata(params: {
   resolvedBotId: string | null;
   resolvedSkillId: string | null;
@@ -479,6 +493,91 @@ async function runDefaultRouterRespondAsync(params: {
                     callIndex,
                     toolName,
                     args,
+                  },
+                },
+                createdAt: null,
+              },
+            ]);
+          },
+          onToolCallError: async (toolName, args, error, stepIndex, callIndex) => {
+            const oneBasedStepIndex = stepIndex + 1;
+            const toolError = formatToolExecutionError(error);
+            const failedResult = {
+              ok: false,
+              toolName,
+              data: null,
+              error: toolError,
+            };
+            const stepSuffix = `:ts:${oneBasedStepIndex}`;
+            const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
+            const stepContent = `**Tool:** \`${toolName}\`\n\`\`\`json\n${JSON.stringify(failedResult, null, 2)}\n\`\`\``;
+
+            await upsertMessages(userId, [
+              {
+                messageId: stepMessageId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: stepContent,
+                taskState: 'failed',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'tool_call',
+                    stepIndex: oneBasedStepIndex,
+                    completedCalls: 0,
+                    failedCalls: 1,
+                    maxSteps: loopMaxSteps,
+                    maxToolCalls: loopMaxToolCalls,
+                    timeoutMs: loopTimeoutMs,
+                  },
+                  toolCalls: [
+                    {
+                      toolName,
+                      args,
+                      result: failedResult,
+                    },
+                  ],
+                },
+                createdAt: null,
+              },
+            ]);
+
+            const tcSuffix = `:tc:${oneBasedStepIndex}:${callIndex}`;
+            const tcMsgId = `${assistantMessageId.slice(0, 255 - tcSuffix.length)}${tcSuffix}`;
+            await upsertMessages(userId, [
+              {
+                messageId: tcMsgId,
+                taskId: acceptedTaskId,
+                channelId,
+                sessionId: acceptedSessionId,
+                threadId,
+                role: 'assistant',
+                content: '',
+                taskState: 'completed',
+                checkpointCursor: null,
+                metadata: {
+                  ...dispatchPlaceholderMetadata({
+                    resolvedBotId,
+                    resolvedSkillId,
+                    source: 'backend.respond.agent_loop',
+                    model: typeof body.model === 'string' ? body.model : null,
+                  }),
+                  agentLoop: {
+                    phase: 'tool_call_start',
+                    stepIndex: oneBasedStepIndex,
+                    callIndex,
+                    toolName,
+                    args,
+                    error: toolError,
                   },
                 },
                 createdAt: null,

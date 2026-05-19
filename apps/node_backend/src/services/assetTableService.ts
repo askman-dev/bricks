@@ -67,10 +67,40 @@ interface DataRow {
   user_id: string;
   resource_id: string;
   display_number: number;
-  cell_data: Record<string, string | null>;
-  is_deleted: boolean;
+  cell_data: Record<string, string | null> | string | null;
+  is_deleted: boolean | number | string;
   created_at: string;
   updated_at: string;
+}
+
+const isTurso = pool.dialect === 'turso';
+const currentTimestampSql = isTurso ? 'CURRENT_TIMESTAMP' : 'NOW()';
+const jsonValueSql = (placeholder: string): string => isTurso ? placeholder : `${placeholder}::jsonb`;
+const mergeJsonSql = (column: string, placeholder: string): string =>
+  isTurso
+    ? `json_patch(COALESCE(${column}, '{}'), ${placeholder})`
+    : `${column} || ${placeholder}::jsonb`;
+const notDeletedSql = isTurso ? 'is_deleted = 0' : 'is_deleted = FALSE';
+const deletedValueSql = isTurso ? '1' : 'TRUE';
+
+function parseCellData(raw: DataRow['cell_data']): Record<string, string | null> {
+  if (!raw) return {};
+  if (typeof raw !== 'string') return raw;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const normalized: Record<string, string | null> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      normalized[key] = typeof value === 'string' ? value : null;
+    }
+    return normalized;
+  } catch {
+    return {};
+  }
+}
+
+function parseIsDeleted(raw: DataRow['is_deleted']): boolean {
+  return raw === true || raw === 1 || raw === '1' || raw === 'true';
 }
 
 function tableToDto(row: TableRow): AssetTable {
@@ -101,8 +131,8 @@ function dataRowToDto(row: DataRow): AssetTableRow {
     id: row.id,
     resourceId: row.resource_id,
     displayNumber: row.display_number,
-    cellData: row.cell_data ?? {},
-    isDeleted: row.is_deleted,
+    cellData: parseCellData(row.cell_data),
+    isDeleted: parseIsDeleted(row.is_deleted),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -131,7 +161,7 @@ export async function createTable(
     `INSERT INTO asset_tables (user_id, resource_id, title)
           VALUES ($1, $2, $3)
           ON CONFLICT (user_id, resource_id)
-          DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()
+          DO UPDATE SET title = EXCLUDED.title, updated_at = ${currentTimestampSql}
        RETURNING id, user_id, resource_id, title, created_at, updated_at`,
     [userId, input.resourceId, input.title],
   );
@@ -159,7 +189,7 @@ export async function getTable(
     pool.query<DataRow>(
       `SELECT id, user_id, resource_id, display_number, cell_data, is_deleted, created_at, updated_at
          FROM asset_table_rows
-        WHERE user_id = $1 AND resource_id = $2 AND is_deleted = FALSE
+        WHERE user_id = $1 AND resource_id = $2 AND ${notDeletedSql}
         ORDER BY display_number ASC, created_at ASC`,
       [userId, resourceId],
     ),
@@ -178,8 +208,9 @@ export async function getTable(
   // resources.ts). Coercing preserves the DTO contract for all consumers.
   const rows = rowResult.rows.map((r) => {
     const filtered: Record<string, string | null> = {};
+    const cellData = parseCellData(r.cell_data);
     for (const key of columnKeys) {
-      const raw = r.cell_data?.[key];
+      const raw = cellData[key];
       filtered[key] = typeof raw === 'string' ? raw : null;
     }
     return dataRowToDto({ ...r, cell_data: filtered });
@@ -208,7 +239,7 @@ export async function addColumn(
           DO UPDATE SET
             display_name = EXCLUDED.display_name,
             column_order = EXCLUDED.column_order,
-            updated_at = NOW()
+            updated_at = ${currentTimestampSql}
        RETURNING id, user_id, resource_id, column_key, display_name, column_order, created_at, updated_at`,
     [userId, resourceId, input.columnKey, input.displayName, input.columnOrder ?? 0],
   );
@@ -242,7 +273,7 @@ export async function addRow(
     `INSERT INTO asset_table_rows (user_id, resource_id, display_number, cell_data)
           SELECT $1, $2,
                  COALESCE((SELECT MAX(display_number) FROM asset_table_rows WHERE user_id = $1 AND resource_id = $2), 0) + 1,
-                 $3::jsonb
+                 ${jsonValueSql('$3')}
        RETURNING id, user_id, resource_id, display_number, cell_data, is_deleted, created_at, updated_at`,
     [userId, resourceId, JSON.stringify(cellData)],
   );
@@ -258,9 +289,9 @@ export async function updateRow(
   // Merge incoming cell_data onto existing using JSONB concatenation operator (||).
   const result = await pool.query<DataRow>(
     `UPDATE asset_table_rows
-        SET cell_data = cell_data || $4::jsonb,
-            updated_at = NOW()
-      WHERE user_id = $1 AND resource_id = $2 AND id = $3 AND is_deleted = FALSE
+        SET cell_data = ${mergeJsonSql('cell_data', '$4')},
+            updated_at = ${currentTimestampSql}
+      WHERE user_id = $1 AND resource_id = $2 AND id = $3 AND ${notDeletedSql}
       RETURNING id, user_id, resource_id, display_number, cell_data, is_deleted, created_at, updated_at`,
     [userId, resourceId, rowId, JSON.stringify(cellData)],
   );
@@ -274,7 +305,7 @@ export async function deleteRow(
 ): Promise<{ deleted: boolean }> {
   const result = await pool.query(
     `UPDATE asset_table_rows
-        SET is_deleted = TRUE, updated_at = NOW()
+        SET is_deleted = ${deletedValueSql}, updated_at = ${currentTimestampSql}
       WHERE user_id = $1 AND resource_id = $2 AND id = $3`,
     [userId, resourceId, rowId],
   );

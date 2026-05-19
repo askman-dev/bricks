@@ -90,7 +90,9 @@ class LlmConfigService {
   static String resolveBaseUrl() {
     if (_apiBaseUrl.isNotEmpty) return _apiBaseUrl;
     if (kIsWeb) return Uri.base.origin;
-    if (kReleaseMode) return productionApiBaseUrl;
+    if (kReleaseMode || defaultTargetPlatform == TargetPlatform.iOS) {
+      return productionApiBaseUrl;
+    }
     return 'http://localhost:3000';
   }
 
