@@ -318,4 +318,27 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     expect(stmts[0]).toContain(`DEFAULT '[]'`);
     expect(stmts[0]).toContain('CURRENT_TIMESTAMP');
   });
+
+  it('adapts migration 019 scope change by rebuilding chat_channel_names for SQLite', () => {
+    const migration019 = `-- Migration: Scope chat channel names to optional threads
+ALTER TABLE chat_channel_names
+  ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255) NOT NULL DEFAULT '';
+
+ALTER TABLE chat_channel_names
+  DROP CONSTRAINT IF EXISTS chat_channel_names_user_id_channel_id_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_channel_names_scope_unique
+  ON chat_channel_names(user_id, channel_id, thread_id);
+`;
+
+    const stmts = adaptMigrationForSqlite(migration019);
+
+    expect(stmts.some((s) => /DROP CONSTRAINT/i.test(s))).toBe(false);
+    expect(stmts.some((s) => /ALTER TABLE\s+chat_channel_names\s+ADD COLUMN\s+thread_id/i.test(s))).toBe(true);
+    expect(stmts.some((s) => /CREATE TABLE chat_channel_names__tmp/i.test(s))).toBe(true);
+    expect(stmts.some((s) => /DROP TABLE chat_channel_names/i.test(s))).toBe(true);
+    expect(stmts.some((s) => /RENAME TO chat_channel_names/i.test(s))).toBe(true);
+    expect(stmts.some((s) => /idx_chat_channel_names_user_id/i.test(s))).toBe(true);
+    expect(stmts.some((s) => /idx_chat_channel_names_scope_unique/i.test(s))).toBe(true);
+  });
 });

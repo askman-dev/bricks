@@ -84,6 +84,31 @@ export function adaptMigrationForSqlite(sql: string): string[] {
     stmt = stmt.replace(/::\s*[a-zA-Z_][a-zA-Z0-9_]*/g, '');
     stmt = stmt.replace(/\bNOW\(\)/gi, 'CURRENT_TIMESTAMP');
 
+    if (/^ALTER TABLE chat_channel_names\s+DROP CONSTRAINT IF EXISTS chat_channel_names_user_id_channel_id_key$/i.test(stmt)) {
+      statements.push(
+        `CREATE TABLE chat_channel_names__tmp (
+          id UUID PRIMARY KEY DEFAULT ${SQLITE_UUID_EXPR},
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          channel_id VARCHAR(255) NOT NULL,
+          display_name VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          thread_id VARCHAR(255) NOT NULL DEFAULT ''
+        )`,
+      );
+      statements.push(
+        `INSERT INTO chat_channel_names__tmp (id, user_id, channel_id, display_name, created_at, updated_at, thread_id)
+          SELECT id, user_id, channel_id, display_name, created_at, updated_at, thread_id
+            FROM chat_channel_names`,
+      );
+      statements.push('DROP TABLE chat_channel_names');
+      statements.push('ALTER TABLE chat_channel_names__tmp RENAME TO chat_channel_names');
+      statements.push(
+        'CREATE INDEX IF NOT EXISTS idx_chat_channel_names_user_id ON chat_channel_names(user_id)',
+      );
+      continue;
+    }
+
     statements.push(stmt);
   }
 
