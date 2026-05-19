@@ -18,6 +18,14 @@ const SQLITE_UUID_EXPR =
   ` || lower(substr(hex(randomblob(2)),2))` +                          // clock_seq   (3 hex)
   ` || '-' || lower(hex(randomblob(6))))`;                             // node        (12 hex)
 
+// Migration 019 uses PostgreSQL `DROP CONSTRAINT` syntax that SQLite/Turso cannot parse.
+// We match the exact legacy unique-constraint drop on chat_channel_names and replace it
+// with a SQLite-safe table rebuild that preserves data while removing the old
+// `(user_id, channel_id)` uniqueness shape before the migration adds
+// `(user_id, channel_id, thread_id)` uniqueness via index creation.
+const CHAT_CHANNEL_NAMES_LEGACY_CONSTRAINT_DROP_RE =
+  /^ALTER TABLE chat_channel_names\s+DROP CONSTRAINT IF EXISTS chat_channel_names_user_id_channel_id_key$/i;
+
 /**
  * Strip SQL line comments (-- ...) and block comments (/* ... *\/) from a
  * SQL string.  This must be done before splitting on semicolons so that:
@@ -84,8 +92,11 @@ export function adaptMigrationForSqlite(sql: string): string[] {
     stmt = stmt.replace(/::\s*[a-zA-Z_][a-zA-Z0-9_]*/g, '');
     stmt = stmt.replace(/\bNOW\(\)/gi, 'CURRENT_TIMESTAMP');
 
-    if (/^ALTER TABLE chat_channel_names\s+DROP CONSTRAINT IF EXISTS chat_channel_names_user_id_channel_id_key$/i.test(stmt)) {
+    if (CHAT_CHANNEL_NAMES_LEGACY_CONSTRAINT_DROP_RE.test(stmt)) {
       statements.push(
+        // Keep this schema aligned with chat_channel_names as expected after migration 019.
+        // If chat_channel_names columns change in later migrations, this rebuild DDL must be
+        // updated alongside them to avoid schema drift during SQLite adaptation.
         `CREATE TABLE chat_channel_names__tmp (
           id UUID PRIMARY KEY DEFAULT ${SQLITE_UUID_EXPR},
           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -336,9 +336,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_channel_names_scope_unique
     expect(stmts.some((s) => /DROP CONSTRAINT/i.test(s))).toBe(false);
     expect(stmts.some((s) => /ALTER TABLE\s+chat_channel_names\s+ADD COLUMN\s+thread_id/i.test(s))).toBe(true);
     expect(stmts.some((s) => /CREATE TABLE chat_channel_names__tmp/i.test(s))).toBe(true);
+    const addColumnIndex = stmts.findIndex((s) => /ALTER TABLE\s+chat_channel_names\s+ADD COLUMN\s+thread_id/i.test(s));
+    const rebuildCreateIndex = stmts.findIndex((s) => /CREATE TABLE chat_channel_names__tmp/i.test(s));
+    expect(addColumnIndex).toBeGreaterThanOrEqual(0);
+    expect(rebuildCreateIndex).toBeGreaterThanOrEqual(0);
+    expect(addColumnIndex).toBeLessThan(rebuildCreateIndex);
     expect(stmts.some((s) => /DROP TABLE chat_channel_names/i.test(s))).toBe(true);
     expect(stmts.some((s) => /RENAME TO chat_channel_names/i.test(s))).toBe(true);
     expect(stmts.some((s) => /idx_chat_channel_names_user_id/i.test(s))).toBe(true);
     expect(stmts.some((s) => /idx_chat_channel_names_scope_unique/i.test(s))).toBe(true);
+    expect(
+      stmts.some((s) => /idx_chat_channel_names_scope_unique[\s\S]*\(\s*user_id\s*,\s*channel_id\s*,\s*thread_id\s*\)/i.test(s)),
+    ).toBe(true);
+    const rebuiltTableStmt = stmts.find((s) => /CREATE TABLE chat_channel_names__tmp/i.test(s));
+    expect(rebuiltTableStmt).toBeDefined();
+    expect(rebuiltTableStmt).not.toMatch(/UNIQUE\s*\(\s*user_id\s*,\s*channel_id\s*\)/i);
   });
 });
