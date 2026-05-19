@@ -468,9 +468,25 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
     );
   }
 
+  int _compareResources(ChatResourceItem a, ChatResourceItem b) {
+    final updatedAtComparison = b.updatedAt.compareTo(a.updatedAt);
+    if (updatedAtComparison != 0) {
+      return updatedAtComparison;
+    }
+
+    final typeComparison = _filterForResourceType(a.type).index.compareTo(
+      _filterForResourceType(b.type).index,
+    );
+    if (typeComparison != 0) {
+      return typeComparison;
+    }
+
+    return a.id.compareTo(b.id);
+  }
+
   List<ChatResourceItem> _filteredResources() {
     final sorted = List<ChatResourceItem>.from(widget.resources)
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      ..sort(_compareResources);
     if (_resourceFilter == ChatResourceTypeFilter.all) {
       return sorted;
     }
