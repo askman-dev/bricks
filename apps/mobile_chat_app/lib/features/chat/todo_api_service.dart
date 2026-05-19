@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../services/authenticated_api_client.dart';
 import '../settings/llm_config_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,7 @@ class TodoList {
   final int displayOrder;
   final DateTime createdAt;
   final DateTime updatedAt;
+
   /// Items are only present when fetched via getTodoList (not listTodoLists).
   final List<TodoItem> items;
 
@@ -93,16 +95,19 @@ class TodoItem {
 // ---------------------------------------------------------------------------
 
 class TodoApiService {
-  TodoApiService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client(),
-        _ownsHttpClient = httpClient == null;
+  TodoApiService({
+    http.Client? httpClient,
+    AuthenticatedApiClient? apiClient,
+  })  : _apiClient =
+            apiClient ?? AuthenticatedApiClient(httpClient: httpClient),
+        _ownsApiClient = apiClient == null;
 
-  final http.Client _httpClient;
-  final bool _ownsHttpClient;
+  final AuthenticatedApiClient _apiClient;
+  final bool _ownsApiClient;
 
   void dispose() {
-    if (_ownsHttpClient) {
-      _httpClient.close();
+    if (_ownsApiClient) {
+      _apiClient.close();
     }
   }
 
@@ -119,11 +124,8 @@ class TodoApiService {
   // Todo list CRUD
   // ---------------------------------------------------------------------------
 
-  Future<List<TodoList>> listTodoLists({required String token}) async {
-    final response = await _httpClient.get(
-      _todoListsUri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+  Future<List<TodoList>> listTodoLists() async {
+    final response = await _apiClient.get(_todoListsUri);
     if (response.statusCode != 200) {
       throw Exception('Failed to list todo lists: ${response.statusCode}');
     }
@@ -136,13 +138,9 @@ class TodoApiService {
   }
 
   Future<TodoList> getTodoList({
-    required String token,
     required String listId,
   }) async {
-    final response = await _httpClient.get(
-      _todoListUri(listId),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.get(_todoListUri(listId));
     if (response.statusCode != 200) {
       throw Exception('Failed to get todo list: ${response.statusCode}');
     }
@@ -152,14 +150,12 @@ class TodoApiService {
   }
 
   Future<TodoList> createTodoList({
-    required String token,
     required String title,
     String? notes,
   }) async {
-    final response = await _httpClient.post(
+    final response = await _apiClient.post(
       _todoListsUri,
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -176,7 +172,6 @@ class TodoApiService {
   }
 
   Future<TodoList> updateTodoList({
-    required String token,
     required String listId,
     String? title,
     String? notes,
@@ -185,10 +180,9 @@ class TodoApiService {
     if (title != null) patch['title'] = title;
     if (notes != null) patch['notes'] = notes;
 
-    final response = await _httpClient.patch(
+    final response = await _apiClient.patch(
       _todoListUri(listId),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode(patch),
@@ -202,13 +196,9 @@ class TodoApiService {
   }
 
   Future<void> deleteTodoList({
-    required String token,
     required String listId,
   }) async {
-    final response = await _httpClient.delete(
-      _todoListUri(listId),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.delete(_todoListUri(listId));
     if (response.statusCode != 200) {
       throw Exception('Failed to delete todo list: ${response.statusCode}');
     }
@@ -219,17 +209,13 @@ class TodoApiService {
   // ---------------------------------------------------------------------------
 
   Future<List<TodoItem>> listTodos({
-    required String token,
     required String listId,
     bool includeCompleted = true,
   }) async {
     final uri = _todosUri(listId).replace(
       queryParameters: {'includeCompleted': includeCompleted.toString()},
     );
-    final response = await _httpClient.get(
-      uri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.get(uri);
     if (response.statusCode != 200) {
       throw Exception('Failed to list todos: ${response.statusCode}');
     }
@@ -242,15 +228,13 @@ class TodoApiService {
   }
 
   Future<TodoItem> createTodo({
-    required String token,
     required String listId,
     required String title,
     String? notes,
   }) async {
-    final response = await _httpClient.post(
+    final response = await _apiClient.post(
       _todosUri(listId),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -267,7 +251,6 @@ class TodoApiService {
   }
 
   Future<TodoItem> updateTodo({
-    required String token,
     required String listId,
     required String id,
     String? title,
@@ -279,10 +262,9 @@ class TodoApiService {
     if (notes != null) patch['notes'] = notes;
     if (isCompleted != null) patch['isCompleted'] = isCompleted;
 
-    final response = await _httpClient.patch(
+    final response = await _apiClient.patch(
       _todoUri(listId, id),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode(patch),
@@ -297,24 +279,18 @@ class TodoApiService {
 
   /// Convenience wrapper: marks a todo item as completed.
   Future<TodoItem> completeTodo({
-    required String token,
     required String listId,
     required String id,
   }) =>
-      updateTodo(token: token, listId: listId, id: id, isCompleted: true);
+      updateTodo(listId: listId, id: id, isCompleted: true);
 
   Future<void> deleteTodo({
-    required String token,
     required String listId,
     required String id,
   }) async {
-    final response = await _httpClient.delete(
-      _todoUri(listId, id),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.delete(_todoUri(listId, id));
     if (response.statusCode != 200) {
       throw Exception('Failed to delete todo: ${response.statusCode}');
     }
   }
 }
-

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../services/authenticated_api_client.dart';
 import '../settings/llm_config_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -117,39 +118,39 @@ class AssetTableSummary {
 // ---------------------------------------------------------------------------
 
 class AssetTableApiService {
-  AssetTableApiService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client(),
-        _ownsHttpClient = httpClient == null;
+  AssetTableApiService({
+    http.Client? httpClient,
+    AuthenticatedApiClient? apiClient,
+  })  : _apiClient =
+            apiClient ?? AuthenticatedApiClient(httpClient: httpClient),
+        _ownsApiClient = apiClient == null;
 
-  final http.Client _httpClient;
-  final bool _ownsHttpClient;
+  final AuthenticatedApiClient _apiClient;
+  final bool _ownsApiClient;
 
   void dispose() {
-    if (_ownsHttpClient) {
-      _httpClient.close();
+    if (_ownsApiClient) {
+      _apiClient.close();
     }
   }
 
   String get _base => LlmConfigService.resolveBaseUrl();
   Uri get _tablesUri => Uri.parse('$_base/api/resources/tables');
-  Uri _tableUri(String resourceId) =>
-      Uri.parse('$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}');
-  Uri _columnsUri(String resourceId) =>
-      Uri.parse('$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}/columns');
+  Uri _tableUri(String resourceId) => Uri.parse(
+      '$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}');
+  Uri _columnsUri(String resourceId) => Uri.parse(
+      '$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}/columns');
   Uri _columnUri(String resourceId, String columnKey) => Uri.parse(
         '$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}/columns/${Uri.encodeComponent(columnKey)}',
       );
-  Uri _rowsUri(String resourceId) =>
-      Uri.parse('$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}/rows');
+  Uri _rowsUri(String resourceId) => Uri.parse(
+      '$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}/rows');
   Uri _rowUri(String resourceId, String rowId) => Uri.parse(
         '$_base/api/resources/tables/${Uri.encodeComponent(resourceId)}/rows/${Uri.encodeComponent(rowId)}',
       );
 
-  Future<List<AssetTableSummary>> listTables({required String token}) async {
-    final response = await _httpClient.get(
-      _tablesUri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+  Future<List<AssetTableSummary>> listTables() async {
+    final response = await _apiClient.get(_tablesUri);
     if (response.statusCode != 200) {
       throw Exception('Failed to list tables: ${response.statusCode}');
     }
@@ -162,13 +163,9 @@ class AssetTableApiService {
   }
 
   Future<AssetTableDetail> getTable({
-    required String token,
     required String resourceId,
   }) async {
-    final response = await _httpClient.get(
-      _tableUri(resourceId),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.get(_tableUri(resourceId));
     if (response.statusCode != 200) {
       throw Exception('Failed to get table: ${response.statusCode}');
     }
@@ -178,14 +175,12 @@ class AssetTableApiService {
   }
 
   Future<AssetTableSummary> createTable({
-    required String token,
     required String resourceId,
     required String title,
   }) async {
-    final response = await _httpClient.post(
+    final response = await _apiClient.post(
       _tablesUri,
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({'resourceId': resourceId, 'title': title}),
@@ -199,16 +194,14 @@ class AssetTableApiService {
   }
 
   Future<AssetTableColumn> addColumn({
-    required String token,
     required String resourceId,
     required String columnKey,
     required String displayName,
     int columnOrder = 0,
   }) async {
-    final response = await _httpClient.post(
+    final response = await _apiClient.post(
       _columnsUri(resourceId),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -226,28 +219,22 @@ class AssetTableApiService {
   }
 
   Future<void> removeColumn({
-    required String token,
     required String resourceId,
     required String columnKey,
   }) async {
-    final response = await _httpClient.delete(
-      _columnUri(resourceId, columnKey),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.delete(_columnUri(resourceId, columnKey));
     if (response.statusCode != 200) {
       throw Exception('Failed to remove column: ${response.statusCode}');
     }
   }
 
   Future<AssetTableRow> addRow({
-    required String token,
     required String resourceId,
     Map<String, String?> cellData = const {},
   }) async {
-    final response = await _httpClient.post(
+    final response = await _apiClient.post(
       _rowsUri(resourceId),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({'cellData': cellData}),
@@ -261,15 +248,13 @@ class AssetTableApiService {
   }
 
   Future<AssetTableRow> updateRow({
-    required String token,
     required String resourceId,
     required String rowId,
     required Map<String, String?> cellData,
   }) async {
-    final response = await _httpClient.patch(
+    final response = await _apiClient.patch(
       _rowUri(resourceId, rowId),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({'cellData': cellData}),
@@ -283,14 +268,10 @@ class AssetTableApiService {
   }
 
   Future<void> deleteRow({
-    required String token,
     required String resourceId,
     required String rowId,
   }) async {
-    final response = await _httpClient.delete(
-      _rowUri(resourceId, rowId),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.delete(_rowUri(resourceId, rowId));
     if (response.statusCode != 200) {
       throw Exception('Failed to delete row: ${response.statusCode}');
     }

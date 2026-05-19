@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../services/authenticated_api_client.dart';
 import '../settings/llm_config_service.dart';
 import 'chat_message.dart';
 import 'chat_message_sort.dart';
@@ -75,14 +76,15 @@ class ChatChannelNameSetting {
 }
 
 class ChatHistoryApiService {
-  ChatHistoryApiService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client(),
-        _ownsHttpClient = httpClient == null;
+  ChatHistoryApiService({
+    http.Client? httpClient,
+    AuthenticatedApiClient? apiClient,
+  })  : _apiClient =
+            apiClient ?? AuthenticatedApiClient(httpClient: httpClient),
+        _ownsApiClient = apiClient == null;
 
-  final http.Client _httpClient;
-  final bool _ownsHttpClient;
-
-  http.Client get _client => _httpClient;
+  final AuthenticatedApiClient _apiClient;
+  final bool _ownsApiClient;
 
   /// Fields from [ChatMessage.toMap] that carry server-relevant information.
   /// UI-only state (isStreaming, arbitration flags, score details, etc.) is
@@ -101,8 +103,8 @@ class ChatHistoryApiService {
   ];
 
   void dispose() {
-    if (_ownsHttpClient) {
-      _httpClient.close();
+    if (_ownsApiClient) {
+      _apiClient.close();
     }
   }
 
@@ -139,11 +141,8 @@ class ChatHistoryApiService {
     return null;
   }
 
-  Future<List<ChatPersistedScope>> loadScopes({required String token}) async {
-    final response = await _client.get(
-      _scopesUri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+  Future<List<ChatPersistedScope>> loadScopes() async {
+    final response = await _apiClient.get(_scopesUri);
     if (response.statusCode != 200) {
       throw Exception('Failed to load chat scopes (${response.statusCode})');
     }
@@ -167,13 +166,8 @@ class ChatHistoryApiService {
         .toList(growable: false);
   }
 
-  Future<List<ChatScopeSetting>> loadScopeSettings({
-    required String token,
-  }) async {
-    final response = await _client.get(
-      _scopeSettingsUri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+  Future<List<ChatScopeSetting>> loadScopeSettings() async {
+    final response = await _apiClient.get(_scopeSettingsUri);
     if (response.statusCode != 200) {
       throw Exception(
         'Failed to load chat scope settings (${response.statusCode})',
@@ -207,13 +201,8 @@ class ChatHistoryApiService {
     }).toList(growable: false);
   }
 
-  Future<List<ChatChannelNameSetting>> loadChannelNames({
-    required String token,
-  }) async {
-    final response = await _client.get(
-      _channelNamesUri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+  Future<List<ChatChannelNameSetting>> loadChannelNames() async {
+    final response = await _apiClient.get(_channelNamesUri);
     if (response.statusCode != 200) {
       throw Exception(
         'Failed to load chat channel names (${response.statusCode})',
@@ -240,14 +229,10 @@ class ChatHistoryApiService {
   }
 
   Future<ChatHistorySnapshot> load({
-    required String token,
     required String sessionId,
     int limit = 20,
   }) async {
-    final response = await _client.get(
-      _historyUri(sessionId, limit: limit),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.get(_historyUri(sessionId, limit: limit));
     if (response.statusCode != 200) {
       throw Exception('Failed to load chat history (${response.statusCode})');
     }
@@ -273,14 +258,11 @@ class ChatHistoryApiService {
   }
 
   Future<ChatHistorySnapshot> sync({
-    required String token,
     required String sessionId,
     required int afterSeq,
   }) async {
-    final response = await _client.get(
-      _syncUri(sessionId, afterSeq: afterSeq),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response =
+        await _apiClient.get(_syncUri(sessionId, afterSeq: afterSeq));
     if (response.statusCode != 200) {
       throw Exception('Failed to sync chat history (${response.statusCode})');
     }
@@ -308,17 +290,15 @@ class ChatHistoryApiService {
   /// messages.  The stream completes when the underlying HTTP connection
   /// closes; callers are responsible for reconnecting as needed.
   Stream<ChatHistorySnapshot> listenEvents({
-    required String token,
     required String sessionId,
     required int afterSeq,
   }) async* {
     final request =
         http.Request('GET', _eventsUri(sessionId, afterSeq: afterSeq));
-    request.headers['Authorization'] = 'Bearer $token';
     request.headers['Accept'] = 'text/event-stream';
     request.headers['Cache-Control'] = 'no-cache';
 
-    final response = await _client.send(request);
+    final response = await _apiClient.send(request);
     if (response.statusCode != 200) {
       throw Exception(
         'Failed to open chat events stream (${response.statusCode})',
@@ -379,7 +359,6 @@ class ChatHistoryApiService {
   }
 
   Future<ChatRespondResult> respond({
-    required String token,
     required String taskId,
     required String idempotencyKey,
     required ChatSessionScope scope,
@@ -395,10 +374,9 @@ class ChatHistoryApiService {
     String? systemPrompt,
     DateTime? createdAt,
   }) async {
-    final response = await _client.post(
+    final response = await _apiClient.post(
       Uri.parse('$_base/api/chat/respond'),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -438,7 +416,6 @@ class ChatHistoryApiService {
   }
 
   Future<void> saveScopeSetting({
-    required String token,
     required ChatScopeType scopeType,
     required String channelId,
     String? threadId,
@@ -446,10 +423,9 @@ class ChatHistoryApiService {
     String? nodeId,
     String? instructions,
   }) async {
-    final response = await _client.put(
+    final response = await _apiClient.put(
       _scopeSettingsUri,
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -469,14 +445,12 @@ class ChatHistoryApiService {
   }
 
   Future<void> saveChannelName({
-    required String token,
     required String channelId,
     String? displayName,
   }) async {
-    final response = await _client.put(
+    final response = await _apiClient.put(
       _channelNamesUri,
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -492,17 +466,15 @@ class ChatHistoryApiService {
   }
 
   Future<ChatAcceptedTask> acceptTask({
-    required String token,
     required String taskId,
     required String idempotencyKey,
     required ChatSessionScope scope,
     String? resolvedBotId,
     String? resolvedSkillId,
   }) async {
-    final response = await _client.post(
+    final response = await _apiClient.post(
       _acceptTaskUri,
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -545,16 +517,14 @@ class ChatHistoryApiService {
   }
 
   Future<int> upsertMessages({
-    required String token,
     required List<ChatMessage> messages,
   }) async {
     final persistableMessages = messagesForPersistence(messages);
     if (persistableMessages.isEmpty) return 0;
 
-    final response = await _client.put(
+    final response = await _apiClient.put(
       _batchMessagesUri,
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({

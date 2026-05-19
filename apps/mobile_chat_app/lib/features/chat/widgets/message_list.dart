@@ -435,10 +435,164 @@ class _MessageListState extends State<MessageList> {
     _hideSelectionToolbar();
   }
 
+  bool _isToolLoopMessage(ChatMessage message) {
+    if (message.role == 'user') return false;
+    return message.agentLoopPhase == 'tool_call_start' ||
+        message.agentLoopPhase == 'tool_call';
+  }
+
+  int _toolGroupEndIndex(List<ChatMessage> messages, int startIndex) {
+    var endIndex = startIndex;
+    while (endIndex + 1 < messages.length &&
+        _isToolLoopMessage(messages[endIndex + 1])) {
+      endIndex++;
+    }
+    return endIndex;
+  }
+
+  Widget _buildToolGroupItem(
+    BuildContext context,
+    int startIndex,
+    int endIndex, {
+    bool hideMeta = false,
+  }) {
+    final messages = widget.messages;
+    final first = messages[startIndex];
+    final groupMessages = messages.sublist(startIndex, endIndex + 1);
+    final chatColors =
+        Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+    final itemKey = startIndex == _focusedIndex ? _focusedItemKey : null;
+    final startMessages = groupMessages
+        .where((message) => message.agentLoopPhase == 'tool_call_start')
+        .toList(growable: false);
+    final total = startMessages.isNotEmpty
+        ? startMessages.length
+        : groupMessages
+            .where((message) => message.agentLoopPhase == 'tool_call')
+            .length;
+    final completed = startMessages.isNotEmpty
+        ? startMessages
+            .where((message) => message.taskState == ChatTaskState.completed)
+            .length
+        : total;
+    final isFinalized = completed >= total && total > 0;
+    final labelPrefix = isFinalized ? '思考过程' : '正在思考';
+    final label = '$labelPrefix $completed/$total';
+
+    return Align(
+      key: itemKey,
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (first.agentName != null || first.model != null)
+            _assistantAttributionHeader(
+              context: context,
+              message: first,
+              chatColors: chatColors,
+            ),
+          _AgentLoopToolGroupRow(
+            label: label,
+            isFinalized: isFinalized,
+            chatColors: chatColors,
+          ),
+          if (!hideMeta)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                right: BricksSpacing.xs,
+                bottom: BricksSpacing.md,
+              ),
+              child: Text(
+                _messageMetaLine(first),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: chatColors.metaText,
+                    ),
+              ),
+            )
+          else
+            const SizedBox(height: BricksSpacing.xs),
+        ],
+      ),
+    );
+  }
+
+  bool _shouldAttachAssistantTextToPreviousToolGroup(
+    List<ChatMessage> messages,
+    int index,
+  ) {
+    if (index <= 0) return false;
+    final message = messages[index];
+    if (message.role != 'assistant') return false;
+    if (message.agentLoopPhase != null) return false;
+    if (_isAssistantDispatchPlaceholder(message)) return false;
+    return _isToolLoopMessage(messages[index - 1]);
+  }
+
+  bool _toolGroupShouldAttachNextText(
+    List<ChatMessage> messages,
+    int endIndex,
+  ) {
+    if (endIndex + 1 >= messages.length) return false;
+    return _shouldAttachAssistantTextToPreviousToolGroup(
+      messages,
+      endIndex + 1,
+    );
+  }
+
+  Widget _assistantAttributionHeader({
+    required BuildContext context,
+    required ChatMessage message,
+    required ChatColors chatColors,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: BricksSpacing.xs,
+        bottom: BricksSpacing.xs,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.smart_toy_outlined, size: 14),
+          const SizedBox(width: BricksSpacing.xs),
+          Text(
+            message.agentName ?? message.model ?? '',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: chatColors.agentIdentity,
+                ),
+          ),
+          if (message.nodeType?.trim().isNotEmpty == true) ...[
+            const SizedBox(width: BricksSpacing.xs),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 1,
+              ),
+              decoration: BoxDecoration(
+                color: chatColors.agentBadgeContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                message.nodeType!.trim(),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: chatColors.onAgentBadgeContainer,
+                    ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // Builds a single message row for the given [index] in [widget.messages].
   // Extracted from build() so that the non-builder ListView can call it in a
   // simple for-loop while keeping the item rendering logic in one place.
-  Widget _buildMessageItem(BuildContext context, int index) {
+  Widget _buildMessageItem(
+    BuildContext context,
+    int index, {
+    bool suppressAssistantHeader = false,
+  }) {
     final allMessages = widget.messages;
     final msg = allMessages[index];
     final isUser = msg.role == 'user';
@@ -464,44 +618,13 @@ class _MessageListState extends State<MessageList> {
           // Show agent attribution chip as soon as assistant identity is
           // known, including dispatch placeholders pushed by SSE before
           // any assistant text is available.
-          if (!isUser && (msg.agentName != null || msg.model != null))
-            Padding(
-              padding: const EdgeInsets.only(
-                left: BricksSpacing.xs,
-                bottom: BricksSpacing.xs,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.smart_toy_outlined, size: 14),
-                  const SizedBox(width: BricksSpacing.xs),
-                  Text(
-                    msg.agentName ?? msg.model ?? '',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: chatColors.agentIdentity,
-                        ),
-                  ),
-                  if (msg.nodeType?.trim().isNotEmpty == true) ...[
-                    const SizedBox(width: BricksSpacing.xs),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: chatColors.agentBadgeContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        msg.nodeType!.trim(),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: chatColors.onAgentBadgeContainer,
-                            ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+          if (!isUser &&
+              !suppressAssistantHeader &&
+              (msg.agentName != null || msg.model != null))
+            _assistantAttributionHeader(
+              context: context,
+              message: msg,
+              chatColors: chatColors,
             ),
           if (isAssistantDispatchPlaceholder)
             Padding(
@@ -704,6 +827,30 @@ class _MessageListState extends State<MessageList> {
         (_hasUserMessage()
             ? MediaQuery.sizeOf(context).height * _kBottomPaddingRatio
             : 0);
+    final messageItems = <Widget>[];
+    for (var i = 0; i < messages.length; i++) {
+      if (_isToolLoopMessage(messages[i])) {
+        final endIndex = _toolGroupEndIndex(messages, i);
+        messageItems.add(
+          _buildToolGroupItem(
+            context,
+            i,
+            endIndex,
+            hideMeta: _toolGroupShouldAttachNextText(messages, endIndex),
+          ),
+        );
+        i = endIndex;
+        continue;
+      }
+      messageItems.add(
+        _buildMessageItem(
+          context,
+          i,
+          suppressAssistantHeader:
+              _shouldAttachAssistantTextToPreviousToolGroup(messages, i),
+        ),
+      );
+    }
 
     // All messages in the initial load are bounded (≤ 20 items). Building
     // them eagerly with a non-builder ListView gives an accurate
@@ -775,10 +922,7 @@ class _MessageListState extends State<MessageList> {
                 _listBottomPadding,
               ),
               child: Column(
-                children: [
-                  for (var i = 0; i < messages.length; i++)
-                    _buildMessageItem(context, i),
-                ],
+                children: messageItems,
               ),
             ),
           ),
@@ -1482,8 +1626,9 @@ class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
       );
       if (block.type == _MarkdownBlockType.unorderedList ||
           block.type == _MarkdownBlockType.orderedList) {
+        final listLeftPadding = BricksSpacing.md * (block.listLevel + 1);
         widgets.add(Padding(
-          padding: const EdgeInsets.only(left: BricksSpacing.md),
+          padding: EdgeInsets.only(left: listLeftPadding),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1945,15 +2090,17 @@ class _MarkdownBlock {
     required this.type,
     required this.text,
     this.marker = '',
+    this.listLevel = 0,
   });
 
   final _MarkdownBlockType type;
   final String text;
   final String marker;
+  final int listLevel;
 
   static final RegExp _headingPattern = RegExp(r'^\s{0,3}(#{1,6})\s+(.*)$');
-  static final RegExp _unorderedListPattern = RegExp(r'^\s*([-*+])\s+(.*)$');
-  static final RegExp _orderedListPattern = RegExp(r'^\s*(\d+)\.\s+(.*)$');
+  static final RegExp _unorderedListPattern = RegExp(r'^(\s*)([-*+])\s+(.*)$');
+  static final RegExp _orderedListPattern = RegExp(r'^(\s*)(\d+)\.\s+(.*)$');
 
   static _MarkdownBlock tryParse(String line) {
     final headingMatch = _headingPattern.firstMatch(line);
@@ -1968,8 +2115,9 @@ class _MarkdownBlock {
     if (unorderedMatch != null) {
       return _MarkdownBlock(
         type: _MarkdownBlockType.unorderedList,
-        marker: unorderedMatch.group(1) ?? '•',
-        text: unorderedMatch.group(2) ?? '',
+        marker: unorderedMatch.group(2) ?? '•',
+        text: unorderedMatch.group(3) ?? '',
+        listLevel: _listLevelFromIndent(unorderedMatch.group(1) ?? ''),
       );
     }
 
@@ -1977,13 +2125,19 @@ class _MarkdownBlock {
     if (orderedMatch != null) {
       return _MarkdownBlock(
         type: _MarkdownBlockType.orderedList,
-        marker: '${orderedMatch.group(1)}.',
-        text: orderedMatch.group(2) ?? '',
+        marker: '${orderedMatch.group(2)}.',
+        text: orderedMatch.group(3) ?? '',
+        listLevel: _listLevelFromIndent(orderedMatch.group(1) ?? ''),
       );
     }
 
     return _MarkdownBlock(type: _MarkdownBlockType.paragraph, text: line);
   }
+}
+
+int _listLevelFromIndent(String indent) {
+  final spaces = indent.replaceAll('\t', '    ').length;
+  return spaces ~/ 2;
 }
 
 List<_OffsetTextSpan> _parseInlineMarkdownWithOffsets(
@@ -2623,5 +2777,56 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
           ),
         );
     }
+  }
+}
+
+class _AgentLoopToolGroupRow extends StatelessWidget {
+  const _AgentLoopToolGroupRow({
+    required this.label,
+    required this.isFinalized,
+    required this.chatColors,
+  });
+
+  final String label;
+  final bool isFinalized;
+  final ChatColors chatColors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: BricksSpacing.xs,
+        right: BricksSpacing.xs,
+        bottom: BricksSpacing.xs,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: isFinalized
+                ? Icon(
+                    Icons.check_circle_outline,
+                    size: 14,
+                    color: chatColors.agentAccent,
+                  )
+                : CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      chatColors.agentAccent,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: BricksSpacing.xs),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: chatColors.metaText,
+                ),
+          ),
+        ],
+      ),
+    );
   }
 }

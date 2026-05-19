@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../auth/auth_service.dart';
+import '../../services/authenticated_api_client.dart';
 
 enum LlmProvider { anthropic, googleAiStudio }
 
@@ -73,7 +73,12 @@ class LlmConfig {
 }
 
 class LlmConfigService {
-  const LlmConfigService();
+  LlmConfigService({
+    http.Client? httpClient,
+    AuthenticatedApiClient? apiClient,
+  }) : _apiClient = apiClient ?? AuthenticatedApiClient(httpClient: httpClient);
+
+  final AuthenticatedApiClient _apiClient;
 
   static const String productionApiBaseUrl = 'https://bricks.askman.dev';
 
@@ -97,15 +102,8 @@ class LlmConfigService {
   }
 
   Future<List<LlmConfig>> fetchConfigs() async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) return const [];
-
-    final response = await http.get(
-      _buildUri('/api/config', {'category': 'llm'}),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    );
+    final response =
+        await _apiClient.get(_buildUri('/api/config', {'category': 'llm'}));
 
     if (response.statusCode != 200) {
       throw Exception('Failed to load model settings (${response.statusCode})');
@@ -135,11 +133,6 @@ class LlmConfigService {
   }
 
   Future<LlmConfig> save(LlmConfig config) async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Not authenticated');
-    }
-
     final modelName = config.defaultModel.trim();
     final resolvedSlotId =
         modelName.isEmpty ? config.slotId : normalizedSlotIdForModel(modelName);
@@ -164,19 +157,10 @@ class LlmConfigService {
     final uri = config.id == null
         ? _buildUri('/api/config')
         : _buildUri('/api/config/${config.id}');
-    final request = config.id == null
-        ? http.post
-        : (Uri u, {Map<String, String>? headers, Object? body}) =>
-            http.put(u, headers: headers, body: body);
-
-    final response = await request(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: payload,
-    );
+    final headers = {'Content-Type': 'application/json'};
+    final response = config.id == null
+        ? await _apiClient.post(uri, headers: headers, body: payload)
+        : await _apiClient.put(uri, headers: headers, body: payload);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to save model settings (${response.statusCode})');
@@ -190,19 +174,10 @@ class LlmConfigService {
   }
 
   Future<void> deleteConfig(String id) async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Not authenticated');
-    }
-
     final encodedId = Uri.encodeComponent(id);
 
-    final response = await http.delete(
-      _buildUri('/api/config/$encodedId'),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    );
+    final response =
+        await _apiClient.delete(_buildUri('/api/config/$encodedId'));
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception(
@@ -211,15 +186,7 @@ class LlmConfigService {
   }
 
   Future<List<PlatformNodeConfig>> fetchPlatformNodes() async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Not authenticated');
-    }
-
-    final response = await http.get(
-      _buildUri('/api/config/nodes'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await _apiClient.get(_buildUri('/api/config/nodes'));
     if (response.statusCode != 200) {
       throw Exception(
           'Failed to fetch platform nodes (${response.statusCode})');
@@ -244,15 +211,9 @@ class LlmConfigService {
   }
 
   Future<PlatformNodeConfig> createPlatformNode({String? displayName}) async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Not authenticated');
-    }
-
-    final response = await http.post(
+    final response = await _apiClient.post(
       _buildUri('/api/config/nodes'),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
@@ -277,15 +238,9 @@ class LlmConfigService {
     required String nodeId,
     required String displayName,
   }) async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Not authenticated');
-    }
-
-    final response = await http.patch(
+    final response = await _apiClient.patch(
       _buildUri('/api/config/nodes/${Uri.encodeComponent(nodeId)}'),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({'displayName': displayName.trim()}),
@@ -308,19 +263,13 @@ class LlmConfigService {
     required String nodeId,
     String? sourcePlatform,
   }) async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Not authenticated');
-    }
-
-    final response = await http.get(
+    final response = await _apiClient.get(
       _buildUri(
         '/api/config/nodes/${Uri.encodeComponent(nodeId)}/agents',
         sourcePlatform == null || sourcePlatform.trim().isEmpty
             ? null
             : {'sourcePlatform': sourcePlatform.trim()},
       ),
-      headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {
       throw Exception(
@@ -355,19 +304,11 @@ class LlmConfigService {
     String? nodeId,
     String pluginId = 'plugin_local_main',
   }) async {
-    final token = await AuthService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Not authenticated');
-    }
-
-    final response = await http.get(
+    final response = await _apiClient.get(
       _buildUri('/api/config/platform-token', {
         if (nodeId != null && nodeId.trim().isNotEmpty) 'nodeId': nodeId.trim(),
         if (nodeId == null || nodeId.trim().isEmpty) 'pluginId': pluginId,
       }),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
     );
 
     if (response.statusCode != 200) {

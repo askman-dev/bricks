@@ -5,9 +5,9 @@ import 'llm_config_service.dart';
 
 class NodeSettingsScreen extends StatefulWidget {
   const NodeSettingsScreen({super.key, LlmConfigService? service})
-      : _service = service ?? const LlmConfigService();
+      : _service = service;
 
-  final LlmConfigService _service;
+  final LlmConfigService? _service;
 
   @override
   State<NodeSettingsScreen> createState() => _NodeSettingsScreenState();
@@ -23,7 +23,7 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _service = widget._service;
+    _service = widget._service ?? LlmConfigService();
     _loadNodes();
   }
 

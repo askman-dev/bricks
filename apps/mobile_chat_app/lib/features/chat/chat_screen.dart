@@ -69,7 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<AgentSessionEvent>? _currentSubscription;
   List<AgentDefinition> _agents = [];
   AgentDefinition? _activeAgent;
-  final LlmConfigService _llmConfigService = const LlmConfigService();
+  final LlmConfigService _llmConfigService = LlmConfigService();
   List<LlmConfig> _llmConfigs = const [];
   List<PlatformNodeConfig> _platformNodes = const [];
   Map<String, List<PlatformAgentConfig>> _openClawAgentsByNodeId = const {};
@@ -157,67 +157,58 @@ class _ChatScreenState extends State<ChatScreen> {
       Map<String, List<PlatformAgentConfig>> openClawAgentsByNodeId = const {};
       List<TodoList> todoLists = const [];
       List<AssetTableSummary> assetTables = const [];
-      if (authToken != null && authToken.isNotEmpty) {
-        try {
-          persistedScopes = await _chatHistoryApiService.loadScopes(
-            token: authToken,
-          );
-        } catch (e) {
-          // Scope hydration is best-effort; a backend failure (e.g. 404 during
-          // rollout or transient error) must not block the rest of chat setup.
-          debugPrint(
-            'loadScopes failed, continuing without scope hydration: $e',
-          );
-        }
-        try {
-          scopeSettings = await _chatHistoryApiService.loadScopeSettings(
-            token: authToken,
-          );
-        } catch (e) {
-          debugPrint(
-            'loadScopeSettings failed, continuing without router hydration: $e',
-          );
-        }
-        try {
-          channelNames = await _chatHistoryApiService.loadChannelNames(
-            token: authToken,
-          );
-        } catch (e) {
-          debugPrint(
-            'loadChannelNames failed, continuing without channel name hydration: $e',
-          );
-        }
-        try {
-          platformNodes = await _llmConfigService.fetchPlatformNodes();
-          final agentResults = await Future.wait(
-            platformNodes.map(
-              (node) => _llmConfigService
-                  .fetchPlatformAgents(
-                    nodeId: node.nodeId,
-                    sourcePlatform: 'openclaw',
-                  )
-                  .then((agents) => MapEntry(node.nodeId, agents)),
-            ),
-          );
-          openClawAgentsByNodeId = Map.fromEntries(agentResults);
-        } catch (e) {
-          debugPrint(
-            'loadOpenClawAgents failed, continuing without OpenClaw @ menu agents: $e',
-          );
-        }
-        try {
-          todoLists = await _todoApiService.listTodoLists(token: authToken);
-        } catch (e) {
-          debugPrint('loadTodoLists failed, continuing without todo lists: $e');
-        }
-        try {
-          assetTables =
-              await _assetTableApiService.listTables(token: authToken);
-        } catch (e) {
-          debugPrint(
-            'loadAssetTables failed, continuing without asset tables: $e',
-          );
-        }
+      try {
+        persistedScopes = await _chatHistoryApiService.loadScopes();
+      } catch (e) {
+        // Scope hydration is best-effort; a backend failure (e.g. 404 during
+        // rollout or transient error) must not block the rest of chat setup.
+        debugPrint(
+          'loadScopes failed, continuing without scope hydration: $e',
+        );
+      }
+      try {
+        scopeSettings = await _chatHistoryApiService.loadScopeSettings();
+      } catch (e) {
+        debugPrint(
+          'loadScopeSettings failed, continuing without router hydration: $e',
+        );
+      }
+      try {
+        channelNames = await _chatHistoryApiService.loadChannelNames();
+      } catch (e) {
+        debugPrint(
+          'loadChannelNames failed, continuing without channel name hydration: $e',
+        );
+      }
+      try {
+        platformNodes = await _llmConfigService.fetchPlatformNodes();
+        final agentResults = await Future.wait(
+          platformNodes.map(
+            (node) => _llmConfigService
+                .fetchPlatformAgents(
+                  nodeId: node.nodeId,
+                  sourcePlatform: 'openclaw',
+                )
+                .then((agents) => MapEntry(node.nodeId, agents)),
+          ),
+        );
+        openClawAgentsByNodeId = Map.fromEntries(agentResults);
+      } catch (e) {
+        debugPrint(
+          'loadOpenClawAgents failed, continuing without OpenClaw @ menu agents: $e',
+        );
+      }
+      try {
+        todoLists = await _todoApiService.listTodoLists();
+      } catch (e) {
+        debugPrint('loadTodoLists failed, continuing without todo lists: $e');
+      }
+      try {
+        assetTables = await _assetTableApiService.listTables();
+      } catch (e) {
+        debugPrint(
+          'loadAssetTables failed, continuing without asset tables: $e',
+        );
       }
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
@@ -844,20 +835,16 @@ class _ChatScreenState extends State<ChatScreen> {
           _lastSyncedSeq = 0;
         });
         _configureActiveScopeSync();
-        final token = _authToken;
-        if (token != null && token.isNotEmpty) {
-          unawaited(
-            _chatHistoryApiService
-                .saveChannelName(
-              token: token,
-              channelId: id,
-              displayName: name,
-            )
-                .catchError((Object error, StackTrace stackTrace) {
-              debugPrint('Failed to save channel name "$id": $error');
-            }),
-          );
-        }
+        unawaited(
+          _chatHistoryApiService
+              .saveChannelName(
+            channelId: id,
+            displayName: name,
+          )
+              .catchError((Object error, StackTrace stackTrace) {
+            debugPrint('Failed to save channel name "$id": $error');
+          }),
+        );
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
@@ -894,20 +881,16 @@ class _ChatScreenState extends State<ChatScreen> {
             isDefault: existingChannel.isDefault,
           );
         });
-        final token = _authToken;
-        if (token != null && token.isNotEmpty) {
-          unawaited(
-            _chatHistoryApiService
-                .saveChannelName(
-              token: token,
-              channelId: channelId,
-              displayName: name,
-            )
-                .catchError((Object error, StackTrace stackTrace) {
-              debugPrint('Failed to save channel name "$channelId": $error');
-            }),
-          );
-        }
+        unawaited(
+          _chatHistoryApiService
+              .saveChannelName(
+            channelId: channelId,
+            displayName: name,
+          )
+              .catchError((Object error, StackTrace stackTrace) {
+            debugPrint('Failed to save channel name "$channelId": $error');
+          }),
+        );
       },
     );
   }
@@ -941,20 +924,16 @@ class _ChatScreenState extends State<ChatScreen> {
     if (wasActive) {
       unawaited(_loadMessagesForActiveScope());
     }
-    final token = _authToken;
-    if (token != null && token.isNotEmpty) {
-      unawaited(
-        _chatHistoryApiService
-            .saveChannelName(
-          token: token,
-          channelId: channelId,
-          displayName: null,
-        )
-            .catchError((Object error, StackTrace stackTrace) {
-          debugPrint('Failed to archive channel "$channelId": $error');
-        }),
-      );
-    }
+    unawaited(
+      _chatHistoryApiService
+          .saveChannelName(
+        channelId: channelId,
+        displayName: null,
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Failed to archive channel "$channelId": $error');
+      }),
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已归档频道：${channel.name}')),
     );
@@ -1094,19 +1073,6 @@ class _ChatScreenState extends State<ChatScreen> {
   String get _sessionIdForScope => _activeScope.sessionId;
 
   Future<void> _loadMessagesForActiveScope() async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _messages.clear();
-        _highlights = const {};
-        _latestCheckpointCursor = null;
-        _lastSyncedSeq = 0;
-      });
-      _configureActiveScopeSync();
-      return;
-    }
-
     // Capture scope identity before the async gap so we can discard stale
     // responses if the user navigates away while the request is in-flight.
     // capturedSessionId encodes both channelId and subSection, so a single
@@ -1120,7 +1086,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final snapshot = await _chatHistoryApiService.load(
-        token: token,
         sessionId: capturedSessionId,
       );
       if (!mounted || _isScopeStale()) return;
@@ -1472,14 +1437,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _saveChannelRouter(ChatRouter router, {String? nodeId}) async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
-      return;
-    }
-
     final channelId = _activeChannelId;
     final previous = _channelRouters[channelId];
     final previousNodeId = _channelNodeIds[channelId];
@@ -1505,7 +1462,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _chatHistoryApiService.saveScopeSetting(
-        token: token,
         scopeType: ChatScopeType.channel,
         channelId: channelId,
         router: effectiveRouter,
@@ -1534,14 +1490,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _saveThreadRouter(ChatRouter? router, {String? nodeId}) async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
-      return;
-    }
-
     final channelId = _activeChannelId;
     final threadId = _activeSubSection;
     final key = _subSectionKey(channelId, threadId);
@@ -1569,7 +1517,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _chatHistoryApiService.saveScopeSetting(
-        token: token,
         scopeType: ChatScopeType.thread,
         channelId: channelId,
         threadId: threadId,
@@ -1634,14 +1581,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _saveChannelInstructions(String? instructions) async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
-      return;
-    }
-
     final channelId = _activeChannelId;
     final normalized = instructions?.trim();
     final previous = _channelInstructions[channelId];
@@ -1657,7 +1596,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _chatHistoryApiService.saveScopeSetting(
-        token: token,
         scopeType: ChatScopeType.channel,
         channelId: channelId,
         router: effectiveRouter,
@@ -1683,14 +1621,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _saveThreadInstructions(String? instructions) async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
-      return;
-    }
-
     if (!_isThreadConversation()) return;
 
     final channelId = _activeChannelId;
@@ -1710,7 +1640,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _chatHistoryApiService.saveScopeSetting(
-        token: token,
         scopeType: ChatScopeType.thread,
         channelId: channelId,
         threadId: threadId,
@@ -1827,8 +1756,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool _shouldSyncActiveScope() {
-    final token = _authToken;
-    if (token == null || token.isEmpty) return false;
     if (_effectiveRouterForScope() == ChatRouter.plugin) return true;
     if (_isSending || _isStreaming) return true;
     return _hasPendingAssistantTasks() || _hasPendingUserTasks();
@@ -1845,8 +1772,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void _connectSse() {
     _disconnectSse();
     if (!_shouldSyncActiveScope()) return;
-    final token = _authToken;
-    if (token == null || token.isEmpty) return;
 
     final capturedSessionId = _sessionIdForScope;
     final capturedChannelId = _activeChannelId;
@@ -1854,7 +1779,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _sseSubscription = _chatHistoryApiService
         .listenEvents(
-      token: token,
       sessionId: capturedSessionId,
       afterSeq: _lastSyncedSeq,
     )
@@ -2116,20 +2040,11 @@ class _ChatScreenState extends State<ChatScreen> {
       _isStreaming = false;
     });
 
-    final token = _authToken;
     final runtimeSettings = _settingsForAgent(agent);
-    if (token == null || token.isEmpty) {
-      setState(() {
-        _isSending = false;
-        _isStreaming = false;
-      });
-      return;
-    }
 
     final generation = ++_respondGeneration;
     _chatHistoryApiService
         .respond(
-      token: token,
       taskId: taskId,
       idempotencyKey: idempotencyKey,
       scope: _activeScope,
@@ -2306,14 +2221,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _refreshPlatformNodes() async {
-    final token = _authToken;
-    if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _platformNodes = const [];
-      });
-      return;
-    }
     try {
       final nodes = await _llmConfigService.fetchPlatformNodes();
       if (!mounted) return;
@@ -2429,7 +2336,6 @@ class _ChatScreenState extends State<ChatScreen> {
           onRequestClose: onRequestClose,
           closeOnChannelSelected: closeOnChannelSelected,
           todoApiService: _todoApiService,
-          authToken: _authToken,
           onActionSelected: (action) {
             switch (action) {
               case ChatNavigationAction.appSettings:
