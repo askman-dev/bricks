@@ -22,6 +22,11 @@ export interface ChatChannelNameInput {
   displayName: string;
 }
 
+function normalizeThreadId(threadId?: string | null): string {
+  const normalizedThreadId = threadId?.trim() ?? "";
+  return normalizedThreadId === "main" ? "" : normalizedThreadId;
+}
+
 function toDto(row: ChatChannelNameRow): ChatChannelNameSetting {
   return {
     channelId: row.channel_id,
@@ -49,7 +54,7 @@ export async function upsertChatChannelName(
   userId: string,
   input: ChatChannelNameInput,
 ): Promise<ChatChannelNameSetting> {
-  const threadId = input.threadId?.trim() ?? "";
+  const threadId = normalizeThreadId(input.threadId);
   const result = await pool.query<ChatChannelNameRow>(
     `INSERT INTO chat_channel_names (user_id, channel_id, thread_id, display_name)
       VALUES ($1, $2, $3, $4)
@@ -68,7 +73,7 @@ export async function deleteChatChannelName(
   channelId: string,
   threadId?: string | null,
 ): Promise<{ deleted: boolean }> {
-  const storageThreadId = threadId?.trim() ?? "";
+  const storageThreadId = normalizeThreadId(threadId);
   const result = await pool.query(
     `DELETE FROM chat_channel_names
       WHERE user_id = $1
