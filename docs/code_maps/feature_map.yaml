@@ -233,6 +233,8 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
           - service: TextHighlightApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/text_highlight_api_service.dart
+          - service: AuthenticatedApiClient
+            route_hint: apps/mobile_chat_app/lib/services/authenticated_api_client.dart
           - route: GET /api/resources/highlights
             route_hint: apps/node_backend/src/routes/resources.ts
           - route: POST /api/resources/highlights
@@ -243,7 +245,8 @@ products:
             route_hint: apps/node_backend/src/services/localAgentLoopService.ts
         smoke_checks:
           - 在助手消息中选中文字，浮动工具栏出现"划线"按钮。
-          - 点击"划线"后，选中文字出现黄色背景和横线。
+          - 点击"划线"后，客户端发出带 Authorization header 的 POST /api/resources/highlights 请求，成功后选中文字出现黄色背景和横线。
+          - 缺少 token 或 token 失效时，点击"划线"不应静默无反馈。
           - 当同一消息中存在重复文本时，只应划中用户实际选择的那一段。
           - 选区跨 markdown 段落、代码块或表格单元格时，同一条划线应渲染成多个连续 subsegment。
           - 选中已有划线范围时，工具栏应提供"删除划线"。

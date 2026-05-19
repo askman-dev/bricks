@@ -25,6 +25,7 @@ import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
+import '../../services/authenticated_api_client.dart';
 
 /// The main chat screen – the app's entry point.
 ///
@@ -1099,7 +1100,7 @@ class _ChatScreenState extends State<ChatScreen> {
         subSection: capturedSubSection,
       );
       _configureActiveScopeSync();
-      unawaited(_loadHighlightsForMessages(token: token));
+      unawaited(_loadHighlightsForMessages());
     } catch (_) {
       if (!mounted || _isScopeStale()) return;
       setState(() {
@@ -1114,9 +1115,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Loads all highlights for the currently loaded messages and refreshes
   /// the [_highlights] map so [MessageList] can render them.
-  Future<void> _loadHighlightsForMessages({required String token}) async {
+  Future<void> _loadHighlightsForMessages() async {
     try {
-      final list = await _highlightApiService.listHighlights(token: token);
+      final list = await _highlightApiService.listHighlights();
       if (!mounted) return;
       final updated = <String, List<HighlightSpan>>{};
       for (final h in list) {
@@ -1132,20 +1133,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<String?> _resolveAuthToken() async {
-    final cached = _authToken;
-    if (cached != null && cached.isNotEmpty) {
-      return cached;
-    }
-    final token = await AuthService.getToken();
-    if (token != null && token.isNotEmpty && mounted) {
-      setState(() {
-        _authToken = token;
-      });
-    }
-    return token;
-  }
-
   /// Called when the user taps 划线 in the selection context menu.
   Future<void> _handleHighlight(
     String messageId,
@@ -1153,17 +1140,8 @@ class _ChatScreenState extends State<ChatScreen> {
     int? startOffset,
     int? endOffset,
   ) async {
-    final token = await _resolveAuthToken();
-    if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
-      return;
-    }
     try {
       final created = await _highlightApiService.createHighlight(
-        token: token,
         messageId: messageId,
         selectedText: selectedText,
         startOffset: startOffset,
@@ -1181,21 +1159,21 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       debugPrint('createHighlight failed: $e');
+      if (!mounted) return;
+      final message = switch (e) {
+        MissingAuthTokenException() => 'Missing auth token',
+        UnauthorizedApiException() => 'Authentication expired',
+        _ => 'Failed to create highlight',
+      };
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
   /// Called when the user taps 删除划线 in the floating highlight menu.
   Future<void> _handleDeleteHighlight(String highlightId) async {
-    final token = await _resolveAuthToken();
-    if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Missing auth token')));
-      return;
-    }
     try {
-      await _highlightApiService.deleteHighlight(token: token, id: highlightId);
+      await _highlightApiService.deleteHighlight(id: highlightId);
       if (!mounted) return;
       setState(() {
         _highlights = {
@@ -1206,6 +1184,14 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       debugPrint('deleteHighlight failed: $e');
+      if (!mounted) return;
+      final message = switch (e) {
+        MissingAuthTokenException() => 'Missing auth token',
+        UnauthorizedApiException() => 'Authentication expired',
+        _ => 'Failed to delete highlight',
+      };
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
