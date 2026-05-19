@@ -2349,7 +2349,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 id: h.id,
                 type: ChatResourceType.textHighlight,
                 title: _highlightResourceTitle(h),
-                updatedAt: h.createdAt,
+                updatedAt: h.updatedAt,
                 notes: 'Highlighted text',
               ),
             ),
