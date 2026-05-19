@@ -435,6 +435,98 @@ class _MessageListState extends State<MessageList> {
     _hideSelectionToolbar();
   }
 
+  bool _isToolLoopMessage(ChatMessage message) {
+    if (message.role == 'user') return false;
+    return message.agentLoopPhase == 'tool_call_start' ||
+        message.agentLoopPhase == 'tool_call';
+  }
+
+  int _toolGroupEndIndex(List<ChatMessage> messages, int startIndex) {
+    var endIndex = startIndex;
+    while (endIndex + 1 < messages.length &&
+        _isToolLoopMessage(messages[endIndex + 1])) {
+      endIndex++;
+    }
+    return endIndex;
+  }
+
+  Widget _buildToolGroupItem(
+    BuildContext context,
+    int startIndex,
+    int endIndex,
+  ) {
+    final messages = widget.messages;
+    final first = messages[startIndex];
+    final groupMessages = messages.sublist(startIndex, endIndex + 1);
+    final chatColors =
+        Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+    final itemKey = startIndex == _focusedIndex ? _focusedItemKey : null;
+    final startMessages = groupMessages
+        .where((message) => message.agentLoopPhase == 'tool_call_start')
+        .toList(growable: false);
+    final total = startMessages.isNotEmpty
+        ? startMessages.length
+        : groupMessages
+            .where((message) => message.agentLoopPhase == 'tool_call')
+            .length;
+    final completed = startMessages.isNotEmpty
+        ? startMessages
+            .where((message) => message.taskState == ChatTaskState.completed)
+            .length
+        : total;
+    final isFinalized = completed >= total && total > 0;
+    final labelPrefix = isFinalized ? '思考过程' : '正在思考';
+    final label = '$labelPrefix $completed/$total';
+
+    return Align(
+      key: itemKey,
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (first.agentName != null || first.model != null)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: BricksSpacing.xs,
+                bottom: BricksSpacing.xs,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.smart_toy_outlined, size: 14),
+                  const SizedBox(width: BricksSpacing.xs),
+                  Text(
+                    first.agentName ?? first.model ?? '',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: chatColors.agentIdentity,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          _AgentLoopToolGroupRow(
+            label: label,
+            isFinalized: isFinalized,
+            chatColors: chatColors,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: BricksSpacing.xs,
+              right: BricksSpacing.xs,
+              bottom: BricksSpacing.md,
+            ),
+            child: Text(
+              _messageMetaLine(first),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: chatColors.metaText,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Builds a single message row for the given [index] in [widget.messages].
   // Extracted from build() so that the non-builder ListView can call it in a
   // simple for-loop while keeping the item rendering logic in one place.
@@ -704,6 +796,16 @@ class _MessageListState extends State<MessageList> {
         (_hasUserMessage()
             ? MediaQuery.sizeOf(context).height * _kBottomPaddingRatio
             : 0);
+    final messageItems = <Widget>[];
+    for (var i = 0; i < messages.length; i++) {
+      if (_isToolLoopMessage(messages[i])) {
+        final endIndex = _toolGroupEndIndex(messages, i);
+        messageItems.add(_buildToolGroupItem(context, i, endIndex));
+        i = endIndex;
+        continue;
+      }
+      messageItems.add(_buildMessageItem(context, i));
+    }
 
     // All messages in the initial load are bounded (≤ 20 items). Building
     // them eagerly with a non-builder ListView gives an accurate
@@ -775,10 +877,7 @@ class _MessageListState extends State<MessageList> {
                 _listBottomPadding,
               ),
               child: Column(
-                children: [
-                  for (var i = 0; i < messages.length; i++)
-                    _buildMessageItem(context, i),
-                ],
+                children: messageItems,
               ),
             ),
           ),
@@ -2633,5 +2732,56 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
           ),
         );
     }
+  }
+}
+
+class _AgentLoopToolGroupRow extends StatelessWidget {
+  const _AgentLoopToolGroupRow({
+    required this.label,
+    required this.isFinalized,
+    required this.chatColors,
+  });
+
+  final String label;
+  final bool isFinalized;
+  final ChatColors chatColors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: BricksSpacing.xs,
+        right: BricksSpacing.xs,
+        bottom: BricksSpacing.xs,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: isFinalized
+                ? Icon(
+                    Icons.check_circle_outline,
+                    size: 14,
+                    color: chatColors.agentAccent,
+                  )
+                : CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      chatColors.agentAccent,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: BricksSpacing.xs),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: chatColors.metaText,
+                ),
+          ),
+        ],
+      ),
+    );
   }
 }

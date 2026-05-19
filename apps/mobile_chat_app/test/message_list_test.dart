@@ -1264,7 +1264,7 @@ void main() {
   });
 
   group('Agent-loop status rows', () {
-    testWidgets('tool_call_start renders spinning indicator and label',
+    testWidgets('tool_call_start renders active thinking group',
         (tester) async {
       final msg = ChatMessage(
         messageId: 'tc-start-1',
@@ -1281,24 +1281,103 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.textContaining('search_web'), findsOneWidget);
+      expect(find.text('正在思考 0/1'), findsOneWidget);
+      expect(find.textContaining('search_web'), findsNothing);
     });
 
-    testWidgets('tool_call_start without toolName renders generic label',
+    testWidgets('completed tool_call_start renders finalized thinking group',
         (tester) async {
       final msg = ChatMessage(
         messageId: 'tc-start-2',
         role: 'assistant',
         content: '',
         agentLoopPhase: 'tool_call_start',
+        taskState: ChatTaskState.completed,
         timestamp: DateTime.utc(2026, 1, 1),
       );
 
       await tester.pumpWidget(_build([msg]));
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
 
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text('正在调用工具…'), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      expect(find.text('思考过程 1/1'), findsOneWidget);
+    });
+
+    testWidgets('adjacent tool messages merge into one thinking group',
+        (tester) async {
+      final messages = [
+        ChatMessage(
+          messageId: 'tc-start-1',
+          role: 'assistant',
+          content: '',
+          agentLoopPhase: 'tool_call_start',
+          taskState: ChatTaskState.completed,
+          timestamp: DateTime.utc(2026, 1, 1),
+        ),
+        ChatMessage(
+          messageId: 'tc-result-1',
+          role: 'assistant',
+          content: 'Tool: first\nResult: {"ok":true}',
+          agentLoopPhase: 'tool_call',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 1),
+        ),
+        ChatMessage(
+          messageId: 'tc-start-2',
+          role: 'assistant',
+          content: '',
+          agentLoopPhase: 'tool_call_start',
+          taskState: ChatTaskState.completed,
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 2),
+        ),
+        ChatMessage(
+          messageId: 'tc-result-2',
+          role: 'assistant',
+          content: 'Tool: second\nResult: {"items":[1,2]}',
+          agentLoopPhase: 'tool_call',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 3),
+        ),
+      ];
+
+      await tester.pumpWidget(_build(messages));
+      await tester.pumpAndSettle();
+
+      expect(find.text('思考过程 2/2'), findsOneWidget);
+      expect(find.textContaining('Tool: first'), findsNothing);
+      expect(find.textContaining('Tool: second'), findsNothing);
+    });
+
+    testWidgets('non-adjacent tool messages remain separate thinking groups',
+        (tester) async {
+      final messages = [
+        ChatMessage(
+          messageId: 'tc-start-1',
+          role: 'assistant',
+          content: '',
+          agentLoopPhase: 'tool_call_start',
+          taskState: ChatTaskState.completed,
+          timestamp: DateTime.utc(2026, 1, 1),
+        ),
+        ChatMessage(
+          messageId: 'assistant-text',
+          role: 'assistant',
+          content: 'normal text between tools',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 1),
+        ),
+        ChatMessage(
+          messageId: 'tc-start-2',
+          role: 'assistant',
+          content: '',
+          agentLoopPhase: 'tool_call_start',
+          taskState: ChatTaskState.completed,
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 2),
+        ),
+      ];
+
+      await tester.pumpWidget(_build(messages));
+      await tester.pumpAndSettle();
+
+      expect(find.text('思考过程 1/1'), findsNWidgets(2));
+      expect(find.text('normal text between tools'), findsOneWidget);
     });
 
     testWidgets('reasoning renders collapsed thought block by default',
@@ -1370,8 +1449,7 @@ void main() {
       expect(find.byType(IntrinsicHeight), findsOneWidget);
     });
 
-    testWidgets(
-        'tool_call phase falls through to normal assistant bubble rendering',
+    testWidgets('tool_call phase is hidden behind a thinking group',
         (tester) async {
       final msg = ChatMessage(
         messageId: 'tc-result-1',
@@ -1384,10 +1462,8 @@ void main() {
       await tester.pumpWidget(_build([msg]));
       await tester.pumpAndSettle();
 
-      // Content visible in the normal rendering path
-      expect(find.textContaining('Tool: search'), findsOneWidget);
-      // No spinner (would only appear for tool_call_start)
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('思考过程 1/1'), findsOneWidget);
+      expect(find.textContaining('Tool: search'), findsNothing);
     });
   });
 }
