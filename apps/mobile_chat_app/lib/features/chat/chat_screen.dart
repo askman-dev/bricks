@@ -1445,22 +1445,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  PopupMenuItem<String> _buildSubSectionMenuTitle(
-    BuildContext context,
-    String label,
-  ) {
-    return PopupMenuItem<String>(
-      enabled: false,
-      height: 32,
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-      ),
-    );
-  }
-
   List<PopupMenuEntry<String>> _buildSubSectionMenuItems(
     BuildContext context,
   ) {
@@ -1484,7 +1468,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (_isThreadConversation()) {
       items.add(const PopupMenuDivider());
-      items.add(_buildSubSectionMenuTitle(context, '当前组'));
       items.addAll(
         const [
           PopupMenuItem<String>(
