@@ -1296,6 +1296,7 @@ router.put("/channel-names", async (req: AuthRequest, res: Response) => {
 
     const body = req.body ?? {};
     const channelId = parseSessionId(body.channelId);
+    const threadId = parseSessionId(body.threadId);
     const displayNameRaw =
       typeof body.displayName === "string" ? body.displayName.trim() : null;
 
@@ -1314,13 +1315,14 @@ router.put("/channel-names", async (req: AuthRequest, res: Response) => {
     }
 
     if (!displayNameRaw) {
-      const deleted = await deleteChatChannelName(userId, channelId);
+      const deleted = await deleteChatChannelName(userId, channelId, threadId);
       res.json({ deleted: deleted.deleted });
       return;
     }
 
     const setting = await upsertChatChannelName(userId, {
       channelId,
+      threadId,
       displayName: displayNameRaw,
     });
     res.json({ setting });

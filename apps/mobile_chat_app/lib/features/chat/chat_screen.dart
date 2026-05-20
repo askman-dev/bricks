@@ -121,6 +121,9 @@ class _ChatScreenState extends State<ChatScreen> {
     '/tools',
     '/btw',
   ];
+  static const String _createSubSectionMenuValue = '__new__';
+  static const String _renameSubSectionMenuValue = '__rename__';
+  static const String _archiveSubSectionMenuValue = '__archive__';
 
   @override
   void initState() {
@@ -231,7 +234,8 @@ class _ChatScreenState extends State<ChatScreen> {
         channelNames: channelNames,
       );
       final restoredSubSections = _hydrateSubSectionsFromScopes(
-        persistedScopes,
+        scopes: persistedScopes,
+        channelNames: channelNames,
       );
       final restoredLastSubSectionByChannel =
           _hydrateLastActiveSubSectionByChannel(persistedScopes);
@@ -662,9 +666,17 @@ class _ChatScreenState extends State<ChatScreen> {
     return byChannel;
   }
 
-  Map<String, List<ChatSubSection>> _hydrateSubSectionsFromScopes(
-    List<ChatPersistedScope> scopes,
-  ) {
+  Map<String, List<ChatSubSection>> _hydrateSubSectionsFromScopes({
+    required List<ChatPersistedScope> scopes,
+    required List<ChatChannelNameSetting> channelNames,
+  }) {
+    final threadNamesByScope = <String, String>{
+      for (final item in channelNames)
+        if (item.threadId != null &&
+            item.threadId!.trim().isNotEmpty &&
+            item.threadId != 'main')
+          _subSectionKey(item.channelId, item.threadId!): item.displayName,
+    };
     final subSections = <String, List<ChatSubSection>>{
       'default': <ChatSubSection>[],
     };
@@ -681,7 +693,11 @@ class _ChatScreenState extends State<ChatScreen> {
         ChatSubSection(
           id: scope.threadId,
           parentChannelId: scope.channelId,
-          name: _fallbackScopeName(scope.threadId, prefix: 'sub'),
+          name: threadNamesByScope[_subSectionKey(
+                scope.channelId,
+                scope.threadId,
+              )] ??
+              _fallbackScopeName(scope.threadId, prefix: 'sub'),
           createdAt: scope.lastActivityAt ?? DateTime.now(),
         ),
       );
@@ -695,7 +711,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }) {
     if (channelNames.isEmpty) return channels;
     final namesById = <String, String>{
-      for (final item in channelNames) item.channelId: item.displayName,
+      for (final item in channelNames)
+        if (item.threadId == null || item.threadId!.trim().isEmpty)
+          item.channelId: item.displayName,
     };
     return channels.map((channel) {
       final displayName = namesById[channel.id];
@@ -946,6 +964,10 @@ class _ChatScreenState extends State<ChatScreen> {
     required Set<String> existingNames,
     required ValueChanged<String> onConfirmed,
     String initialValue = '',
+    String fieldLabel = '频道名',
+    String hintText = '请输入频道名',
+    String emptyError = '频道名不能为空',
+    String duplicateError = '频道名已存在',
   }) async {
     final controller = TextEditingController(text: initialValue);
     String? errorText;
@@ -958,18 +980,18 @@ class _ChatScreenState extends State<ChatScreen> {
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
-              labelText: '频道名',
-              hintText: '请输入频道名',
+              labelText: fieldLabel,
+              hintText: hintText,
               errorText: errorText,
             ),
             onSubmitted: (_) {
               final trimmed = controller.text.trim();
               if (trimmed.isEmpty) {
-                setDialogState(() => errorText = '频道名不能为空');
+                setDialogState(() => errorText = emptyError);
                 return;
               }
               if (existingNames.contains(trimmed.toLowerCase())) {
-                setDialogState(() => errorText = '频道名已存在');
+                setDialogState(() => errorText = duplicateError);
                 return;
               }
               Navigator.of(dialogContext).pop(trimmed);
@@ -984,11 +1006,11 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () {
                 final trimmed = controller.text.trim();
                 if (trimmed.isEmpty) {
-                  setDialogState(() => errorText = '频道名不能为空');
+                  setDialogState(() => errorText = emptyError);
                   return;
                 }
                 if (existingNames.contains(trimmed.toLowerCase())) {
-                  setDialogState(() => errorText = '频道名已存在');
+                  setDialogState(() => errorText = duplicateError);
                   return;
                 }
                 Navigator.of(dialogContext).pop(trimmed);
@@ -1427,6 +1449,57 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ],
     );
+  }
+
+  List<PopupMenuEntry<String>> _buildSubSectionMenuItems(
+    BuildContext context,
+  ) {
+    final items = <PopupMenuEntry<String>>[];
+
+    if (_isThreadConversation()) {
+      items.add(
+        const PopupMenuItem<String>(
+          value: 'main',
+          child: Text('回到主区'),
+        ),
+      );
+    }
+
+    items.add(
+      const PopupMenuItem<String>(
+        value: _createSubSectionMenuValue,
+        child: Text('新建子区'),
+      ),
+    );
+
+    if (_isThreadConversation()) {
+      items.add(const PopupMenuDivider());
+      items.addAll(
+        const [
+          PopupMenuItem<String>(
+            value: _renameSubSectionMenuValue,
+            child: Text('改名'),
+          ),
+          PopupMenuItem<String>(
+            value: _archiveSubSectionMenuValue,
+            child: Text('归档'),
+          ),
+        ],
+      );
+    }
+
+    if (_activeSubSections.isNotEmpty) {
+      items.add(const PopupMenuDivider());
+      items.addAll(
+        _activeSubSections.map(
+          (item) => PopupMenuItem<String>(
+            value: item.id,
+            child: Text(item.name),
+          ),
+        ),
+      );
+    }
+    return items;
   }
 
   String? _sourceFromRespondRouter(String? router) {
@@ -1894,6 +1967,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       items.add(section);
       _activeSubSection = id;
+      _lastActiveSubSectionByChannel[_activeChannelId] = id;
       _messages.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
@@ -1901,9 +1975,102 @@ class _ChatScreenState extends State<ChatScreen> {
     _configureActiveScopeSync();
   }
 
+  void _renameActiveSubSection() {
+    if (!_isThreadConversation()) return;
+    final channelId = _activeChannelId;
+    final sectionId = _activeSubSection;
+    ChatSubSection? section;
+    for (final item in _channelSubSections[channelId] ?? const []) {
+      if (item.id == sectionId) {
+        section = item;
+        break;
+      }
+    }
+    final existingSection = section;
+    if (existingSection == null) return;
+    final existingNames = (_channelSubSections[channelId] ?? const [])
+        .where((item) => item.id != sectionId)
+        .map((item) => item.name.trim().toLowerCase())
+        .toSet();
+    _promptChannelName(
+      title: '分区改名',
+      confirmLabel: '保存',
+      initialValue: existingSection.name,
+      fieldLabel: '分区名',
+      hintText: '请输入分区名',
+      emptyError: '分区名不能为空',
+      duplicateError: '分区名已存在',
+      existingNames: existingNames,
+      onConfirmed: (name) {
+        setState(() {
+          final sections = _channelSubSections[channelId];
+          if (sections == null) return;
+          final index = sections.indexWhere((item) => item.id == sectionId);
+          if (index < 0) return;
+          sections[index] = ChatSubSection(
+            id: existingSection.id,
+            parentChannelId: existingSection.parentChannelId,
+            name: name,
+            createdAt: existingSection.createdAt,
+          );
+        });
+        unawaited(
+          _chatHistoryApiService
+              .saveChannelName(
+            channelId: channelId,
+            threadId: sectionId,
+            displayName: name,
+          )
+              .catchError((Object error, StackTrace stackTrace) {
+            debugPrint('Failed to save subsection name "$sectionId": $error');
+          }),
+        );
+      },
+    );
+  }
+
+  void _archiveActiveSubSection() {
+    if (!_isThreadConversation()) return;
+    final channelId = _activeChannelId;
+    final sectionId = _activeSubSection;
+    final sectionName = _subSectionNameById(sectionId) ?? sectionId;
+    final sectionKey = _subSectionKey(channelId, sectionId);
+    setState(() {
+      _channelSubSections[channelId]?.removeWhere(
+        (item) => item.id == sectionId,
+      );
+      _subSectionLastMessageAt.remove(sectionKey);
+      _threadRouters.remove(sectionKey);
+      _threadNodeIds.remove(sectionKey);
+      _threadInstructions.remove(sectionKey);
+      _lastActiveSubSectionByChannel[channelId] = 'main';
+      _activeSubSection = 'main';
+      _messages.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
+    });
+    _configureActiveScopeSync();
+    unawaited(_loadMessagesForActiveScope());
+    unawaited(
+      _chatHistoryApiService
+          .saveChannelName(
+        channelId: channelId,
+        threadId: sectionId,
+        displayName: null,
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Failed to archive subsection "$sectionId": $error');
+      }),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已归档分区：$sectionName')),
+    );
+  }
+
   void _switchToSubSection(String subSectionId) {
     setState(() {
       _activeSubSection = subSectionId;
+      _lastActiveSubSectionByChannel[_activeChannelId] = subSectionId;
       _messages.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
@@ -2479,45 +2646,21 @@ class _ChatScreenState extends State<ChatScreen> {
             tooltip: '分区管理',
             onSelected: (value) {
               switch (value) {
-                case '__new__':
+                case _createSubSectionMenuValue:
                   _createSubSection();
                   unawaited(_loadMessagesForActiveScope());
                   break;
-                case '__rename__':
-                case '__archive__':
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('功能暂未实现')),
-                  );
+                case _renameSubSectionMenuValue:
+                  _renameActiveSubSection();
+                  break;
+                case _archiveSubSectionMenuValue:
+                  _archiveActiveSubSection();
                   break;
                 default:
                   _switchToSubSection(value);
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem<String>(
-                value: '__new__',
-                child: Text('新建子区'),
-              ),
-              const PopupMenuItem<String>(
-                value: '__rename__',
-                child: Text('分区改名（未实现）'),
-              ),
-              const PopupMenuItem<String>(
-                value: '__archive__',
-                child: Text('分区存档（未实现）'),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
-                value: 'main',
-                child: Text('回到主区'),
-              ),
-              ..._activeSubSections.map(
-                (item) => PopupMenuItem<String>(
-                  value: item.id,
-                  child: Text(item.name),
-                ),
-              ),
-            ],
+            itemBuilder: _buildSubSectionMenuItems,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

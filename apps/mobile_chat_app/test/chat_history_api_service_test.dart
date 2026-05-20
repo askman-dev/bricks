@@ -446,6 +446,11 @@ void main() {
                 'channelId': 'channel-1',
                 'displayName': 'renamed-channel',
               },
+              {
+                'channelId': 'channel-1',
+                'threadId': 'sub-1',
+                'displayName': 'renamed-subsection',
+              },
             ],
           }),
           200,
@@ -455,6 +460,7 @@ void main() {
       expect(request.method, equals('PUT'));
       final decoded = jsonDecode(request.body) as Map<String, dynamic>;
       expect(decoded['channelId'], equals('channel-1'));
+      expect(decoded['threadId'], equals('sub-1'));
       expect(decoded['displayName'], equals('latest-channel-name'));
       return http.Response(
         jsonEncode({
@@ -471,12 +477,15 @@ void main() {
     final channelNames = await service.loadChannelNames();
     await service.saveChannelName(
       channelId: 'channel-1',
+      threadId: 'sub-1',
       displayName: 'latest-channel-name',
     );
 
-    expect(channelNames, hasLength(1));
-    expect(channelNames.single.channelId, equals('channel-1'));
-    expect(channelNames.single.displayName, equals('renamed-channel'));
+    expect(channelNames, hasLength(2));
+    expect(channelNames.first.channelId, equals('channel-1'));
+    expect(channelNames.first.displayName, equals('renamed-channel'));
+    expect(channelNames.last.threadId, equals('sub-1'));
+    expect(channelNames.last.displayName, equals('renamed-subsection'));
   });
 
   test('listenEvents yields parsed snapshots from SSE data frames', () async {

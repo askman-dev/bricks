@@ -18,6 +18,14 @@ const SQLITE_UUID_EXPR =
   ` || lower(substr(hex(randomblob(2)),2))` +                          // clock_seq   (3 hex)
   ` || '-' || lower(hex(randomblob(6))))`;                             // node        (12 hex)
 
+// Migration 019 uses PostgreSQL `DROP CONSTRAINT` syntax that SQLite/Turso cannot parse.
+// We match the exact legacy unique-constraint drop on chat_channel_names and replace it
+// with a SQLite-safe table rebuild that preserves data while removing the old
+// `(user_id, channel_id)` uniqueness shape before the migration adds
+// `(user_id, channel_id, thread_id)` uniqueness via index creation.
+const CHAT_CHANNEL_NAMES_LEGACY_CONSTRAINT_DROP_RE =
+  /^ALTER TABLE chat_channel_names\s+DROP CONSTRAINT IF EXISTS chat_channel_names_user_id_channel_id_key$/i;
+
 /**
  * Strip SQL line comments (-- ...) and block comments (/* ... *\/) from a
  * SQL string.  This must be done before splitting on semicolons so that:
@@ -83,6 +91,34 @@ export function adaptMigrationForSqlite(sql: string): string[] {
     stmt = stmt.replace(/\bJSONB\b/gi, 'TEXT');
     stmt = stmt.replace(/::\s*[a-zA-Z_][a-zA-Z0-9_]*/g, '');
     stmt = stmt.replace(/\bNOW\(\)/gi, 'CURRENT_TIMESTAMP');
+
+    if (CHAT_CHANNEL_NAMES_LEGACY_CONSTRAINT_DROP_RE.test(stmt)) {
+      statements.push(
+        // Keep this schema aligned with chat_channel_names as expected after migration 019.
+        // If chat_channel_names columns change in later migrations, this rebuild DDL must be
+        // updated alongside them to avoid schema drift during SQLite adaptation.
+        `CREATE TABLE chat_channel_names__tmp (
+          id UUID PRIMARY KEY DEFAULT ${SQLITE_UUID_EXPR},
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          channel_id VARCHAR(255) NOT NULL,
+          display_name VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          thread_id VARCHAR(255) NOT NULL DEFAULT ''
+        )`,
+      );
+      statements.push(
+        `INSERT INTO chat_channel_names__tmp (id, user_id, channel_id, display_name, created_at, updated_at, thread_id)
+          SELECT id, user_id, channel_id, display_name, created_at, updated_at, thread_id
+            FROM chat_channel_names`,
+      );
+      statements.push('DROP TABLE chat_channel_names');
+      statements.push('ALTER TABLE chat_channel_names__tmp RENAME TO chat_channel_names');
+      statements.push(
+        'CREATE INDEX IF NOT EXISTS idx_chat_channel_names_user_id ON chat_channel_names(user_id)',
+      );
+      continue;
+    }
 
     statements.push(stmt);
   }
