@@ -20,8 +20,12 @@ Widget _buildPage({
           body: ChatNavigationPage(
             onActionSelected: onActionSelected ?? (_) {},
             channels: const [
-              ChatChannelItem(id: 'default', name: '默认频道', isDefault: true),
-              ChatChannelItem(id: 'project', name: '项目频道'),
+              ChatChannelItem(
+                id: 'default',
+                name: 'Default Channel',
+                isDefault: true,
+              ),
+              ChatChannelItem(id: 'project', name: 'Project Channel'),
             ],
             selectedChannelId: 'default',
             nodes: nodes,
@@ -136,8 +140,8 @@ void main() {
 
       expect(find.text('Skills'), findsNothing);
       expect(find.text('Agents'), findsNothing);
-      expect(find.text('待实现'), findsNothing);
-      expect(find.text('在设置中新建 Agents'), findsNothing);
+      expect(find.text('Coming soon'), findsNothing);
+      expect(find.text('Create Agents in Settings'), findsNothing);
     });
 
     testWidgets('Channels tab shows flat channel list with no section header',
@@ -146,10 +150,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // Channels tab is active by default
-      expect(find.text('默认频道'), findsOneWidget);
-      expect(find.text('项目频道'), findsOneWidget);
+      expect(find.text('Default Channel'), findsOneWidget);
+      expect(find.text('Project Channel'), findsOneWidget);
       // No collapsible header for channels
-      expect(find.text('频道'), findsNothing);
+      expect(find.byIcon(Icons.home_filled), findsNothing);
+      expect(find.byIcon(Icons.forum_outlined), findsNothing);
       expect(find.byTooltip('Settings'), findsOneWidget);
       expect(find.text('New Channel'), findsOneWidget);
       expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
@@ -404,7 +409,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('项目频道'));
+      await tester.tap(find.text('Project Channel'));
       await tester.pumpAndSettle();
 
       expect(closeCount, 1);
@@ -424,7 +429,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('项目频道'));
+      await tester.tap(find.text('Project Channel'));
       await tester.pumpAndSettle();
 
       expect(closeCount, 0);
@@ -455,9 +460,9 @@ void main() {
           .pumpWidget(_buildPage(onChannelRename: (id) => renamedId = id));
       await tester.pumpAndSettle();
 
-      await tester.longPress(find.text('项目频道'));
+      await tester.longPress(find.text('Project Channel'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('改名'));
+      await tester.tap(find.text('Rename'));
       await tester.pumpAndSettle();
 
       expect(renamedId, 'project');
@@ -469,9 +474,9 @@ void main() {
           .pumpWidget(_buildPage(onChannelArchive: (id) => archivedId = id));
       await tester.pumpAndSettle();
 
-      await tester.longPress(find.text('项目频道'));
+      await tester.longPress(find.text('Project Channel'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('归档'));
+      await tester.tap(find.text('Archive'));
       await tester.pumpAndSettle();
 
       expect(archivedId, 'project');
@@ -490,7 +495,7 @@ void main() {
                 channels: const [
                   ChatChannelItem(
                     id: 'default',
-                    name: '默认频道',
+                    name: 'Default Channel',
                     isDefault: true,
                   ),
                 ],

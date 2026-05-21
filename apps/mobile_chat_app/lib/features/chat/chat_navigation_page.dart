@@ -236,13 +236,13 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
           children: [
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('改名'),
+              title: const Text('Rename'),
               onTap: () =>
                   Navigator.of(context).pop(ChatChannelMenuAction.rename),
             ),
             ListTile(
               leading: const Icon(Icons.archive_outlined),
-              title: const Text('归档'),
+              title: const Text('Archive'),
               onTap: () =>
                   Navigator.of(context).pop(ChatChannelMenuAction.archive),
             ),
@@ -368,11 +368,6 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
                       ...channels.map((channel) {
                         final isSelected = selected == channel.id;
                         return ListTile(
-                          leading: Icon(
-                            channel.isDefault
-                                ? Icons.home_filled
-                                : Icons.forum_outlined,
-                          ),
                           title: Text(channel.name),
                           subtitle: channel.isDefault
                               ? const Text('Default channel')
@@ -572,7 +567,7 @@ class _NodeDetailPage extends StatelessWidget {
                 title: Text(agent.name),
                 subtitle: Text(
                   desc == null || desc.isEmpty
-                      ? (agent.isBuiltIn ? '内建 Agent' : '自定义 Agent')
+                      ? (agent.isBuiltIn ? 'Built-in Agent' : 'Custom Agent')
                       : desc,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -757,7 +752,7 @@ class _TodoItemTile extends StatelessWidget {
             : null,
       ),
       subtitle: Text(
-        '${item.isCompleted ? "完成" : "待完成"} · 创建于 ${_formatDate(item.createdAt)}',
+        '${item.isCompleted ? "Completed" : "Pending"} · Created ${_formatDate(item.createdAt)}',
         style: Theme.of(context).textTheme.bodySmall,
       ),
     );

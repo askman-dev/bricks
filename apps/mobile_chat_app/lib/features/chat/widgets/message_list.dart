@@ -7,9 +7,9 @@ import '../chat_message.dart';
 import '../text_highlight_api_service.dart';
 
 // Extra bottom padding as a fraction of screen height, so the latest user
-// message can be anchored near the top while leaving room for the assistant
-// reply to stream below it.
-const double _kBottomPaddingRatio = 0.75;
+// message can be anchored above the bottom while leaving room for the
+// assistant reply to stream below it.
+const double _kBottomPaddingRatio = 1 / 3;
 
 /// A span of highlighted text within a message, used for rendering.
 class HighlightSpan {
@@ -60,7 +60,7 @@ class MessageList extends StatefulWidget {
     int? endOffset,
   )? onHighlight;
 
-  /// Called when the user taps 删除划线 in the floating highlight menu.
+  /// Called when the user taps Remove highlight in the floating highlight menu.
   final void Function(String highlightId)? onDeleteHighlight;
 
   @override
@@ -372,13 +372,13 @@ class _MessageListState extends State<MessageList> {
         if (!context.mounted) return;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('已复制')));
+        ).showSnackBar(const SnackBar(content: Text('Copied')));
         break;
       case 'branch':
       case 'resend':
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('功能待开发')));
+        ).showSnackBar(const SnackBar(content: Text('Coming soon')));
         break;
     }
   }
@@ -476,8 +476,9 @@ class _MessageListState extends State<MessageList> {
             .length
         : total;
     final isFinalized = completed >= total && total > 0;
-    final labelPrefix = isFinalized ? '思考过程' : '正在思考';
+    final labelPrefix = isFinalized ? 'Thinking complete' : 'Thinking';
     final label = '$labelPrefix $completed/$total';
+    final detail = _agentLoopDetails(groupMessages);
 
     return Align(
       key: itemKey,
@@ -495,6 +496,12 @@ class _MessageListState extends State<MessageList> {
             label: label,
             isFinalized: isFinalized,
             chatColors: chatColors,
+            onTap: detail.trim().isEmpty
+                ? null
+                : () => _showAgentLoopDetails(
+                      title: label,
+                      details: detail,
+                    ),
           ),
           if (!hideMeta)
             Padding(
@@ -512,6 +519,47 @@ class _MessageListState extends State<MessageList> {
             )
           else
             const SizedBox(height: BricksSpacing.xs),
+        ],
+      ),
+    );
+  }
+
+  String _agentLoopDetails(List<ChatMessage> messages) {
+    final parts = <String>[];
+    for (final message in messages) {
+      final phase = message.agentLoopPhase ?? 'agent_loop';
+      final tool = message.agentLoopTool;
+      final content = message.content.trim();
+      if (content.isEmpty) {
+        if (tool != null && tool.trim().isNotEmpty) {
+          parts.add('$phase: $tool');
+        }
+        continue;
+      }
+      parts.add(tool == null ? content : '$phase: $tool\n$content');
+    }
+    return parts.join('\n\n');
+  }
+
+  Future<void> _showAgentLoopDetails({
+    required String title,
+    required String details,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(details),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
@@ -538,6 +586,19 @@ class _MessageListState extends State<MessageList> {
       messages,
       endIndex + 1,
     );
+  }
+
+  bool _shouldRenderToolGroupBeforePlaceholder(
+    List<ChatMessage> messages,
+    int index,
+  ) {
+    if (index + 1 >= messages.length) return false;
+    final message = messages[index];
+    final next = messages[index + 1];
+    if (!_isAssistantDispatchPlaceholder(message)) return false;
+    if (!_isToolLoopMessage(next)) return false;
+    if (message.taskId == null || next.taskId == null) return false;
+    return message.taskId == next.taskId;
   }
 
   Widget _assistantAttributionHeader({
@@ -643,7 +704,7 @@ class _MessageListState extends State<MessageList> {
                   ),
                   const SizedBox(width: BricksSpacing.xs),
                   Text(
-                    '处理中…',
+                    'Processing...',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -829,6 +890,20 @@ class _MessageListState extends State<MessageList> {
             : 0);
     final messageItems = <Widget>[];
     for (var i = 0; i < messages.length; i++) {
+      if (_shouldRenderToolGroupBeforePlaceholder(messages, i)) {
+        final endIndex = _toolGroupEndIndex(messages, i + 1);
+        messageItems.add(
+          _buildToolGroupItem(
+            context,
+            i + 1,
+            endIndex,
+            hideMeta: true,
+          ),
+        );
+        messageItems.add(_buildMessageItem(context, i));
+        i = endIndex;
+        continue;
+      }
       if (_isToolLoopMessage(messages[i])) {
         final endIndex = _toolGroupEndIndex(messages, i);
         messageItems.add(
@@ -881,7 +956,7 @@ class _MessageListState extends State<MessageList> {
                   widget.onDeleteHighlight != null) {
                 extraItems.add(
                   ContextMenuButtonItem(
-                    label: '删除划线',
+                    label: 'Remove highlight',
                     onPressed: () {
                       ContextMenuController.removeAny();
                       widget.onDeleteHighlight!(matchingHighlightId);
@@ -891,7 +966,7 @@ class _MessageListState extends State<MessageList> {
               } else if (resolved != null && widget.onHighlight != null) {
                 extraItems.add(
                   ContextMenuButtonItem(
-                    label: '划线',
+                    label: 'Highlight',
                     onPressed: () {
                       ContextMenuController.removeAny();
                       widget.onHighlight!(
@@ -1006,9 +1081,9 @@ String? _selectionActionLabelForCallbacks({
   )? onHighlight,
 }) {
   if (resolved.matchingHighlightId != null) {
-    return onDeleteHighlight == null ? null : '删除划线';
+    return onDeleteHighlight == null ? null : 'Remove highlight';
   }
-  return onHighlight == null ? null : '划线';
+  return onHighlight == null ? null : 'Highlight';
 }
 
 class _SelectionFloatingToolbar extends StatelessWidget {
@@ -1038,12 +1113,12 @@ class _SelectionFloatingToolbar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _SelectionToolbarButton(
-              label: '复制',
+              label: 'Copy',
               foregroundColor: colorScheme.onInverseSurface,
               onPressed: onCopy,
             ),
             _SelectionToolbarButton(
-              label: actionLabel ?? '划线',
+              label: actionLabel ?? 'Highlight',
               foregroundColor: colorScheme.onInverseSurface,
               onPressed: onAction,
             ),
@@ -1313,7 +1388,7 @@ bool _highlightMatchesSelection({
 }
 
 /// Shows a floating popup menu when the user taps a highlighted span.
-/// The menu offers Copy and 删除划线 (delete highlight) actions.
+/// The menu offers Copy and Remove highlight actions.
 void _showHighlightTapMenu({
   required BuildContext context,
   required String highlightId,
@@ -1350,7 +1425,7 @@ void _showHighlightTapMenu({
               alignment: Alignment.topCenter,
               widthFactor: 1,
               child: _SelectionFloatingToolbar(
-                actionLabel: '删除划线',
+                actionLabel: 'Remove highlight',
                 onCopy: () {
                   Clipboard.setData(ClipboardData(text: text));
                   Navigator.of(dialogContext).pop();
@@ -1388,7 +1463,7 @@ class _AssistantMarkdownText extends StatefulWidget {
   final TextStyle? textStyle;
   final List<HighlightSpan> highlights;
 
-  /// Called when the user taps 删除划线 in the floating highlight popup.
+  /// Called when the user taps Remove highlight in the floating highlight popup.
   final void Function(String highlightId)? onDeleteHighlight;
 
   @override
@@ -2516,9 +2591,9 @@ class _UserMessageContextMenu extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _MenuItem(label: '复制', value: 'copy'),
-                _MenuItem(label: '分叉（待开发）', value: 'branch'),
-                _MenuItem(label: '重发（待开发）', value: 'resend'),
+                _MenuItem(label: 'Copy', value: 'copy'),
+                _MenuItem(label: 'Branch (coming soon)', value: 'branch'),
+                _MenuItem(label: 'Resend (coming soon)', value: 'resend'),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -2610,7 +2685,26 @@ class _AgentLoopStatusRow extends StatefulWidget {
 }
 
 class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
-  bool _reasoningExpanded = false;
+  Future<void> _showReasoningDetails(BuildContext context, String title) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(widget.content),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2618,10 +2712,12 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
 
     switch (widget.phase) {
       case 'tool_call_start':
-        final label =
-            widget.toolName != null ? '正在调用 ${widget.toolName}…' : '正在调用工具…';
-        final doneLabel =
-            widget.toolName != null ? '已调用 ${widget.toolName}' : '已调用工具';
+        final label = widget.toolName != null
+            ? 'Calling ${widget.toolName}...'
+            : 'Calling tool...';
+        final doneLabel = widget.toolName != null
+            ? 'Called ${widget.toolName}'
+            : 'Called tool';
         final isDone = widget.taskState == ChatTaskState.completed;
         return Padding(
           padding: const EdgeInsets.only(
@@ -2661,6 +2757,9 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
 
       case 'reasoning':
         final hasContent = widget.content.trim().isNotEmpty;
+        final label = widget.taskState == ChatTaskState.completed
+            ? 'Thinking complete'
+            : 'Thinking';
         return Padding(
           padding: const EdgeInsets.only(
             left: BricksSpacing.xs,
@@ -2672,9 +2771,7 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
             children: [
               InkWell(
                 onTap: hasContent
-                    ? () => setState(
-                          () => _reasoningExpanded = !_reasoningExpanded,
-                        )
+                    ? () => _showReasoningDetails(context, label)
                     : null,
                 borderRadius: BorderRadius.circular(BricksRadius.sm),
                 child: Row(
@@ -2687,7 +2784,7 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
                     ),
                     const SizedBox(width: BricksSpacing.xs),
                     Text(
-                      '思考过程',
+                      label,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: chatColors.metaText,
                           ),
@@ -2695,9 +2792,7 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
                     if (hasContent) ...[
                       const SizedBox(width: BricksSpacing.xs),
                       Icon(
-                        _reasoningExpanded
-                            ? Icons.expand_less
-                            : Icons.expand_more,
+                        Icons.open_in_new,
                         size: 14,
                         color: chatColors.metaText,
                       ),
@@ -2705,24 +2800,6 @@ class _AgentLoopStatusRowState extends State<_AgentLoopStatusRow> {
                   ],
                 ),
               ),
-              if (_reasoningExpanded && hasContent)
-                Padding(
-                  padding: const EdgeInsets.only(top: BricksSpacing.xs),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(BricksSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: chatColors.quoteBackground,
-                      borderRadius: BorderRadius.circular(BricksRadius.sm),
-                    ),
-                    child: Text(
-                      widget.content,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: chatColors.onMessageAssistant,
-                          ),
-                    ),
-                  ),
-                ),
             ],
           ),
         );
@@ -2785,11 +2862,13 @@ class _AgentLoopToolGroupRow extends StatelessWidget {
     required this.label,
     required this.isFinalized,
     required this.chatColors,
+    this.onTap,
   });
 
   final String label;
   final bool isFinalized;
   final ChatColors chatColors;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2799,33 +2878,45 @@ class _AgentLoopToolGroupRow extends StatelessWidget {
         right: BricksSpacing.xs,
         bottom: BricksSpacing.xs,
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: isFinalized
-                ? Icon(
-                    Icons.check_circle_outline,
-                    size: 14,
-                    color: chatColors.agentAccent,
-                  )
-                : CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      chatColors.agentAccent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(BricksRadius.sm),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: isFinalized
+                  ? Icon(
+                      Icons.check_circle_outline,
+                      size: 14,
+                      color: chatColors.agentAccent,
+                    )
+                  : CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        chatColors.agentAccent,
+                      ),
                     ),
+            ),
+            const SizedBox(width: BricksSpacing.xs),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: chatColors.metaText,
                   ),
-          ),
-          const SizedBox(width: BricksSpacing.xs),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: chatColors.metaText,
-                ),
-          ),
-        ],
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: BricksSpacing.xs),
+              Icon(
+                Icons.open_in_new,
+                size: 14,
+                color: chatColors.metaText,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

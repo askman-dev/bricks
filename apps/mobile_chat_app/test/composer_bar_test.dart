@@ -174,7 +174,7 @@ void main() {
           .whereType<PopupMenuItem<ComposerMenuAction>>()
           .firstWhere((item) => item.value == ComposerMenuAction.model);
       final content = modelItem.child! as Column;
-      expect((content.children[0] as Text).data, '模型');
+      expect((content.children[0] as Text).data, 'Model');
       expect((content.children[1] as Text).data, 'claude-sonnet-4-5');
     });
 
@@ -244,7 +244,7 @@ void main() {
           atActions: const [
             ComposerAtAction(
               value: '__todo__',
-              label: '待实现',
+              label: 'Coming soon',
               enabled: false,
             ),
           ],
@@ -260,12 +260,11 @@ void main() {
       );
       final placeholder = items.whereType<PopupMenuItem<String>>().single;
       expect(placeholder.enabled, isFalse);
-      expect((placeholder.child as Text).data, '待实现');
+      expect((placeholder.child as Text).data, 'Coming soon');
     });
   });
 
   group('ComposerBar – send / stop controls', () {
-
     testWidgets('text field stays enabled when send callback is unavailable',
         (tester) async {
       await tester.pumpWidget(_buildBar());
@@ -346,9 +345,12 @@ void main() {
 
       expect(find.byTooltip('Stop'), findsOneWidget);
       expect(find.byTooltip('Send'), findsNothing);
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.enabled, isTrue);
     });
 
-    testWidgets('send callback fires with trimmed text', (tester) async {
+    testWidgets('send callback fires with trimmed text and keeps input focused',
+        (tester) async {
       String? sent;
 
       await tester.pumpWidget(
@@ -363,11 +365,14 @@ void main() {
       );
       await tester.pump();
 
+      await tester.tap(find.byType(TextField));
       await tester.enterText(find.byType(TextField), '  hello  ');
       await tester.tap(find.byTooltip('Send'));
       await tester.pump(_settle);
 
       expect(sent, 'hello');
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.focusNode?.hasFocus, isTrue);
     });
   });
 

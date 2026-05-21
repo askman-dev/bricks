@@ -1,5 +1,84 @@
 enum ChatTaskState { accepted, dispatched, completed, failed, cancelled }
 
+enum ChatInvalidationKind {
+  chatScopes('chat.scopes'),
+  chatChannelNames('chat.channelNames'),
+  chatScopeSettings('chat.scopeSettings'),
+  resourcesTodoLists('resources.todoLists'),
+  resourcesTodos('resources.todos'),
+  resourcesTables('resources.tables'),
+  resourcesTableColumns('resources.tableColumns'),
+  resourcesTableRows('resources.tableRows');
+
+  const ChatInvalidationKind(this.value);
+
+  final String value;
+
+  static ChatInvalidationKind? fromValue(Object? value) {
+    if (value is! String) return null;
+    for (final kind in ChatInvalidationKind.values) {
+      if (kind.value == value) return kind;
+    }
+    return null;
+  }
+}
+
+class ChatInvalidation {
+  const ChatInvalidation({
+    required this.kind,
+    this.channelId,
+    this.threadId,
+    this.listId,
+    this.todoId,
+    this.resourceId,
+    this.columnKey,
+    this.rowId,
+  });
+
+  final ChatInvalidationKind kind;
+  final String? channelId;
+  final String? threadId;
+  final String? listId;
+  final String? todoId;
+  final String? resourceId;
+  final String? columnKey;
+  final String? rowId;
+
+  Map<String, Object?> toMap() => {
+        'kind': kind.value,
+        if (channelId != null) 'channelId': channelId,
+        if (threadId != null) 'threadId': threadId,
+        if (listId != null) 'listId': listId,
+        if (todoId != null) 'todoId': todoId,
+        if (resourceId != null) 'resourceId': resourceId,
+        if (columnKey != null) 'columnKey': columnKey,
+        if (rowId != null) 'rowId': rowId,
+      };
+
+  static ChatInvalidation? fromMap(Object? value) {
+    if (value is! Map) return null;
+    final map = Map<Object?, Object?>.from(value);
+    final kind = ChatInvalidationKind.fromValue(map['kind']);
+    if (kind == null) return null;
+
+    String? readString(String key) {
+      final raw = map[key];
+      return raw is String && raw.trim().isNotEmpty ? raw.trim() : null;
+    }
+
+    return ChatInvalidation(
+      kind: kind,
+      channelId: readString('channelId'),
+      threadId: readString('threadId'),
+      listId: readString('listId'),
+      todoId: readString('todoId'),
+      resourceId: readString('resourceId'),
+      columnKey: readString('columnKey'),
+      rowId: readString('rowId'),
+    );
+  }
+}
+
 /// A chat message displayed in the [MessageList].
 ///
 /// This is a thin view-model for the chat UI, distinct from
@@ -40,6 +119,7 @@ class ChatMessage {
     this.isRecovered = false,
     this.agentLoopPhase,
     this.agentLoopTool,
+    this.invalidations = const [],
   }) : timestamp = timestamp ?? DateTime.now();
 
   final String role;
@@ -88,6 +168,7 @@ class ChatMessage {
   /// The tool name associated with a `tool_call_start` phase message.
   /// Extracted from `agentLoop.toolName` in server metadata.
   final String? agentLoopTool;
+  final List<ChatInvalidation> invalidations;
 
   ChatMessage copyWith({
     String? role,
@@ -124,6 +205,7 @@ class ChatMessage {
     bool? isRecovered,
     String? agentLoopPhase,
     String? agentLoopTool,
+    List<ChatInvalidation>? invalidations,
   }) {
     return ChatMessage(
       role: role ?? this.role,
@@ -161,6 +243,7 @@ class ChatMessage {
       isRecovered: isRecovered ?? this.isRecovered,
       agentLoopPhase: agentLoopPhase ?? this.agentLoopPhase,
       agentLoopTool: agentLoopTool ?? this.agentLoopTool,
+      invalidations: invalidations ?? this.invalidations,
     );
   }
 
@@ -200,6 +283,8 @@ class ChatMessage {
       'isRecovered': isRecovered,
       'agentLoopPhase': agentLoopPhase,
       'agentLoopTool': agentLoopTool,
+      if (invalidations.isNotEmpty)
+        'invalidations': invalidations.map((item) => item.toMap()).toList(),
     };
   }
 
@@ -222,6 +307,14 @@ class ChatMessage {
           RegExp(r'[+-]\d{4}$').hasMatch(raw);
       final normalized = hasTimezone ? raw : '${raw.replaceFirst(' ', 'T')}Z';
       return DateTime.tryParse(normalized);
+    }
+
+    List<ChatInvalidation> parseInvalidations(Object? value) {
+      if (value is! List) return const [];
+      return value
+          .map(ChatInvalidation.fromMap)
+          .whereType<ChatInvalidation>()
+          .toList(growable: false);
     }
 
     return ChatMessage(
@@ -261,6 +354,7 @@ class ChatMessage {
       isRecovered: map['isRecovered'] as bool? ?? false,
       agentLoopPhase: map['agentLoopPhase'] as String?,
       agentLoopTool: map['agentLoopTool'] as String?,
+      invalidations: parseInvalidations(map['invalidations']),
     );
   }
 }

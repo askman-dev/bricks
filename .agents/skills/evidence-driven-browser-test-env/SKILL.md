@@ -64,9 +64,12 @@ Recommended Bricks shape:
 
 When a real LLM token is needed, ask the user to put it in `.env.local` using a
 provider-specific name such as `GEMINI_API_KEY`. Do not ask them to paste the
-token into the conversation. If the current code only reads LLM configs from the
-database, create or update a fixture-user config through the local backend API
-so normal encryption and validation paths are used.
+token into the conversation. For Bricks local manual testing, prefer
+`LOCAL_LLM_CONFIG_ENABLED=true` so the local backend reads the provider token
+from env at request time instead of writing or modifying cloud Turso
+`api_configs`. This fallback must also have an explicit local/dev runtime marker
+such as `BRICKS_LOCAL_DEV=true`, `NODE_ENV=development`, or `NODE_ENV=test`;
+production must ignore local provider keys even if the env vars are present.
 
 For Bricks, document and prefer the reusable guide:
 
@@ -76,15 +79,16 @@ Before handing the URL to the user, verify:
 
 - `/api/health` returns 200 from the local backend.
 - `/api/auth/me` accepts `BRICKS_TEST_TOKEN` and returns `FIXTURE_USER_ID`.
-- `/api/config?category=llm` shows the expected provider/model when model
-  replies are part of the test.
+- model replies use the expected provider/model, either from local env config
+  or `/api/config?category=llm`, depending on the test path.
 - The local Flutter Web URL returns 200.
 
 Call out the identity boundary explicitly: rows written as `FIXTURE_USER_ID`
 will not appear for a different production user, even on the same cloud Turso
-database. If provider configs are written to cloud Turso through the local
-backend, they are encrypted with the local `ENCRYPTION_KEY`; a deployed backend
-with a different `ENCRYPTION_KEY` may not decrypt those fixture-user configs.
+database. Avoid writing provider tokens to cloud Turso for manual local testing;
+if a task specifically tests persisted provider configs, remember they are
+encrypted with the local `ENCRYPTION_KEY`, and a deployed backend with a
+different `ENCRYPTION_KEY` may not decrypt those fixture-user configs.
 
 ## Interaction-Triggered Behavior
 

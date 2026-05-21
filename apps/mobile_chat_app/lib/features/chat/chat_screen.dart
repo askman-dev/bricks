@@ -50,6 +50,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isStreaming = false;
   bool _loadingAgents = true;
   bool _loadingLlmConfigs = true;
+  bool _refreshingScopeTopology = false;
   bool _isDesktopNavigationOpen = false;
   double _desktopNavigationWidth = 260.0;
 
@@ -82,7 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _sessionModelOverride;
   String? _authToken;
   final List<ChatChannel> _channels = [
-    ChatChannel(id: 'default', name: '默认频道', isDefault: true),
+    ChatChannel(id: 'default', name: 'Default Channel', isDefault: true),
   ];
   String _activeChannelId = 'default';
   final Map<String, List<ChatSubSection>> _channelSubSections = {
@@ -110,6 +111,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, String> _threadNodeIds = {};
   final Map<String, String> _channelInstructions = {};
   final Map<String, String> _threadInstructions = {};
+  final Set<String> _topologyRefreshedTaskIds = {};
   int _respondGeneration = 0;
   int _idCounter = 0;
 
@@ -633,7 +635,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final channelsById = <String, ChatChannel>{
       'default': const ChatChannel(
         id: 'default',
-        name: '默认频道',
+        name: 'Default Channel',
         isDefault: true,
       ),
     };
@@ -833,8 +835,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final existingNames =
         _channels.map((item) => item.name.trim().toLowerCase()).toSet();
     _promptChannelName(
-      title: '新建频道',
-      confirmLabel: '创建',
+      title: 'New Channel',
+      confirmLabel: 'Create',
       existingNames: existingNames,
       onConfirmed: (name) {
         final id = _newId('channel');
@@ -861,7 +863,9 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('已创建频道：${channel.name}')));
+        ).showSnackBar(
+          SnackBar(content: Text('Created channel: ${channel.name}')),
+        );
       },
     );
   }
@@ -963,10 +967,10 @@ class _ChatScreenState extends State<ChatScreen> {
     required Set<String> existingNames,
     required ValueChanged<String> onConfirmed,
     String initialValue = '',
-    String fieldLabel = '频道名',
-    String hintText = '请输入频道名',
-    String emptyError = '频道名不能为空',
-    String duplicateError = '频道名已存在',
+    String fieldLabel = 'Channel name',
+    String hintText = 'Enter a channel name',
+    String emptyError = 'Channel name is required',
+    String duplicateError = 'Channel name already exists',
   }) async {
     final controller = TextEditingController(text: initialValue);
     String? errorText;
@@ -999,7 +1003,7 @@ class _ChatScreenState extends State<ChatScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
@@ -1159,7 +1163,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Called when the user taps 划线 in the selection context menu.
+  /// Called when the user taps Highlight in the selection context menu.
   Future<void> _handleHighlight(
     String messageId,
     String selectedText,
@@ -1197,7 +1201,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Called when the user taps 删除划线 in the floating highlight menu.
+  /// Called when the user taps Remove highlight in the floating highlight menu.
   Future<void> _handleDeleteHighlight(String highlightId) async {
     try {
       await _highlightApiService.deleteHighlight(id: highlightId);
@@ -1460,7 +1464,7 @@ class _ChatScreenState extends State<ChatScreen> {
       items.add(
         const PopupMenuItem<String>(
           value: 'main',
-          child: Text('回到主区'),
+          child: Text('Back to Thread'),
         ),
       );
     }
@@ -1468,7 +1472,7 @@ class _ChatScreenState extends State<ChatScreen> {
     items.add(
       const PopupMenuItem<String>(
         value: _createSubSectionMenuValue,
-        child: Text('新建子区'),
+        child: Text('New Thread'),
       ),
     );
 
@@ -1478,11 +1482,11 @@ class _ChatScreenState extends State<ChatScreen> {
         const [
           PopupMenuItem<String>(
             value: _renameSubSectionMenuValue,
-            child: Text('改名'),
+            child: Text('Rename'),
           ),
           PopupMenuItem<String>(
             value: _archiveSubSectionMenuValue,
-            child: Text('归档'),
+            child: Text('Archive'),
           ),
         ],
       );
@@ -1994,6 +1998,209 @@ class _ChatScreenState extends State<ChatScreen> {
       channelId: channelId,
       subSection: subSection,
     );
+    _consumeChatInvalidations(snapshot);
+  }
+
+  void _consumeChatInvalidations(ChatHistorySnapshot snapshot) {
+    var refreshScopes = false;
+    var refreshChannelNames = false;
+    var refreshScopeSettings = false;
+
+    for (final message in snapshot.messages) {
+      final taskId = message.taskId;
+      for (final invalidation in message.invalidations) {
+        if (taskId != null && taskId.isNotEmpty) {
+          final dedupeKey = '$taskId:${invalidation.kind.value}';
+          if (!_topologyRefreshedTaskIds.add(dedupeKey)) continue;
+        }
+        switch (invalidation.kind) {
+          case ChatInvalidationKind.chatScopes:
+            refreshScopes = true;
+          case ChatInvalidationKind.chatChannelNames:
+            refreshChannelNames = true;
+          case ChatInvalidationKind.chatScopeSettings:
+            refreshScopeSettings = true;
+          case ChatInvalidationKind.resourcesTodoLists:
+          case ChatInvalidationKind.resourcesTodos:
+          case ChatInvalidationKind.resourcesTables:
+          case ChatInvalidationKind.resourcesTableColumns:
+          case ChatInvalidationKind.resourcesTableRows:
+            break;
+        }
+      }
+    }
+
+    if (refreshScopes || refreshChannelNames || refreshScopeSettings) {
+      unawaited(
+        _refreshScopeTopologyParts(
+          refreshScopes: refreshScopes,
+          refreshChannelNames: refreshChannelNames,
+          refreshScopeSettings: refreshScopeSettings,
+        ),
+      );
+    }
+  }
+
+  List<ChatPersistedScope> _currentPersistedScopes() => [
+        for (final channel in _channels)
+          ChatPersistedScope(
+            channelId: channel.id,
+            threadId: 'main',
+            sessionId: ChatSessionScope(channelId: channel.id, threadId: 'main')
+                .sessionId,
+            lastActivityAt: _channelLastMessageAt[channel.id],
+          ),
+        for (final sections in _channelSubSections.values)
+          for (final section in sections)
+            ChatPersistedScope(
+              channelId: section.parentChannelId,
+              threadId: section.id,
+              sessionId: ChatSessionScope(
+                channelId: section.parentChannelId,
+                threadId: section.id,
+              ).sessionId,
+              lastActivityAt: _subSectionLastMessageAt[
+                  _subSectionKey(section.parentChannelId, section.id)],
+            ),
+      ];
+
+  List<ChatChannelNameSetting> _currentChannelNameSettings() => [
+        for (final channel in _channels)
+          ChatChannelNameSetting(
+            channelId: channel.id,
+            displayName: channel.name,
+          ),
+        for (final sections in _channelSubSections.values)
+          for (final section in sections)
+            ChatChannelNameSetting(
+              channelId: section.parentChannelId,
+              threadId: section.id,
+              displayName: section.name,
+            ),
+      ];
+
+  void _applyChannelNamesToCurrentTopology(
+    List<ChatChannelNameSetting> channelNames,
+  ) {
+    final channelNamesById = <String, String>{
+      for (final item in channelNames)
+        if (item.threadId == null || item.threadId == 'main')
+          item.channelId: item.displayName,
+    };
+    final threadNamesByKey = <String, String>{
+      for (final item in channelNames)
+        if (item.threadId != null &&
+            item.threadId!.trim().isNotEmpty &&
+            item.threadId != 'main')
+          _subSectionKey(item.channelId, item.threadId!): item.displayName,
+    };
+
+    final renamedChannels = [
+      for (final channel in _channels)
+        ChatChannel(
+          id: channel.id,
+          name: channelNamesById[channel.id] ?? channel.name,
+          isDefault: channel.isDefault,
+        ),
+    ];
+    _channels
+      ..clear()
+      ..addAll(renamedChannels);
+    _channelSubSections.updateAll(
+      (channelId, sections) => [
+        for (final section in sections)
+          ChatSubSection(
+            id: section.id,
+            parentChannelId: section.parentChannelId,
+            name: threadNamesByKey[
+                    _subSectionKey(section.parentChannelId, section.id)] ??
+                section.name,
+            createdAt: section.createdAt,
+          ),
+      ],
+    );
+  }
+
+  Future<void> _refreshScopeTopologyParts({
+    required bool refreshScopes,
+    required bool refreshChannelNames,
+    required bool refreshScopeSettings,
+  }) async {
+    if (_refreshingScopeTopology) return;
+    _refreshingScopeTopology = true;
+    try {
+      final results = await Future.wait<Object>([
+        if (refreshScopes) _chatHistoryApiService.loadScopes(),
+        if (refreshChannelNames) _chatHistoryApiService.loadChannelNames(),
+        if (refreshScopeSettings) _chatHistoryApiService.loadScopeSettings(),
+      ]);
+      if (!mounted) return;
+      var index = 0;
+      final scopes = refreshScopes
+          ? results[index++] as List<ChatPersistedScope>
+          : _currentPersistedScopes();
+      final channelNames = refreshChannelNames
+          ? results[index++] as List<ChatChannelNameSetting>
+          : _currentChannelNameSettings();
+      final settings = refreshScopeSettings
+          ? results[index++] as List<ChatScopeSetting>
+          : const <ChatScopeSetting>[];
+      final restoredChannels = _hydrateChannelsFromScopes(scopes);
+      final restoredNamedChannels = _applyPersistedChannelNames(
+        channels: restoredChannels,
+        channelNames: channelNames,
+      );
+      final restoredChannelLastMessageAt = _hydrateChannelLastMessageAt(scopes);
+      final restoredSubSections = _hydrateSubSectionsFromScopes(
+        scopes: scopes,
+        channelNames: channelNames,
+      );
+      final restoredLastSubSectionByChannel =
+          _hydrateLastActiveSubSectionByChannel(scopes);
+
+      setState(() {
+        if (refreshScopes) {
+          _channels
+            ..clear()
+            ..addAll(restoredNamedChannels);
+          _channelLastMessageAt
+            ..clear()
+            ..addAll(restoredChannelLastMessageAt);
+          _channelSubSections
+            ..clear()
+            ..addAll(restoredSubSections);
+          _lastActiveSubSectionByChannel
+            ..clear()
+            ..addAll(restoredLastSubSectionByChannel);
+        } else if (refreshChannelNames) {
+          _applyChannelNamesToCurrentTopology(channelNames);
+        }
+        if (refreshScopeSettings) {
+          _channelRouters
+            ..clear()
+            ..addAll(_hydrateChannelRouters(settings));
+          _threadRouters
+            ..clear()
+            ..addAll(_hydrateThreadRouters(settings));
+          _channelNodeIds
+            ..clear()
+            ..addAll(_hydrateChannelNodeIds(settings));
+          _threadNodeIds
+            ..clear()
+            ..addAll(_hydrateThreadNodeIds(settings));
+          _channelInstructions
+            ..clear()
+            ..addAll(_hydrateChannelInstructions(settings));
+          _threadInstructions
+            ..clear()
+            ..addAll(_hydrateThreadInstructions(settings));
+        }
+      });
+    } catch (error) {
+      debugPrint('refreshScopeTopology failed: $error');
+    } finally {
+      _refreshingScopeTopology = false;
+    }
   }
 
   void _createSubSection() {
@@ -2038,13 +2245,13 @@ class _ChatScreenState extends State<ChatScreen> {
         .map((item) => item.name.trim().toLowerCase())
         .toSet();
     _promptChannelName(
-      title: '分区改名',
-      confirmLabel: '保存',
+      title: 'Rename Thread',
+      confirmLabel: 'Save',
       initialValue: existingSection.name,
-      fieldLabel: '分区名',
-      hintText: '请输入分区名',
-      emptyError: '分区名不能为空',
-      duplicateError: '分区名已存在',
+      fieldLabel: 'Thread name',
+      hintText: 'Enter a thread name',
+      emptyError: 'Thread name is required',
+      duplicateError: 'Thread name already exists',
       existingNames: existingNames,
       onConfirmed: (name) {
         setState(() {
@@ -2108,7 +2315,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }),
     );
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已归档分区：$sectionName')),
+      SnackBar(content: Text('Archived thread: $sectionName')),
     );
   }
 
@@ -2457,11 +2664,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final mode = activeParticipants.length > 1 ? 'Arbitration' : 'Direct';
     final activeSubSectionName = _subSectionNameById(_activeSubSection);
     final subSectionLabel = _activeSubSection == 'main'
-        ? '主区'
+        ? 'Thread'
         : (activeSubSectionName ?? _activeSubSection);
     final rows = <({String label, String value})>[
       (label: 'Channel', value: _activeChannelId),
-      (label: '子区', value: subSectionLabel),
+      (label: 'Thread', value: subSectionLabel),
       (label: 'Session', value: _sessionIdForScope),
       (label: 'Mode', value: mode),
       if (_latestCheckpointCursor != null)
@@ -2471,7 +2678,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('信息'),
+        title: const Text('Info'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2488,7 +2695,7 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -2617,7 +2824,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final drawerWidth =
         isCompactChat ? MediaQuery.sizeOf(context).width : 260.0;
 
-    String activeChannelName = '频道';
+    String activeChannelName = 'Channel';
     for (final item in _channels) {
       if (item.id == _activeChannelId) {
         activeChannelName = item.name;
@@ -2659,7 +2866,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           PopupMenuButton<String>(
             popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-            tooltip: '切换频道',
+            tooltip: 'Switch channel',
             constraints: _channelMenuConstraints(context),
             onSelected: (value) {
               switch (value) {
@@ -2692,7 +2899,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(width: 8),
           PopupMenuButton<String>(
             popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
-            tooltip: '分区管理',
+            tooltip: 'Thread menu',
             onSelected: (value) {
               switch (value) {
                 case _createSubSectionMenuValue:
@@ -2716,7 +2923,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 Flexible(
                   child: Text(
                     _activeSubSection == 'main'
-                        ? '主区'
+                        ? 'Thread'
                         : (_subSectionNameById(_activeSubSection) ??
                             _activeSubSection),
                     overflow: TextOverflow.ellipsis,
@@ -2910,6 +3117,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 MouseRegion(
                   cursor: SystemMouseCursors.resizeColumn,
                   child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onHorizontalDragUpdate: (details) {
                       setState(() {
                         _desktopNavigationWidth =
@@ -2920,11 +3128,16 @@ class _ChatScreenState extends State<ChatScreen> {
                       });
                     },
                     child: SizedBox(
-                      width: 6,
-                      child: VerticalDivider(
-                        width: 6,
-                        thickness: 1,
-                        color: theme.dividerColor,
+                      width: 12,
+                      child: Center(
+                        child: SizedBox(
+                          width: 1,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: theme.dividerColor,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),

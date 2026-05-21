@@ -32,11 +32,14 @@ import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
 } from "../services/platformNodeService.js";
-import { streamWithAgentToolsAndUserConfig } from "../llm/llm_service.js";
+import {
+  streamWithAgentToolsAndUserConfig,
+  type AgentLoopStreamStopInfo,
+} from "../llm/llm_service.js";
 import {
   buildAgentTools,
 } from "../services/localAgentLoopService.js";
-import type { LlmProvider } from "../llm/types.js";
+import type { AgentLoopStepResult, LlmProvider } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
 
 const router = express.Router();
@@ -57,9 +60,239 @@ const CHAT_EVENTS_HEARTBEAT_INTERVAL_MS = 15000;
 const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 // Minimum interval between incremental DB flushes during model streaming to avoid write amplification.
 const STREAM_FLUSH_INTERVAL_MS = 300;
-const DEFAULT_INTERNAL_LOOP_MAX_STEPS = 4;
-const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 4;
-const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 15000;
+const DEFAULT_INTERNAL_LOOP_MAX_STEPS = 10;
+const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 10;
+const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 60000;
+
+type ChatClientInvalidation =
+  | { kind: "chat.scopes"; channelId?: string; threadId?: string | null }
+  | { kind: "chat.channelNames"; channelId: string; threadId?: string | null }
+  | { kind: "chat.scopeSettings"; channelId?: string; threadId?: string | null }
+  | { kind: "resources.todoLists"; listId?: string }
+  | { kind: "resources.todos"; listId: string; todoId?: string }
+  | { kind: "resources.tables"; resourceId?: string }
+  | { kind: "resources.tableColumns"; resourceId: string; columnKey?: string }
+  | { kind: "resources.tableRows"; resourceId: string; rowId?: string };
+
+function readStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function toolResultSucceeded(result: unknown): boolean {
+  return isRecord(result) && result.ok === true;
+}
+
+function invalidationsForToolResult(
+  stepResult: AgentLoopStepResult,
+): ChatClientInvalidation[] {
+  if (!toolResultSucceeded(stepResult.result)) return [];
+
+  const args = stepResult.args;
+  const resultData = isRecord(stepResult.result)
+    ? isRecord(stepResult.result.data)
+      ? stepResult.result.data
+      : {}
+    : {};
+  const channelId = readStringField(args, "channelId") ?? readStringField(resultData, "channelId");
+  const threadId = readStringField(args, "threadId") ?? readStringField(resultData, "threadId");
+  const listId = readStringField(args, "listId") ?? readStringField(resultData, "listId");
+  const todoId = readStringField(args, "id") ?? readStringField(resultData, "id");
+  const resourceId = readStringField(args, "resourceId") ?? readStringField(resultData, "resourceId");
+  const columnKey = readStringField(args, "columnKey") ?? readStringField(resultData, "columnKey");
+  const rowId = readStringField(args, "rowId") ?? readStringField(resultData, "rowId");
+
+  switch (stepResult.toolName) {
+    case "chat_channel_create":
+      return [{ kind: "chat.scopes", ...(channelId ? { channelId } : {}) }];
+    case "chat_thread_create":
+      return [
+        {
+          kind: "chat.scopes",
+          ...(channelId ? { channelId } : {}),
+          ...(threadId ? { threadId } : {}),
+        },
+      ];
+    case "chat_channel_instruction_set":
+      return [
+        {
+          kind: "chat.scopeSettings",
+          ...(channelId ? { channelId } : {}),
+          threadId: null,
+        },
+      ];
+    case "chat_thread_instruction_set":
+      return [
+        {
+          kind: "chat.scopeSettings",
+          ...(channelId ? { channelId } : {}),
+          ...(threadId ? { threadId } : {}),
+        },
+      ];
+    case "chat_channel_rename":
+      return channelId
+        ? [{ kind: "chat.channelNames", channelId, threadId: null }]
+        : [];
+    case "todolist_create":
+    case "todolist_update":
+    case "todolist_delete":
+      return [{ kind: "resources.todoLists", ...(listId ? { listId } : {}) }];
+    case "todo_create":
+    case "todo_complete":
+    case "todo_update":
+    case "todo_delete":
+      return listId
+        ? [
+            {
+              kind: "resources.todos",
+              listId,
+              ...(todoId ? { todoId } : {}),
+            },
+          ]
+        : [];
+    case "table_create":
+      return [{ kind: "resources.tables", ...(resourceId ? { resourceId } : {}) }];
+    case "table_add_column":
+    case "table_remove_column":
+      return resourceId
+        ? [
+            {
+              kind: "resources.tableColumns",
+              resourceId,
+              ...(columnKey ? { columnKey } : {}),
+            },
+          ]
+        : [];
+    case "table_add_row":
+    case "table_update_row":
+    case "table_delete_row":
+      return resourceId
+        ? [
+            {
+              kind: "resources.tableRows",
+              resourceId,
+              ...(rowId ? { rowId } : {}),
+            },
+          ]
+        : [];
+    default:
+      return [];
+  }
+}
+
+function dedupeInvalidations(
+  invalidations: ChatClientInvalidation[],
+): ChatClientInvalidation[] {
+  const seen = new Set<string>();
+  const result: ChatClientInvalidation[] = [];
+  for (const invalidation of invalidations) {
+    const key = JSON.stringify(invalidation);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(invalidation);
+  }
+  return result;
+}
+
+type AgentLoopStopReasonType =
+  | "tool_call_limit_reached"
+  | "step_limit_reached"
+  | "timeout_reached"
+  | "stream_error"
+  | "empty_final_after_tool_calls";
+
+function classifyEmptyFinalStopReason(params: {
+  totalToolCallCount: number;
+  loopMaxToolCalls: number;
+  toolStepIndex: number;
+  loopMaxSteps: number;
+  streamStopInfo: AgentLoopStreamStopInfo | null;
+}): {
+  type: AgentLoopStopReasonType;
+  message: string;
+  details: Record<string, unknown>;
+} {
+  const {
+    totalToolCallCount,
+    loopMaxToolCalls,
+    toolStepIndex,
+    loopMaxSteps,
+    streamStopInfo,
+  } = params;
+
+  if (loopMaxToolCalls > 0 && totalToolCallCount >= loopMaxToolCalls) {
+    return {
+      type: "tool_call_limit_reached",
+      message:
+        `The assistant stopped before producing a final answer because the internal ` +
+        `tool-call limit was reached (${totalToolCallCount}/${loopMaxToolCalls}). ` +
+        `Please retry, narrow the request, or increase the tool-call budget.`,
+      details: {},
+    };
+  }
+
+  if (toolStepIndex >= loopMaxSteps) {
+    return {
+      type: "step_limit_reached",
+      message:
+        `The assistant stopped before producing a final answer because the internal ` +
+        `agent-loop step limit was reached (${toolStepIndex}/${loopMaxSteps}). ` +
+        `Please retry, narrow the request, or increase the step budget.`,
+      details: {},
+    };
+  }
+
+  if (streamStopInfo?.type === "timeout_reached") {
+    return {
+      type: "timeout_reached",
+      message:
+        `The assistant stopped before producing a final answer because the internal ` +
+        `agent-loop step timeout was reached (${streamStopInfo.timeoutMs}ms). ` +
+        `Please retry or narrow the request.`,
+      details: {
+        timeoutMs: streamStopInfo.timeoutMs,
+        timeoutStepIndex: streamStopInfo.stepIndex,
+      },
+    };
+  }
+
+  if (streamStopInfo?.type === "stream_error") {
+    return {
+      type: "stream_error",
+      message:
+        `The assistant stopped before producing a final answer because the model ` +
+        `stream ended with an error. Please retry or narrow the request.`,
+      details: {
+        errorName: streamStopInfo.errorName,
+        errorMessage: streamStopInfo.errorMessage,
+        errorStepIndex: streamStopInfo.stepIndex,
+      },
+    };
+  }
+
+  return {
+    type: "empty_final_after_tool_calls",
+    message:
+      `The assistant completed tool calls but did not produce a final answer. ` +
+      `Please retry or narrow the request.`,
+    details:
+      streamStopInfo?.type === "sdk_finish"
+        ? {
+            sdkFinishReason: streamStopInfo.finishReason,
+            sdkFinishStepIndex: streamStopInfo.stepIndex,
+          }
+        : {},
+  };
+}
 
 function parseBoundedInt(
   value: unknown,
@@ -368,7 +601,11 @@ async function runDefaultRouterRespondAsync(params: {
     let textStream: AsyncIterable<string>;
     let provider: string;
     let modelId: string;
+    let getStreamStopInfo: () => AgentLoopStreamStopInfo | null = () => null;
     let toolStepIndex = 0;
+    let completedToolCallCount = 0;
+    let failedToolCallCount = 0;
+    const collectedInvalidations: ChatClientInvalidation[] = [];
 
     // Always use the agent-loop path so the model is aware of (and can invoke)
     // internal tools regardless of whether the user typed a slash command or
@@ -376,7 +613,7 @@ async function runDefaultRouterRespondAsync(params: {
     // eagerly for tool-free steps, so streaming UX is equivalent to the direct
     // streamWithUserConfig path for ordinary chat messages.
     const agentTools = buildAgentTools(userId);
-    ({ textStream, provider, modelId } = await streamWithAgentToolsAndUserConfig(
+    const streamResult = await streamWithAgentToolsAndUserConfig(
         userId,
         {
           model: typeof body.model === "string" ? body.model : undefined,
@@ -391,6 +628,11 @@ async function runDefaultRouterRespondAsync(params: {
           timeoutMs: loopTimeoutMs,
           onStepFinish: async (stepResults) => {
             toolStepIndex++;
+            completedToolCallCount += stepResults.length;
+            const stepInvalidations = dedupeInvalidations(
+              stepResults.flatMap(invalidationsForToolResult),
+            );
+            collectedInvalidations.push(...stepInvalidations);
             const stepSuffix = `:ts:${toolStepIndex}`;
             const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
             const stepContent = stepResults
@@ -421,11 +663,14 @@ async function runDefaultRouterRespondAsync(params: {
                     maxSteps: loopMaxSteps,
                     maxToolCalls: loopMaxToolCalls,
                     timeoutMs: loopTimeoutMs,
-                  },
-                  toolCalls: stepResults,
-                },
-                createdAt: null,
-              },
+	                  },
+	                  toolCalls: stepResults,
+	                  ...(stepInvalidations.length > 0
+	                    ? { invalidations: stepInvalidations }
+	                    : {}),
+	                },
+	                createdAt: null,
+	              },
             ]);
 
             // Mark each :tc (tool_call_start) message for this step as completed
@@ -500,6 +745,7 @@ async function runDefaultRouterRespondAsync(params: {
             ]);
           },
           onToolCallError: async (toolName, args, error, stepIndex, callIndex) => {
+            failedToolCallCount++;
             const oneBasedStepIndex = stepIndex + 1;
             const toolError = formatToolExecutionError(error);
             const failedResult = {
@@ -646,7 +892,11 @@ async function runDefaultRouterRespondAsync(params: {
           },
         },
         parseProvider(body.provider),
-      ));
+      );
+    textStream = streamResult.textStream;
+    provider = streamResult.provider;
+    modelId = streamResult.modelId;
+    getStreamStopInfo = streamResult.getStopInfo ?? (() => null);
 
     let assistantContent = "";
     let hasAnyChunk = false;
@@ -721,6 +971,43 @@ async function runDefaultRouterRespondAsync(params: {
       await upsertMessages(userId, [buildDispatchedUpsert(assistantContent)]);
     }
 
+    const totalToolCallCount = completedToolCallCount + failedToolCallCount;
+    const finalInvalidations = dedupeInvalidations(collectedInvalidations);
+    const streamStopInfo = getStreamStopInfo();
+    const emptyFinalStopReason =
+      assistantContent.trim().length === 0 && totalToolCallCount > 0
+        ? classifyEmptyFinalStopReason({
+            totalToolCallCount,
+            loopMaxToolCalls,
+            toolStepIndex,
+            loopMaxSteps,
+            streamStopInfo,
+          })
+        : null;
+    const finalContent =
+      assistantContent.trim().length > 0
+        ? assistantContent
+        : emptyFinalStopReason != null
+          ? emptyFinalStopReason.message
+          : assistantContent;
+    const finalTaskState =
+      assistantContent.trim().length === 0 && totalToolCallCount > 0
+        ? "failed"
+        : "completed";
+    const agentLoopStopReason =
+      emptyFinalStopReason != null
+        ? {
+            type: emptyFinalStopReason.type,
+            toolCallCount: totalToolCallCount,
+            completedToolCallCount,
+            failedToolCallCount,
+            maxToolCalls: loopMaxToolCalls,
+            stepCount: toolStepIndex,
+            maxSteps: loopMaxSteps,
+            ...emptyFinalStopReason.details,
+          }
+        : null;
+
     await upsertMessages(userId, [
       {
         messageId: assistantMessageId,
@@ -729,8 +1016,8 @@ async function runDefaultRouterRespondAsync(params: {
         sessionId: acceptedSessionId,
         threadId,
         role: "assistant",
-        content: assistantContent,
-        taskState: "completed",
+        content: finalContent,
+        taskState: finalTaskState,
         checkpointCursor: null,
         metadata: {
           ...dispatchPlaceholderMetadata({
@@ -741,6 +1028,10 @@ async function runDefaultRouterRespondAsync(params: {
           }),
           provider,
           streamMode: "model-chunk",
+          ...(finalInvalidations.length > 0
+            ? { invalidations: finalInvalidations }
+            : {}),
+          ...(agentLoopStopReason ? { agentLoopStopReason } : {}),
         },
         createdAt: null,
       },

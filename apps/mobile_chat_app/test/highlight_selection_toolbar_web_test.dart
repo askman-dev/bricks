@@ -51,9 +51,9 @@ void main() {
     );
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
-    expect(find.text('划线'), findsOneWidget);
+    expect(find.text('Highlight'), findsOneWidget);
 
-    await tester.tap(find.text('划线'));
+    await tester.tap(find.text('Highlight'));
     await tester.pumpAndSettle();
 
     expect(highlightedText, isNotNull);
@@ -117,9 +117,9 @@ void main() {
     );
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
-    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('Copy'), findsOneWidget);
 
-    await tester.tap(find.text('复制'));
+    await tester.tap(find.text('Copy'));
     await tester.pumpAndSettle();
 
     expect(copiedText, isNotNull);

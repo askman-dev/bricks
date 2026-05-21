@@ -398,6 +398,17 @@ describe("chat routes", () => {
       }),
     ]);
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalledWith(
+      "user-123",
+      expect.objectContaining({ messages: expect.any(Array) }),
+      expect.any(Object),
+      expect.objectContaining({
+        maxSteps: 10,
+        maxToolCalls: 10,
+        timeoutMs: 60000,
+      }),
+      undefined,
+    );
     expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
       expect.objectContaining({
         messageId: "msg-assistant-default-1",
@@ -1035,6 +1046,231 @@ describe("chat routes", () => {
               message: 'SQL_INPUT_ERROR: SQLite input error: no such function: NOW',
             }),
           }),
+        }),
+      }),
+    ]);
+  });
+
+  it('marks empty post-tool final responses as failed with a clear tool-call limit reason', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implToolLimit = async (...args: any[]) => {
+      const options = args[3] as {
+        onStepFinish?: (
+          stepResults: Array<{
+            toolName: string;
+            args: Record<string, unknown>;
+            result: unknown;
+          }>,
+        ) => Promise<void>;
+      };
+      if (options.onStepFinish) {
+        await options.onStepFinish(
+          Array.from({ length: 10 }, (_, index) => ({
+            toolName: `tool_${index + 1}`,
+            args: { index },
+            result: { ok: true },
+          })),
+        );
+      }
+      return {
+        textStream: (async function* () {
+          // Simulates the AI SDK stream ending after tool calls without a
+          // subsequent tool-free final text step.
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implToolLimit as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-tool-limit-1',
+        idempotencyKey: 'idem-tool-limit-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-tool-limit-1',
+        assistantMessageId: 'msg-a-tool-limit-1',
+        userMessage: 'use many tools',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-tool-limit-1',
+        role: 'assistant',
+        taskState: 'failed',
+        content: expect.stringContaining('tool-call limit was reached (10/10)'),
+        metadata: expect.objectContaining({
+          agentLoopStopReason: expect.objectContaining({
+            type: 'tool_call_limit_reached',
+            toolCallCount: 10,
+            maxToolCalls: 10,
+            stepCount: 1,
+            maxSteps: 10,
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('marks empty post-tool final responses as failed with a real timeout reason', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implTimeout = async (...args: any[]) => {
+      const options = args[3] as {
+        onStepFinish?: (
+          stepResults: Array<{
+            toolName: string;
+            args: Record<string, unknown>;
+            result: unknown;
+          }>,
+        ) => Promise<void>;
+      };
+      if (options.onStepFinish) {
+        await options.onStepFinish([
+          {
+            toolName: 'todo_list',
+            args: {},
+            result: { ok: true, data: [] },
+          },
+        ]);
+      }
+      return {
+        textStream: (async function* () {
+          // Simulates the stream being aborted by the per-step timeout after
+          // successful tool calls and before any final assistant text appears.
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+        getStopInfo: () => ({
+          type: 'timeout_reached',
+          timeoutMs: 60000,
+          stepIndex: 1,
+        }),
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implTimeout as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-timeout-1',
+        idempotencyKey: 'idem-timeout-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-timeout-1',
+        assistantMessageId: 'msg-a-timeout-1',
+        userMessage: 'list my todos',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-timeout-1',
+        role: 'assistant',
+        taskState: 'failed',
+        content: expect.stringContaining('step timeout was reached (60000ms)'),
+        metadata: expect.objectContaining({
+          agentLoopStopReason: expect.objectContaining({
+            type: 'timeout_reached',
+            timeoutMs: 60000,
+            timeoutStepIndex: 1,
+            toolCallCount: 1,
+            completedToolCallCount: 1,
+            failedToolCallCount: 0,
+            maxToolCalls: 10,
+            stepCount: 1,
+            maxSteps: 10,
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('persists typed invalidations from successful agent tool results', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implInvalidation = async (...args: any[]) => {
+      const options = args[3] as {
+        onStepFinish?: (
+          stepResults: Array<{
+            toolName: string;
+            args: Record<string, unknown>;
+            result: unknown;
+          }>,
+        ) => Promise<void>;
+      };
+      if (options.onStepFinish) {
+        await options.onStepFinish([
+          {
+            toolName: 'chat_channel_rename',
+            args: { channelId: 'channel-1', displayName: 'Roadmap' },
+            result: { ok: true, data: { channelId: 'channel-1' } },
+          },
+          {
+            toolName: 'chat_thread_create',
+            args: { channelId: 'channel-1', threadId: 'thread-1' },
+            result: { ok: true, data: { channelId: 'channel-1', threadId: 'thread-1' } },
+          },
+        ]);
+      }
+      return {
+        textStream: (async function* () {
+          yield 'updated';
+        })(),
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-5',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implInvalidation as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-invalidations-1',
+        idempotencyKey: 'idem-invalidations-1',
+        channelId: 'channel-1',
+        sessionId: 'session:channel-1:main',
+        userMessageId: 'msg-u-invalidations-1',
+        assistantMessageId: 'msg-a-invalidations-1',
+        userMessage: 'rename this channel and create a thread',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const expectedInvalidations = [
+      { kind: 'chat.channelNames', channelId: 'channel-1', threadId: null },
+      { kind: 'chat.scopes', channelId: 'channel-1', threadId: 'thread-1' },
+    ];
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-invalidations-1:ts:1',
+        metadata: expect.objectContaining({
+          invalidations: expectedInvalidations,
+        }),
+      }),
+    ]);
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-invalidations-1',
+        taskState: 'completed',
+        content: 'updated',
+        metadata: expect.objectContaining({
+          invalidations: expectedInvalidations,
         }),
       }),
     ]);

@@ -513,6 +513,24 @@ void main() {
           'role': 'assistant',
           'content': 'hello from SSE',
           'createdAt': '2026-04-21T00:00:01.000Z',
+          'metadata': {
+            'invalidations': [
+              {
+                'kind': 'chat.channelNames',
+                'channelId': 'channel-1',
+                'threadId': null,
+              },
+              {
+                'kind': 'chat.scopes',
+                'channelId': 'channel-1',
+                'threadId': 'thread-1',
+              },
+              {
+                'kind': 'unknown.kind',
+                'channelId': 'ignored',
+              },
+            ],
+          },
         },
       ],
       'lastSeqId': 6,
@@ -524,6 +542,17 @@ void main() {
 
     expect(snapshot.messages, hasLength(1));
     expect(snapshot.messages.first.messageId, equals('bot-1'));
+    expect(snapshot.messages.first.invalidations, hasLength(2));
+    expect(
+      snapshot.messages.first.invalidations.first.kind,
+      ChatInvalidationKind.chatChannelNames,
+    );
+    expect(snapshot.messages.first.invalidations.first.channelId, 'channel-1');
+    expect(
+      snapshot.messages.first.invalidations.last.kind,
+      ChatInvalidationKind.chatScopes,
+    );
+    expect(snapshot.messages.first.invalidations.last.threadId, 'thread-1');
     expect(snapshot.lastSeqId, equals(6));
   });
 

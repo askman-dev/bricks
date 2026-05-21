@@ -95,6 +95,11 @@ class _ComposerBarState extends State<ComposerBar>
     if (text.isEmpty || widget.onSend == null) return;
     widget.onSend!(text);
     _controller.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
   }
 
   void _insertSlashCommand(String command) {
@@ -157,7 +162,7 @@ class _ComposerBarState extends State<ComposerBar>
                   TextField(
                     controller: _controller,
                     focusNode: _focusNode,
-                    enabled: !widget.isStreaming,
+                    enabled: true,
                     maxLines: 5,
                     minLines: 1,
                     textInputAction: TextInputAction.send,
@@ -297,7 +302,7 @@ class _ComposerBarState extends State<ComposerBar>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Text('模型'),
+                                    const Text('Model'),
                                     if ((widget.activeModelLabel ?? '')
                                         .isNotEmpty)
                                       Text(
@@ -311,7 +316,7 @@ class _ComposerBarState extends State<ComposerBar>
                               ),
                               const PopupMenuItem<ComposerMenuAction>(
                                 value: ComposerMenuAction.info,
-                                child: Text('信息'),
+                                child: Text('Info'),
                               ),
                             ],
                           ),

@@ -1,8 +1,8 @@
-import { generateText, streamText, jsonSchema, stepCountIs } from 'ai';
-import type { LanguageModel } from 'ai';
-import { getApiConfigs } from '../services/configService.js';
-import { AnthropicAdapter } from './providers/anthropic_adapter.js';
-import { GoogleAiStudioAdapter } from './providers/google_ai_studio_adapter.js';
+import { generateText, streamText, jsonSchema, stepCountIs } from "ai";
+import type { LanguageModel } from "ai";
+import { getApiConfigs } from "../services/configService.js";
+import { AnthropicAdapter } from "./providers/anthropic_adapter.js";
+import { GoogleAiStudioAdapter } from "./providers/google_ai_studio_adapter.js";
 import {
   LlmProvider,
   LlmProviderAdapter,
@@ -11,7 +11,7 @@ import {
   UnifiedChatResponse,
   AgentTool,
   AgentLoopStepResult,
-} from './types.js';
+} from "./types.js";
 
 const adapters: Record<LlmProvider, LlmProviderAdapter> = {
   anthropic: new AnthropicAdapter(),
@@ -20,13 +20,12 @@ const adapters: Record<LlmProvider, LlmProviderAdapter> = {
 
 /** Returns true when `value` is a plain (non-array) object. */
 function isRecordObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-
 const ALLOWED_ENDPOINT_HOSTS = new Set([
-  'api.anthropic.com',
-  'generativelanguage.googleapis.com',
+  "api.anthropic.com",
+  "generativelanguage.googleapis.com",
 ]);
 
 function validateEndpointUrl(endpoint: string): void {
@@ -34,10 +33,10 @@ function validateEndpointUrl(endpoint: string): void {
   try {
     parsed = new URL(endpoint);
   } catch {
-    throw new Error('Invalid endpoint URL');
+    throw new Error("Invalid endpoint URL");
   }
-  if (parsed.protocol !== 'https:') {
-    throw new Error('Endpoint must use HTTPS');
+  if (parsed.protocol !== "https:") {
+    throw new Error("Endpoint must use HTTPS");
   }
   if (!ALLOWED_ENDPOINT_HOSTS.has(parsed.hostname)) {
     throw new Error(`Endpoint host '${parsed.hostname}' is not allowed`);
@@ -57,9 +56,80 @@ interface StoredLlmConfig {
   };
 }
 
+function envFlagEnabled(name: string): boolean {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function localLlmEnvConfigAllowed(): boolean {
+  if (!envFlagEnabled("LOCAL_LLM_CONFIG_ENABLED")) return false;
+
+  const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
+  const bricksEnv = process.env.BRICKS_ENV?.trim().toLowerCase();
+  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
+  if (nodeEnv === "production" || vercelEnv === "production") {
+    return false;
+  }
+
+  return (
+    nodeEnv === "development" ||
+    nodeEnv === "test" ||
+    bricksEnv === "local" ||
+    bricksEnv === "development" ||
+    bricksEnv === "test" ||
+    envFlagEnabled("BRICKS_LOCAL_DEV")
+  );
+}
+
+function firstNonEmptyEnv(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function resolveLocalEnvRuntimeConfig(
+  preferredProvider?: LlmProvider,
+): LlmRuntimeConfig | null {
+  if (!localLlmEnvConfigAllowed()) return null;
+
+  const provider =
+    parseProvider(firstNonEmptyEnv("LOCAL_LLM_PROVIDER") ?? "") ??
+    (firstNonEmptyEnv("GEMINI_API_KEY") ? "google_ai_studio" : null);
+  if (!provider) {
+    throw new Error("Invalid local LLM provider");
+  }
+  if (preferredProvider && provider !== preferredProvider) {
+    return null;
+  }
+
+  const endpoint =
+    firstNonEmptyEnv("LOCAL_LLM_ENDPOINT", "GEMINI_ENDPOINT") ??
+    defaultEndpoint(provider);
+  validateEndpointUrl(endpoint);
+
+  const apiKey =
+    provider === "google_ai_studio"
+      ? firstNonEmptyEnv("LOCAL_LLM_API_KEY", "GEMINI_API_KEY")
+      : firstNonEmptyEnv("LOCAL_LLM_API_KEY", "ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    throw new Error("Invalid local LLM api_key");
+  }
+
+  return {
+    provider,
+    baseUrl: endpoint,
+    apiKey,
+    defaultModel:
+      firstNonEmptyEnv("LOCAL_LLM_MODEL", "GEMINI_MODEL") ??
+      fallbackModel(provider),
+  };
+}
+
 function resolveModel(
   request: UnifiedChatRequest,
-  runtimeConfig: LlmRuntimeConfig
+  runtimeConfig: LlmRuntimeConfig,
 ): { model: LanguageModel; modelId: string } {
   const modelId = request.model || runtimeConfig.defaultModel;
   const adapter = adapters[runtimeConfig.provider];
@@ -69,12 +139,12 @@ function resolveModel(
 export async function generateWithUserConfig(
   userId: string,
   request: UnifiedChatRequest,
-  preferredProvider?: LlmProvider
+  preferredProvider?: LlmProvider,
 ): Promise<UnifiedChatResponse> {
   const runtimeConfig = await resolveRuntimeConfig(
     userId,
     preferredProvider,
-    request.configId
+    request.configId,
   );
   const { model, modelId } = resolveModel(request, runtimeConfig);
 
@@ -98,12 +168,16 @@ export async function generateWithUserConfig(
 export async function streamWithUserConfig(
   userId: string,
   request: UnifiedChatRequest,
-  preferredProvider?: LlmProvider
-): Promise<{ textStream: AsyncIterable<string>; provider: LlmProvider; modelId: string }> {
+  preferredProvider?: LlmProvider,
+): Promise<{
+  textStream: AsyncIterable<string>;
+  provider: LlmProvider;
+  modelId: string;
+}> {
   const runtimeConfig = await resolveRuntimeConfig(
     userId,
     preferredProvider,
-    request.configId
+    request.configId,
   );
   const { model, modelId } = resolveModel(request, runtimeConfig);
 
@@ -117,17 +191,24 @@ export async function streamWithUserConfig(
     maxOutputTokens: request.maxTokens ?? 1024,
   });
 
-  return { textStream: result.textStream, provider: runtimeConfig.provider, modelId };
+  return {
+    textStream: result.textStream,
+    provider: runtimeConfig.provider,
+    modelId,
+  };
 }
 
 async function resolveRuntimeConfig(
   userId: string,
   preferredProvider?: LlmProvider,
-  preferredConfigId?: string
+  preferredConfigId?: string,
 ): Promise<LlmRuntimeConfig> {
-  const allConfigs = (await getApiConfigs(userId, 'llm')) as StoredLlmConfig[];
+  const localConfig = resolveLocalEnvRuntimeConfig(preferredProvider);
+  if (localConfig) return localConfig;
+
+  const allConfigs = (await getApiConfigs(userId, "llm")) as StoredLlmConfig[];
   if (allConfigs.length === 0) {
-    throw new Error('No LLM configuration found for user');
+    throw new Error("No LLM configuration found for user");
   }
 
   const selected =
@@ -149,12 +230,12 @@ async function resolveRuntimeConfig(
   const apiKey = selected.config?.api_key;
   const defaultModel = selected.config?.model_preferences?.default_model;
 
-  if (typeof endpoint !== 'string' || !endpoint.trim()) {
-    throw new Error('Invalid provider endpoint');
+  if (typeof endpoint !== "string" || !endpoint.trim()) {
+    throw new Error("Invalid provider endpoint");
   }
   validateEndpointUrl(endpoint);
-  if (typeof apiKey !== 'string' || !apiKey.trim()) {
-    throw new Error('Invalid provider api_key');
+  if (typeof apiKey !== "string" || !apiKey.trim()) {
+    throw new Error("Invalid provider api_key");
   }
 
   return {
@@ -162,23 +243,40 @@ async function resolveRuntimeConfig(
     baseUrl: endpoint,
     apiKey,
     defaultModel:
-      typeof defaultModel === 'string' && defaultModel.trim()
+      typeof defaultModel === "string" && defaultModel.trim()
         ? defaultModel
         : fallbackModel(provider),
   };
 }
 
+export async function resolveRuntimeConfigForTest(
+  userId: string,
+  preferredProvider?: LlmProvider,
+  preferredConfigId?: string,
+): Promise<LlmRuntimeConfig> {
+  return resolveRuntimeConfig(userId, preferredProvider, preferredConfigId);
+}
+
+function defaultEndpoint(provider: LlmProvider): string {
+  switch (provider) {
+    case "google_ai_studio":
+      return "https://generativelanguage.googleapis.com";
+    case "anthropic":
+      return "https://api.anthropic.com";
+  }
+}
+
 function fallbackModel(provider: LlmProvider): string {
   switch (provider) {
-    case 'google_ai_studio':
-      return 'gemini-flash-latest';
-    case 'anthropic':
-      return 'claude-sonnet-4-5';
+    case "google_ai_studio":
+      return "gemini-flash-latest";
+    case "anthropic":
+      return "claude-sonnet-4-5";
   }
 }
 
 function parseProvider(provider: string): LlmProvider | null {
-  if (provider === 'anthropic' || provider === 'google_ai_studio') {
+  if (provider === "anthropic" || provider === "google_ai_studio") {
     return provider;
   }
   return null;
@@ -188,7 +286,9 @@ function parseProvider(provider: string): LlmProvider | null {
  * Converts our neutral AgentTool map into the AI SDK tool format.
  * Uses jsonSchema() so that zod is not required.
  */
-function buildAiSdkTools(tools: Record<string, AgentTool>): Record<string, unknown> {
+function buildAiSdkTools(
+  tools: Record<string, AgentTool>,
+): Record<string, unknown> {
   const sdkTools: Record<string, unknown> = {};
   for (const [name, agentTool] of Object.entries(tools)) {
     sdkTools[name] = {
@@ -229,6 +329,24 @@ interface SdkStepFinishEvent {
   toolResults?: SdkToolResult[];
 }
 
+export type AgentLoopStreamStopInfo =
+  | {
+      type: "timeout_reached";
+      timeoutMs: number;
+      stepIndex: number;
+    }
+  | {
+      type: "sdk_finish";
+      finishReason: string | null;
+      stepIndex: number;
+    }
+  | {
+      type: "stream_error";
+      errorName: string;
+      errorMessage: string;
+      stepIndex: number;
+    };
+
 /**
  * Minimal discriminated-union type for events emitted by `result.fullStream`.
  * We only declare the event shapes we actually consume; unknown types are
@@ -241,11 +359,18 @@ interface SdkStepFinishEvent {
  *   - tool-call:       .input (not .args; .toolName is unchanged)
  */
 type SdkFullStreamEvent =
-  | { type: 'text-delta'; text: string }
-  | { type: 'reasoning-delta'; text: string }
-  | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
-  | { type: 'tool-error'; toolCallId: string; toolName: string; input: unknown; error: unknown }
-  | { type: 'finish-step'; stepType: string }
+  | { type: "text-delta"; text: string }
+  | { type: "reasoning-delta"; text: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
+  | {
+      type: "tool-error";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+      error: unknown;
+    }
+  | { type: "finish"; finishReason?: string | null }
+  | { type: "finish-step"; stepType: string }
   | { type: string };
 
 /**
@@ -265,7 +390,7 @@ interface SdkStepSummary {
  */
 type AgentStopCondition = (event: { steps?: SdkStepSummary[] }) => boolean;
 
-/** Maximum wall-clock timeout we allow for a single agent-loop invocation (ms). */
+/** Maximum timeout we allow for a single agent-loop model step (ms). */
 const MAX_AGENT_TIMEOUT_MS = 120_000;
 
 /**
@@ -280,9 +405,10 @@ const MAX_AGENT_TIMEOUT_MS = 120_000;
  * @param options.maxToolCalls - Optional cap on the cumulative number of tool calls
  *   across all steps. Evaluated after each step finishes; stops before the next
  *   step once the cumulative total reaches this limit.
- * @param options.timeoutMs    - Optional wall-clock timeout (ms), clamped to
- *   MAX_AGENT_TIMEOUT_MS. The stream is aborted via AbortController when
- *   triggered; the caller receives an AbortError from the text-stream iterator.
+ * @param options.timeoutMs    - Optional per-step timeout (ms), clamped to
+ *   MAX_AGENT_TIMEOUT_MS and reset after each completed model step. The stream
+ *   is aborted via AbortController when triggered; the caller receives an
+ *   AbortError from the text-stream iterator.
  */
 export async function streamWithAgentToolsAndUserConfig(
   userId: string,
@@ -334,8 +460,17 @@ export async function streamWithAgentToolsAndUserConfig(
     onStepTextEnd?: (text: string, stepIndex: number) => Promise<void>;
   },
   preferredProvider?: LlmProvider,
-): Promise<{ textStream: AsyncIterable<string>; provider: LlmProvider; modelId: string }> {
-  const runtimeConfig = await resolveRuntimeConfig(userId, preferredProvider, request.configId);
+): Promise<{
+  textStream: AsyncIterable<string>;
+  provider: LlmProvider;
+  modelId: string;
+  getStopInfo: () => AgentLoopStreamStopInfo | null;
+}> {
+  const runtimeConfig = await resolveRuntimeConfig(
+    userId,
+    preferredProvider,
+    request.configId,
+  );
   const { model, modelId } = resolveModel(request, runtimeConfig);
   const sdkTools = buildAiSdkTools(tools);
 
@@ -357,13 +492,39 @@ export async function streamWithAgentToolsAndUserConfig(
     });
   }
 
-  // Set up AbortController for the timeout. Clamp to MAX_AGENT_TIMEOUT_MS so
-  // a caller cannot schedule an unbounded timer from user-supplied input.
+  // Set up AbortController for the per-step timeout. Clamp to
+  // MAX_AGENT_TIMEOUT_MS so a caller cannot schedule an unbounded timer from
+  // user-supplied input. Reset after each completed step so multi-step loops
+  // are bounded by maxSteps/maxToolCalls rather than one global wall clock.
   const abortController = new AbortController();
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let effectiveTimeoutMs: number | undefined;
+  let timedOut = false;
+  let timeoutStepIndex = 0;
+  let streamStopInfo: AgentLoopStreamStopInfo | null = null;
+  const clearStepTimeout = (): void => {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = undefined;
+    }
+  };
+  const armStepTimeout = (stepIndex: number): void => {
+    clearStepTimeout();
+    if (!effectiveTimeoutMs || effectiveTimeoutMs <= 0) return;
+    timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      timeoutStepIndex = stepIndex;
+      streamStopInfo = {
+        type: "timeout_reached",
+        timeoutMs: effectiveTimeoutMs!,
+        stepIndex,
+      };
+      abortController.abort();
+    }, effectiveTimeoutMs);
+  };
   if (options.timeoutMs && options.timeoutMs > 0) {
-    const safeTimeoutMs = Math.min(options.timeoutMs, MAX_AGENT_TIMEOUT_MS);
-    timeoutHandle = setTimeout(() => abortController.abort(), safeTimeoutMs);
+    effectiveTimeoutMs = Math.min(options.timeoutMs, MAX_AGENT_TIMEOUT_MS);
+    armStepTimeout(0);
   }
 
   // The tools object is typed with generics in the AI SDK but our neutral
@@ -376,7 +537,10 @@ export async function streamWithAgentToolsAndUserConfig(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     stopWhen: stopConditions as any,
     abortSignal: abortController.signal,
-    messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: request.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    })),
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
     // The onStepFinish callback shape changed in AI SDK v6; cast the event to
@@ -384,17 +548,19 @@ export async function streamWithAgentToolsAndUserConfig(
     // generic ToolSet type.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onStepFinish: options.onStepFinish
-      ? (async (event: SdkStepFinishEvent) => {
-          const results: AgentLoopStepResult[] = (event.toolResults ?? []).map((tr) => ({
-            toolName: String(tr.toolName ?? ''),
-            args: isRecordObject(tr.input) ? tr.input : {},
-            result: tr.output,
-          }));
+      ? ((async (event: SdkStepFinishEvent) => {
+          const results: AgentLoopStepResult[] = (event.toolResults ?? []).map(
+            (tr) => ({
+              toolName: String(tr.toolName ?? ""),
+              args: isRecordObject(tr.input) ? tr.input : {},
+              result: tr.output,
+            }),
+          );
           if (results.length > 0) {
             await options.onStepFinish!(results);
           }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        }) as any
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }) as any)
       : undefined,
   });
 
@@ -415,9 +581,12 @@ export async function streamWithAgentToolsAndUserConfig(
     let streamStepIndex = 0;
     let callIndex = 0;
     let stepHasToolCalls = false;
-    let stepText = '';
-    let reasoningBuffer = '';
-    const toolCallIndexes = new Map<string, { stepIndex: number; callIndex: number }>();
+    let stepText = "";
+    let reasoningBuffer = "";
+    const toolCallIndexes = new Map<
+      string,
+      { stepIndex: number; callIndex: number }
+    >();
 
     // Fire a callback Promise without blocking the generator. The callback
     // name is included in error logs so failures are easy to diagnose.
@@ -429,8 +598,8 @@ export async function streamWithAgentToolsAndUserConfig(
 
     try {
       for await (const rawEvent of result.fullStream as AsyncIterable<SdkFullStreamEvent>) {
-        if (rawEvent.type === 'text-delta') {
-          const delta = (rawEvent as { type: 'text-delta'; text: string }).text;
+        if (rawEvent.type === "text-delta") {
+          const delta = (rawEvent as { type: "text-delta"; text: string }).text;
           stepText += delta;
           // Yield immediately when no tool call has been seen yet in this step.
           // If a tool-call event arrives later, we stop yielding deltas so the
@@ -442,13 +611,15 @@ export async function streamWithAgentToolsAndUserConfig(
           if (!stepHasToolCalls) {
             yield delta;
           }
-        } else if (rawEvent.type === 'reasoning-delta') {
-          reasoningBuffer += (rawEvent as { type: 'reasoning-delta'; text: string }).text;
-        } else if (rawEvent.type === 'tool-call') {
+        } else if (rawEvent.type === "reasoning-delta") {
+          reasoningBuffer += (
+            rawEvent as { type: "reasoning-delta"; text: string }
+          ).text;
+        } else if (rawEvent.type === "tool-call") {
           stepHasToolCalls = true;
           if (options.onToolCallStart) {
             const tc = rawEvent as {
-              type: 'tool-call';
+              type: "tool-call";
               toolCallId: string;
               toolName: string;
               input: unknown;
@@ -459,51 +630,80 @@ export async function streamWithAgentToolsAndUserConfig(
               const toolName = String(tc.toolName);
               // Guard against non-object args (e.g. SDK emits a primitive).
               const args = isRecordObject(tc.input) ? tc.input : {};
-              toolCallIndexes.set(tc.toolCallId, { stepIndex: streamStepIndex, callIndex });
+              toolCallIndexes.set(tc.toolCallId, {
+                stepIndex: streamStepIndex,
+                callIndex,
+              });
               // Await the callback so that the :tc message is written before tool
               // execution begins, which guarantees correct write_seq ordering.
-              await options.onToolCallStart(toolName, args, streamStepIndex, callIndex);
+              await options.onToolCallStart(
+                toolName,
+                args,
+                streamStepIndex,
+                callIndex,
+              );
             }
           }
           callIndex++;
-        } else if (rawEvent.type === 'tool-error') {
+        } else if (rawEvent.type === "tool-error") {
           if (options.onToolCallError) {
-            const te = rawEvent as SdkToolError & { type: 'tool-error' };
+            const te = rawEvent as SdkToolError & { type: "tool-error" };
             const indexed = toolCallIndexes.get(te.toolCallId) ?? {
               stepIndex: streamStepIndex,
               callIndex: Math.max(0, callIndex - 1),
             };
             const args = isRecordObject(te.input) ? te.input : {};
             await options.onToolCallError(
-              String(te.toolName ?? ''),
+              String(te.toolName ?? ""),
               args,
               te.error,
               indexed.stepIndex,
               indexed.callIndex,
             );
           }
-        } else if (rawEvent.type === 'finish-step') {
+        } else if (rawEvent.type === "finish") {
+          const finishEvent = rawEvent as {
+            type: "finish";
+            finishReason?: string | null;
+          };
+          const finishReason =
+            typeof finishEvent.finishReason === "string"
+              ? finishEvent.finishReason
+              : null;
+          streamStopInfo = {
+            type: "sdk_finish",
+            finishReason,
+            stepIndex: streamStepIndex,
+          };
+        } else if (rawEvent.type === "finish-step") {
           if (stepHasToolCalls) {
             // Intermediate step: route text to the :pt:S record, not the main
             // stream, to avoid the same content appearing in both channels.
             // (Text emitted before the first tool-call in this step may have
             // already been streamed, which is accepted as minor overlap.)
             if (options.onStepTextEnd && stepText.trim().length > 0) {
-              fireAndForget('onStepTextEnd', options.onStepTextEnd(stepText, streamStepIndex));
+              fireAndForget(
+                "onStepTextEnd",
+                options.onStepTextEnd(stepText, streamStepIndex),
+              );
             }
           }
           // For tool-free steps, all text was already yielded as deltas above; no additional yield needed here.
           if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
-            fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
+            fireAndForget(
+              "onReasoningChunk",
+              options.onReasoningChunk(reasoningBuffer, streamStepIndex),
+            );
           }
           // Advance step counter and reset per-step state.
           streamStepIndex++;
           callIndex = 0;
           stepHasToolCalls = false;
-          stepText = '';
-          reasoningBuffer = '';
+          stepText = "";
+          reasoningBuffer = "";
+          armStepTimeout(streamStepIndex);
         }
-        // All other event types (tool-result, finish, error, etc.) are ignored.
+        // All other event types (tool-result, error, etc.) are ignored.
       }
       // Flush any remaining text / reasoning accumulated in a partial final
       // step (e.g. when the stream ends without emitting a step-finish event).
@@ -513,14 +713,36 @@ export async function streamWithAgentToolsAndUserConfig(
         yield stepText;
       }
       if (options.onReasoningChunk && reasoningBuffer.trim().length > 0) {
-        fireAndForget('onReasoningChunk', options.onReasoningChunk(reasoningBuffer, streamStepIndex));
+        fireAndForget(
+          "onReasoningChunk",
+          options.onReasoningChunk(reasoningBuffer, streamStepIndex),
+        );
       }
+    } catch (error) {
+      if (timedOut || abortController.signal.aborted) {
+        streamStopInfo = {
+          type: "timeout_reached",
+          timeoutMs: effectiveTimeoutMs ?? options.timeoutMs ?? 0,
+          stepIndex: timeoutStepIndex,
+        };
+      } else {
+        streamStopInfo = {
+          type: "stream_error",
+          errorName: error instanceof Error ? error.name : "stream_error",
+          errorMessage: error instanceof Error ? error.message : String(error),
+          stepIndex: streamStepIndex,
+        };
+      }
+      throw error;
     } finally {
-      if (timeoutHandle !== undefined) {
-        clearTimeout(timeoutHandle);
-      }
+      clearStepTimeout();
     }
   }
 
-  return { textStream: managedStream(), provider: runtimeConfig.provider, modelId };
+  return {
+    textStream: managedStream(),
+    provider: runtimeConfig.provider,
+    modelId,
+    getStopInfo: () => streamStopInfo,
+  };
 }

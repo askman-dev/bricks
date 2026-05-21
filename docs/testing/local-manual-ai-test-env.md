@@ -35,6 +35,7 @@ JWT_SECRET
 ENCRYPTION_KEY
 FIXTURE_USER_ID
 BRICKS_TEST_TOKEN
+BRICKS_LOCAL_DEV=true
 PORT=3010
 BRICKS_API_BASE_URL=http://127.0.0.1:3010
 AUTO_MIGRATE=false
@@ -43,6 +44,7 @@ AUTO_MIGRATE=false
 For Gemini manual reply testing, also add:
 
 ```text
+LOCAL_LLM_CONFIG_ENABLED=true
 GEMINI_API_KEY=<real key>
 GEMINI_MODEL=gemini-flash-latest
 ```
@@ -70,71 +72,26 @@ Health check:
 curl -sS http://127.0.0.1:3010/api/health
 ```
 
-## Create Fixture-User Gemini Config
+## Local LLM Config
 
-Run this only when the fixture user needs a real model config. The key is read
-from `.env.local` and written through the local backend, which encrypts it
-before storing it in Turso.
+For local manual testing, prefer `LOCAL_LLM_CONFIG_ENABLED=true` with
+`GEMINI_API_KEY` in `.env.local`. The local backend then uses the environment
+key at request time and does not write or modify `api_configs` rows in Turso.
+This path is ignored in production; it requires a local/dev runtime marker such
+as `BRICKS_LOCAL_DEV=true`, `NODE_ENV=development`, or `NODE_ENV=test`.
 
-```sh
-set -a
-source .env.local
-set +a
-
-node <<'NODE'
-const base = process.env.BRICKS_API_BASE_URL || 'http://127.0.0.1:3010';
-const token = process.env.BRICKS_TEST_TOKEN;
-const apiKey = process.env.GEMINI_API_KEY;
-const model = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-const endpoint =
-  process.env.GEMINI_ENDPOINT || 'https://generativelanguage.googleapis.com';
-
-if (!token || !apiKey) {
-  throw new Error('Missing BRICKS_TEST_TOKEN or GEMINI_API_KEY');
-}
-
-const headers = { Authorization: `Bearer ${token}` };
-const response = await fetch(`${base}/api/config`, {
-  method: 'POST',
-  headers: { ...headers, 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    category: 'llm',
-    provider: 'google_ai_studio',
-    is_default: true,
-    config: {
-      slot_id: model,
-      endpoint,
-      api_key: apiKey,
-      model_preferences: { default_model: model },
-    },
-  }),
-});
-
-const body = await response.text();
-if (!response.ok) {
-  throw new Error(`config create failed ${response.status}: ${body}`);
-}
-
-const parsed = JSON.parse(body);
-console.log(JSON.stringify({
-  id: parsed.id,
-  provider: parsed.provider,
-  is_default: parsed.is_default,
-  default_model: parsed.config?.model_preferences?.default_model,
-  endpoint: parsed.config?.endpoint,
-}, null, 2));
-NODE
-```
+Do not create a fixture-user provider config in cloud Turso unless the task is
+specifically testing the settings/config UI persistence path.
 
 ## Encryption Boundary
 
-The local backend uses `ENCRYPTION_KEY` to encrypt provider tokens before
-writing `api_configs` rows. The same local backend can read those rows later as
-long as it uses the same `ENCRYPTION_KEY`.
+The local backend uses `ENCRYPTION_KEY` only when provider tokens are written to
+`api_configs`. The recommended local manual path reads provider tokens from
+`.env.local` and does not write them to Turso.
 
 If a deployed backend uses a different `ENCRYPTION_KEY`, it may not be able to
-decrypt a fixture-user config created locally. That is expected and should not
-affect a real production user because rows are scoped by user ID.
+decrypt a fixture-user config created locally. Avoid that problem by using the
+local env config path for manual testing.
 
 ## Build And Serve Flutter Web
 

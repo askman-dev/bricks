@@ -40,6 +40,8 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
         smoke_checks:
           - 发送一条消息后可以看到消息列表更新。
+          - 发送消息后输入框应保持可输入并恢复焦点，流式回复期间仍可继续编辑下一条草稿。
+          - 宽屏内联 Navigation 打开时，拖动右侧分隔手柄应能在最小/最大宽度范围内调整侧边栏宽度。
           - 将路由切到 plugin/OpenClaw 节点后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
           - 当用户拥有多个 OpenClaw 节点时，输入框左侧路由菜单应仅列出真实节点；菜单主标题显示节点名称，副标题显示 `OpenClaw`。
@@ -51,6 +53,7 @@ products:
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
           - local 与 plugin 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
           - 发送后 user query 仍先显示“已接受”状态；assistant 身份占位可在 SSE dispatch 占位到达时提前出现，但 assistant 正文气泡仍应等待真实内容开始到达。
+          - Agent tool 结果可通过 message metadata 的 typed invalidations 驱动前端局部刷新；普通对话完成不应全量请求 scopes/channel-names/scope-settings。
           - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，local/其他远端为第二枚 ✓，OpenClaw plugin 为单色路由状态图标。
           - user query 的时间/线程与投递状态应显示在气泡内；长按气泡可弹出“复制/分叉（待开发）/重发（待开发）”菜单，并在底部显示 message id 与 task id。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
@@ -64,7 +67,9 @@ products:
           - 新建频道时必须输入频道名，且重复名称会被拦截。
           - 新建频道确认后，即使还没有发送消息，刷新页面后侧边栏仍应从 `chat_channel_names` 恢复该频道名称。
           - Navigation 的 Channels tab 创建按钮显示为 `New Channel`。
-          - 长按非默认频道会出现“改名/归档”菜单；归档后频道从列表中隐藏。
+          - 默认频道显示为 `Default Channel`。
+          - Navigation 的 Channels tab 列表项不显示 leading 图标；长按频道菜单显示 `Rename` / `Archive`。
+          - 长按非默认频道会出现 `Rename` / `Archive` 菜单；归档后频道从列表中隐藏。
           - 长按频道改名后刷新页面，频道名称应保持为用户设置值（由数据库映射恢复）。
           - 侧边栏频道列表与顶部频道下拉菜单均按最新消息时间降序排列；有消息记录的频道排在无消息频道前面；默认频道参与排序，不固定置顶；时间相同时按 id 字典序确定顺序。
           - 顶部标题显示当前频道名且左对齐。
@@ -85,15 +90,16 @@ products:
           - 输入框不再支持 `@agent` 文本补全；当路由为 local/Bricks Default 时，`@` 按钮显示在路由按钮右侧、配置按钮左侧，点击后下拉展示与侧边栏 Agents 分组一致的 Agent 列表。
           - 当路由为 OpenClaw 时，`@` 按钮同样可点击并弹出下拉菜单；菜单应展示匹配 OpenClaw node 上报的 agents，选择后将 `@agentId` 插入输入框。
           - 对话页顶部不再显示横向“参与者/Agent 概率”指示条。
-          - 从输入框左下角菜单点击“信息”后可看到调试信息弹窗。
-          - 当路由为 local/Bricks Default 时，输入框左下角应显示配置按钮，且“模型”项副标题展示当前生效模型名。
+          - 从输入框左下角菜单点击 `Info` 后可看到调试信息弹窗。
+          - 当路由为 local/Bricks Default 时，输入框左下角应显示配置按钮，且 `Model` 项副标题展示当前生效模型名。
           - 当路由为 OpenClaw 时，输入框左下角应额外出现 `/` 斜杠命令按钮，选择命令后应自动填充到输入框。
           - 未来新增的 plugin 平台（例如 Hermes）应复用 plugin 路由，平台差异留在 node/plugin 配置层。
           - 顶部频道名称应支持下拉切换频道，切换后分区标签与分区列表需同步刷新为目标频道的数据。
+          - AI tool 创建 thread 或改名当前 channel 后，客户端应通过同步 scopes/channel names 刷新顶部名称与 Thread 列表，不需要整页刷新。
           - 顶部频道下拉菜单顶部应显示 `Rename` / `Archive` 功能分组；默认频道下这两个功能禁用，非默认频道下应调用频道改名与归档持久化路径；频道很多时菜单应限制在合理最大高度内并支持内部滚动。
           - 频道名称右侧应内嵌分区下拉按钮（显示当前分区名+下箭头），且该菜单与频道标题左对齐，不再使用右上角三个点。
-          - 分区菜单应先显示“新建子区”功能组；在子区内应显示小号浅色“当前组”标题及“改名/归档”操作；主区不显示当前组操作；底部列表组显示主区和已有子区；菜单弹出动画应保持快速缩放+淡入。
-          - 子区选择“改名”后应弹出分区名输入框，空名称和重复名称会被拦截，保存后顶部子区标题和列表项同步更新，刷新后仍从后端命名映射恢复。
+          - Thread 菜单主线程显示为 `Thread`；菜单应先显示 `New Thread` 功能组；在子线程内应显示小号浅色“当前组”标题及 `Rename` / `Archive` 操作；主线程不显示当前组操作；底部列表组显示主线程和已有子线程；菜单弹出动画应保持快速缩放+淡入。
+          - 子区选择 `Rename` 后应弹出分区名输入框，空名称和重复名称会被拦截，保存后顶部子区标题和列表项同步更新，刷新后仍从后端命名映射恢复。
           - 在主区（channel 对话）打开路由菜单时，不应显示 Thread router 分组；在子区（thread 对话）应显示 Follow channel / Bricks Default / OpenClaw 三项。
           - Openclaw 异步会话空闲时，客户端应通过 SSE（`/api/chat/events/:sessionId`）保持持久推送连接，服务端将在新消息到达后实时推送事件，无需客户端反复轮询。
           - 深色主题下应采用低亮度灰阶 surface；用户消息气泡不得使用品牌 primary 色。
@@ -238,7 +244,8 @@ products:
           - 用户说"显示 Tasks 表格"，AI 调用 table_get 并以 Markdown 表格回复。
           - 在 Turso/libSQL 数据库下，table_create / table_add_column / table_add_row / table_update_row / table_delete_row 均应成功执行，不应因 PostgreSQL-only SQL（例如 NOW() 或 ::jsonb）失败。
           - 当 table_create 执行时抛出数据库错误，聊天历史应显示工具错误结果，并将对应 tool_call_start 标记为已完成，不能永久显示“正在调用”。
-          - 相邻工具调用在聊天流中应折叠为一个"正在思考/思考过程 completed/total"标志，不直接显示工具名或长 JSON；紧随其后的助手文本不重复显示头像/模型名。
+          - 相邻工具调用在聊天流中应折叠为一个 `Thinking` / `Thinking complete completed/total` 标志，不直接显示工具名或长 JSON；同 task 的 thinking 行应显示在 `Processing...` 占位前；点击 thinking 标志可在模态窗口查看具体 tool/reasoning 过程；紧随其后的助手文本不重复显示头像/模型名。
+          - 默认 agent-loop 预算为 10 steps / 10 tool calls，单步模型流超时为 60s；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
           - 添加一列 Priority 后，已有行不变（O(1) schema change）。
           - 软删除行后，table_get 不返回该行。
 
@@ -302,6 +309,7 @@ products:
           - '`AUTO_MIGRATE=false` skips request-time migrations before `/api/health` and API routes.'
           - A local backend can run on a non-default port using `.env.local` while connecting to Turso via `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
           - Flutter web can target the local backend with `BRICKS_API_BASE_URL` and bypass OAuth with `BRICKS_TEST_TOKEN`.
+          - Local manual model testing can set `LOCAL_LLM_CONFIG_ENABLED=true`, an explicit local/dev marker, and provider keys in `.env.local` so the local backend does not write provider tokens to cloud Turso; production ignores this fallback.
           - The channel New UI evidence harness can create a channel through the sidebar and capture UI/API/Turso checkpoints.
           - Evidence browser harnesses should record fixture user, API, direct database, immediate UI, and refresh checkpoints so failures can be localized.
           - The local manual AI test environment can run local Flutter Web and local API against cloud Turso, use `Quick Login (Test)`, and create a fixture-user Gemini config from `.env.local`.

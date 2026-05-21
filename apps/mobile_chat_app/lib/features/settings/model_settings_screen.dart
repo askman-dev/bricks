@@ -5,7 +5,7 @@ import 'llm_config_service.dart';
 
 /// Displayed as a placeholder hint when the active config has a stored API key
 /// that is intentionally not shown for security reasons.
-const kApiKeyStoredHint = '(已设置，出于安全原因未显示)';
+const kApiKeyStoredHint = '(Set, hidden for security)';
 
 class ModelSettingsScreen extends StatefulWidget {
   const ModelSettingsScreen({super.key, LlmConfigService? service})

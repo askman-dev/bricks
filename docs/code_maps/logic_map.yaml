@@ -13,6 +13,7 @@ index:
       - apps/node_backend/src/app.ts
       - apps/node_backend/src/index.ts
       - apps/node_backend/src/db/migrate.ts
+      - apps/node_backend/src/llm/llm_service.ts
       - apps/mobile_chat_app/lib/features/auth/auth_service.dart
       - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
       - tools/evidence/channel_new_ui_harness/run.sh
@@ -33,6 +34,7 @@ index:
       - tools/evidence/channel_dropdown_height/AGENTS.md
     test_index:
       - apps/node_backend/src/app.test.ts
+      - apps/node_backend/src/llm/llm_service.test.ts
       - apps/mobile_chat_app/integration_test/test_mode_login_flow_test.dart
     keywords:
       - AUTO_MIGRATE
@@ -42,6 +44,7 @@ index:
       - BRICKS_API_BASE_URL
       - BRICKS_TEST_TOKEN
       - Quick Login
+      - LOCAL_LLM_CONFIG_ENABLED
       - channel New UI harness
       - chat_channel_names checkpoint
       - evidence checkpoint browser harness
@@ -51,6 +54,7 @@ index:
       - 本地直连线上 Turso 时若未设置 `AUTO_MIGRATE=false`，请求级迁移可能修改线上 schema 或因远端超时阻塞调试。
       - Flutter web 只能通过 dart-define 读取 `BRICKS_API_BASE_URL` 和 `BRICKS_TEST_TOKEN`，不能直接读取 shell `.env.local`。
       - 使用错误 `JWT_SECRET` 生成测试 token 会导致本地 API 返回 401。
+      - 本地手测真实模型时应优先使用 `LOCAL_LLM_CONFIG_ENABLED=true`、显式本地运行标记（如 `BRICKS_LOCAL_DEV=true`）和 `.env.local` provider key，避免把本地 key 写入共享 Turso 的 `api_configs` 并影响真实用户默认配置；生产环境必须忽略该 fallback。
       - Flutter Web canvas 渲染使浏览器文本 locator 不稳定，UI harness 依赖固定移动视口坐标和截图证据。
 
   - feature_id: auth_login
@@ -221,7 +225,9 @@ index:
       - 菜单动画时长或曲线调整不当可能导致菜单响应突兀或视觉跳变。
       - 设计系统 token 文档与 `AppColors` / `ChatColors` 映射不一致时，后续 UI 变更可能重新引入一次性颜色或冗余组件 token。
       - 侧边栏宽度或背景色若与 chat surface 层级脱节，宽屏下会丢失导航层与主画布的视觉分离。
+      - 宽屏侧边栏 resize handle 若命中区域太窄或未设为 opaque hit test，用户会以为拖拽调宽功能失效。
       - 如果抽屉式导航与宽屏内联导航共用关闭策略，点击频道可能在宽屏下误收起侧栏，或在窄屏下无法关闭全屏抽屉。
+      - 发送消息后若 streaming 状态禁用 TextField，会打断连续输入工作流并丢失键盘焦点。
       - 输入框 focus 态若重新引入强边框，会破坏暗色 composer 的安静层级并制造不必要的视觉噪音。
       - 输入框底部 action 若混用不同 enabled 颜色，用户会误解部分按钮被禁用或处于不同优先级。
       - 标题区子区切换与右上角管理菜单职责若混淆，可能导致用户误触或切换不可达。
@@ -233,6 +239,8 @@ index:
       - 若 default `/chat/respond` 回退为同步阻塞路径，会导致“先入库再异步回复”契约失效并放大接口延迟。
       - 若 dispatch 占位与真实 assistant 正文未复用同一 `messageId`/合并链路，可能出现重复头像行或占位残留。
       - 若 dispatch 占位被渲染成普通空 assistant 气泡，用户会误判 AI 已经输出正文并干扰两段状态图标语义。
+      - 若 SSE 终态消息不区分变更类型就全量刷新 topology，会把普通对话 completion 放大成多次 scopes/channel-names/scope-settings 请求并触发 429。
+      - tool-driven UI 刷新应依赖 message metadata invalidations；新增会改变频道、线程、scope settings 或资源列表的工具时必须同步维护 invalidation mapping。
       - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
       - channel 会话若错误暴露 thread 路由菜单，用户可能误写 thread scope 配置并造成路由预期不一致。
       - 若未按路由动态切换输入框左下角动作按钮，可能出现默认路由缺少模型入口或 OpenClaw 无法快捷注入斜杠命令的问题。
@@ -252,7 +260,9 @@ index:
       - 若 iOS 本地路径解析依赖 `HOME` 环境变量，真机启动会在 chat setup 阶段失败并阻断历史会话加载。
       - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。
       - ChatHistoryApiService 依赖 AuthenticatedApiClient 注入 token；若重新在 ChatScreen 用 _authToken 阻断 load/respond/SSE，会回到 UI 静默失败路径。
-      - 相邻 tool_call_start/tool_call 消息应在 MessageList 中折叠成一个思考过程标志；紧随其后的普通 assistant 文本会隐藏重复 header。如果分组边界跨过普通 assistant/user 消息，会错误隐藏正常对话内容。
+      - 相邻 tool_call_start/tool_call 消息应在 MessageList 中折叠成一个 Thinking/Thinking complete 标志，并支持点击查看详情；同 task 的 tool group 应显示在 Processing 占位前；紧随其后的普通 assistant 文本会隐藏重复 header。如果分组边界跨过普通 assistant/user 消息，会错误隐藏正常对话内容。
+      - agent loop 默认预算应保持 10 steps / 10 tool calls，单步模型流超时默认为 60s；当 tool calls 已发生但 final text stream 为空时，后端必须把最终 assistant row 写成带真实 stop reason 的 failed 消息，并且只有实际 timeout 路径才能标记为 timeout_reached。
+      - AI tool 修改当前 channel name 或创建 thread 后，ChatScreen 需要在 SSE snapshot 后刷新 scopes/channel names/scope settings，否则顶部 channel 名与 Thread 列表会等到整页刷新后才更新。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
       - 若频道最新消息时间未在消息加载、追加、归档时同步更新，侧边栏排序将与实际活跃时间脱节。
       - 若仅对侧边栏频道列表使用 _sortedChannels 而未对顶部频道下拉菜单同步更新，两处展示顺序不一致会混淆用户。

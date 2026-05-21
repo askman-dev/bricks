@@ -7,7 +7,7 @@ import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
 
 // Must match _kBottomPaddingRatio in message_list.dart
-const double _kTestBottomPaddingRatio = 0.75;
+const double _kTestBottomPaddingRatio = 1 / 3;
 
 /// Computes the expected latest-content anchor offset using the same formula
 /// as MessageList._latestContentAnchorOffset.
@@ -602,10 +602,10 @@ void main() {
         messageId: 'assistant-markdown-table',
         role: 'assistant',
         content: '''
-| 参数 | 含义 |
+| Parameter | Meaning |
 |---|---|
-| `flutter run` | Flutter 的开发运行命令 |
-| `-d chrome` | 指定 Chrome 设备 |
+| `flutter run` | Flutter development run command |
+| `-d chrome` | Select the Chrome device |
 ''',
         timestamp: DateTime.utc(2026, 1, 1),
       );
@@ -614,11 +614,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(Table), findsOneWidget);
-      expect(find.text('| 参数 | 含义 |'), findsNothing);
-      expect(find.text('参数'), findsOneWidget);
-      expect(find.text('含义'), findsOneWidget);
-      expect(find.text('Flutter 的开发运行命令'), findsOneWidget);
-      expect(find.text('指定 Chrome 设备'), findsOneWidget);
+      expect(find.text('| Parameter | Meaning |'), findsNothing);
+      expect(find.text('Parameter'), findsOneWidget);
+      expect(find.text('Meaning'), findsOneWidget);
+      expect(find.text('Flutter development run command'), findsOneWidget);
+      expect(find.text('Select the Chrome device'), findsOneWidget);
     });
   });
 
@@ -865,10 +865,10 @@ void main() {
       await tester.tap(find.textContaining('tap target text'));
       await tester.pumpAndSettle();
 
-      expect(find.text('复制'), findsOneWidget);
-      expect(find.text('删除划线'), findsOneWidget);
+      expect(find.text('Copy'), findsOneWidget);
+      expect(find.text('Remove highlight'), findsOneWidget);
 
-      await tester.tap(find.text('删除划线'));
+      await tester.tap(find.text('Remove highlight'));
       await tester.pumpAndSettle();
 
       expect(deletedHighlightId, 'h-delete');
@@ -910,12 +910,12 @@ void main() {
       await tester.pumpAndSettle(const Duration(milliseconds: 100));
       final shortMaterial = find
           .ancestor(
-            of: find.text('划线'),
+            of: find.text('Highlight'),
             matching: find.byType(Material),
           )
           .first;
       final shortRightPadding = tester.getRect(shortMaterial).right -
-          tester.getRect(find.text('划线')).right;
+          tester.getRect(find.text('Highlight')).right;
       await tester.tapAt(Offset.zero);
       await tester.pumpAndSettle();
 
@@ -923,12 +923,12 @@ void main() {
       await tester.pumpAndSettle();
       final deleteMaterial = find
           .ancestor(
-            of: find.text('删除划线'),
+            of: find.text('Remove highlight'),
             matching: find.byType(Material),
           )
           .first;
       final deleteRightPadding = tester.getRect(deleteMaterial).right -
-          tester.getRect(find.text('删除划线')).right;
+          tester.getRect(find.text('Remove highlight')).right;
 
       expect(deleteRightPadding, greaterThanOrEqualTo(shortRightPadding));
     });
@@ -1127,9 +1127,9 @@ void main() {
           .longPress(find.byKey(const ValueKey<String>('message-u-menu')));
       await tester.pumpAndSettle();
 
-      expect(find.text('复制'), findsOneWidget);
-      expect(find.text('分叉（待开发）'), findsOneWidget);
-      expect(find.text('重发（待开发）'), findsOneWidget);
+      expect(find.text('Copy'), findsOneWidget);
+      expect(find.text('Branch (coming soon)'), findsOneWidget);
+      expect(find.text('Resend (coming soon)'), findsOneWidget);
       expect(find.text('message id: u-menu'), findsOneWidget);
       expect(find.text('task id: task-menu'), findsOneWidget);
     });
@@ -1151,8 +1151,42 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('OpenClaw'), findsOneWidget);
-      expect(find.text('处理中…'), findsOneWidget);
+      expect(find.text('Processing...'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('renders thinking before processing for the same task',
+        (tester) async {
+      final messages = [
+        ChatMessage(
+          messageId: 'a-dispatch',
+          role: 'assistant',
+          content: '',
+          agentName: 'gemini-flash-latest',
+          taskId: 'task-thinking-order',
+          taskState: ChatTaskState.dispatched,
+          timestamp: DateTime.utc(2026, 1, 1),
+        ),
+        ChatMessage(
+          messageId: 'tc-start',
+          role: 'assistant',
+          content: '',
+          taskId: 'task-thinking-order',
+          agentLoopPhase: 'tool_call_start',
+          agentLoopTool: 'chat_thread_create',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 1),
+        ),
+      ];
+
+      await tester.pumpWidget(_build(messages));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Thinking 0/1'), findsOneWidget);
+      expect(find.text('Processing...'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Thinking 0/1')).dy,
+        lessThan(tester.getTopLeft(find.text('Processing...')).dy),
+      );
     });
 
     testWidgets('shows header for streaming AI message when identity is known',
@@ -1281,7 +1315,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text('正在思考 0/1'), findsOneWidget);
+      expect(find.text('Thinking 0/1'), findsOneWidget);
       expect(find.textContaining('search_web'), findsNothing);
     });
 
@@ -1300,7 +1334,39 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
-      expect(find.text('思考过程 1/1'), findsOneWidget);
+      expect(find.text('Thinking complete 1/1'), findsOneWidget);
+    });
+
+    testWidgets('completed thinking group opens tool details', (tester) async {
+      final messages = [
+        ChatMessage(
+          messageId: 'tc-start-1',
+          role: 'assistant',
+          content: '',
+          agentLoopPhase: 'tool_call_start',
+          agentLoopTool: 'chat_thread_create',
+          taskState: ChatTaskState.completed,
+          timestamp: DateTime.utc(2026, 1, 1),
+        ),
+        ChatMessage(
+          messageId: 'tc-result-1',
+          role: 'assistant',
+          content: 'Tool: chat_thread_create\nResult: {"threadId":"katago"}',
+          agentLoopPhase: 'tool_call',
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 1),
+        ),
+      ];
+
+      await tester.pumpWidget(_build(messages));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('threadId'), findsNothing);
+      await tester.tap(find.text('Thinking complete 1/1'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Thinking complete 1/1'), findsWidgets);
+      expect(find.textContaining('threadId'), findsOneWidget);
+      expect(find.text('Close'), findsOneWidget);
     });
 
     testWidgets('adjacent tool messages merge into one thinking group',
@@ -1341,7 +1407,7 @@ void main() {
       await tester.pumpWidget(_build(messages));
       await tester.pumpAndSettle();
 
-      expect(find.text('思考过程 2/2'), findsOneWidget);
+      expect(find.text('Thinking complete 2/2'), findsOneWidget);
       expect(find.textContaining('Tool: first'), findsNothing);
       expect(find.textContaining('Tool: second'), findsNothing);
     });
@@ -1368,7 +1434,7 @@ void main() {
         ChatMessage(
           messageId: 'assistant-final',
           role: 'assistant',
-          content: '目前你总共有 7 个任务。',
+          content: 'You currently have 7 tasks.',
           agentName: 'gemini-flash-latest',
           timestamp: DateTime.utc(2026, 1, 1, 0, 0, 2),
         ),
@@ -1378,8 +1444,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('gemini-flash-latest'), findsOneWidget);
-      expect(find.text('思考过程 1/1'), findsOneWidget);
-      expect(find.text('目前你总共有 7 个任务。'), findsOneWidget);
+      expect(find.text('Thinking complete 1/1'), findsOneWidget);
+      expect(find.text('You currently have 7 tasks.'), findsOneWidget);
       expect(find.textContaining('Tool: todo_list'), findsNothing);
     });
 
@@ -1413,7 +1479,7 @@ void main() {
       await tester.pumpWidget(_build(messages));
       await tester.pumpAndSettle();
 
-      expect(find.text('思考过程 1/1'), findsNWidgets(2));
+      expect(find.text('Thinking complete 1/1'), findsNWidgets(2));
       expect(find.text('normal text between tools'), findsOneWidget);
     });
 
@@ -1432,13 +1498,13 @@ void main() {
 
       // Header with psychology icon and label visible
       expect(find.byIcon(Icons.psychology_outlined), findsOneWidget);
-      expect(find.text('思考过程'), findsOneWidget);
+      expect(find.text('Thinking'), findsOneWidget);
       // Reasoning content is hidden when collapsed
       expect(find.text('Step 1: check constraints. Step 2: compute.'),
           findsNothing);
     });
 
-    testWidgets('reasoning expands and collapses on tap', (tester) async {
+    testWidgets('reasoning opens details on tap', (tester) async {
       final msg = ChatMessage(
         messageId: 'reasoning-2',
         role: 'assistant',
@@ -1453,15 +1519,13 @@ void main() {
       // Initially collapsed
       expect(find.text('I reasoned carefully.'), findsNothing);
 
-      // Tap the header to expand
-      await tester.tap(find.text('思考过程'));
+      await tester.tap(find.text('Thinking'));
       await tester.pumpAndSettle();
 
-      // Content now visible
       expect(find.text('I reasoned carefully.'), findsOneWidget);
+      expect(find.text('Close'), findsOneWidget);
 
-      // Tap again to collapse
-      await tester.tap(find.text('思考过程'));
+      await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
 
       expect(find.text('I reasoned carefully.'), findsNothing);
@@ -1499,7 +1563,7 @@ void main() {
       await tester.pumpWidget(_build([msg]));
       await tester.pumpAndSettle();
 
-      expect(find.text('思考过程 1/1'), findsOneWidget);
+      expect(find.text('Thinking complete 1/1'), findsOneWidget);
       expect(find.textContaining('Tool: search'), findsNothing);
     });
   });
