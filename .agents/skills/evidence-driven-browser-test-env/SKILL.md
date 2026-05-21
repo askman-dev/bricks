@@ -47,6 +47,45 @@ smallest environment that renders those states through the real app.
 9. Capture screenshots before and after the relevant state transition.
 10. Write the setup method under `docs/testing/` when it should be reused.
 
+## Manual Local App Testing
+
+Use a manual browser setup when the user wants to personally drive the app and
+exercise real model replies.
+
+Recommended Bricks shape:
+
+- local Node backend
+- local Flutter Web build served on localhost
+- cloud Turso or a local fixture DB selected by `.env.local`
+- `AUTO_MIGRATE=false` when pointing at cloud Turso
+- `BRICKS_TEST_TOKEN` and `Quick Login (Test)` for auth bypass
+- `FIXTURE_USER_ID` as the only expected user identity
+- optional provider token read from `.env.local`, not from chat
+
+When a real LLM token is needed, ask the user to put it in `.env.local` using a
+provider-specific name such as `GEMINI_API_KEY`. Do not ask them to paste the
+token into the conversation. If the current code only reads LLM configs from the
+database, create or update a fixture-user config through the local backend API
+so normal encryption and validation paths are used.
+
+For Bricks, document and prefer the reusable guide:
+
+- `docs/testing/local-manual-ai-test-env.md`
+
+Before handing the URL to the user, verify:
+
+- `/api/health` returns 200 from the local backend.
+- `/api/auth/me` accepts `BRICKS_TEST_TOKEN` and returns `FIXTURE_USER_ID`.
+- `/api/config?category=llm` shows the expected provider/model when model
+  replies are part of the test.
+- The local Flutter Web URL returns 200.
+
+Call out the identity boundary explicitly: rows written as `FIXTURE_USER_ID`
+will not appear for a different production user, even on the same cloud Turso
+database. If provider configs are written to cloud Turso through the local
+backend, they are encrypted with the local `ENCRYPTION_KEY`; a deployed backend
+with a different `ENCRYPTION_KEY` may not decrypt those fixture-user configs.
+
 ## Interaction-Triggered Behavior
 
 Use browser-driven validation when the visible result only appears after a user
@@ -103,6 +142,7 @@ Commit reusable capability, not sensitive generated output:
 Do not commit:
 
 - Production tokens, API keys, auth tokens, JWTs, or remote DB URLs.
+- Provider tokens from `.env.local`.
 - Raw production DB exports.
 - Local generated SQLite/libSQL files.
 - Screenshot caches that contain real user data.

@@ -84,7 +84,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(closeCount, 0);
-      expect(find.text('新建频道'), findsOneWidget);
+      expect(find.text('New Channel'), findsOneWidget);
       expect(find.text('No nodes'), findsNothing);
     });
 
@@ -151,7 +151,7 @@ void main() {
       // No collapsible header for channels
       expect(find.text('频道'), findsNothing);
       expect(find.byTooltip('Settings'), findsOneWidget);
-      expect(find.text('新建频道'), findsOneWidget);
+      expect(find.text('New Channel'), findsOneWidget);
       expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
     });
 
@@ -377,7 +377,8 @@ void main() {
       expect(find.text('Highlighted text'), findsOneWidget);
     });
 
-    testWidgets('tapping 新建频道 fires createChannel action', (tester) async {
+    testWidgets('tapping New Channel fires createChannel action',
+        (tester) async {
       ChatNavigationAction? received;
 
       await tester.pumpWidget(_buildPage(
@@ -385,7 +386,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('新建频道'));
+      await tester.tap(find.text('New Channel'));
       await tester.pumpAndSettle();
 
       expect(received, ChatNavigationAction.createChannel);

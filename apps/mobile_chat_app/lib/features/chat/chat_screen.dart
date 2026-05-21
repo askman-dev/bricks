@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:agent_core/agent_core.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
@@ -124,6 +125,10 @@ class _ChatScreenState extends State<ChatScreen> {
   static const String _createSubSectionMenuValue = '__new__';
   static const String _renameSubSectionMenuValue = '__rename__';
   static const String _archiveSubSectionMenuValue = '__archive__';
+  static const String _renameChannelMenuValue = '__channel_rename__';
+  static const String _archiveChannelMenuValue = '__channel_archive__';
+  static const double _channelMenuMinWidth = 240;
+  static const double _channelMenuMaxHeight = 420;
 
   @override
   void initState() {
@@ -876,10 +881,14 @@ class _ChatScreenState extends State<ChatScreen> {
         .map((item) => item.name.trim().toLowerCase())
         .toSet();
     _promptChannelName(
-      title: '频道改名',
-      confirmLabel: '保存',
+      title: 'Rename Channel',
+      confirmLabel: 'Save',
       initialValue: existingChannel.name,
       existingNames: existingNames,
+      fieldLabel: 'Channel name',
+      hintText: 'Enter a channel name',
+      emptyError: 'Channel name is required',
+      duplicateError: 'Channel name already exists',
       onConfirmed: (name) {
         setState(() {
           final index = _channels.indexWhere((item) => item.id == channelId);
@@ -944,7 +953,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }),
     );
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已归档频道：${channel.name}')),
+      SnackBar(content: Text('Archived channel: ${channel.name}')),
     );
   }
 
@@ -1493,6 +1502,51 @@ class _ChatScreenState extends State<ChatScreen> {
     return items;
   }
 
+  List<PopupMenuEntry<String>> _buildChannelMenuItems(BuildContext context) {
+    ChatChannel? activeChannel;
+    for (final channel in _channels) {
+      if (channel.id == _activeChannelId) {
+        activeChannel = channel;
+        break;
+      }
+    }
+    final canManageActiveChannel = activeChannel != null &&
+        activeChannel.id == _activeChannelId &&
+        !activeChannel.isDefault;
+
+    return [
+      PopupMenuItem<String>(
+        value: _renameChannelMenuValue,
+        enabled: canManageActiveChannel,
+        child: const Text('Rename'),
+      ),
+      PopupMenuItem<String>(
+        value: _archiveChannelMenuValue,
+        enabled: canManageActiveChannel,
+        child: const Text('Archive'),
+      ),
+      const PopupMenuDivider(),
+      ..._sortedChannels.map(
+        (channel) => PopupMenuItem<String>(
+          value: channel.id,
+          child: Text(channel.name),
+        ),
+      ),
+    ];
+  }
+
+  BoxConstraints _channelMenuConstraints(BuildContext context) {
+    final availableHeight = MediaQuery.sizeOf(context).height;
+    final maxHeight = math.min(
+      _channelMenuMaxHeight,
+      math.max(240.0, availableHeight - 96.0),
+    );
+    return BoxConstraints(
+      minWidth: _channelMenuMinWidth,
+      maxHeight: maxHeight,
+    );
+  }
+
   String? _sourceFromRespondRouter(String? router) {
     if (router == null ||
         router.isEmpty ||
@@ -1729,7 +1783,7 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save section instructions: $error')),
+        SnackBar(content: Text('Failed to save thread instructions: $error')),
       );
     }
   }
@@ -2606,17 +2660,21 @@ class _ChatScreenState extends State<ChatScreen> {
           PopupMenuButton<String>(
             popUpAnimationStyle: BricksTheme.menuPopupAnimationStyle,
             tooltip: '切换频道',
+            constraints: _channelMenuConstraints(context),
             onSelected: (value) {
-              _switchChannel(value);
+              switch (value) {
+                case _renameChannelMenuValue:
+                  _renameChannel(_activeChannelId);
+                  return;
+                case _archiveChannelMenuValue:
+                  _archiveChannel(_activeChannelId);
+                  return;
+                default:
+                  _switchChannel(value);
+                  return;
+              }
             },
-            itemBuilder: (context) => [
-              ..._sortedChannels.map(
-                (channel) => PopupMenuItem<String>(
-                  value: channel.id,
-                  child: Text(channel.name),
-                ),
-              ),
-            ],
+            itemBuilder: _buildChannelMenuItems,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2906,7 +2964,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-/// A two-tab dialog for configuring channel and section instructions.
+/// A two-tab dialog for configuring channel and thread instructions.
 class _ScopeConfigDialog extends StatefulWidget {
   const _ScopeConfigDialog({
     required this.isSubSection,
@@ -2977,7 +3035,7 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
               controller: _tabController,
               tabs: const [
                 Tab(text: 'Channel'),
-                Tab(text: 'Section'),
+                Tab(text: 'Thread'),
               ],
             ),
             const SizedBox(height: BricksSpacing.sm),
@@ -2987,36 +3045,42 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
                 controller: _tabController,
                 children: [
                   // Channel tab
-                  TextField(
-                    controller: widget.channelController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    decoration: const InputDecoration(
-                      labelText: 'Instructions',
-                      hintText:
-                          'Describe the broad context or topic for this channel.',
-                      border: OutlineInputBorder(),
+                  Padding(
+                    padding: const EdgeInsets.only(top: BricksSpacing.sm),
+                    child: TextField(
+                      controller: widget.channelController,
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: const InputDecoration(
+                        labelText: 'Instructions',
+                        hintText:
+                            'Describe the broad context or topic for this channel.',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
-                  // Section tab
+                  // Thread tab
                   widget.isSubSection
-                      ? TextField(
-                          controller: widget.threadController,
-                          maxLines: null,
-                          expands: true,
-                          textAlignVertical: TextAlignVertical.top,
-                          decoration: const InputDecoration(
-                            labelText: 'Instructions',
-                            hintText:
-                                'Describe the narrower context for this section.',
-                            border: OutlineInputBorder(),
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: BricksSpacing.sm),
+                          child: TextField(
+                            controller: widget.threadController,
+                            maxLines: null,
+                            expands: true,
+                            textAlignVertical: TextAlignVertical.top,
+                            decoration: const InputDecoration(
+                              labelText: 'Instructions',
+                              hintText:
+                                  'Describe the narrower context for this thread.',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
                         )
                       : const Padding(
                           padding: EdgeInsets.all(BricksSpacing.sm),
                           child: Text(
-                            'Main section uses channel instructions only.',
+                            'Main thread uses channel instructions only.',
                             style: TextStyle(fontStyle: FontStyle.italic),
                           ),
                         ),

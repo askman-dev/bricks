@@ -354,7 +354,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
                                 context, ChatNavigationAction.createChannel),
                             icon:
                                 const Icon(Icons.add_circle_outline, size: 18),
-                            label: const Text('新建频道'),
+                            label: const Text('New Channel'),
                           ),
                         ],
                       ),
@@ -475,8 +475,8 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
     }
 
     final typeComparison = _filterForResourceType(a.type).index.compareTo(
-      _filterForResourceType(b.type).index,
-    );
+          _filterForResourceType(b.type).index,
+        );
     if (typeComparison != 0) {
       return typeComparison;
     }
