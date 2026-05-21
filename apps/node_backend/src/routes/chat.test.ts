@@ -20,9 +20,13 @@ const {
   resolveScopeInstructionsMock,
   upsertChatScopeSettingMock,
   deleteChatScopeSettingMock,
+  claimFirstMessageGeneratedNameAttemptMock,
+  completeFirstMessageGeneratedNameMock,
+  insertFirstMessageExactNameIfMissingMock,
   listChatChannelNamesMock,
   upsertChatChannelNameMock,
   deleteChatChannelNameMock,
+  generateWithUserConfigMock,
   streamWithAgentToolsAndUserConfigMock,
   buildAgentToolsMock,
   getPlatformNodeByNodeIdMock,
@@ -66,6 +70,9 @@ const {
     updatedAt: "2026-04-17T07:00:00.000Z",
   })),
   deleteChatScopeSettingMock: vi.fn(async () => ({ deleted: true })),
+  claimFirstMessageGeneratedNameAttemptMock: vi.fn(async () => null),
+  completeFirstMessageGeneratedNameMock: vi.fn(async () => null),
+  insertFirstMessageExactNameIfMissingMock: vi.fn(async () => null),
   listChatChannelNamesMock: vi.fn(async () => []),
   upsertChatChannelNameMock: vi.fn(async () => ({
     channelId: "channel-1",
@@ -75,6 +82,11 @@ const {
     updatedAt: "2026-04-18T08:00:00.000Z",
   })),
   deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
+  generateWithUserConfigMock: vi.fn(async () => ({
+    provider: "anthropic",
+    model: "claude-sonnet-4-5",
+    text: "Generated Thread Name",
+  })),
   streamWithAgentToolsAndUserConfigMock: vi.fn(async () => ({
     textStream: (async function* () {
       yield "sync ";
@@ -138,7 +150,10 @@ vi.mock("../services/platformNodeService.js", () => ({
 }));
 
 vi.mock("../services/chatChannelNameService.js", () => ({
+  claimFirstMessageGeneratedNameAttempt: claimFirstMessageGeneratedNameAttemptMock,
+  completeFirstMessageGeneratedName: completeFirstMessageGeneratedNameMock,
   deleteChatChannelName: deleteChatChannelNameMock,
+  insertFirstMessageExactNameIfMissing: insertFirstMessageExactNameIfMissingMock,
   listChatChannelNames: listChatChannelNamesMock,
   upsertChatChannelName: upsertChatChannelNameMock,
 }));
@@ -148,6 +163,7 @@ vi.mock('../services/localAgentLoopService.js', () => ({
 }));
 
 vi.mock("../llm/llm_service.js", () => ({
+  generateWithUserConfig: generateWithUserConfigMock,
   streamWithAgentToolsAndUserConfig: streamWithAgentToolsAndUserConfigMock,
 }));
 
@@ -218,9 +234,21 @@ describe("chat routes", () => {
       threadInstructions: null,
     });
     deleteChatScopeSettingMock.mockClear();
+    claimFirstMessageGeneratedNameAttemptMock.mockReset();
+    claimFirstMessageGeneratedNameAttemptMock.mockResolvedValue(null);
+    completeFirstMessageGeneratedNameMock.mockReset();
+    completeFirstMessageGeneratedNameMock.mockResolvedValue(null);
+    insertFirstMessageExactNameIfMissingMock.mockReset();
+    insertFirstMessageExactNameIfMissingMock.mockResolvedValue(null);
     listChatChannelNamesMock.mockClear();
     upsertChatChannelNameMock.mockClear();
     deleteChatChannelNameMock.mockClear();
+    generateWithUserConfigMock.mockReset();
+    generateWithUserConfigMock.mockResolvedValue({
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      text: "Generated Thread Name",
+    });
     streamWithAgentToolsAndUserConfigMock.mockClear();
     buildAgentToolsMock.mockClear();
     getPlatformNodeByNodeIdMock.mockReset();
@@ -404,7 +432,7 @@ describe("chat routes", () => {
       expect.any(Object),
       expect.objectContaining({
         maxSteps: 10,
-        maxToolCalls: 10,
+        maxToolCalls: 50,
         timeoutMs: 60000,
       }),
       undefined,
@@ -421,6 +449,121 @@ describe("chat routes", () => {
         role: "assistant",
         taskState: "completed",
         content: "sync reply",
+      }),
+    ]);
+  });
+
+  it("auto-names a non-main thread from the first message and generates one title", async () => {
+    insertFirstMessageExactNameIfMissingMock.mockResolvedValueOnce({
+      channelId: "channel-1",
+      threadId: "thread-1",
+      displayName: "explain katago joseki in simple terms",
+      source: "first_message_exact",
+      generatedNameAttemptedAt: null,
+      createdAt: "2026-05-21T00:00:00.000Z",
+      updatedAt: "2026-05-21T00:00:00.000Z",
+    } as any);
+    claimFirstMessageGeneratedNameAttemptMock.mockResolvedValueOnce({
+      channelId: "channel-1",
+      threadId: "thread-1",
+      displayName: "explain katago joseki in simple terms",
+      source: "first_message_exact",
+      generatedNameAttemptedAt: "2026-05-21T00:00:01.000Z",
+      createdAt: "2026-05-21T00:00:00.000Z",
+      updatedAt: "2026-05-21T00:00:01.000Z",
+    } as any);
+    generateWithUserConfigMock.mockResolvedValueOnce({
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      text: '"Katago Joseki Basics"',
+    });
+    completeFirstMessageGeneratedNameMock.mockResolvedValueOnce({
+      channelId: "channel-1",
+      threadId: "thread-1",
+      displayName: "Katago Joseki Basics",
+      source: "first_message_generated",
+      generatedNameAttemptedAt: "2026-05-21T00:00:01.000Z",
+      createdAt: "2026-05-21T00:00:00.000Z",
+      updatedAt: "2026-05-21T00:00:02.000Z",
+    } as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: "task-thread-name-1",
+        idempotencyKey: "idem-thread-name-1",
+        channelId: "channel-1",
+        threadId: "thread-1",
+        sessionId: "session:channel-1:thread-1",
+        userMessageId: "msg-u-thread-name-1",
+        assistantMessageId: "msg-a-thread-name-1",
+        userMessage: "explain katago joseki in simple terms",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(insertFirstMessageExactNameIfMissingMock).toHaveBeenCalledWith(
+      "user-123",
+      {
+        channelId: "channel-1",
+        threadId: "thread-1",
+        displayName: "explain katago joseki in simple terms",
+      },
+    );
+    expect(claimFirstMessageGeneratedNameAttemptMock).toHaveBeenCalledWith(
+      "user-123",
+      {
+        channelId: "channel-1",
+        threadId: "thread-1",
+      },
+    );
+    expect(generateWithUserConfigMock).toHaveBeenCalledWith(
+      "user-123",
+      expect.objectContaining({
+        maxTokens: 64,
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: "explain katago joseki in simple terms",
+          }),
+        ]),
+      }),
+      undefined,
+    );
+    expect(completeFirstMessageGeneratedNameMock).toHaveBeenCalledWith(
+      "user-123",
+      {
+        channelId: "channel-1",
+        threadId: "thread-1",
+        displayName: "Katago Joseki Basics",
+      },
+    );
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-a-thread-name-1",
+        metadata: expect.objectContaining({
+          invalidations: [
+            {
+              kind: "chat.channelNames",
+              channelId: "channel-1",
+              threadId: "thread-1",
+            },
+          ],
+        }),
+      }),
+    ]);
+    expect(upsertMessagesMock).toHaveBeenCalledWith("user-123", [
+      expect.objectContaining({
+        messageId: "msg-a-thread-name-1",
+        metadata: expect.objectContaining({
+          autoThreadName: {
+            source: "first_message_generated",
+            displayName: "Katago Joseki Basics",
+          },
+        }),
       }),
     ]);
   });
@@ -1095,6 +1238,7 @@ describe("chat routes", () => {
         userMessageId: 'msg-u-tool-limit-1',
         assistantMessageId: 'msg-a-tool-limit-1',
         userMessage: 'use many tools',
+        maxToolCalls: 10,
       }),
     });
 
@@ -1189,7 +1333,7 @@ describe("chat routes", () => {
             toolCallCount: 1,
             completedToolCallCount: 1,
             failedToolCallCount: 0,
-            maxToolCalls: 10,
+            maxToolCalls: 50,
             stepCount: 1,
             maxSteps: 10,
           }),

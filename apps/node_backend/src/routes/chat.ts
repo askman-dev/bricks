@@ -24,7 +24,10 @@ import {
   upsertChatScopeSetting,
 } from "../services/chatRouterService.js";
 import {
+  claimFirstMessageGeneratedNameAttempt,
+  completeFirstMessageGeneratedName,
   deleteChatChannelName,
+  insertFirstMessageExactNameIfMissing,
   listChatChannelNames,
   upsertChatChannelName,
 } from "../services/chatChannelNameService.js";
@@ -33,6 +36,7 @@ import {
   listPlatformNodes,
 } from "../services/platformNodeService.js";
 import {
+  generateWithUserConfig,
   streamWithAgentToolsAndUserConfig,
   type AgentLoopStreamStopInfo,
 } from "../llm/llm_service.js";
@@ -61,8 +65,10 @@ const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 // Minimum interval between incremental DB flushes during model streaming to avoid write amplification.
 const STREAM_FLUSH_INTERVAL_MS = 300;
 const DEFAULT_INTERNAL_LOOP_MAX_STEPS = 10;
-const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 10;
+const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 50;
 const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 60000;
+const MAX_AUTO_THREAD_NAME_CHARS = 80;
+const AUTO_THREAD_TITLE_GENERATION_TIMEOUT_MS = 20_000;
 
 type ChatClientInvalidation =
   | { kind: "chat.scopes"; channelId?: string; threadId?: string | null }
@@ -201,6 +207,138 @@ function dedupeInvalidations(
     result.push(invalidation);
   }
   return result;
+}
+
+function isAutoNameEligibleThread(threadId: string | null | undefined): threadId is string {
+  const normalized = threadId?.trim();
+  return Boolean(normalized && normalized.length > 0 && normalized !== "main");
+}
+
+function cleanAutoThreadName(value: string, maxChars = MAX_AUTO_THREAD_NAME_CHARS): string {
+  const cleaned = value
+    .replace(/\s+/g, " ")
+    .replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "")
+    .trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  return cleaned.slice(0, maxChars).trimEnd();
+}
+
+function deriveFallbackGeneratedThreadName(value: string): string {
+  const cleaned = cleanAutoThreadName(value);
+  if (!cleaned) return "";
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length <= 6) return cleaned;
+  return words.slice(0, 6).join(" ");
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+  }
+}
+
+async function insertFirstMessageExactThreadName(params: {
+  userId: string;
+  channelId: string;
+  threadId: string | null;
+  userMessage: string;
+}): Promise<ChatClientInvalidation[]> {
+  if (!isAutoNameEligibleThread(params.threadId)) return [];
+  const displayName = cleanAutoThreadName(params.userMessage);
+  if (!displayName) return [];
+  const inserted = await insertFirstMessageExactNameIfMissing(params.userId, {
+    channelId: params.channelId,
+    threadId: params.threadId,
+    displayName,
+  });
+  return inserted
+    ? [
+        {
+          kind: "chat.channelNames",
+          channelId: params.channelId,
+          threadId: params.threadId,
+        },
+      ]
+    : [];
+}
+
+async function generateFirstMessageThreadTitle(params: {
+  userId: string;
+  channelId: string;
+  threadId: string | null;
+  body: Record<string, unknown>;
+}): Promise<string | null> {
+  if (!isAutoNameEligibleThread(params.threadId)) return null;
+  const claimed = await claimFirstMessageGeneratedNameAttempt(params.userId, {
+    channelId: params.channelId,
+    threadId: params.threadId,
+  });
+  if (!claimed) return null;
+
+  const exactName = claimed.displayName.trim();
+  if (!exactName) return null;
+
+  let displayName = "";
+  try {
+    const response = await withTimeout(
+      generateWithUserConfig(
+        params.userId,
+        {
+          model:
+            typeof params.body.model === "string" ? params.body.model : undefined,
+          configId:
+            typeof params.body.configId === "string"
+              ? params.body.configId
+              : undefined,
+          temperature: 0.2,
+          maxTokens: 64,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Generate a concise chat thread title from the user's first message. " +
+                "Return only the title. Use the same language as the user's message. " +
+                "Do not use quotes, markdown, punctuation-only titles, or explanations. " +
+                "Keep it under 8 words.",
+            },
+            {
+              role: "user",
+              content: exactName,
+            },
+          ],
+        },
+        parseProvider(params.body.provider),
+      ),
+      AUTO_THREAD_TITLE_GENERATION_TIMEOUT_MS,
+      `Auto thread title generation timed out after ${AUTO_THREAD_TITLE_GENERATION_TIMEOUT_MS}ms`,
+    );
+    displayName = cleanAutoThreadName(response.text);
+  } catch (error) {
+    console.warn(
+      "Auto thread title model generation failed, using fallback:",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  if (!displayName) {
+    displayName = deriveFallbackGeneratedThreadName(exactName);
+  }
+  if (!displayName) return null;
+  const updated = await completeFirstMessageGeneratedName(params.userId, {
+    channelId: params.channelId,
+    threadId: params.threadId,
+    displayName,
+  });
+  return updated ? updated.displayName : null;
 }
 
 type AgentLoopStopReasonType =
@@ -574,7 +712,7 @@ async function runDefaultRouterRespondAsync(params: {
     const loopMaxToolCalls = parseBoundedInt(body.maxToolCalls, {
       fallback: DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS,
       min: 1,
-      max: 20,
+      max: 50,
     });
     const loopTimeoutMs = parseBoundedInt(body.timeoutMs, {
       fallback: DEFAULT_INTERNAL_LOOP_TIMEOUT_MS,
@@ -606,6 +744,14 @@ async function runDefaultRouterRespondAsync(params: {
     let completedToolCallCount = 0;
     let failedToolCallCount = 0;
     const collectedInvalidations: ChatClientInvalidation[] = [];
+    collectedInvalidations.push(
+      ...(await insertFirstMessageExactThreadName({
+        userId,
+        channelId,
+        threadId,
+        userMessage,
+      })),
+    );
 
     // Always use the agent-loop path so the model is aware of (and can invoke)
     // internal tools regardless of whether the user typed a slash command or
@@ -1036,6 +1182,52 @@ async function runDefaultRouterRespondAsync(params: {
         createdAt: null,
       },
     ]);
+    if (finalTaskState === "completed") {
+      try {
+        const generatedName = await generateFirstMessageThreadTitle({
+          userId,
+          channelId,
+          threadId,
+          body,
+        });
+        if (generatedName) {
+          await upsertMessages(userId, [
+            {
+              messageId: assistantMessageId,
+              taskId: acceptedTaskId,
+              channelId,
+              sessionId: acceptedSessionId,
+              threadId,
+              role: "assistant",
+              content: finalContent,
+              taskState: finalTaskState,
+              checkpointCursor: null,
+              metadata: {
+                provider,
+                streamMode: "model-chunk",
+                invalidations: [
+                  {
+                    kind: "chat.channelNames",
+                    channelId,
+                    threadId,
+                  },
+                ],
+                autoThreadName: {
+                  source: "first_message_generated",
+                  displayName: generatedName,
+                },
+              },
+              createdAt: null,
+            },
+          ]);
+        }
+      } catch (error) {
+        console.warn(
+          "Auto thread title generation failed:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await upsertMessages(userId, [

@@ -120,6 +120,7 @@ index:
       - apps/node_backend/src/services/chatAsyncTransportService.ts
       - apps/node_backend/src/llm/llm_service.ts
       - apps/node_backend/src/db/migrations/019_scope_chat_channel_names.sql
+      - apps/node_backend/src/db/migrations/020_chat_channel_name_source.sql
     doc_index:
       - docs/intro.md
       - docs/product/overview.md
@@ -261,8 +262,9 @@ index:
       - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。
       - ChatHistoryApiService 依赖 AuthenticatedApiClient 注入 token；若重新在 ChatScreen 用 _authToken 阻断 load/respond/SSE，会回到 UI 静默失败路径。
       - 相邻 tool_call_start/tool_call 消息应在 MessageList 中折叠成一个 Thinking/Thinking complete 标志，并支持点击查看详情；同 task 的 tool group 应显示在 Processing 占位前；紧随其后的普通 assistant 文本会隐藏重复 header。如果分组边界跨过普通 assistant/user 消息，会错误隐藏正常对话内容。
-      - agent loop 默认预算应保持 10 steps / 10 tool calls，单步模型流超时默认为 60s；当 tool calls 已发生但 final text stream 为空时，后端必须把最终 assistant row 写成带真实 stop reason 的 failed 消息，并且只有实际 timeout 路径才能标记为 timeout_reached。
+      - agent loop 默认预算应保持 10 steps / 50 tool calls，单步模型流超时默认为 60s；当 tool calls 已发生但 final text stream 为空时，后端必须把最终 assistant row 写成带真实 stop reason 的 failed 消息，并且只有实际 timeout 路径才能标记为 timeout_reached。
       - AI tool 修改当前 channel name 或创建 thread 后，ChatScreen 需要在 SSE snapshot 后刷新 scopes/channel names/scope settings，否则顶部 channel 名与 Thread 列表会等到整页刷新后才更新。
+      - Thread 自动命名必须只在非 main Thread 上运行；`manual` 名称不能被自动覆盖，`first_message_generated` 每个 Thread 只能从 `first_message_exact` 抢占一次，模型生成失败或超时时需要 fallback 完成状态，避免永久停在 attempted。
       - 若组件直接写死颜色或误用 `primary` 作为普通气泡背景，会破坏暗色信息层级并导致关键行动不突出。
       - 若频道最新消息时间未在消息加载、追加、归档时同步更新，侧边栏排序将与实际活跃时间脱节。
       - 若仅对侧边栏频道列表使用 _sortedChannels 而未对顶部频道下拉菜单同步更新，两处展示顺序不一致会混淆用户。
