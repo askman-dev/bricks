@@ -56,7 +56,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // The promise is cached so subsequent requests incur no overhead.
 let _migrationsPromise: Promise<void> | null = null;
 
+function shouldRunMigrations(): boolean {
+  return process.env.AUTO_MIGRATE !== 'false';
+}
+
 function ensureMigrations(): Promise<void> {
+  if (!shouldRunMigrations()) {
+    return Promise.resolve();
+  }
+
   if (!_migrationsPromise) {
     _migrationsPromise = runMigrations();
     // On failure reset the cache so the next request retries.

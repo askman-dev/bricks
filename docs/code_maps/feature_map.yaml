@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-05-17
+last_updated: 2026-05-20
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -287,6 +287,19 @@ products:
       - path: apps/node_backend/src/index.ts
         route: API root
     features:
+      - feature_id: backend_runtime
+        name: Backend runtime bootstrap and local debug
+        user_value: Developers can run the backend locally against selected database targets without unintentionally mutating schema.
+        entry_paths:
+          - app: Express app
+            route_hint: apps/node_backend/src/app.ts
+          - server: Node backend entrypoint
+            route_hint: apps/node_backend/src/index.ts
+        smoke_checks:
+          - '`AUTO_MIGRATE=false` skips request-time migrations before `/api/health` and API routes.'
+          - A local backend can run on a non-default port using `.env.local` while connecting to Turso via `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+          - Flutter web can target the local backend with `BRICKS_API_BASE_URL` and bypass OAuth with `BRICKS_TEST_TOKEN`.
+
       - feature_id: backend_auth
         name: 认证与回跳控制
         user_value: API 请求可被认证并处理回跳逻辑。
