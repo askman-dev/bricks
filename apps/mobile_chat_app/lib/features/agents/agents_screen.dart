@@ -101,7 +101,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
     final repo = _repository;
     if (repo == null || _saving) return;
 
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['md'],
       withData: true,
