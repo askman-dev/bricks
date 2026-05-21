@@ -8,6 +8,9 @@ EVIDENCE_DIR="$ROOT_DIR/.cache/evidence/channel-new-ui/$RUN_ID"
 RUNNER_DIR="$ROOT_DIR/.cache/evidence/channel-new-ui/.runner"
 BACKEND_DIR="$ROOT_DIR/apps/node_backend"
 FLUTTER_DIR="$ROOT_DIR/apps/mobile_chat_app"
+BACKEND_LOG="$EVIDENCE_DIR/$RUN_ID-backend.log"
+FLUTTER_BUILD_LOG="$EVIDENCE_DIR/$RUN_ID-flutter-build.log"
+FLUTTER_LOG="$EVIDENCE_DIR/$RUN_ID-flutter.log"
 BACKEND_STARTED=0
 FLUTTER_STARTED=0
 BACKEND_PID=""
@@ -124,7 +127,7 @@ start_backend_if_needed() {
     source "$ROOT_DIR/.env.local"
     set +a
     AUTO_MIGRATE="${AUTO_MIGRATE:-false}" npm run dev
-  ) >"$EVIDENCE_DIR/backend.log" 2>&1 &
+  ) >"$BACKEND_LOG" 2>&1 &
   BACKEND_PID="$!"
   BACKEND_STARTED=1
   wait_for_http "$BRICKS_API_BASE_URL/api/health" "backend"
@@ -142,14 +145,14 @@ start_flutter_if_needed() {
     flutter build web --debug \
       --dart-define=BRICKS_API_BASE_URL="$BRICKS_API_BASE_URL" \
       --dart-define=BRICKS_TEST_TOKEN="$BRICKS_TEST_TOKEN"
-  ) >"$EVIDENCE_DIR/flutter-build.log" 2>&1
+  ) >"$FLUTTER_BUILD_LOG" 2>&1
 
   echo "Starting Flutter static web server on $BRICKS_WEB_URL"
   (
     node "$HARNESS_DIR/static_server.mjs" \
       "$FLUTTER_DIR/build/web" \
       "${BRICKS_WEB_PORT:-8082}"
-  ) >"$EVIDENCE_DIR/flutter.log" 2>&1 &
+  ) >"$FLUTTER_LOG" 2>&1 &
   FLUTTER_PID="$!"
   FLUTTER_STARTED=1
   wait_for_http "$BRICKS_WEB_URL/" "Flutter web" 30

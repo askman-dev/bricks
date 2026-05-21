@@ -131,6 +131,7 @@ index:
       - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
       - docs/plans/2026-05-19-14-27-CST-tool-call-thinking-group.md
       - docs/plans/2026-05-19-17-38-CST-subsection-rename-menu.md
+      - docs/plans/2026-05-21-10-41-CST-channel-new-ui-harness.md
       - docs/testing/local-chat-fixture-db.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
@@ -192,6 +193,8 @@ index:
       - node-scoped openclaw dispatch
       - jump-to-latest button
       - channel sort by last-message time
+      - channel display name hydration
+      - name-only channel
       - latest user anchor
       - initial history batch
       - scroll position preservation
@@ -234,6 +237,7 @@ index:
       - 若发送追问时只依赖历史滚动标记而不是当前视野是否看到最新回复结尾，用户读旧回复时可能被强制跳走，或读完后发送无法回到新消息。
       - 若初始历史批次没有 user 消息时仍套用 user 锚点 padding，最后一段 AI/tool/status 内容会被不自然地抬高。
       - 若初始历史加载回退为全量历史而非最后 20 条，会放大长会话进入页面的渲染和滚动定位成本。
+      - 如果仅从历史 scope 恢复频道列表，用户刚新建但尚未发送消息的频道会在刷新后从侧边栏消失，即使 `chat_channel_names` 已持久化。
       - 若移动端没有可写的本地 Agents 目录，登录后的 chat setup 会在历史会话加载前失败，表现为同账号移动端看不到网页历史数据。
       - 若 iOS 本地路径解析依赖 `HOME` 环境变量，真机启动会在 chat setup 阶段失败并阻断历史会话加载。
       - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。

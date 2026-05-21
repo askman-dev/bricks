@@ -42,6 +42,10 @@ async function writeJson(name, value) {
   summary.files[name.replace(/\.json$/, '')] = filePath;
 }
 
+function artifact(name) {
+  return name.startsWith(`${runId}-`) ? name : `${runId}-${name}`;
+}
+
 async function checkpoint(name, fn) {
   try {
     const value = await fn();
@@ -159,6 +163,12 @@ async function closeSidebar(page) {
   await page.waitForTimeout(800);
 }
 
+async function scrollSidebarToBottom(page) {
+  await page.mouse.move(200, 760);
+  await page.mouse.wheel(0, 2600);
+  await page.waitForTimeout(500);
+}
+
 async function ensureLoggedIn(page) {
   browserEvents = [];
   page.on('console', (message) => {
@@ -187,8 +197,9 @@ async function ensureLoggedIn(page) {
   await page.goto(webUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(6000);
-  await page.screenshot({ path: path.join(evidenceDir, '00-login-or-chat.png'), fullPage: true });
-  summary.files.loginOrChatScreenshot = path.join(evidenceDir, '00-login-or-chat.png');
+  const loginOrChatScreenshot = path.join(evidenceDir, artifact('00-login-or-chat.png'));
+  await page.screenshot({ path: loginOrChatScreenshot, fullPage: true });
+  summary.files.loginOrChatScreenshot = loginOrChatScreenshot;
   await writeJson('browser-events.json', browserEvents);
 
   // In the login screen, Quick Login is the middle full-width button.
@@ -206,12 +217,14 @@ async function createChannelThroughUi(page) {
   // Channels tab action row: New Channel button at the right side.
   await page.mouse.click(305, 130);
   await page.waitForTimeout(800);
-  await page.screenshot({ path: path.join(evidenceDir, '01b-new-channel-dialog.png'), fullPage: true });
-  summary.files.newChannelDialogScreenshot = path.join(evidenceDir, '01b-new-channel-dialog.png');
+  const newChannelDialogScreenshot = path.join(evidenceDir, artifact('01b-new-channel-dialog.png'));
+  await page.screenshot({ path: newChannelDialogScreenshot, fullPage: true });
+  summary.files.newChannelDialogScreenshot = newChannelDialogScreenshot;
   await page.keyboard.insertText(channelName);
   await page.waitForTimeout(300);
-  await page.screenshot({ path: path.join(evidenceDir, '01c-channel-name-entered.png'), fullPage: true });
-  summary.files.channelNameEnteredScreenshot = path.join(evidenceDir, '01c-channel-name-entered.png');
+  const channelNameEnteredScreenshot = path.join(evidenceDir, artifact('01c-channel-name-entered.png'));
+  await page.screenshot({ path: channelNameEnteredScreenshot, fullPage: true });
+  summary.files.channelNameEnteredScreenshot = channelNameEnteredScreenshot;
   // Dialog confirm button is on the lower-right side. Use a pointer click
   // instead of Enter so the harness follows the user's tap/click flow.
   await page.mouse.click(282, 482);
@@ -269,15 +282,18 @@ async function main() {
   try {
     await ensureLoggedIn(page);
     await openSidebar(page);
-    await page.screenshot({ path: path.join(evidenceDir, '01-initial-sidebar.png'), fullPage: true });
-    summary.files.initialSidebarScreenshot = path.join(evidenceDir, '01-initial-sidebar.png');
+    const initialSidebarScreenshot = path.join(evidenceDir, artifact('01-initial-sidebar.png'));
+    await page.screenshot({ path: initialSidebarScreenshot, fullPage: true });
+    summary.files.initialSidebarScreenshot = initialSidebarScreenshot;
 
     await createChannelThroughUi(page);
 
     await checkpoint('uiAfterCreate', async () => {
       await openSidebar(page);
-      await page.screenshot({ path: path.join(evidenceDir, '02-after-create-sidebar.png'), fullPage: true });
-      summary.files.afterCreateSidebarScreenshot = path.join(evidenceDir, '02-after-create-sidebar.png');
+      await scrollSidebarToBottom(page);
+      const afterCreateSidebarScreenshot = path.join(evidenceDir, artifact('02-after-create-sidebar.png'));
+      await page.screenshot({ path: afterCreateSidebarScreenshot, fullPage: true });
+      summary.files.afterCreateSidebarScreenshot = afterCreateSidebarScreenshot;
       if (recentFlutterAssertion()) {
         await writeJson('browser-events.json', browserEvents);
         throw new Error('Flutter reported an assertion during the New Channel UI flow.');
@@ -317,8 +333,10 @@ async function main() {
     await checkpoint('uiAfterReopen', async () => {
       await closeSidebar(page);
       await openSidebar(page);
-      await page.screenshot({ path: path.join(evidenceDir, '02b-after-reopen-sidebar.png'), fullPage: true });
-      summary.files.afterReopenSidebarScreenshot = path.join(evidenceDir, '02b-after-reopen-sidebar.png');
+      await scrollSidebarToBottom(page);
+      const afterReopenSidebarScreenshot = path.join(evidenceDir, artifact('02b-after-reopen-sidebar.png'));
+      await page.screenshot({ path: afterReopenSidebarScreenshot, fullPage: true });
+      summary.files.afterReopenSidebarScreenshot = afterReopenSidebarScreenshot;
     });
 
     await checkpoint('uiAfterRefresh', async () => {
@@ -328,16 +346,19 @@ async function main() {
       await page.mouse.click(195, 505);
       await page.waitForTimeout(2500);
       await openSidebar(page);
-      await page.screenshot({ path: path.join(evidenceDir, '03-after-refresh-sidebar.png'), fullPage: true });
-      summary.files.afterRefreshSidebarScreenshot = path.join(evidenceDir, '03-after-refresh-sidebar.png');
+      await scrollSidebarToBottom(page);
+      const afterRefreshSidebarScreenshot = path.join(evidenceDir, artifact('03-after-refresh-sidebar.png'));
+      await page.screenshot({ path: afterRefreshSidebarScreenshot, fullPage: true });
+      summary.files.afterRefreshSidebarScreenshot = afterRefreshSidebarScreenshot;
     });
 
     summary.diagnosis = 'All checkpoints passed.';
     await writeJson('summary.json', summary);
   } finally {
     if (summary.error) {
-      await page.screenshot({ path: path.join(evidenceDir, 'failure.png'), fullPage: true }).catch(() => {});
-      summary.files.failureScreenshot = path.join(evidenceDir, 'failure.png');
+      const failureScreenshot = path.join(evidenceDir, artifact('failure.png'));
+      await page.screenshot({ path: failureScreenshot, fullPage: true }).catch(() => {});
+      summary.files.failureScreenshot = failureScreenshot;
       await writeJson('summary.json', summary).catch(() => {});
     }
     await context.close().catch(() => {});

@@ -150,6 +150,34 @@ List<ChatChannel> sortChannelsByLastMessageAt(
   return sorted;
 }
 
+List<ChatChannel> applyChannelDisplayNames(
+  List<ChatChannel> channels,
+  Map<String, String> displayNamesByChannelId,
+) {
+  if (displayNamesByChannelId.isEmpty) return channels;
+  final restoredChannels = channels.map((channel) {
+    final displayName = displayNamesByChannelId[channel.id]?.trim();
+    if (displayName == null || displayName.isEmpty) return channel;
+    return ChatChannel(
+      id: channel.id,
+      name: displayName,
+      isDefault: channel.isDefault,
+    );
+  }).toList(growable: false);
+  final knownChannelIds = restoredChannels.map((item) => item.id).toSet();
+  final nameOnlyChannels = displayNamesByChannelId.entries
+      .where((entry) => !knownChannelIds.contains(entry.key))
+      .where((entry) => entry.value.trim().isNotEmpty)
+      .map(
+        (entry) => ChatChannel(
+          id: entry.key,
+          name: entry.value.trim(),
+          isDefault: entry.key == 'default',
+        ),
+      );
+  return [...restoredChannels, ...nameOnlyChannels];
+}
+
 class ChatTopologyResolver {
   const ChatTopologyResolver({this.defaultChannelId = 'default'});
 

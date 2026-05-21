@@ -715,17 +715,7 @@ class _ChatScreenState extends State<ChatScreen> {
         if (item.threadId == null || item.threadId!.trim().isEmpty)
           item.channelId: item.displayName,
     };
-    return channels.map((channel) {
-      final displayName = namesById[channel.id];
-      if (displayName == null || displayName.trim().isEmpty) {
-        return channel;
-      }
-      return ChatChannel(
-        id: channel.id,
-        name: displayName,
-        isDefault: channel.isDefault,
-      );
-    }).toList(growable: false);
+    return applyChannelDisplayNames(channels, namesById);
   }
 
   Map<String, String> _hydrateLastActiveSubSectionByChannel(
@@ -1021,6 +1011,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+    await WidgetsBinding.instance.endOfFrame;
     controller.dispose();
     if (!mounted || name == null) return;
     onConfirmed(name);

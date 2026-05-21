@@ -29,6 +29,28 @@ void main() {
     expect(ChatScopeType.thread.apiValue, 'thread');
   });
 
+  test('applies channel display names and keeps name-only channels', () {
+    final channels = applyChannelDisplayNames(
+      const [
+        ChatChannel(id: 'default', name: 'Default', isDefault: true),
+        ChatChannel(id: 'channel-1', name: 'channel-2026-05-20'),
+      ],
+      const {
+        'channel-1': 'Project Research',
+        'channel-1779242271752-0': 'Agent framework notes',
+      },
+    );
+
+    expect(channels.map((channel) => channel.id), [
+      'default',
+      'channel-1',
+      'channel-1779242271752-0',
+    ]);
+    expect(channels[1].name, 'Project Research');
+    expect(channels[2].name, 'Agent framework notes');
+    expect(channels[2].isDefault, isFalse);
+  });
+
   test('applies acknowledged state and cursor to message', () {
     final protocol = ChatTaskProtocol();
     final envelope = ChatTaskEnvelope(
