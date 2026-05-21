@@ -1,12 +1,51 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-05-17
+last_updated: 2026-05-21
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
 
 index:
+  - feature_id: backend_runtime
+    capability: 后端启动、请求级迁移与本地云库调试
+    code_index:
+      - apps/node_backend/src/app.ts
+      - apps/node_backend/src/index.ts
+      - apps/node_backend/src/db/migrate.ts
+      - apps/mobile_chat_app/lib/features/auth/auth_service.dart
+      - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+      - tools/evidence/channel_new_ui_harness/run.sh
+      - tools/evidence/channel_new_ui_harness/channel_new_ui.mjs
+      - tools/evidence/channel_new_ui_harness/channel_checkpoint.mjs
+      - tools/evidence/channel_new_ui_harness/static_server.mjs
+    doc_index:
+      - docs/plans/2026-05-20-11-13-CST-local-cloud-db-debug.md
+      - docs/plans/2026-05-21-10-41-CST-channel-new-ui-harness.md
+      - docs/plans/2026-05-21-12-03-CST-evidence-checkpoint-testing-docs.md
+      - docs/testing/local-chat-fixture-db.md
+      - docs/testing/evidence-checkpoint-browser-harness.md
+      - tools/evidence/channel_new_ui_harness/README.md
+    test_index:
+      - apps/node_backend/src/app.test.ts
+      - apps/mobile_chat_app/integration_test/test_mode_login_flow_test.dart
+    keywords:
+      - AUTO_MIGRATE
+      - request-time migrations
+      - local backend
+      - cloud Turso
+      - BRICKS_API_BASE_URL
+      - BRICKS_TEST_TOKEN
+      - Quick Login
+      - channel New UI harness
+      - chat_channel_names checkpoint
+      - evidence checkpoint browser harness
+    change_risks:
+      - 本地直连线上 Turso 时若未设置 `AUTO_MIGRATE=false`，请求级迁移可能修改线上 schema 或因远端超时阻塞调试。
+      - Flutter web 只能通过 dart-define 读取 `BRICKS_API_BASE_URL` 和 `BRICKS_TEST_TOKEN`，不能直接读取 shell `.env.local`。
+      - 使用错误 `JWT_SECRET` 生成测试 token 会导致本地 API 返回 401。
+      - Flutter Web canvas 渲染使浏览器文本 locator 不稳定，UI harness 依赖固定移动视口坐标和截图证据。
+
   - feature_id: auth_login
     capability: GitHub OAuth 登录
     code_index:
@@ -95,6 +134,7 @@ index:
       - docs/plans/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
       - docs/plans/2026-05-19-14-27-CST-tool-call-thinking-group.md
       - docs/plans/2026-05-19-17-38-CST-subsection-rename-menu.md
+      - docs/plans/2026-05-21-10-41-CST-channel-new-ui-harness.md
       - docs/testing/local-chat-fixture-db.md
     test_index:
       - apps/mobile_chat_app/test/chat_arbitration_engine_test.dart
@@ -156,6 +196,8 @@ index:
       - node-scoped openclaw dispatch
       - jump-to-latest button
       - channel sort by last-message time
+      - channel display name hydration
+      - name-only channel
       - latest user anchor
       - initial history batch
       - scroll position preservation
@@ -198,6 +240,7 @@ index:
       - 若发送追问时只依赖历史滚动标记而不是当前视野是否看到最新回复结尾，用户读旧回复时可能被强制跳走，或读完后发送无法回到新消息。
       - 若初始历史批次没有 user 消息时仍套用 user 锚点 padding，最后一段 AI/tool/status 内容会被不自然地抬高。
       - 若初始历史加载回退为全量历史而非最后 20 条，会放大长会话进入页面的渲染和滚动定位成本。
+      - 如果仅从历史 scope 恢复频道列表，用户刚新建但尚未发送消息的频道会在刷新后从侧边栏消失，即使 `chat_channel_names` 已持久化。
       - 若移动端没有可写的本地 Agents 目录，登录后的 chat setup 会在历史会话加载前失败，表现为同账号移动端看不到网页历史数据。
       - 若 iOS 本地路径解析依赖 `HOME` 环境变量，真机启动会在 chat setup 阶段失败并阻断历史会话加载。
       - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。

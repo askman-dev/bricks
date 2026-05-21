@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-05-17
+last_updated: 2026-05-21
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -62,6 +62,7 @@ products:
           - 当向上浏览历史消息后，输入框上方应出现向下箭头按钮；点击后应快速跳转到最新消息。
           - 刷新页面后，已发送过消息的频道仍会在侧边栏中显示并可继续会话。
           - 新建频道时必须输入频道名，且重复名称会被拦截。
+          - 新建频道确认后，即使还没有发送消息，刷新页面后侧边栏仍应从 `chat_channel_names` 恢复该频道名称。
           - 长按非默认频道会出现“改名/归档”菜单；归档后频道从列表中隐藏。
           - 长按频道改名后刷新页面，频道名称应保持为用户设置值（由数据库映射恢复）。
           - 侧边栏频道列表与顶部频道下拉菜单均按最新消息时间降序排列；有消息记录的频道排在无消息频道前面；默认频道参与排序，不固定置顶；时间相同时按 id 字典序确定顺序。
@@ -287,6 +288,21 @@ products:
       - path: apps/node_backend/src/index.ts
         route: API root
     features:
+      - feature_id: backend_runtime
+        name: Backend runtime bootstrap and local debug
+        user_value: Developers can run the backend locally against selected database targets without unintentionally mutating schema.
+        entry_paths:
+          - app: Express app
+            route_hint: apps/node_backend/src/app.ts
+          - server: Node backend entrypoint
+            route_hint: apps/node_backend/src/index.ts
+        smoke_checks:
+          - '`AUTO_MIGRATE=false` skips request-time migrations before `/api/health` and API routes.'
+          - A local backend can run on a non-default port using `.env.local` while connecting to Turso via `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+          - Flutter web can target the local backend with `BRICKS_API_BASE_URL` and bypass OAuth with `BRICKS_TEST_TOKEN`.
+          - The channel New UI evidence harness can create a channel through the sidebar and capture UI/API/Turso checkpoints.
+          - Evidence browser harnesses should record fixture user, API, direct database, immediate UI, and refresh checkpoints so failures can be localized.
+
       - feature_id: backend_auth
         name: 认证与回跳控制
         user_value: API 请求可被认证并处理回跳逻辑。

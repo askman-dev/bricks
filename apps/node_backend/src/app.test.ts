@@ -8,6 +8,7 @@ const configRouter = express.Router();
 const llmRouter = express.Router();
 const chatRouter = express.Router();
 const platformRouter = express.Router();
+const resourcesRouter = express.Router();
 
 authRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
@@ -33,6 +34,10 @@ platformRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
 });
 
+resourcesRouter.get('/noop', (_req, res) => {
+  res.json({ ok: true });
+});
+
 vi.mock('./db/migrate.js', () => ({
   runMigrations: runMigrationsMock,
 }));
@@ -55,6 +60,10 @@ vi.mock('./routes/chat.js', () => ({
 
 vi.mock('./routes/platform.js', () => ({
   default: platformRouter,
+}));
+
+vi.mock('./routes/resources.js', () => ({
+  default: resourcesRouter,
 }));
 
 let server: ReturnType<express.Express['listen']> | null = null;
@@ -87,6 +96,26 @@ afterAll(async () => {
       }
       resolve();
     });
+  });
+});
+
+describe('app migrations', () => {
+  it('skips request-time migrations when AUTO_MIGRATE is false', async () => {
+    const previousAutoMigrate = process.env.AUTO_MIGRATE;
+    process.env.AUTO_MIGRATE = 'false';
+    runMigrationsMock.mockClear();
+
+    try {
+      const response = await fetch(`${baseUrl}/api/health`);
+      expect(response.status).toBe(200);
+      expect(runMigrationsMock).not.toHaveBeenCalled();
+    } finally {
+      if (previousAutoMigrate === undefined) {
+        delete process.env.AUTO_MIGRATE;
+      } else {
+        process.env.AUTO_MIGRATE = previousAutoMigrate;
+      }
+    }
   });
 });
 
