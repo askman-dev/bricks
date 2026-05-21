@@ -3,6 +3,9 @@
 This harness validates the sidebar **New Channel** flow with a real Flutter web
 app, the local backend, and Turso/libSQL persistence checkpoints.
 
+For the reusable testing pattern behind this harness, see
+`docs/testing/evidence-checkpoint-browser-harness.md`.
+
 Run from the repository root:
 
 ```sh
@@ -81,3 +84,6 @@ The harness records:
 
 This harness writes a real row when pointed at cloud Turso. Use the
 `E2E New Channel` prefix so manual cleanup and DB inspection stay simple.
+Rows are scoped to `FIXTURE_USER_ID`; they will not appear for a different
+logged-in production user even when both environments point at the same Turso
+database.

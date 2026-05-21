@@ -301,6 +301,7 @@ products:
           - A local backend can run on a non-default port using `.env.local` while connecting to Turso via `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
           - Flutter web can target the local backend with `BRICKS_API_BASE_URL` and bypass OAuth with `BRICKS_TEST_TOKEN`.
           - The channel New UI evidence harness can create a channel through the sidebar and capture UI/API/Turso checkpoints.
+          - Evidence browser harnesses should record fixture user, API, direct database, immediate UI, and refresh checkpoints so failures can be localized.
 
       - feature_id: backend_auth
         name: 认证与回跳控制
