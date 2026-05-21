@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-05-20
+last_updated: 2026-05-21
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -15,9 +15,15 @@ index:
       - apps/node_backend/src/db/migrate.ts
       - apps/mobile_chat_app/lib/features/auth/auth_service.dart
       - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
+      - tools/evidence/channel_new_ui_harness/run.sh
+      - tools/evidence/channel_new_ui_harness/channel_new_ui.mjs
+      - tools/evidence/channel_new_ui_harness/channel_checkpoint.mjs
+      - tools/evidence/channel_new_ui_harness/static_server.mjs
     doc_index:
       - docs/plans/2026-05-20-11-13-CST-local-cloud-db-debug.md
+      - docs/plans/2026-05-21-10-41-CST-channel-new-ui-harness.md
       - docs/testing/local-chat-fixture-db.md
+      - tools/evidence/channel_new_ui_harness/README.md
     test_index:
       - apps/node_backend/src/app.test.ts
       - apps/mobile_chat_app/integration_test/test_mode_login_flow_test.dart
@@ -29,10 +35,13 @@ index:
       - BRICKS_API_BASE_URL
       - BRICKS_TEST_TOKEN
       - Quick Login
+      - channel New UI harness
+      - chat_channel_names checkpoint
     change_risks:
       - 本地直连线上 Turso 时若未设置 `AUTO_MIGRATE=false`，请求级迁移可能修改线上 schema 或因远端超时阻塞调试。
       - Flutter web 只能通过 dart-define 读取 `BRICKS_API_BASE_URL` 和 `BRICKS_TEST_TOKEN`，不能直接读取 shell `.env.local`。
       - 使用错误 `JWT_SECRET` 生成测试 token 会导致本地 API 返回 401。
+      - Flutter Web canvas 渲染使浏览器文本 locator 不稳定，UI harness 依赖固定移动视口坐标和截图证据。
 
   - feature_id: auth_login
     capability: GitHub OAuth 登录

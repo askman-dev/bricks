@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-05-20
+last_updated: 2026-05-21
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -299,6 +299,7 @@ products:
           - '`AUTO_MIGRATE=false` skips request-time migrations before `/api/health` and API routes.'
           - A local backend can run on a non-default port using `.env.local` while connecting to Turso via `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
           - Flutter web can target the local backend with `BRICKS_API_BASE_URL` and bypass OAuth with `BRICKS_TEST_TOKEN`.
+          - The channel New UI evidence harness can create a channel through the sidebar and capture UI/API/Turso checkpoints.
 
       - feature_id: backend_auth
         name: 认证与回跳控制
