@@ -1215,11 +1215,19 @@ async function runDefaultRouterRespondAsync(params: {
                 provider,
                 streamMode: "model-chunk",
                 invalidations: [
-                  {
-                    kind: "chat.channelNames",
-                    channelId,
-                    threadId,
-                  },
+                  ...new Map(
+                    [
+                      ...finalInvalidations,
+                      {
+                        kind: "chat.channelNames",
+                        channelId,
+                        threadId,
+                      },
+                    ].map((invalidation) => [
+                      JSON.stringify(invalidation),
+                      invalidation,
+                    ]),
+                  ).values(),
                 ],
                 autoThreadName: {
                   source: "first_message_generated",
