@@ -46,7 +46,7 @@ function requiredEnv(name) {
 }
 
 function artifact(name) {
-  return `${runId}-${name}`;
+  return `${fixtureSafeRunId}-${name}`;
 }
 
 async function writeJson(name, value) {
