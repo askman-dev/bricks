@@ -6,7 +6,7 @@ A production task reached the internal tool-call budget and persisted an empty c
 
 ## Goals
 
-- Increase the default model-driven agent-loop budget to 10 steps and 10 tool calls.
+- Increase the default model-driven agent-loop budget to 10 steps and 50 tool calls.
 - Never persist an empty completed assistant response after tool calls.
 - Make budget termination visible to users with a clear explanation that the internal step or tool-call limit was reached.
 - Preserve metadata that explains the stop reason for future debugging.
@@ -21,7 +21,7 @@ A production task reached the internal tool-call budget and persisted an empty c
 
 ## Acceptance Criteria
 
-- Default respond requests pass `maxSteps: 10` and `maxToolCalls: 10` to the agent loop.
+- Default respond requests pass `maxSteps: 10` and `maxToolCalls: 50` to the agent loop.
 - If tool calls occurred and no final text is produced, the persisted assistant message has non-empty explanatory content.
 - If the tool-call or step limit was reached, the message says which internal limit was reached.
 - Tests cover the regression that previously wrote an empty completed assistant message.

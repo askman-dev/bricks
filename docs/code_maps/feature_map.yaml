@@ -96,6 +96,7 @@ products:
           - 未来新增的 plugin 平台（例如 Hermes）应复用 plugin 路由，平台差异留在 node/plugin 配置层。
           - 顶部频道名称应支持下拉切换频道，切换后分区标签与分区列表需同步刷新为目标频道的数据。
           - AI tool 创建 thread 或改名当前 channel 后，客户端应通过同步 scopes/channel names 刷新顶部名称与 Thread 列表，不需要整页刷新。
+          - 非主 Thread 首次收到用户消息时，后端应先在 `chat_channel_names` 写入 `source=first_message_exact` 的可读名；本轮 assistant 成功完成后仅尝试一次 `first_message_generated`，成功或 fallback 后通过 typed invalidation 刷新 Thread 名称。
           - 顶部频道下拉菜单顶部应显示 `Rename` / `Archive` 功能分组；默认频道下这两个功能禁用，非默认频道下应调用频道改名与归档持久化路径；频道很多时菜单应限制在合理最大高度内并支持内部滚动。
           - 频道名称右侧应内嵌分区下拉按钮（显示当前分区名+下箭头），且该菜单与频道标题左对齐，不再使用右上角三个点。
           - Thread 菜单主线程显示为 `Thread`；菜单应先显示 `New Thread` 功能组；在子线程内应显示小号浅色“当前组”标题及 `Rename` / `Archive` 操作；主线程不显示当前组操作；底部列表组显示主线程和已有子线程；菜单弹出动画应保持快速缩放+淡入。
@@ -245,7 +246,7 @@ products:
           - 在 Turso/libSQL 数据库下，table_create / table_add_column / table_add_row / table_update_row / table_delete_row 均应成功执行，不应因 PostgreSQL-only SQL（例如 NOW() 或 ::jsonb）失败。
           - 当 table_create 执行时抛出数据库错误，聊天历史应显示工具错误结果，并将对应 tool_call_start 标记为已完成，不能永久显示“正在调用”。
           - 相邻工具调用在聊天流中应折叠为一个 `Thinking` / `Thinking complete completed/total` 标志，不直接显示工具名或长 JSON；同 task 的 thinking 行应显示在 `Processing...` 占位前；点击 thinking 标志可在模态窗口查看具体 tool/reasoning 过程；紧随其后的助手文本不重复显示头像/模型名。
-          - 默认 agent-loop 预算为 10 steps / 10 tool calls，单步模型流超时为 60s；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
+          - 默认 agent-loop 预算为 10 steps / 50 tool calls，单步模型流超时为 60s；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
           - 添加一列 Priority 后，已有行不变（O(1) schema change）。
           - 软删除行后，table_get 不返回该行。
 
