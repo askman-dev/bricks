@@ -744,14 +744,23 @@ async function runDefaultRouterRespondAsync(params: {
     let completedToolCallCount = 0;
     let failedToolCallCount = 0;
     const collectedInvalidations: ChatClientInvalidation[] = [];
-    collectedInvalidations.push(
-      ...(await insertFirstMessageExactThreadName({
+    try {
+      collectedInvalidations.push(
+        ...(await insertFirstMessageExactThreadName({
+          userId,
+          channelId,
+          threadId,
+          userMessage,
+        })),
+      );
+    } catch (error) {
+      console.warn("Failed to persist exact thread name; continuing chat response", {
         userId,
         channelId,
         threadId,
-        userMessage,
-      })),
-    );
+        error,
+      });
+    }
 
     // Always use the agent-loop path so the model is aware of (and can invoke)
     // internal tools regardless of whether the user typed a slash command or
