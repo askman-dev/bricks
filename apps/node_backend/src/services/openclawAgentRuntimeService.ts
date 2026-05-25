@@ -79,14 +79,35 @@ const OPENCLAW_AGENTS_MAX_BUFFER = 1 * 1024 * 1024; // 1 MiB
 export async function listOpenClawRuntimeAgents(
   nodeId: string,
 ): Promise<RuntimePlatformAgent[]> {
-  const { stdout } = await execFileAsync(
-    'openclaw',
-    ['agents', 'list', '--json', '--node', nodeId],
-    { timeout: OPENCLAW_AGENTS_TIMEOUT_MS, maxBuffer: OPENCLAW_AGENTS_MAX_BUFFER },
-  );
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync(
+      'openclaw',
+      ['agents', 'list', '--json', '--node', nodeId],
+      { timeout: OPENCLAW_AGENTS_TIMEOUT_MS, maxBuffer: OPENCLAW_AGENTS_MAX_BUFFER },
+    ));
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      console.debug('openclaw binary not found; returning empty agent list');
+    } else {
+      console.error('openclaw agents list failed:', err);
+    }
+    return [];
+  }
+
   const trimmed = stdout.trim();
   if (!trimmed) {
     return [];
   }
-  return normalizeOpenClawRuntimeAgents(nodeId, JSON.parse(trimmed));
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    console.error('openclaw agents list returned invalid JSON:', trimmed.slice(0, 200));
+    return [];
+  }
+
+  return normalizeOpenClawRuntimeAgents(nodeId, parsed);
 }
