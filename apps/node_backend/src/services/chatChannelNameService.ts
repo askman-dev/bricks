@@ -75,10 +75,7 @@ export async function upsertChatChannelName(
       DO UPDATE SET
         display_name = EXCLUDED.display_name,
         source = EXCLUDED.source,
-        generated_name_attempted_at = CASE
-          WHEN EXCLUDED.source = 'manual' THEN chat_channel_names.generated_name_attempted_at
-          ELSE NULL
-        END,
+        generated_name_attempted_at = chat_channel_names.generated_name_attempted_at,
         updated_at = CURRENT_TIMESTAMP
       RETURNING channel_id, thread_id, display_name, source, generated_name_attempted_at, created_at, updated_at`,
     [userId, input.channelId, threadId, input.displayName, source],
