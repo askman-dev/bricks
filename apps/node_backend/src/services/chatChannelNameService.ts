@@ -146,6 +146,7 @@ export async function completeFirstMessageGeneratedName(
         AND channel_id = $2
         AND thread_id = $3
         AND source = 'first_message_exact'
+        AND generated_name_attempted_at IS NOT NULL
       RETURNING channel_id, thread_id, display_name, source, generated_name_attempted_at, created_at, updated_at`,
     [userId, input.channelId, threadId, input.displayName],
   );
