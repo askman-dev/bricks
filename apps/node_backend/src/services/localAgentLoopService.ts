@@ -35,6 +35,7 @@ import {
   deleteRow,
   batchAddRows,
 } from './assetTableService.js';
+import { sanitizeBatchRowCellData, sanitizeTableCellData } from './assetTableCellData.js';
 import { listHighlights } from './textHighlightService.js';
 import type { AgentTool } from '../llm/types.js';
 
@@ -143,32 +144,6 @@ export interface ExecuteInternalToolSequenceResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Sanitize LLM-provided cellData: keep only string-or-null values, coercing
- *  numbers/booleans to strings so downstream DB code always receives the
- *  declared Record<string, string | null> shape. */
-function sanitizeCellData(raw: unknown): Record<string, string | null> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const result: Record<string, string | null> = {};
-  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
-    if (val === null || val === undefined) {
-      result[key] = null;
-    } else if (typeof val === 'string') {
-      result[key] = val;
-    } else if (typeof val === 'number' || typeof val === 'boolean') {
-      result[key] = String(val);
-    }
-    // other types (object/array) are dropped
-  }
-  return result;
-}
-
-function sanitizeBatchRowCellData(raw: unknown): Record<string, string | null> {
-  if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'cellData' in raw) {
-    return sanitizeCellData((raw as { cellData?: unknown }).cellData);
-  }
-  return sanitizeCellData(raw);
-}
 
 export function inferInternalToolCallsFromMessage(input: {
   message: string;
@@ -868,7 +843,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'resourceId is a required string argument' },
         };
       }
-      const cellData = sanitizeCellData(args.cellData);
+      const cellData = sanitizeTableCellData(args.cellData);
       const row = await addRow(userId, resourceId, cellData);
       return { ok: true, toolName, data: row as unknown as Record<string, unknown>, error: null };
     }
@@ -883,7 +858,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'resourceId and rowId are required' },
         };
       }
-      const cellData = sanitizeCellData(args.cellData);
+      const cellData = sanitizeTableCellData(args.cellData);
       const row = await updateRow(userId, resourceId, rowId, cellData);
       if (!row) {
         return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Row not found' } };
