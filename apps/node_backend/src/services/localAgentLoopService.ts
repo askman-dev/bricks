@@ -688,6 +688,17 @@ export async function executeInternalTool(
           },
         };
       }
+      if (threadId === 'main') {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'threadId must reference a thread, not the channel scope',
+          },
+        };
+      }
       return renameThread({ userId, channelId, threadId, displayName });
     }
     // -------------------------------------------------------------------------
