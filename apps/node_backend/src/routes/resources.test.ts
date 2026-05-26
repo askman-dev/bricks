@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateToken } from '../middleware/auth.js';
 import resourcesRouter from './resources.js';
 import { createHighlight } from '../services/textHighlightService.js';
+import { batchAddRows } from '../services/assetTableService.js';
 
 vi.mock('../services/todoService.js', () => ({
   listTodos: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('../services/assetTableService.js', () => ({
   addRow: vi.fn(),
   updateRow: vi.fn(),
   deleteRow: vi.fn(),
+  batchAddRows: vi.fn(),
 }));
 
 vi.mock('../services/textHighlightService.js', () => ({
@@ -106,6 +108,78 @@ describe('resources routes', () => {
       startOffset: 1,
       endOffset: 9,
       color: 'yellow',
+    });
+  });
+
+  describe('POST /api/resources/tables/:resourceId/rows/batch', () => {
+    const makeRow = (id: string, n: number) => ({
+      id,
+      resourceId: 'my-table',
+      displayNumber: n,
+      cellData: { name: `item-${n}` },
+      isDeleted: false,
+      createdAt: '2026-05-26T00:00:00.000Z',
+      updatedAt: '2026-05-26T00:00:00.000Z',
+    });
+
+    it('returns 201 and inserted rows for a valid 2-item batch', async () => {
+      const token = generateToken('user-1');
+      vi.mocked(batchAddRows).mockResolvedValue([makeRow('r-1', 1), makeRow('r-2', 2)]);
+
+      const response = await fetch(`${baseUrl}/api/resources/tables/my-table/rows/batch`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [{ name: 'item-1' }, { name: 'item-2' }] }),
+      });
+
+      expect(response.status).toBe(201);
+      const body = await response.json() as { rows: unknown[] };
+      expect(body.rows).toHaveLength(2);
+      expect(batchAddRows).toHaveBeenCalledWith('user-1', 'my-table', [
+        { name: 'item-1' },
+        { name: 'item-2' },
+      ]);
+    });
+
+    it('returns 400 when rows array has fewer than 2 items', async () => {
+      const token = generateToken('user-1');
+
+      const response = await fetch(`${baseUrl}/api/resources/tables/my-table/rows/batch`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [{ name: 'only-one' }] }),
+      });
+
+      expect(response.status).toBe(400);
+      const body = await response.json() as { error: string };
+      expect(body.error).toMatch(/2 to 10/);
+    });
+
+    it('returns 400 when rows array has more than 10 items', async () => {
+      const token = generateToken('user-1');
+      const rows = Array.from({ length: 11 }, (_, i) => ({ name: `item-${i}` }));
+
+      const response = await fetch(`${baseUrl}/api/resources/tables/my-table/rows/batch`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      });
+
+      expect(response.status).toBe(400);
+      const body = await response.json() as { error: string };
+      expect(body.error).toMatch(/2 to 10/);
+    });
+
+    it('returns 400 when rows is not an array', async () => {
+      const token = generateToken('user-1');
+
+      const response = await fetch(`${baseUrl}/api/resources/tables/my-table/rows/batch`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: 'not-an-array' }),
+      });
+
+      expect(response.status).toBe(400);
     });
   });
 });

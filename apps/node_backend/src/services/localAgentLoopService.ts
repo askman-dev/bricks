@@ -33,6 +33,7 @@ import {
   addRow,
   updateRow,
   deleteRow,
+  batchAddRows,
 } from './assetTableService.js';
 import { listHighlights } from './textHighlightService.js';
 import type { AgentTool } from '../llm/types.js';
@@ -70,6 +71,7 @@ export const INTERNAL_TOOL_TABLE_REMOVE_COLUMN = 'table.remove_column';
 export const INTERNAL_TOOL_TABLE_ADD_ROW = 'table.add_row';
 export const INTERNAL_TOOL_TABLE_UPDATE_ROW = 'table.update_row';
 export const INTERNAL_TOOL_TABLE_DELETE_ROW = 'table.delete_row';
+export const INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS = 'table.batch_add_rows';
 
 // Text highlight tools (highlight creation is manual via Flutter; list is AI-accessible)
 export const INTERNAL_TOOL_HIGHLIGHT_LIST = 'highlight.list';
@@ -102,6 +104,7 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_TABLE_ADD_ROW,
   INTERNAL_TOOL_TABLE_UPDATE_ROW,
   INTERNAL_TOOL_TABLE_DELETE_ROW,
+  INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
   INTERNAL_TOOL_HIGHLIGHT_LIST,
 ] as const;
 
@@ -893,6 +896,28 @@ export async function executeInternalTool(
       }
       const result = await deleteRow(userId, resourceId, rowId);
       return { ok: true, toolName, data: result, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      if (!resourceId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId is a required string argument' },
+        };
+      }
+      if (!Array.isArray(args.rows) || args.rows.length < 2 || args.rows.length > 10) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'rows must be an array with 2 to 10 items' },
+        };
+      }
+      const cellDataArray = (args.rows as unknown[]).map((item) => sanitizeCellData(item));
+      const rows = await batchAddRows(userId, resourceId, cellDataArray);
+      return { ok: true, toolName, data: { rows } as unknown as Record<string, unknown>, error: null };
     }
 
     // -------------------------------------------------------------------------

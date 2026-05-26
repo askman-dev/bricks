@@ -311,3 +311,16 @@ export async function deleteRow(
   );
   return { deleted: (result.rowCount ?? 0) > 0 };
 }
+
+export async function batchAddRows(
+  userId: string,
+  resourceId: string,
+  cellDataArray: Array<Record<string, string | null>>,
+): Promise<AssetTableRow[]> {
+  const rows: AssetTableRow[] = [];
+  for (const cellData of cellDataArray) {
+    const row = await addRow(userId, resourceId, cellData);
+    rows.push(row);
+  }
+  return rows;
+}

@@ -22,6 +22,7 @@ import {
   addRow,
   updateRow,
   deleteRow,
+  batchAddRows,
 } from '../services/assetTableService.js';
 import {
   listHighlights,
@@ -275,6 +276,28 @@ router.post('/tables/:resourceId/rows', async (req: AuthRequest, res) => {
       : {};
   const row = await addRow(uid, resourceId, cellData);
   res.status(201).json(row);
+});
+
+router.post('/tables/:resourceId/rows/batch', async (req: AuthRequest, res) => {
+  const uid = userId(req);
+  const resourceId = validPathParam(req.params.resourceId);
+  if (!resourceId) {
+    res.status(400).json({ error: 'resourceId is invalid' });
+    return;
+  }
+  const rawRows = req.body?.rows;
+  if (!Array.isArray(rawRows) || rawRows.length < 2 || rawRows.length > 10) {
+    res.status(400).json({ error: 'rows must be an array with 2 to 10 items' });
+    return;
+  }
+  const cellDataArray: Array<Record<string, string | null>> = rawRows.map((item: unknown) => {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      return item as Record<string, string | null>;
+    }
+    return {};
+  });
+  const rows = await batchAddRows(uid, resourceId, cellDataArray);
+  res.status(201).json({ rows });
 });
 
 router.patch('/tables/:resourceId/rows/:rowId', async (req: AuthRequest, res) => {
