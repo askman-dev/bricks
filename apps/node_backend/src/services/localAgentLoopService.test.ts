@@ -275,6 +275,53 @@ describe('localAgentLoopService', () => {
     expect(result.error?.code).toBe('invalid_args');
   });
 
+  it('renames a thread via chat_thread_rename tool', async () => {
+    upsertChatChannelNameMock.mockResolvedValue({
+      channelId: 'default',
+      threadId: 'bugs',
+      displayName: 'Bug Reports',
+      createdAt: '2026-05-09T00:00:00.000Z',
+      updatedAt: '2026-05-09T01:00:00.000Z',
+    });
+
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_CHAT_THREAD_RENAME,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_THREAD_RENAME,
+      args: { channelId: 'default', threadId: 'bugs', displayName: 'Bug Reports' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data?.channelId).toBe('default');
+    expect(result.data?.threadId).toBe('bugs');
+    expect(result.data?.displayName).toBe('Bug Reports');
+    expect(upsertChatChannelNameMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'default',
+      threadId: 'bugs',
+      displayName: 'Bug Reports',
+    });
+  });
+
+  it('rejects thread rename when any required arg is missing', async () => {
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_CHAT_THREAD_RENAME,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_THREAD_RENAME,
+      args: { channelId: 'default', threadId: 'bugs' },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
   it('infers tool calls from slash-like user commands', async () => {
     const { inferInternalToolCallsFromMessage } = await import('./localAgentLoopService.js');
 
