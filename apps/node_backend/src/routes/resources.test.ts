@@ -141,6 +141,28 @@ describe('resources routes', () => {
       ]);
     });
 
+    it('sanitizes each batch row payload before inserting', async () => {
+      const token = generateToken('user-1');
+      vi.mocked(batchAddRows).mockResolvedValue([makeRow('r-1', 1), makeRow('r-2', 2)]);
+
+      const response = await fetch(`${baseUrl}/api/resources/tables/my-table/rows/batch`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows: [
+            { name: 'item-1', count: 2, active: true, extra: { nested: true } },
+            { name: 'item-2', archived: null, tags: ['x'] },
+          ],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(batchAddRows).toHaveBeenCalledWith('user-1', 'my-table', [
+        { name: 'item-1', count: '2', active: 'true' },
+        { name: 'item-2', archived: null },
+      ]);
+    });
+
     it('returns 400 when rows array has fewer than 2 items', async () => {
       const token = generateToken('user-1');
 

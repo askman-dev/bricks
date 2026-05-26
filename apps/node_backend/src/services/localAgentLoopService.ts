@@ -163,6 +163,13 @@ function sanitizeCellData(raw: unknown): Record<string, string | null> {
   return result;
 }
 
+function sanitizeBatchRowCellData(raw: unknown): Record<string, string | null> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'cellData' in raw) {
+    return sanitizeCellData((raw as { cellData?: unknown }).cellData);
+  }
+  return sanitizeCellData(raw);
+}
+
 export function inferInternalToolCallsFromMessage(input: {
   message: string;
   channelId: string;
@@ -915,7 +922,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'rows must be an array with 2 to 10 items' },
         };
       }
-      const cellDataArray = (args.rows as unknown[]).map((item) => sanitizeCellData(item));
+      const cellDataArray = (args.rows as unknown[]).map((item) => sanitizeBatchRowCellData(item));
       const rows = await batchAddRows(userId, resourceId, cellDataArray);
       return { ok: true, toolName, data: { rows } as unknown as Record<string, unknown>, error: null };
     }
@@ -1453,6 +1460,38 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_TABLE_DELETE_ROW, args),
+    },
+
+    table_batch_add_rows: {
+      description:
+        'Add 2 to 10 new rows to a table in one call. Each rows item must provide a cellData object whose keys are column keys.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+          rows: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 10,
+            description: 'An array of row payloads to insert.',
+            items: {
+              type: 'object',
+              properties: {
+                cellData: {
+                  type: 'object',
+                  description: 'Key-value pairs where keys are column keys and values are cell strings.',
+                  additionalProperties: true,
+                },
+              },
+              required: ['cellData'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['resourceId', 'rows'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS, args),
     },
 
     // -------------------------------------------------------------------------

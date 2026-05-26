@@ -45,6 +45,7 @@ vi.mock('./assetTableService.js', () => ({
   addColumn: vi.fn().mockResolvedValue({ id: 'col-1', columnKey: 'name', displayName: 'Name' }),
   removeColumn: vi.fn().mockResolvedValue({ deleted: false }),
   addRow: vi.fn().mockResolvedValue({ id: 'row-1', displayNumber: 1, cellData: {} }),
+  batchAddRows: vi.fn().mockResolvedValue([]),
   updateRow: vi.fn().mockResolvedValue(null),
   deleteRow: vi.fn().mockResolvedValue({ deleted: false }),
 }));
@@ -453,6 +454,116 @@ describe('localAgentLoopService', () => {
       age: '30',
       active: 'true',
     });
+  });
+
+  it('exposes table_batch_add_rows in buildAgentTools', async () => {
+    const { buildAgentTools } = await import('./localAgentLoopService.js');
+
+    const tools = buildAgentTools('u-1');
+
+    expect(tools.table_batch_add_rows).toBeDefined();
+    expect(tools.table_batch_add_rows.parametersSchema).toMatchObject({
+      type: 'object',
+      required: ['resourceId', 'rows'],
+      properties: {
+        rows: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 10,
+        },
+      },
+    });
+  });
+
+  it('dispatches table_batch_add_rows for a valid 2-row batch', async () => {
+    const { batchAddRows } = await import('./assetTableService.js');
+    (batchAddRows as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'row-1', displayNumber: 1, cellData: { name: 'Alice' } },
+      { id: 'row-2', displayNumber: 2, cellData: { name: 'Bob' } },
+    ]);
+
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
+      args: {
+        resourceId: 'tasks',
+        rows: [{ cellData: { name: 'Alice' } }, { cellData: { name: 'Bob' } }],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(batchAddRows).toHaveBeenCalledWith('u-1', 'tasks', [{ name: 'Alice' }, { name: 'Bob' }]);
+  });
+
+  it('rejects table_batch_add_rows when rows has fewer than 2 items', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
+      args: {
+        resourceId: 'tasks',
+        rows: [{ cellData: { name: 'Alice' } }],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  it('rejects table_batch_add_rows when rows has more than 10 items', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
+      args: {
+        resourceId: 'tasks',
+        rows: Array.from({ length: 11 }, (_, index) => ({ cellData: { name: `item-${index}` } })),
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  it('sanitizes each table_batch_add_rows row payload', async () => {
+    const { batchAddRows } = await import('./assetTableService.js');
+    (batchAddRows as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'row-1', displayNumber: 1, cellData: { name: 'Alice', age: '30', active: 'true' } },
+      { id: 'row-2', displayNumber: 2, cellData: { name: 'Bob', score: '7', archived: null } },
+    ]);
+
+    const { executeInternalTool, INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS } = await import('./localAgentLoopService.js');
+    await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
+      args: {
+        resourceId: 'tasks',
+        rows: [
+          {
+            cellData: {
+              name: 'Alice',
+              age: 30,
+              active: true,
+              extra: { nested: true },
+            },
+          },
+          {
+            name: 'Bob',
+            score: 7,
+            archived: null,
+            tags: ['x'],
+          },
+        ],
+      },
+    });
+
+    expect(batchAddRows).toHaveBeenCalledWith('u-1', 'tasks', [
+      { name: 'Alice', age: '30', active: 'true' },
+      { name: 'Bob', score: '7', archived: null },
+    ]);
   });
 
   // -------------------------------------------------------------------------

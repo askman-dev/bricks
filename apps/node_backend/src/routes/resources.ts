@@ -59,6 +59,21 @@ function validPathParam(value: string, maxLength = 255): string | null {
   return trimmed.length > 0 && trimmed.length <= maxLength ? trimmed : null;
 }
 
+function sanitizeCellData(raw: unknown): Record<string, string | null> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result: Record<string, string | null> = {};
+  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (val === null || val === undefined) {
+      result[key] = null;
+    } else if (typeof val === 'string') {
+      result[key] = val;
+    } else if (typeof val === 'number' || typeof val === 'boolean') {
+      result[key] = String(val);
+    }
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Todo Lists (parent entities) + Todo Items (nested under a list)
 // ---------------------------------------------------------------------------
@@ -290,12 +305,9 @@ router.post('/tables/:resourceId/rows/batch', async (req: AuthRequest, res) => {
     res.status(400).json({ error: 'rows must be an array with 2 to 10 items' });
     return;
   }
-  const cellDataArray: Array<Record<string, string | null>> = rawRows.map((item: unknown) => {
-    if (item && typeof item === 'object' && !Array.isArray(item)) {
-      return item as Record<string, string | null>;
-    }
-    return {};
-  });
+  const cellDataArray: Array<Record<string, string | null>> = rawRows.map((item: unknown) =>
+    sanitizeCellData(item),
+  );
   const rows = await batchAddRows(uid, resourceId, cellDataArray);
   res.status(201).json({ rows });
 });
