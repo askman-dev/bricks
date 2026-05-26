@@ -448,7 +448,7 @@ async function listThreads(params: {
     .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId)
     .map((s) => ({
       threadId: s.threadId,
-      displayName: threadNameMap.get(s.threadId ?? '') ?? null,
+      displayName: s.threadId ? (threadNameMap.get(s.threadId) ?? null) : null,
       instructions: s.instructions,
     }));
 
@@ -471,9 +471,12 @@ async function getThread(params: {
   ]);
 
   const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
-  const threadDisplayName =
-    names.find((n) => n.channelId === params.channelId && n.threadId === params.threadId)
-      ?.displayName ?? null;
+  const threadNameMap = new Map(
+    names
+      .filter((n) => n.threadId)
+      .map((n) => [`${n.channelId}:${n.threadId}`, n.displayName]),
+  );
+  const threadDisplayName = threadNameMap.get(`${params.channelId}:${params.threadId}`) ?? null;
   const threadScope = scopes.find(
     (s) => s.scopeType === 'thread' && s.channelId === params.channelId && s.threadId === params.threadId,
   );
