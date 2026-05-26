@@ -42,6 +42,7 @@ export const INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET = 'chat.thread.instructio
 export const INTERNAL_TOOL_CHAT_CHANNEL_CREATE = 'chat.channel.create';
 export const INTERNAL_TOOL_CHAT_THREAD_CREATE = 'chat.thread.create';
 export const INTERNAL_TOOL_CHAT_CHANNEL_RENAME = 'chat.channel.rename';
+export const INTERNAL_TOOL_CHAT_THREAD_RENAME = 'chat.thread.rename';
 export const INTERNAL_TOOL_CHAT_CHANNEL_LIST = 'chat.channel.list';
 export const INTERNAL_TOOL_CHAT_CHANNEL_GET = 'chat.channel.get';
 export const INTERNAL_TOOL_CHAT_THREAD_LIST = 'chat.thread.list';
@@ -80,6 +81,7 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_CREATE,
   INTERNAL_TOOL_CHAT_THREAD_CREATE,
   INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
+  INTERNAL_TOOL_CHAT_THREAD_RENAME,
   INTERNAL_TOOL_CHAT_CHANNEL_LIST,
   INTERNAL_TOOL_CHAT_CHANNEL_GET,
   INTERNAL_TOOL_CHAT_THREAD_LIST,
@@ -306,6 +308,31 @@ async function renameChannel(params: {
   };
 }
 
+async function renameThread(params: {
+  userId: string;
+  channelId: string;
+  threadId: string;
+  displayName: string;
+}): Promise<ExecuteInternalToolResult> {
+  const setting = await upsertChatChannelName(params.userId, {
+    channelId: params.channelId,
+    threadId: params.threadId,
+    displayName: params.displayName,
+  });
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_THREAD_RENAME,
+    data: {
+      channelId: setting.channelId,
+      threadId: setting.threadId,
+      displayName: setting.displayName,
+      updatedAt: setting.updatedAt,
+    },
+    error: null,
+  };
+}
+
 async function createThreadScope(params: {
   userId: string;
   channelId: string;
@@ -406,10 +433,24 @@ async function listThreads(params: {
   userId: string;
   channelId: string;
 }): Promise<ExecuteInternalToolResult> {
-  const scopes = await listChatScopeSettings(params.userId);
+  const [scopes, names] = await Promise.all([
+    listChatScopeSettings(params.userId),
+    listChatChannelNames(params.userId),
+  ]);
+
+  const threadNameMap = new Map(
+    names
+      .filter((n) => n.channelId === params.channelId && n.threadId)
+      .map((n) => [n.threadId as string, n.displayName]),
+  );
+
   const threads = scopes
     .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId)
-    .map((s) => ({ threadId: s.threadId, instructions: s.instructions }));
+    .map((s) => ({
+      threadId: s.threadId,
+      displayName: threadNameMap.get(s.threadId ?? '') ?? null,
+      instructions: s.instructions,
+    }));
 
   return {
     ok: true,
@@ -430,6 +471,9 @@ async function getThread(params: {
   ]);
 
   const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
+  const threadDisplayName =
+    names.find((n) => n.channelId === params.channelId && n.threadId === params.threadId)
+      ?.displayName ?? null;
   const threadScope = scopes.find(
     (s) => s.scopeType === 'thread' && s.channelId === params.channelId && s.threadId === params.threadId,
   );
@@ -443,6 +487,7 @@ async function getThread(params: {
     data: {
       channelId: params.channelId,
       threadId: params.threadId,
+      displayName: threadDisplayName,
       instructions: threadScope?.instructions ?? null,
       parentChannel: {
         channelId: params.channelId,
@@ -625,9 +670,23 @@ export async function executeInternalTool(
       }
       return getThread({ userId, channelId, threadId });
     }
-
-    // -------------------------------------------------------------------------
-    // Todo list tools (parent entities)
+    case INTERNAL_TOOL_CHAT_THREAD_RENAME: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const threadId = readStringArg(args, 'threadId', MAX_IDENTIFIER_LENGTH);
+      const displayName = readStringArg(args, 'displayName', MAX_IDENTIFIER_LENGTH);
+      if (!channelId || !threadId || !displayName) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId, threadId, and displayName are required string arguments',
+          },
+        };
+      }
+      return renameThread({ userId, channelId, threadId, displayName });
+    }
     // -------------------------------------------------------------------------
     case INTERNAL_TOOL_TODO_LIST_CREATE: {
       const title = readStringArg(args, 'title');
@@ -1111,7 +1170,7 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
 
     chat_thread_get: {
       description:
-        'Get detailed information about a specific thread, including its instructions and its parent channel info.',
+        'Get detailed information about a specific thread, including its display name, instructions and its parent channel info.',
       parametersSchema: {
         type: 'object',
         properties: {
@@ -1128,6 +1187,32 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_GET, args),
+    },
+
+    chat_thread_rename: {
+      description:
+        'Rename a thread by setting its display name. ' +
+        'Use this when the user asks to rename, retitle, or change the name of a thread.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          threadId: {
+            type: 'string',
+            description: 'The thread identifier.',
+          },
+          displayName: {
+            type: 'string',
+            description: 'The new display name for the thread.',
+          },
+        },
+        required: ['channelId', 'threadId', 'displayName'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_RENAME, args),
     },
 
     // -------------------------------------------------------------------------
