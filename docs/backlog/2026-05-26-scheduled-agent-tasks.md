@@ -10,4 +10,4 @@ When a scheduled task is triggered, it should run an Agent workflow.
 
 - The task creation entry point is conversational.
 - The scheduled trigger is responsible for starting the Agent workflow.
-- Implementation details are not decided yet.
+- Superseded for implementation details: see `docs/plans/2026-05-26-18-34-CST-scheduled-actions-agent-execution.md`, which is the current source of truth.
