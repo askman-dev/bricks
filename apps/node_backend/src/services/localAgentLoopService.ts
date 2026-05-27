@@ -37,6 +37,17 @@ import {
 } from './assetTableService.js';
 import { sanitizeBatchRowCellData, sanitizeTableCellData } from './assetTableCellData.js';
 import { listHighlights } from './textHighlightService.js';
+import {
+  listScheduledActions,
+  getScheduledAction,
+  createScheduledAction,
+  updateScheduledAction,
+  pauseScheduledAction,
+  resumeScheduledAction,
+  deleteScheduledAction,
+  type CreateScheduledActionInput,
+  type UpdateScheduledActionInput,
+} from './scheduledActionService.js';
 import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
@@ -78,6 +89,15 @@ export const INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS = 'table.batch_add_rows';
 // Text highlight tools (highlight creation is manual via Flutter; list is AI-accessible)
 export const INTERNAL_TOOL_HIGHLIGHT_LIST = 'highlight.list';
 
+// Scheduled action tools
+export const INTERNAL_TOOL_SCHEDULED_ACTION_CREATE = 'scheduled_action.create';
+export const INTERNAL_TOOL_SCHEDULED_ACTION_LIST = 'scheduled_action.list';
+export const INTERNAL_TOOL_SCHEDULED_ACTION_GET = 'scheduled_action.get';
+export const INTERNAL_TOOL_SCHEDULED_ACTION_UPDATE = 'scheduled_action.update';
+export const INTERNAL_TOOL_SCHEDULED_ACTION_PAUSE = 'scheduled_action.pause';
+export const INTERNAL_TOOL_SCHEDULED_ACTION_RESUME = 'scheduled_action.resume';
+export const INTERNAL_TOOL_SCHEDULED_ACTION_DELETE = 'scheduled_action.delete';
+
 export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET,
   INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET,
@@ -109,6 +129,13 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_TABLE_DELETE_ROW,
   INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
   INTERNAL_TOOL_HIGHLIGHT_LIST,
+  INTERNAL_TOOL_SCHEDULED_ACTION_CREATE,
+  INTERNAL_TOOL_SCHEDULED_ACTION_LIST,
+  INTERNAL_TOOL_SCHEDULED_ACTION_GET,
+  INTERNAL_TOOL_SCHEDULED_ACTION_UPDATE,
+  INTERNAL_TOOL_SCHEDULED_ACTION_PAUSE,
+  INTERNAL_TOOL_SCHEDULED_ACTION_RESUME,
+  INTERNAL_TOOL_SCHEDULED_ACTION_DELETE,
 ] as const;
 
 export type InternalToolName = (typeof INTERNAL_TOOLS)[number];
@@ -982,6 +1009,105 @@ export async function executeInternalTool(
       const highlights = await listHighlights(userId);
       return { ok: true, toolName, data: { highlights }, error: null };
     }
+
+    // -------------------------------------------------------------------------
+    // Scheduled action tools
+    // -------------------------------------------------------------------------
+    case INTERNAL_TOOL_SCHEDULED_ACTION_CREATE: {
+      const channelId = args.channelId as string | undefined;
+      const title = args.title as string | undefined;
+      const prompt = args.prompt as string | undefined;
+      const scheduleExpr = args.scheduleExpr as string | undefined;
+      const intervalSeconds = args.intervalSeconds as number | undefined;
+      if (!channelId || !title || !prompt || !scheduleExpr || intervalSeconds == null) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId, title, prompt, scheduleExpr and intervalSeconds are required' },
+        };
+      }
+      const input: CreateScheduledActionInput = {
+        channelId,
+        threadId: args.threadId as string | null | undefined,
+        title,
+        prompt,
+        scheduleExpr,
+        intervalSeconds: Number(intervalSeconds),
+        timezone: (args.timezone as string | undefined) ?? 'UTC',
+      };
+      const action = await createScheduledAction(userId, input);
+      return { ok: true, toolName, data: { action }, error: null };
+    }
+
+    case INTERNAL_TOOL_SCHEDULED_ACTION_LIST: {
+      const actions = await listScheduledActions(userId);
+      return { ok: true, toolName, data: { actions }, error: null };
+    }
+
+    case INTERNAL_TOOL_SCHEDULED_ACTION_GET: {
+      const id = args.id as string | undefined;
+      if (!id) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'id is required' } };
+      }
+      const action = await getScheduledAction(userId, id);
+      if (!action) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: `Scheduled action ${id} not found` } };
+      }
+      return { ok: true, toolName, data: { action }, error: null };
+    }
+
+    case INTERNAL_TOOL_SCHEDULED_ACTION_UPDATE: {
+      const id = args.id as string | undefined;
+      if (!id) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'id is required' } };
+      }
+      const input: UpdateScheduledActionInput = {
+        title: args.title as string | undefined,
+        prompt: args.prompt as string | undefined,
+        scheduleExpr: args.scheduleExpr as string | undefined,
+        intervalSeconds: args.intervalSeconds != null ? Number(args.intervalSeconds) : undefined,
+        timezone: args.timezone as string | undefined,
+      };
+      const action = await updateScheduledAction(userId, id, input);
+      if (!action) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: `Scheduled action ${id} not found` } };
+      }
+      return { ok: true, toolName, data: { action }, error: null };
+    }
+
+    case INTERNAL_TOOL_SCHEDULED_ACTION_PAUSE: {
+      const id = args.id as string | undefined;
+      if (!id) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'id is required' } };
+      }
+      const action = await pauseScheduledAction(userId, id);
+      if (!action) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: `Scheduled action ${id} not found or not active` } };
+      }
+      return { ok: true, toolName, data: { action }, error: null };
+    }
+
+    case INTERNAL_TOOL_SCHEDULED_ACTION_RESUME: {
+      const id = args.id as string | undefined;
+      if (!id) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'id is required' } };
+      }
+      const action = await resumeScheduledAction(userId, id);
+      if (!action) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: `Scheduled action ${id} not found or not paused` } };
+      }
+      return { ok: true, toolName, data: { action }, error: null };
+    }
+
+    case INTERNAL_TOOL_SCHEDULED_ACTION_DELETE: {
+      const id = args.id as string | undefined;
+      if (!id) {
+        return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'id is required' } };
+      }
+      const result = await deleteScheduledAction(userId, id);
+      return { ok: true, toolName, data: result, error: null };
+    }
   }
 }
 
@@ -1581,6 +1707,113 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_HIGHLIGHT_LIST, args),
+    },
+
+    // -------------------------------------------------------------------------
+    // Scheduled action tools
+    // -------------------------------------------------------------------------
+    scheduled_action_create: {
+      description:
+        'Create a new scheduled action that will run a prompt automatically at a recurring interval. ' +
+        'Use when the user wants to automate a repeating task (e.g. daily standup, weekly report). ' +
+        'intervalSeconds is the repeat period in seconds (minimum 60). ' +
+        'scheduleExpr is a human-readable description of the schedule (e.g. "every day at 9am").',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel where the action will run.' },
+          threadId: { type: 'string', description: 'Optional thread (sub-area) inside the channel. Omit for the main area.' },
+          title: { type: 'string', description: 'Short human-readable title for the scheduled action.' },
+          prompt: { type: 'string', description: 'The message that will be sent automatically on each run.' },
+          scheduleExpr: { type: 'string', description: 'Human-readable schedule description, e.g. "every 30 minutes" or "daily at 9am".' },
+          intervalSeconds: { type: 'number', description: 'Repeat interval in seconds. Minimum is 60 (1 minute).' },
+          timezone: { type: 'string', description: 'IANA timezone string, e.g. "America/New_York". Defaults to UTC.' },
+        },
+        required: ['channelId', 'title', 'prompt', 'scheduleExpr', 'intervalSeconds'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SCHEDULED_ACTION_CREATE, args),
+    },
+
+    scheduled_action_list: {
+      description: 'List all scheduled actions for the current user. Returns active and paused actions.',
+      parametersSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SCHEDULED_ACTION_LIST, args),
+    },
+
+    scheduled_action_get: {
+      description: 'Get details of a specific scheduled action by its id.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Scheduled action identifier.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SCHEDULED_ACTION_GET, args),
+    },
+
+    scheduled_action_update: {
+      description:
+        'Update one or more fields of an existing scheduled action. Only the provided fields are changed.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Scheduled action identifier.' },
+          title: { type: 'string', description: 'New title.' },
+          prompt: { type: 'string', description: 'New prompt text.' },
+          scheduleExpr: { type: 'string', description: 'New human-readable schedule description.' },
+          intervalSeconds: { type: 'number', description: 'New repeat interval in seconds (minimum 60).' },
+          timezone: { type: 'string', description: 'New IANA timezone string.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SCHEDULED_ACTION_UPDATE, args),
+    },
+
+    scheduled_action_pause: {
+      description: 'Pause a scheduled action so it stops running until resumed.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Scheduled action identifier.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SCHEDULED_ACTION_PAUSE, args),
+    },
+
+    scheduled_action_resume: {
+      description: 'Resume a paused scheduled action. The next run will be scheduled from now.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Scheduled action identifier.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SCHEDULED_ACTION_RESUME, args),
+    },
+
+    scheduled_action_delete: {
+      description: 'Permanently delete a scheduled action. This cannot be undone.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Scheduled action identifier.' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SCHEDULED_ACTION_DELETE, args),
     },
   };
 }

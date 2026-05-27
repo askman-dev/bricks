@@ -8,6 +8,7 @@ import llmRoutes from './routes/llm.js';
 import chatRoutes from './routes/chat.js';
 import platformRoutes from './routes/platform.js';
 import resourcesRoutes from './routes/resources.js';
+import cronRoutes from './routes/cron.js';
 import { runMigrations } from './db/migrate.js';
 
 // Load environment variables (no-op in Vercel production where env vars are injected directly)
@@ -95,6 +96,8 @@ app.use('/api/llm', llmRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/v1/platform', platformRoutes);
 app.use('/api/resources', resourcesRoutes);
+// Cron routes do NOT use the JWT authenticate middleware — they use CRON_SECRET.
+app.use('/api/cron', cronRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
