@@ -57,6 +57,30 @@ vi.mock('./textHighlightService.js', () => ({
   deleteHighlight: vi.fn().mockResolvedValue({ deleted: false }),
 }));
 
+vi.mock('./scheduledActionService.js', () => ({
+  listScheduledActions: vi.fn().mockResolvedValue([]),
+  getScheduledAction: vi.fn().mockResolvedValue(null),
+  createScheduledAction: vi.fn().mockResolvedValue({
+    id: 'sa-1',
+    userId: 'u-1',
+    channelId: 'ch-1',
+    threadId: null,
+    title: 'Daily standup',
+    prompt: 'Summarize today',
+    scheduleExpr: 'every day at 9am',
+    intervalSeconds: 86400,
+    timezone: 'UTC',
+    nextRunAt: '2026-05-27T09:00:00.000Z',
+    status: 'active',
+    createdAt: '2026-05-27T00:00:00.000Z',
+    updatedAt: '2026-05-27T00:00:00.000Z',
+  }),
+  updateScheduledAction: vi.fn().mockResolvedValue(null),
+  pauseScheduledAction: vi.fn().mockResolvedValue(null),
+  resumeScheduledAction: vi.fn().mockResolvedValue(null),
+  deleteScheduledAction: vi.fn().mockResolvedValue({ deleted: true }),
+}));
+
 describe('localAgentLoopService', () => {
   beforeEach(() => {
     upsertChatScopeSettingMock.mockReset();
@@ -632,5 +656,132 @@ describe('localAgentLoopService', () => {
 
     expect(result.ok).toBe(true);
     expect((result.data as { highlights: unknown[] }).highlights).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Scheduled action tool tests
+  // -------------------------------------------------------------------------
+
+  it('dispatches scheduled_action_create and returns the created action', async () => {
+    const { createScheduledAction } = await import('./scheduledActionService.js');
+    const mockAction = {
+      id: 'sa-1',
+      userId: 'u-1',
+      channelId: 'ch-1',
+      threadId: null,
+      title: 'Daily standup',
+      prompt: 'Summarize today',
+      scheduleExpr: 'every day at 9am',
+      intervalSeconds: 86400,
+      timezone: 'UTC',
+      nextRunAt: '2026-05-27T09:00:00.000Z',
+      status: 'active',
+      createdAt: '2026-05-27T00:00:00.000Z',
+      updatedAt: '2026-05-27T00:00:00.000Z',
+    };
+    (createScheduledAction as ReturnType<typeof vi.fn>).mockResolvedValue(mockAction);
+
+    const { executeInternalTool, INTERNAL_TOOL_SCHEDULED_ACTION_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_SCHEDULED_ACTION_CREATE,
+      args: {
+        channelId: 'ch-1',
+        title: 'Daily standup',
+        prompt: 'Summarize today',
+        scheduleExpr: 'every day at 9am',
+        intervalSeconds: 86400,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect((result.data as { action: typeof mockAction }).action.id).toBe('sa-1');
+  });
+
+  it('returns invalid_args when scheduled_action_create is missing required fields', async () => {
+    const { executeInternalTool, INTERNAL_TOOL_SCHEDULED_ACTION_CREATE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_SCHEDULED_ACTION_CREATE,
+      args: { channelId: 'ch-1' },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('invalid_args');
+  });
+
+  it('dispatches scheduled_action_list and returns actions', async () => {
+    const { listScheduledActions } = await import('./scheduledActionService.js');
+    (listScheduledActions as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'sa-1', title: 'Daily standup' },
+    ]);
+
+    const { executeInternalTool, INTERNAL_TOOL_SCHEDULED_ACTION_LIST } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_SCHEDULED_ACTION_LIST,
+      args: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect((result.data as { actions: unknown[] }).actions).toHaveLength(1);
+  });
+
+  it('dispatches scheduled_action_get and returns the action', async () => {
+    const { getScheduledAction } = await import('./scheduledActionService.js');
+    const mockAction = { id: 'sa-1', title: 'Daily standup', status: 'active' };
+    (getScheduledAction as ReturnType<typeof vi.fn>).mockResolvedValue(mockAction);
+
+    const { executeInternalTool, INTERNAL_TOOL_SCHEDULED_ACTION_GET } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_SCHEDULED_ACTION_GET,
+      args: { id: 'sa-1' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect((result.data as { action: typeof mockAction }).action.id).toBe('sa-1');
+  });
+
+  it('returns not_found when scheduled_action_get finds nothing', async () => {
+    const { getScheduledAction } = await import('./scheduledActionService.js');
+    (getScheduledAction as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const { executeInternalTool, INTERNAL_TOOL_SCHEDULED_ACTION_GET } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_SCHEDULED_ACTION_GET,
+      args: { id: 'nonexistent' },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe('not_found');
+  });
+
+  it('dispatches scheduled_action_delete and returns deleted status', async () => {
+    const { deleteScheduledAction } = await import('./scheduledActionService.js');
+    (deleteScheduledAction as ReturnType<typeof vi.fn>).mockResolvedValue({ deleted: true });
+
+    const { executeInternalTool, INTERNAL_TOOL_SCHEDULED_ACTION_DELETE } = await import('./localAgentLoopService.js');
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_SCHEDULED_ACTION_DELETE,
+      args: { id: 'sa-1' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect((result.data as { deleted: boolean }).deleted).toBe(true);
+  });
+
+  it('exposes scheduled_action tools in buildAgentTools', async () => {
+    const { buildAgentTools } = await import('./localAgentLoopService.js');
+    const tools = buildAgentTools('u-1');
+    expect(tools).toHaveProperty('scheduled_action_create');
+    expect(tools).toHaveProperty('scheduled_action_list');
+    expect(tools).toHaveProperty('scheduled_action_get');
+    expect(tools).toHaveProperty('scheduled_action_update');
+    expect(tools).toHaveProperty('scheduled_action_pause');
+    expect(tools).toHaveProperty('scheduled_action_resume');
+    expect(tools).toHaveProperty('scheduled_action_delete');
   });
 });
