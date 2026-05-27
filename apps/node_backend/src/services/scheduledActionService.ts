@@ -248,10 +248,6 @@ export async function updateScheduledAction(
     const clamped = clampIntervalSeconds(input.intervalSeconds);
     setClauses.push(`interval_seconds = $${idx++}`);
     values.push(clamped);
-    // Recompute next_run_at when interval changes
-    const newNext = new Date(Date.now() + clamped * 1000);
-    setClauses.push(`next_run_at = $${idx++}`);
-    values.push(newNext.toISOString());
   }
   if (input.timezone !== undefined) {
     setClauses.push(`timezone = $${idx++}`);

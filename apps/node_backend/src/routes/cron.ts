@@ -14,7 +14,7 @@
  */
 
 import express, { Request, Response } from 'express';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import {
   acceptTask,
   upsertMessages,
@@ -52,7 +52,12 @@ function verifyCronAuth(req: Request, res: Response): boolean {
     return false;
   }
   const authHeader = req.headers['authorization'];
-  if (!authHeader || authHeader !== 'Bearer ' + cronSecret) {
+  const expectedHeader = 'Bearer ' + cronSecret;
+  if (
+    !authHeader ||
+    authHeader.length !== expectedHeader.length ||
+    !timingSafeEqual(Buffer.from(authHeader), Buffer.from(expectedHeader))
+  ) {
     res.status(401).json({ error: 'Unauthorized' });
     return false;
   }
