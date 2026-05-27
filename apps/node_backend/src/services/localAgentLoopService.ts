@@ -33,7 +33,9 @@ import {
   addRow,
   updateRow,
   deleteRow,
+  batchAddRows,
 } from './assetTableService.js';
+import { sanitizeBatchRowCellData, sanitizeTableCellData } from './assetTableCellData.js';
 import { listHighlights } from './textHighlightService.js';
 import type { AgentTool } from '../llm/types.js';
 
@@ -71,6 +73,7 @@ export const INTERNAL_TOOL_TABLE_REMOVE_COLUMN = 'table.remove_column';
 export const INTERNAL_TOOL_TABLE_ADD_ROW = 'table.add_row';
 export const INTERNAL_TOOL_TABLE_UPDATE_ROW = 'table.update_row';
 export const INTERNAL_TOOL_TABLE_DELETE_ROW = 'table.delete_row';
+export const INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS = 'table.batch_add_rows';
 
 // Text highlight tools (highlight creation is manual via Flutter; list is AI-accessible)
 export const INTERNAL_TOOL_HIGHLIGHT_LIST = 'highlight.list';
@@ -104,6 +107,7 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_TABLE_ADD_ROW,
   INTERNAL_TOOL_TABLE_UPDATE_ROW,
   INTERNAL_TOOL_TABLE_DELETE_ROW,
+  INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
   INTERNAL_TOOL_HIGHLIGHT_LIST,
 ] as const;
 
@@ -142,25 +146,6 @@ export interface ExecuteInternalToolSequenceResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Sanitize LLM-provided cellData: keep only string-or-null values, coercing
- *  numbers/booleans to strings so downstream DB code always receives the
- *  declared Record<string, string | null> shape. */
-function sanitizeCellData(raw: unknown): Record<string, string | null> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const result: Record<string, string | null> = {};
-  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
-    if (val === null || val === undefined) {
-      result[key] = null;
-    } else if (typeof val === 'string') {
-      result[key] = val;
-    } else if (typeof val === 'number' || typeof val === 'boolean') {
-      result[key] = String(val);
-    }
-    // other types (object/array) are dropped
-  }
-  return result;
-}
 
 export function inferInternalToolCallsFromMessage(input: {
   message: string;
@@ -931,7 +916,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'resourceId is a required string argument' },
         };
       }
-      const cellData = sanitizeCellData(args.cellData);
+      const cellData = sanitizeTableCellData(args.cellData);
       const row = await addRow(userId, resourceId, cellData);
       return { ok: true, toolName, data: row as unknown as Record<string, unknown>, error: null };
     }
@@ -946,7 +931,7 @@ export async function executeInternalTool(
           error: { code: 'invalid_args', message: 'resourceId and rowId are required' },
         };
       }
-      const cellData = sanitizeCellData(args.cellData);
+      const cellData = sanitizeTableCellData(args.cellData);
       const row = await updateRow(userId, resourceId, rowId, cellData);
       if (!row) {
         return { ok: false, toolName, data: null, error: { code: 'invalid_args', message: 'Row not found' } };
@@ -966,6 +951,28 @@ export async function executeInternalTool(
       }
       const result = await deleteRow(userId, resourceId, rowId);
       return { ok: true, toolName, data: result, error: null };
+    }
+    case INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS: {
+      const resourceId = readStringArg(args, 'resourceId', MAX_IDENTIFIER_LENGTH);
+      if (!resourceId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'resourceId is a required string argument' },
+        };
+      }
+      if (!Array.isArray(args.rows) || args.rows.length < 2 || args.rows.length > 10) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'rows must be an array with 2 to 10 items' },
+        };
+      }
+      const cellDataArray = (args.rows as unknown[]).map((item) => sanitizeBatchRowCellData(item));
+      const rows = await batchAddRows(userId, resourceId, cellDataArray);
+      return { ok: true, toolName, data: { rows } as unknown as Record<string, unknown>, error: null };
     }
 
     // -------------------------------------------------------------------------
@@ -1527,6 +1534,38 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_TABLE_DELETE_ROW, args),
+    },
+
+    table_batch_add_rows: {
+      description:
+        'Add 2 to 10 new rows to a table in one call. Each rows item must provide a cellData object whose keys are column keys.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', description: 'The table identifier.' },
+          rows: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 10,
+            description: 'An array of row payloads to insert.',
+            items: {
+              type: 'object',
+              properties: {
+                cellData: {
+                  type: 'object',
+                  description: 'Key-value pairs where keys are column keys and values are cell strings.',
+                  additionalProperties: true,
+                },
+              },
+              required: ['cellData'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['resourceId', 'rows'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS, args),
     },
 
     // -------------------------------------------------------------------------
