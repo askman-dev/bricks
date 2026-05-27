@@ -157,10 +157,11 @@ export function clampIntervalSeconds(value: number): number {
 }
 
 /**
- * Compute the next run time after `fromDate` by advancing `intervalSeconds`.
- * If `fromDate` is already in the past, the result is anchored from now so
- * the action fires at the next interval boundary rather than immediately
- * catching up on every missed interval.
+ * Compute the next run time after `fromDate` by adding `intervalSeconds`.
+ * If `fromDate` is already in the past, the addition is anchored from now so
+ * the action fires at `now + intervalSeconds` rather than a past time.
+ * Note: this is a simple interval addition; it does not align to wall-clock
+ * boundaries (e.g. "daily at 9 am").
  */
 export function computeNextRunAt(fromDate: Date, intervalSeconds: number): Date {
   const now = Date.now();

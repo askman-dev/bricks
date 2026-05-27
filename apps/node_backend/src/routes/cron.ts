@@ -53,11 +53,15 @@ function verifyCronAuth(req: Request, res: Response): boolean {
   }
   const authHeader = req.headers['authorization'];
   const expectedHeader = 'Bearer ' + cronSecret;
-  if (
-    !authHeader ||
-    authHeader.length !== expectedHeader.length ||
-    !timingSafeEqual(Buffer.from(authHeader), Buffer.from(expectedHeader))
-  ) {
+  let authorized = false;
+  try {
+    authorized =
+      !!authHeader &&
+      timingSafeEqual(Buffer.from(authHeader, 'utf8'), Buffer.from(expectedHeader, 'utf8'));
+  } catch {
+    // Buffer lengths differ — not authorized.
+  }
+  if (!authorized) {
     res.status(401).json({ error: 'Unauthorized' });
     return false;
   }
@@ -274,8 +278,12 @@ router.get('/scheduled-actions', async (req: Request, res: Response) => {
               createdAt: null,
             },
           ]);
-        } catch {
-          // Ignore secondary write error.
+        } catch (secondaryError) {
+          console.error('Cron: failed to write error message to chat history', {
+            actionId: action.id,
+            runId: run.id,
+            error: secondaryError instanceof Error ? secondaryError.message : String(secondaryError),
+          });
         }
       }
 
