@@ -373,11 +373,15 @@ class _MessageListState extends State<MessageList> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            _messageMetaLine(message),
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: chatColors.metaText,
-                ),
+          Flexible(
+            child: Text(
+              _messageMetaLine(message),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: chatColors.metaText,
+                  ),
+            ),
           ),
           const SizedBox(width: BricksSpacing.xs),
           Semantics(
@@ -389,10 +393,16 @@ class _MessageListState extends State<MessageList> {
                 globalPosition: details.globalPosition,
                 message: message,
               ),
-              child: Icon(
-                Icons.more_horiz,
-                size: 14,
-                color: chatColors.metaText,
+              behavior: HitTestBehavior.opaque,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                child: Center(
+                  child: Icon(
+                    Icons.more_horiz,
+                    size: 14,
+                    color: chatColors.metaText,
+                  ),
+                ),
               ),
             ),
           ),
@@ -442,6 +452,10 @@ class _MessageListState extends State<MessageList> {
     required Offset globalPosition,
     required ChatMessage message,
   }) async {
+    final hasArchiveRound = widget.onArchiveRound != null;
+    final hasArchiveReply = widget.onArchiveReply != null;
+    final hasMoveToThread = widget.onMoveToThread != null;
+    if (!hasArchiveRound && !hasArchiveReply && !hasMoveToThread) return;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final result = await showGeneralDialog<String>(
       context: context,
@@ -452,6 +466,9 @@ class _MessageListState extends State<MessageList> {
       pageBuilder: (dialogContext, _, __) => _AssistantMessageActionMenu(
         position: globalPosition,
         screenSize: overlay.size,
+        showArchiveRound: hasArchiveRound,
+        showArchiveReply: hasArchiveReply,
+        showMoveToThread: hasMoveToThread,
       ),
     );
     if (!context.mounted || result == null) return;
@@ -2720,10 +2737,16 @@ class _AssistantMessageActionMenu extends StatelessWidget {
   const _AssistantMessageActionMenu({
     required this.position,
     required this.screenSize,
+    required this.showArchiveRound,
+    required this.showArchiveReply,
+    required this.showMoveToThread,
   });
 
   final Offset position;
   final Size screenSize;
+  final bool showArchiveRound;
+  final bool showArchiveReply;
+  final bool showMoveToThread;
 
   static const double _menuWidth = 200.0;
   static const double _itemHeight = 48.0;
@@ -2731,7 +2754,12 @@ class _AssistantMessageActionMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const menuHeight = _itemHeight * 3;
+    final items = [
+      if (showArchiveRound) const _MenuItem(label: '归档此轮', value: 'archive_round'),
+      if (showArchiveReply) const _MenuItem(label: '归档此回复', value: 'archive_reply'),
+      if (showMoveToThread) const _MenuItem(label: '移入Thread', value: 'move_to_thread'),
+    ];
+    final menuHeight = _itemHeight * items.length;
 
     double left = position.dx;
     double top = position.dy;
@@ -2761,11 +2789,7 @@ class _AssistantMessageActionMenu extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: const [
-                _MenuItem(label: '归档此轮', value: 'archive_round'),
-                _MenuItem(label: '归档此回复', value: 'archive_reply'),
-                _MenuItem(label: '移入Thread', value: 'move_to_thread'),
-              ],
+              children: items,
             ),
           ),
         ),
