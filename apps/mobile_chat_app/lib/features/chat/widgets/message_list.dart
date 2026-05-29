@@ -44,6 +44,9 @@ class MessageList extends StatefulWidget {
     this.highlights = const {},
     this.onHighlight,
     this.onDeleteHighlight,
+    this.onArchiveRound,
+    this.onArchiveReply,
+    this.onMoveToThread,
   });
 
   final List<ChatMessage> messages;
@@ -62,6 +65,15 @@ class MessageList extends StatefulWidget {
 
   /// Called when the user taps Remove highlight in the floating highlight menu.
   final void Function(String highlightId)? onDeleteHighlight;
+
+  /// Called when the user selects "归档此轮" from the assistant message menu.
+  final void Function(ChatMessage message)? onArchiveRound;
+
+  /// Called when the user selects "归档此回复" from the assistant message menu.
+  final void Function(ChatMessage message)? onArchiveReply;
+
+  /// Called when the user selects "移入Thread" from the assistant message menu.
+  final void Function(ChatMessage message)? onMoveToThread;
 
   @override
   State<MessageList> createState() => _MessageListState();
@@ -383,6 +395,37 @@ class _MessageListState extends State<MessageList> {
     }
   }
 
+  Future<void> _showAssistantMessageActionMenu({
+    required BuildContext context,
+    required Offset globalPosition,
+    required ChatMessage message,
+  }) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final result = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: Duration.zero,
+      pageBuilder: (dialogContext, _, __) => _AssistantMessageActionMenu(
+        position: globalPosition,
+        screenSize: overlay.size,
+      ),
+    );
+    if (!context.mounted || result == null) return;
+    switch (result) {
+      case 'archive_round':
+        widget.onArchiveRound?.call(message);
+        break;
+      case 'archive_reply':
+        widget.onArchiveReply?.call(message);
+        break;
+      case 'move_to_thread':
+        widget.onMoveToThread?.call(message);
+        break;
+    }
+  }
+
   void _hideSelectionToolbar() {
     if (_selectionToolbarPosition == null) return;
     setState(() {
@@ -510,11 +553,29 @@ class _MessageListState extends State<MessageList> {
                 right: BricksSpacing.xs,
                 bottom: BricksSpacing.md,
               ),
-              child: Text(
-                _messageMetaLine(first),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _messageMetaLine(first),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: chatColors.metaText,
+                        ),
+                  ),
+                  const SizedBox(width: BricksSpacing.xs),
+                  GestureDetector(
+                    onTapUp: (details) => _showAssistantMessageActionMenu(
+                      context: context,
+                      globalPosition: details.globalPosition,
+                      message: first,
+                    ),
+                    child: Icon(
+                      Icons.more_horiz,
+                      size: 14,
                       color: chatColors.metaText,
                     ),
+                  ),
+                ],
               ),
             )
           else
@@ -863,11 +924,29 @@ class _MessageListState extends State<MessageList> {
                 right: BricksSpacing.xs,
                 bottom: BricksSpacing.md,
               ),
-              child: Text(
-                _messageMetaLine(msg),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _messageMetaLine(msg),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: chatColors.metaText,
+                        ),
+                  ),
+                  const SizedBox(width: BricksSpacing.xs),
+                  GestureDetector(
+                    onTapUp: (details) => _showAssistantMessageActionMenu(
+                      context: context,
+                      globalPosition: details.globalPosition,
+                      message: msg,
+                    ),
+                    child: Icon(
+                      Icons.more_horiz,
+                      size: 14,
                       color: chatColors.metaText,
                     ),
+                  ),
+                ],
               ),
             ),
         ],
@@ -2647,6 +2726,68 @@ class _MenuItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action menu shown when tapping the more icon on assistant message meta line.
+// ---------------------------------------------------------------------------
+
+class _AssistantMessageActionMenu extends StatelessWidget {
+  const _AssistantMessageActionMenu({
+    required this.position,
+    required this.screenSize,
+  });
+
+  final Offset position;
+  final Size screenSize;
+
+  static const double _menuWidth = 200.0;
+  static const double _itemHeight = 48.0;
+  static const double _menuEdgeMargin = 8.0;
+
+  @override
+  Widget build(BuildContext context) {
+    const menuHeight = _itemHeight * 3;
+
+    double left = position.dx;
+    double top = position.dy;
+    if (left + _menuWidth > screenSize.width - _menuEdgeMargin) {
+      left = screenSize.width - _menuWidth - _menuEdgeMargin;
+    }
+    if (top + menuHeight > screenSize.height - _menuEdgeMargin) {
+      top = screenSize.height - menuHeight - _menuEdgeMargin;
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            behavior: HitTestBehavior.opaque,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          width: _menuWidth,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: const [
+                _MenuItem(label: '归档此轮', value: 'archive_round'),
+                _MenuItem(label: '归档此回复', value: 'archive_reply'),
+                _MenuItem(label: '移入Thread', value: 'move_to_thread'),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
