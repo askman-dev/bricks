@@ -1228,6 +1228,21 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _handleArchiveRound(ChatMessage message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Coming soon')));
+  }
+
+  void _handleArchiveReply(ChatMessage message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Coming soon')));
+  }
+
+  void _handleMoveToThread(ChatMessage message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Coming soon')));
+  }
+
   String _subSectionKey(String channelId, String sectionId) =>
       '$channelId::$sectionId';
 
@@ -2954,6 +2969,9 @@ class _ChatScreenState extends State<ChatScreen> {
             highlights: _highlights,
             onHighlight: _handleHighlight,
             onDeleteHighlight: _handleDeleteHighlight,
+            onArchiveRound: _handleArchiveRound,
+            onArchiveReply: _handleArchiveReply,
+            onMoveToThread: _handleMoveToThread,
           ),
         ),
         Builder(
