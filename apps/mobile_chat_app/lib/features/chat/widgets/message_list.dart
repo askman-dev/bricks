@@ -44,6 +44,9 @@ class MessageList extends StatefulWidget {
     this.highlights = const {},
     this.onHighlight,
     this.onDeleteHighlight,
+    this.onArchiveRound,
+    this.onArchiveReply,
+    this.onMoveToThread,
   });
 
   final List<ChatMessage> messages;
@@ -62,6 +65,15 @@ class MessageList extends StatefulWidget {
 
   /// Called when the user taps Remove highlight in the floating highlight menu.
   final void Function(String highlightId)? onDeleteHighlight;
+
+  /// Called when the user selects "归档此轮" from the assistant message menu.
+  final void Function(ChatMessage message)? onArchiveRound;
+
+  /// Called when the user selects "归档此回复" from the assistant message menu.
+  final void Function(ChatMessage message)? onArchiveReply;
+
+  /// Called when the user selects "移入Thread" from the assistant message menu.
+  final void Function(ChatMessage message)? onMoveToThread;
 
   @override
   State<MessageList> createState() => _MessageListState();
@@ -347,6 +359,58 @@ class _MessageListState extends State<MessageList> {
     );
   }
 
+  Widget _buildAssistantMetaRow(
+    BuildContext context,
+    ChatMessage message,
+    ChatColors chatColors,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: BricksSpacing.xs,
+        right: BricksSpacing.xs,
+        bottom: BricksSpacing.md,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              _messageMetaLine(message),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: chatColors.metaText,
+                  ),
+            ),
+          ),
+          const SizedBox(width: BricksSpacing.xs),
+          Semantics(
+            label: 'Message actions',
+            button: true,
+            child: GestureDetector(
+              onTapUp: (details) => _showAssistantMessageActionMenu(
+                context: context,
+                globalPosition: details.globalPosition,
+                message: message,
+              ),
+              behavior: HitTestBehavior.opaque,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                child: Center(
+                  child: Icon(
+                    Icons.more_horiz,
+                    size: 14,
+                    color: chatColors.metaText,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showUserMessageContextMenu({
     required BuildContext context,
     required Offset globalPosition,
@@ -379,6 +443,44 @@ class _MessageListState extends State<MessageList> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Coming soon')));
+        break;
+    }
+  }
+
+  Future<void> _showAssistantMessageActionMenu({
+    required BuildContext context,
+    required Offset globalPosition,
+    required ChatMessage message,
+  }) async {
+    final hasArchiveRound = widget.onArchiveRound != null;
+    final hasArchiveReply = widget.onArchiveReply != null;
+    final hasMoveToThread = widget.onMoveToThread != null;
+    if (!hasArchiveRound && !hasArchiveReply && !hasMoveToThread) return;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final result = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: Duration.zero,
+      pageBuilder: (dialogContext, _, __) => _AssistantMessageActionMenu(
+        position: globalPosition,
+        screenSize: overlay.size,
+        showArchiveRound: hasArchiveRound,
+        showArchiveReply: hasArchiveReply,
+        showMoveToThread: hasMoveToThread,
+      ),
+    );
+    if (!context.mounted || result == null) return;
+    switch (result) {
+      case 'archive_round':
+        widget.onArchiveRound?.call(message);
+        break;
+      case 'archive_reply':
+        widget.onArchiveReply?.call(message);
+        break;
+      case 'move_to_thread':
+        widget.onMoveToThread?.call(message);
         break;
     }
   }
@@ -504,19 +606,7 @@ class _MessageListState extends State<MessageList> {
                     ),
           ),
           if (!hideMeta)
-            Padding(
-              padding: const EdgeInsets.only(
-                left: BricksSpacing.xs,
-                right: BricksSpacing.xs,
-                bottom: BricksSpacing.md,
-              ),
-              child: Text(
-                _messageMetaLine(first),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: chatColors.metaText,
-                    ),
-              ),
-            )
+            _buildAssistantMetaRow(context, first, chatColors)
           else
             const SizedBox(height: BricksSpacing.xs),
         ],
@@ -857,19 +947,7 @@ class _MessageListState extends State<MessageList> {
               ),
             ),
           if (!isUser)
-            Padding(
-              padding: const EdgeInsets.only(
-                left: BricksSpacing.xs,
-                right: BricksSpacing.xs,
-                bottom: BricksSpacing.md,
-              ),
-              child: Text(
-                _messageMetaLine(msg),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: chatColors.metaText,
-                    ),
-              ),
-            ),
+            _buildAssistantMetaRow(context, msg, chatColors),
         ],
       ),
     );
@@ -2647,6 +2725,75 @@ class _MenuItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action menu shown when tapping the more icon on assistant message meta line.
+// ---------------------------------------------------------------------------
+
+class _AssistantMessageActionMenu extends StatelessWidget {
+  const _AssistantMessageActionMenu({
+    required this.position,
+    required this.screenSize,
+    required this.showArchiveRound,
+    required this.showArchiveReply,
+    required this.showMoveToThread,
+  });
+
+  final Offset position;
+  final Size screenSize;
+  final bool showArchiveRound;
+  final bool showArchiveReply;
+  final bool showMoveToThread;
+
+  static const double _menuWidth = 200.0;
+  static const double _itemHeight = 48.0;
+  static const double _menuEdgeMargin = 8.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      if (showArchiveRound) const _MenuItem(label: '归档此轮', value: 'archive_round'),
+      if (showArchiveReply) const _MenuItem(label: '归档此回复', value: 'archive_reply'),
+      if (showMoveToThread) const _MenuItem(label: '移入Thread', value: 'move_to_thread'),
+    ];
+    final menuHeight = _itemHeight * items.length;
+
+    double left = position.dx;
+    double top = position.dy;
+    if (left + _menuWidth > screenSize.width - _menuEdgeMargin) {
+      left = screenSize.width - _menuWidth - _menuEdgeMargin;
+    }
+    if (top + menuHeight > screenSize.height - _menuEdgeMargin) {
+      top = screenSize.height - menuHeight - _menuEdgeMargin;
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            behavior: HitTestBehavior.opaque,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          width: _menuWidth,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: items,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

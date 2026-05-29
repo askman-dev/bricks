@@ -38,6 +38,9 @@ Widget _build(
   Map<String, List<HighlightSpan>> highlights = const {},
   void Function(String, String, int?, int?)? onHighlight,
   void Function(String)? onDeleteHighlight,
+  void Function(ChatMessage)? onArchiveRound,
+  void Function(ChatMessage)? onArchiveReply,
+  void Function(ChatMessage)? onMoveToThread,
 }) =>
     MaterialApp(
       theme: theme,
@@ -49,6 +52,9 @@ Widget _build(
             highlights: highlights,
             onHighlight: onHighlight,
             onDeleteHighlight: onDeleteHighlight,
+            onArchiveRound: onArchiveRound,
+            onArchiveReply: onArchiveReply,
+            onMoveToThread: onMoveToThread,
           ),
         ),
       ),
@@ -1565,6 +1571,108 @@ void main() {
 
       expect(find.text('Thinking complete 1/1'), findsOneWidget);
       expect(find.textContaining('Tool: search'), findsNothing);
+    });
+  });
+
+  group('Assistant message action menu', () {
+    ChatMessage _assistantMsg() => ChatMessage(
+          messageId: 'a-action',
+          role: 'assistant',
+          content: 'Hello from assistant',
+          timestamp: DateTime.utc(2026, 1, 1, 8, 0),
+        );
+
+    testWidgets('action menu is not shown when no callbacks are wired',
+        (tester) async {
+      await tester.pumpWidget(_build([_assistantMsg()]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+
+      expect(find.text('归档此轮'), findsNothing);
+      expect(find.text('归档此回复'), findsNothing);
+      expect(find.text('移入Thread'), findsNothing);
+    });
+
+    testWidgets('tapping archive_round calls onArchiveRound with message',
+        (tester) async {
+      ChatMessage? received;
+      await tester.pumpWidget(
+        _build(
+          [_assistantMsg()],
+          onArchiveRound: (m) => received = m,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+
+      expect(find.text('归档此轮'), findsOneWidget);
+      await tester.tap(find.text('归档此轮'));
+      await tester.pumpAndSettle();
+
+      expect(received?.messageId, 'a-action');
+    });
+
+    testWidgets('tapping archive_reply calls onArchiveReply with message',
+        (tester) async {
+      ChatMessage? received;
+      await tester.pumpWidget(
+        _build(
+          [_assistantMsg()],
+          onArchiveReply: (m) => received = m,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+
+      expect(find.text('归档此回复'), findsOneWidget);
+      await tester.tap(find.text('归档此回复'));
+      await tester.pumpAndSettle();
+
+      expect(received?.messageId, 'a-action');
+    });
+
+    testWidgets('tapping move_to_thread calls onMoveToThread with message',
+        (tester) async {
+      ChatMessage? received;
+      await tester.pumpWidget(
+        _build(
+          [_assistantMsg()],
+          onMoveToThread: (m) => received = m,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+
+      expect(find.text('移入Thread'), findsOneWidget);
+      await tester.tap(find.text('移入Thread'));
+      await tester.pumpAndSettle();
+
+      expect(received?.messageId, 'a-action');
+    });
+
+    testWidgets('menu only shows items for wired callbacks', (tester) async {
+      await tester.pumpWidget(
+        _build(
+          [_assistantMsg()],
+          onArchiveRound: (_) {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+
+      expect(find.text('归档此轮'), findsOneWidget);
+      expect(find.text('归档此回复'), findsNothing);
+      expect(find.text('移入Thread'), findsNothing);
     });
   });
 }
