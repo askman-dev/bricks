@@ -359,6 +359,48 @@ class _MessageListState extends State<MessageList> {
     );
   }
 
+  Widget _buildAssistantMetaRow(
+    BuildContext context,
+    ChatMessage message,
+    ChatColors chatColors,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: BricksSpacing.xs,
+        right: BricksSpacing.xs,
+        bottom: BricksSpacing.md,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _messageMetaLine(message),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: chatColors.metaText,
+                ),
+          ),
+          const SizedBox(width: BricksSpacing.xs),
+          Semantics(
+            label: 'Message actions',
+            button: true,
+            child: GestureDetector(
+              onTapUp: (details) => _showAssistantMessageActionMenu(
+                context: context,
+                globalPosition: details.globalPosition,
+                message: message,
+              ),
+              child: Icon(
+                Icons.more_horiz,
+                size: 14,
+                color: chatColors.metaText,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showUserMessageContextMenu({
     required BuildContext context,
     required Offset globalPosition,
@@ -547,37 +589,7 @@ class _MessageListState extends State<MessageList> {
                     ),
           ),
           if (!hideMeta)
-            Padding(
-              padding: const EdgeInsets.only(
-                left: BricksSpacing.xs,
-                right: BricksSpacing.xs,
-                bottom: BricksSpacing.md,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _messageMetaLine(first),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: chatColors.metaText,
-                        ),
-                  ),
-                  const SizedBox(width: BricksSpacing.xs),
-                  GestureDetector(
-                    onTapUp: (details) => _showAssistantMessageActionMenu(
-                      context: context,
-                      globalPosition: details.globalPosition,
-                      message: first,
-                    ),
-                    child: Icon(
-                      Icons.more_horiz,
-                      size: 14,
-                      color: chatColors.metaText,
-                    ),
-                  ),
-                ],
-              ),
-            )
+            _buildAssistantMetaRow(context, first, chatColors)
           else
             const SizedBox(height: BricksSpacing.xs),
         ],
@@ -918,37 +930,7 @@ class _MessageListState extends State<MessageList> {
               ),
             ),
           if (!isUser)
-            Padding(
-              padding: const EdgeInsets.only(
-                left: BricksSpacing.xs,
-                right: BricksSpacing.xs,
-                bottom: BricksSpacing.md,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _messageMetaLine(msg),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: chatColors.metaText,
-                        ),
-                  ),
-                  const SizedBox(width: BricksSpacing.xs),
-                  GestureDetector(
-                    onTapUp: (details) => _showAssistantMessageActionMenu(
-                      context: context,
-                      globalPosition: details.globalPosition,
-                      message: msg,
-                    ),
-                    child: Icon(
-                      Icons.more_horiz,
-                      size: 14,
-                      color: chatColors.metaText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _buildAssistantMetaRow(context, msg, chatColors),
         ],
       ),
     );
