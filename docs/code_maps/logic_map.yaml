@@ -751,6 +751,43 @@ index:
       - 旧数据若缺少 startOffset/endOffset，仍会回退为 selectedText 搜索；重复文本场景下旧记录可能显示多处，需要后续数据迁移或重新创建高亮才能完全消除歧义。
       - ChatScreen 必须在 highlight 创建、加载、删除后同步 _textHighlights，否则 Resources tab 可能显示过期划线资源。
 
+  - feature_id: scheduled_actions
+    capability: 定时 Agent 任务调度与 Cron 执行
+    code_index:
+      - apps/node_backend/src/routes/cron.ts
+      - apps/node_backend/src/services/scheduledActionService.ts
+      - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/db/migrations/021_create_scheduled_actions.sql
+      - apps/node_backend/src/db/migrations/022_create_scheduled_action_runs.sql
+      - apps/node_backend/src/app.ts
+      - vercel.json
+    doc_index:
+      - docs/plans/2026-05-26-18-34-CST-scheduled-actions-agent-execution.md
+    test_index:
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
+    keywords:
+      - scheduled_action
+      - scheduled_action_runs
+      - CRON_SECRET
+      - cron
+      - interval_seconds
+      - next_run_at
+      - claimScheduledActionRun
+      - advanceNextRunAt
+      - queryDueActions
+      - scheduled_action_create
+      - scheduled_action_list
+      - scheduled_action_pause
+      - scheduled_action_resume
+      - scheduled_action_delete
+    change_risks:
+      - 若 claimScheduledActionRun 的 UNIQUE 约束失效，同一 fire time 可能创建两条 run 记录并触发重复 Agent 执行。
+      - 若 advanceNextRunAt 未在 claim 后立即调用，下一个 cron tick 可能再次 claim 同一 fire time 并被 UNIQUE 阻止，但 next_run_at 不会推进，导致每次 cron 都命中同一条 action 直至其完成。
+      - Vercel cron 调用 /api/cron/scheduled-actions 时附带的 Authorization 头必须与 CRON_SECRET 完全匹配；若未在 Vercel 项目设置中配置 CRON_SECRET，端点将永远返回 403。
+      - 若 cron 路由被注册到 authenticate 中间件之后，cron 请求（无 JWT）会被 401 拒绝。
+      - 定时任务的 Agent 执行依赖 streamWithAgentToolsAndUserConfig；若用户的 LLM 配置缺失，run 将被标记为 failed 并写入错误消息。
+      - 迁移 021/022 中的 EXECUTE FUNCTION 触发器在 Turso 上会被静默跳过；updated_at 字段在 Turso 上不会自动更新，需在 UPDATE 语句中手动赋值或接受此差异。
+
 maintenance_rules:
   update_required_when:
     - 新增、删除或重命名用户可见功能入口。

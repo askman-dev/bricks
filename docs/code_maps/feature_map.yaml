@@ -362,6 +362,20 @@ products:
           - '向 `/api/chat/scope-settings` PUT 保存 `instructions` 字段后，再通过 GET 读取应返回同一 instructions 值。'
           - '`/api/chat/respond` 在 body 包含 `systemPrompt` 且 DB 中存在 channel/thread instructions 时，发给模型的消息列表首条应为合并后的 system 消息。'
 
+      - feature_id: scheduled_actions
+        name: 定时 Agent 任务调度
+        user_value: 用户可通过对话创建重复执行的 Agent 任务（如每日日程汇总、定时提醒），无需手动触发。
+        entry_paths:
+          - route: GET /api/cron/scheduled-actions
+            route_hint: apps/node_backend/src/routes/cron.ts
+          - service: scheduledActionService
+            route_hint: apps/node_backend/src/services/scheduledActionService.ts
+        smoke_checks:
+          - 使用 CRON_SECRET 请求 `/api/cron/scheduled-actions` 返回 200 及 processed 列表。
+          - 无 CRON_SECRET 或 token 错误时返回 401/403。
+          - 通过 Agent 工具创建定时任务后，`scheduled_actions` 中可查到该记录。
+          - 同一 fire time 的重复 cron 请求不会创建第二条 run 记录。
+
   - product_id: node_openclaw_plugin
     name: Node OpenClaw Plugin
     platform:

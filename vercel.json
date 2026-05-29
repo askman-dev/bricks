@@ -3,6 +3,12 @@
   "installCommand": "bash ./tools/vercel-build.sh --install-only && cd apps/node_backend && npm ci --omit=dev",
   "buildCommand": "bash ./tools/vercel-build.sh",
   "outputDirectory": "apps/mobile_chat_app/build/web",
+  "crons": [
+    {
+      "path": "/api/cron/scheduled-actions",
+      "schedule": "* * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
