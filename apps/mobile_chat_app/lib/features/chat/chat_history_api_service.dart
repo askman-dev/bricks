@@ -65,6 +65,18 @@ class ChatAcceptedTask {
   final String acceptedAt;
 }
 
+class ChatForkResult {
+  const ChatForkResult({
+    required this.threadId,
+    required this.channelId,
+    required this.forkedSessionId,
+  });
+
+  final String threadId;
+  final String channelId;
+  final String forkedSessionId;
+}
+
 class ChatChannelNameSetting {
   const ChatChannelNameSetting({
     required this.channelId,
@@ -134,6 +146,7 @@ class ChatHistoryApiService {
   Uri get _scopesUri => Uri.parse('$_base/api/chat/scopes');
   Uri get _scopeSettingsUri => Uri.parse('$_base/api/chat/scope-settings');
   Uri get _channelNamesUri => Uri.parse('$_base/api/chat/channel-names');
+  Uri get _forkUri => Uri.parse('$_base/api/chat/fork');
 
   ChatTaskState? _parseTaskState(Object? value) {
     if (value is! String || value.isEmpty) return null;
@@ -519,6 +532,32 @@ class ChatHistoryApiService {
               message.content.trim().isEmpty),
         )
         .toList(growable: false);
+  }
+
+  Future<ChatForkResult> forkThread({
+    required String parentSessionId,
+    required String forkMessageId,
+    required String newThreadId,
+  }) async {
+    final response = await _apiClient.post(
+      _forkUri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'parentSessionId': parentSessionId,
+        'forkMessageId': forkMessageId,
+        'newThreadId': newThreadId,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fork thread (${response.statusCode})');
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map) throw Exception('Invalid fork response');
+    return ChatForkResult(
+      threadId: raw['threadId'] as String,
+      channelId: raw['channelId'] as String,
+      forkedSessionId: raw['forkedSessionId'] as String,
+    );
   }
 
   Future<int> upsertMessages({

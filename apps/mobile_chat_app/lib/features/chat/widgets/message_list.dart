@@ -46,7 +46,9 @@ class MessageList extends StatefulWidget {
     this.onDeleteHighlight,
     this.onArchiveRound,
     this.onArchiveReply,
-    this.onMoveToThread,
+    this.onFork,
+    this.onBranch,
+    this.onResend,
   });
 
   final List<ChatMessage> messages;
@@ -66,14 +68,20 @@ class MessageList extends StatefulWidget {
   /// Called when the user taps Remove highlight in the floating highlight menu.
   final void Function(String highlightId)? onDeleteHighlight;
 
-  /// Called when the user selects "归档此轮" from the assistant message menu.
+  /// Called when the user selects "Archive Round" from the assistant message menu.
   final void Function(ChatMessage message)? onArchiveRound;
 
-  /// Called when the user selects "归档此回复" from the assistant message menu.
+  /// Called when the user selects "Archive Reply" from the assistant message menu.
   final void Function(ChatMessage message)? onArchiveReply;
 
-  /// Called when the user selects "移入Thread" from the assistant message menu.
-  final void Function(ChatMessage message)? onMoveToThread;
+  /// Called when the user selects "Fork" from the assistant message menu.
+  final void Function(ChatMessage message)? onFork;
+
+  /// Called when the user selects "Branch" from the user message context menu.
+  final void Function(ChatMessage message)? onBranch;
+
+  /// Called when the user selects "Resend" from the user message context menu.
+  final void Function(ChatMessage message)? onResend;
 
   @override
   State<MessageList> createState() => _MessageListState();
@@ -439,10 +447,10 @@ class _MessageListState extends State<MessageList> {
         ).showSnackBar(const SnackBar(content: Text('Copied')));
         break;
       case 'branch':
+        widget.onBranch?.call(message);
+        break;
       case 'resend':
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Coming soon')));
+        widget.onResend?.call(message);
         break;
     }
   }
@@ -454,8 +462,8 @@ class _MessageListState extends State<MessageList> {
   }) async {
     final hasArchiveRound = widget.onArchiveRound != null;
     final hasArchiveReply = widget.onArchiveReply != null;
-    final hasMoveToThread = widget.onMoveToThread != null;
-    if (!hasArchiveRound && !hasArchiveReply && !hasMoveToThread) return;
+    final hasFork = widget.onFork != null;
+    if (!hasArchiveRound && !hasArchiveReply && !hasFork) return;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final result = await showGeneralDialog<String>(
       context: context,
@@ -468,7 +476,7 @@ class _MessageListState extends State<MessageList> {
         screenSize: overlay.size,
         showArchiveRound: hasArchiveRound,
         showArchiveReply: hasArchiveReply,
-        showMoveToThread: hasMoveToThread,
+        showFork: hasFork,
       ),
     );
     if (!context.mounted || result == null) return;
@@ -479,8 +487,8 @@ class _MessageListState extends State<MessageList> {
       case 'archive_reply':
         widget.onArchiveReply?.call(message);
         break;
-      case 'move_to_thread':
-        widget.onMoveToThread?.call(message);
+      case 'fork':
+        widget.onFork?.call(message);
         break;
     }
   }
@@ -2670,8 +2678,8 @@ class _UserMessageContextMenu extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _MenuItem(label: 'Copy', value: 'copy'),
-                _MenuItem(label: 'Branch (coming soon)', value: 'branch'),
-                _MenuItem(label: 'Resend (coming soon)', value: 'resend'),
+                _MenuItem(label: 'Branch', value: 'branch'),
+                _MenuItem(label: 'Resend', value: 'resend'),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -2739,14 +2747,14 @@ class _AssistantMessageActionMenu extends StatelessWidget {
     required this.screenSize,
     required this.showArchiveRound,
     required this.showArchiveReply,
-    required this.showMoveToThread,
+    required this.showFork,
   });
 
   final Offset position;
   final Size screenSize;
   final bool showArchiveRound;
   final bool showArchiveReply;
-  final bool showMoveToThread;
+  final bool showFork;
 
   static const double _menuWidth = 200.0;
   static const double _itemHeight = 48.0;
@@ -2755,9 +2763,9 @@ class _AssistantMessageActionMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      if (showArchiveRound) const _MenuItem(label: '归档此轮', value: 'archive_round'),
-      if (showArchiveReply) const _MenuItem(label: '归档此回复', value: 'archive_reply'),
-      if (showMoveToThread) const _MenuItem(label: '移入Thread', value: 'move_to_thread'),
+      if (showArchiveRound) const _MenuItem(label: 'Archive Round', value: 'archive_round'),
+      if (showArchiveReply) const _MenuItem(label: 'Archive Reply', value: 'archive_reply'),
+      if (showFork) const _MenuItem(label: 'Fork', value: 'fork'),
     ];
     final menuHeight = _itemHeight * items.length;
 

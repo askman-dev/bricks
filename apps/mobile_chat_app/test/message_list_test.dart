@@ -40,7 +40,7 @@ Widget _build(
   void Function(String)? onDeleteHighlight,
   void Function(ChatMessage)? onArchiveRound,
   void Function(ChatMessage)? onArchiveReply,
-  void Function(ChatMessage)? onMoveToThread,
+  void Function(ChatMessage)? onFork,
 }) =>
     MaterialApp(
       theme: theme,
@@ -54,7 +54,7 @@ Widget _build(
             onDeleteHighlight: onDeleteHighlight,
             onArchiveRound: onArchiveRound,
             onArchiveReply: onArchiveReply,
-            onMoveToThread: onMoveToThread,
+            onFork: onFork,
           ),
         ),
       ),
@@ -1637,13 +1637,13 @@ void main() {
       expect(received?.messageId, 'a-action');
     });
 
-    testWidgets('tapping move_to_thread calls onMoveToThread with message',
+    testWidgets('tapping fork calls onFork with message',
         (tester) async {
       ChatMessage? received;
       await tester.pumpWidget(
         _build(
           [_assistantMsg()],
-          onMoveToThread: (m) => received = m,
+          onFork: (m) => received = m,
         ),
       );
       await tester.pumpAndSettle();
@@ -1651,8 +1651,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
 
-      expect(find.text('移入Thread'), findsOneWidget);
-      await tester.tap(find.text('移入Thread'));
+      expect(find.text('Fork'), findsOneWidget);
+      await tester.tap(find.text('Fork'));
       await tester.pumpAndSettle();
 
       expect(received?.messageId, 'a-action');
