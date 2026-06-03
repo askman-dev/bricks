@@ -1237,15 +1237,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (messageId == null) return;
     // Find the user message that immediately precedes this assistant message.
     String? precedingUserMessageId;
+    bool foundTarget = false;
     for (int i = _messages.length - 1; i >= 0; i--) {
-      if (_messages[i].messageId == messageId) {
-        // Search backwards for the first user message.
-        for (int j = i - 1; j >= 0; j--) {
-          if (_messages[j].role == 'user') {
-            precedingUserMessageId = _messages[j].messageId;
-            break;
-          }
-        }
+      final msg = _messages[i];
+      if (!foundTarget) {
+        if (msg.messageId == messageId) foundTarget = true;
+      } else if (msg.role == 'user') {
+        precedingUserMessageId = msg.messageId;
         break;
       }
     }
