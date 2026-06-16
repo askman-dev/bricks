@@ -1,0 +1,5 @@
+- [x] Review new PR comments and decide which need action/reply
+- [x] Confirm current CI workflow status for this PR branch
+- [x] Update integration doc to explicitly state unified messages storage + separate events/outbox
+- [x] Validate documentation-only change and run final review validation
+- [ ] Reply to actionable PR comment with commit hash and screenshot link

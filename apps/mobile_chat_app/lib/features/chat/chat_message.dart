@@ -8,7 +8,8 @@ enum ChatInvalidationKind {
   resourcesTodos('resources.todos'),
   resourcesTables('resources.tables'),
   resourcesTableColumns('resources.tableColumns'),
-  resourcesTableRows('resources.tableRows');
+  resourcesTableRows('resources.tableRows'),
+  resourcesNotes('resources.notes');
 
   const ChatInvalidationKind(this.value);
 
@@ -33,6 +34,7 @@ class ChatInvalidation {
     this.resourceId,
     this.columnKey,
     this.rowId,
+    this.noteId,
   });
 
   final ChatInvalidationKind kind;
@@ -43,6 +45,7 @@ class ChatInvalidation {
   final String? resourceId;
   final String? columnKey;
   final String? rowId;
+  final String? noteId;
 
   Map<String, Object?> toMap() => {
         'kind': kind.value,
@@ -53,6 +56,7 @@ class ChatInvalidation {
         if (resourceId != null) 'resourceId': resourceId,
         if (columnKey != null) 'columnKey': columnKey,
         if (rowId != null) 'rowId': rowId,
+        if (noteId != null) 'noteId': noteId,
       };
 
   static ChatInvalidation? fromMap(Object? value) {
@@ -75,6 +79,7 @@ class ChatInvalidation {
       resourceId: readString('resourceId'),
       columnKey: readString('columnKey'),
       rowId: readString('rowId'),
+      noteId: readString('noteId'),
     );
   }
 }

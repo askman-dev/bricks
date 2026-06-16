@@ -275,6 +275,13 @@ void main() {
             updatedAt: DateTime.utc(2026, 5, 19, 10),
             notes: 'Highlighted text',
           ),
+          ChatResourceItem(
+            id: 'note_1',
+            type: ChatResourceType.note,
+            title: 'Research Note',
+            updatedAt: DateTime.utc(2026, 5, 19, 11),
+            notes: '# Research preview',
+          ),
         ],
       ));
       await tester.pumpAndSettle();
@@ -285,10 +292,15 @@ void main() {
       expect(find.text('My Todo List'), findsOneWidget);
       expect(find.text('Asset Table'), findsOneWidget);
       expect(find.text('Important highlighted text'), findsOneWidget);
+      expect(find.text('Research Note'), findsOneWidget);
       expect(find.byIcon(Icons.checklist_outlined), findsOneWidget);
       expect(find.byIcon(Icons.table_chart_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.description_outlined), findsOneWidget);
       expect(find.byIcon(Icons.format_color_text_outlined), findsOneWidget);
 
+      final noteTop = tester.getTopLeft(
+        find.widgetWithText(ListTile, 'Research Note'),
+      );
       final highlightTop = tester.getTopLeft(
         find.widgetWithText(ListTile, 'Important highlighted text'),
       );
@@ -298,8 +310,39 @@ void main() {
       final todoTop = tester.getTopLeft(
         find.widgetWithText(ListTile, 'My Todo List'),
       );
+      expect(noteTop.dy, lessThan(highlightTop.dy));
       expect(highlightTop.dy, lessThan(tableTop.dy));
       expect(tableTop.dy, lessThan(todoTop.dy));
+    });
+
+    testWidgets('Resources tab can filter by note type', (tester) async {
+      await tester.pumpWidget(_buildPage(
+        resources: [
+          ChatResourceItem(
+            id: 'todo_1',
+            type: ChatResourceType.todoList,
+            title: 'My Todo List',
+            updatedAt: DateTime.utc(2026, 5, 19, 8),
+          ),
+          ChatResourceItem(
+            id: 'note_1',
+            type: ChatResourceType.note,
+            title: 'Research Note',
+            updatedAt: DateTime.utc(2026, 5, 19, 11),
+            notes: '# Research preview',
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Notes'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Research Note'), findsOneWidget);
+      expect(find.text('My Todo List'), findsNothing);
     });
 
     testWidgets('Resources tab can filter by highlight type', (tester) async {
@@ -380,6 +423,31 @@ void main() {
 
       expect(find.text('Text Highlight'), findsOneWidget);
       expect(find.text('Highlighted text'), findsOneWidget);
+    });
+
+    testWidgets('tapping note item opens note preview page', (tester) async {
+      await tester.pumpWidget(_buildPage(
+        resources: [
+          ChatResourceItem(
+            id: 'note_1',
+            type: ChatResourceType.note,
+            title: 'Research Note',
+            updatedAt: DateTime.utc(2026, 5, 19, 11),
+            notes: '# Research preview',
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Research Note'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Note'), findsOneWidget);
+      expect(find.text('Body'), findsOneWidget);
+      expect(find.text('# Research preview'), findsWidgets);
     });
 
     testWidgets('tapping New Channel fires createChannel action',

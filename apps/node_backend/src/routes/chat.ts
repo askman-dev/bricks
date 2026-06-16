@@ -78,7 +78,8 @@ type ChatClientInvalidation =
   | { kind: "resources.todos"; listId: string; todoId?: string }
   | { kind: "resources.tables"; resourceId?: string }
   | { kind: "resources.tableColumns"; resourceId: string; columnKey?: string }
-  | { kind: "resources.tableRows"; resourceId: string; rowId?: string };
+  | { kind: "resources.tableRows"; resourceId: string; rowId?: string }
+  | { kind: "resources.notes"; noteId?: string };
 
 function readStringField(
   record: Record<string, unknown>,
@@ -116,6 +117,7 @@ function invalidationsForToolResult(
   const resourceId = readStringField(args, "resourceId") ?? readStringField(resultData, "resourceId");
   const columnKey = readStringField(args, "columnKey") ?? readStringField(resultData, "columnKey");
   const rowId = readStringField(args, "rowId") ?? readStringField(resultData, "rowId");
+  const noteId = readStringField(args, "noteId") ?? readStringField(resultData, "id");
 
   switch (stepResult.toolName) {
     case "chat_channel_create":
@@ -188,8 +190,15 @@ function invalidationsForToolResult(
               resourceId,
               ...(rowId ? { rowId } : {}),
             },
-          ]
+        ]
         : [];
+    case "note_create":
+    case "note_update":
+    case "note_delete":
+    case "note_append_lines":
+    case "note_replace_lines":
+    case "note_delete_lines":
+      return [{ kind: "resources.notes", ...(noteId ? { noteId } : {}) }];
     default:
       return [];
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'note_api_service.dart';
 import 'todo_api_service.dart';
 
 /// Actions that can be triggered from the chat navigation page.
@@ -7,7 +8,7 @@ enum ChatNavigationAction { appSettings, sessions, createChannel, manageAgents }
 enum ChatChannelMenuAction { rename, archive }
 
 /// Type filter for the Resources tab.
-enum ChatResourceTypeFilter { all, todoList, assetTable, textHighlight }
+enum ChatResourceTypeFilter { all, todoList, assetTable, note, textHighlight }
 
 class ChatChannelItem {
   const ChatChannelItem({
@@ -36,7 +37,7 @@ class ChatAgentItem {
 }
 
 /// Type of resource shown in the Resources tab.
-enum ChatResourceType { todoList, assetTable, textHighlight }
+enum ChatResourceType { todoList, assetTable, note, textHighlight }
 
 /// A resource item shown in the Resources tab.
 class ChatResourceItem {
@@ -63,6 +64,8 @@ ChatResourceTypeFilter _filterForResourceType(ChatResourceType type) {
       return ChatResourceTypeFilter.todoList;
     case ChatResourceType.assetTable:
       return ChatResourceTypeFilter.assetTable;
+    case ChatResourceType.note:
+      return ChatResourceTypeFilter.note;
     case ChatResourceType.textHighlight:
       return ChatResourceTypeFilter.textHighlight;
   }
@@ -76,6 +79,8 @@ String _labelForResourceFilter(ChatResourceTypeFilter filter) {
       return 'Todo Lists';
     case ChatResourceTypeFilter.assetTable:
       return 'Tables';
+    case ChatResourceTypeFilter.note:
+      return 'Notes';
     case ChatResourceTypeFilter.textHighlight:
       return 'Highlights';
   }
@@ -87,6 +92,8 @@ IconData _iconForResourceType(ChatResourceType type) {
       return Icons.checklist_outlined;
     case ChatResourceType.assetTable:
       return Icons.table_chart_outlined;
+    case ChatResourceType.note:
+      return Icons.description_outlined;
     case ChatResourceType.textHighlight:
       return Icons.format_color_text_outlined;
   }
@@ -98,6 +105,8 @@ String _labelForResourceType(ChatResourceType type) {
       return 'Todo List';
     case ChatResourceType.assetTable:
       return 'Table';
+    case ChatResourceType.note:
+      return 'Note';
     case ChatResourceType.textHighlight:
       return 'Text Highlight';
   }
@@ -123,8 +132,8 @@ class ChatNodeItem {
 ///
 /// The navigation is split into three tabs: **Channels** (a flat list of
 /// channels with a "New Channel" action), **Resources** (a flat list of
-/// todo-lists and asset tables), and **Nodes** (a flat list of connected AI
-/// nodes).
+/// todo-lists, asset tables, notes, and highlights), and **Nodes** (a flat list
+/// of connected AI nodes).
 class ChatNavigationPage extends StatefulWidget {
   const ChatNavigationPage({
     super.key,
@@ -141,6 +150,7 @@ class ChatNavigationPage extends StatefulWidget {
     this.onRequestClose,
     this.closeOnChannelSelected = true,
     this.todoApiService,
+    this.noteApiService,
   });
 
   final ValueChanged<ChatNavigationAction> onActionSelected;
@@ -150,7 +160,7 @@ class ChatNavigationPage extends StatefulWidget {
   /// Connected AI nodes shown in the Nodes tab.
   final List<ChatNodeItem> nodes;
 
-  /// Todo-lists and asset tables shown in the Resources tab.
+  /// Persistent resources shown in the Resources tab.
   final List<ChatResourceItem> resources;
 
   final ValueChanged<String>? onChannelSelected;
@@ -171,6 +181,9 @@ class ChatNavigationPage extends StatefulWidget {
 
   /// Optional service used to fetch todo items inside [_ResourcePreviewPage].
   final TodoApiService? todoApiService;
+
+  /// Optional service used to fetch full note bodies inside [_ResourcePreviewPage].
+  final NoteApiService? noteApiService;
 
   /// Called when the navigation requests to be closed. This is triggered by
   /// the back arrow, action selections (rename/archive), and channel taps when
@@ -275,6 +288,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
         builder: (_) => _ResourcePreviewPage(
           resource: resource,
           todoApiService: widget.todoApiService,
+          noteApiService: widget.noteApiService,
         ),
       ),
     );
@@ -586,17 +600,18 @@ class _NodeDetailPage extends StatelessWidget {
 
 /// Preview page for a resource item.
 ///
-/// When the resource is a todo-list and [todoApiService] is provided, the page
-/// fetches the list's todo items and renders them with their status and
-/// creation time.
+/// When the resource is a todo-list or note and the corresponding API service
+/// is provided, the page fetches detail content for a read-only preview.
 class _ResourcePreviewPage extends StatefulWidget {
   const _ResourcePreviewPage({
     required this.resource,
     this.todoApiService,
+    this.noteApiService,
   });
 
   final ChatResourceItem resource;
   final TodoApiService? todoApiService;
+  final NoteApiService? noteApiService;
 
   @override
   State<_ResourcePreviewPage> createState() => _ResourcePreviewPageState();
@@ -604,6 +619,7 @@ class _ResourcePreviewPage extends StatefulWidget {
 
 class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
   List<TodoItem>? _items;
+  NoteDetail? _note;
   bool _loading = false;
   String? _error;
 
@@ -612,6 +628,8 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
     super.initState();
     if (widget.resource.type == ChatResourceType.todoList) {
       _fetchItems();
+    } else if (widget.resource.type == ChatResourceType.note) {
+      _fetchNote();
     }
   }
 
@@ -651,10 +669,37 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
     }
   }
 
+  Future<void> _fetchNote() async {
+    final service = widget.noteApiService;
+    if (service == null) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final note = await service.getNote(widget.resource.id);
+      if (mounted) {
+        setState(() {
+          _note = note;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final resource = widget.resource;
     final isTodoList = resource.type == ChatResourceType.todoList;
+    final isNote = resource.type == ChatResourceType.note;
     final notes = resource.notes?.trim();
 
     return Scaffold(
@@ -708,6 +753,45 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
               )
             else
               ..._items!.map((item) => _TodoItemTile(item: item)),
+          ],
+          if (isNote) ...[
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                'Body',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              ListTile(
+                leading: const Icon(Icons.error_outline),
+                title: const Text('Failed to load note'),
+                subtitle: Text(
+                  _error!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _fetchNote,
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: SelectableText(
+                  _note?.body ?? resource.notes ?? '',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        height: 1.45,
+                      ),
+                ),
+              ),
           ],
           const SizedBox(height: 24),
         ],

@@ -25,6 +25,7 @@ import 'chat_topology.dart';
 import 'chat_message.dart';
 import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
+import 'note_api_service.dart';
 import 'todo_api_service.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
@@ -77,8 +78,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, List<PlatformAgentConfig>> _openClawAgentsByNodeId = const {};
   List<TodoList> _todoLists = const [];
   List<AssetTableSummary> _assetTables = const [];
+  List<NoteSummary> _notes = const [];
   final TodoApiService _todoApiService = TodoApiService();
   final AssetTableApiService _assetTableApiService = AssetTableApiService();
+  final NoteApiService _noteApiService = NoteApiService();
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
@@ -144,6 +147,7 @@ class _ChatScreenState extends State<ChatScreen> {
     Timer(const Duration(seconds: 5), _chatHistoryApiService.dispose);
     _todoApiService.dispose();
     _assetTableApiService.dispose();
+    _noteApiService.dispose();
     _currentSubscription?.cancel();
     for (final session in _sessions.values) {
       unawaited(session.dispose());
@@ -168,6 +172,7 @@ class _ChatScreenState extends State<ChatScreen> {
       Map<String, List<PlatformAgentConfig>> openClawAgentsByNodeId = const {};
       List<TodoList> todoLists = const [];
       List<AssetTableSummary> assetTables = const [];
+      List<NoteSummary> notes = const [];
       try {
         persistedScopes = await _chatHistoryApiService.loadScopes();
       } catch (e) {
@@ -220,6 +225,11 @@ class _ChatScreenState extends State<ChatScreen> {
         debugPrint(
           'loadAssetTables failed, continuing without asset tables: $e',
         );
+      }
+      try {
+        notes = await _noteApiService.listNotes();
+      } catch (e) {
+        debugPrint('loadNotes failed, continuing without notes: $e');
       }
       final defaultConfig = llmConfigs.firstWhere(
         (cfg) => cfg.isDefault,
@@ -311,6 +321,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _activeSubSection = restoredActiveSubSection;
         _todoLists = todoLists;
         _assetTables = assetTables;
+        _notes = notes;
       });
       await _loadMessagesForActiveScope();
     } catch (error) {
@@ -324,6 +335,34 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text('Failed to load chat setup: $error')),
       );
     }
+  }
+
+  Future<void> _refreshResources() async {
+    List<TodoList>? todoLists;
+    List<AssetTableSummary>? assetTables;
+    List<NoteSummary>? notes;
+
+    try {
+      todoLists = await _todoApiService.listTodoLists();
+    } catch (e) {
+      debugPrint('refreshTodoLists failed: $e');
+    }
+    try {
+      assetTables = await _assetTableApiService.listTables();
+    } catch (e) {
+      debugPrint('refreshAssetTables failed: $e');
+    }
+    try {
+      notes = await _noteApiService.listNotes();
+    } catch (e) {
+      debugPrint('refreshNotes failed: $e');
+    }
+    if (!mounted) return;
+    setState(() {
+      if (todoLists != null) _todoLists = todoLists;
+      if (assetTables != null) _assetTables = assetTables;
+      if (notes != null) _notes = notes;
+    });
   }
 
   Future<List<AgentDefinition>> _loadCustomAgentDefinitionsForStartup() async {
@@ -2005,6 +2044,7 @@ class _ChatScreenState extends State<ChatScreen> {
     var refreshScopes = false;
     var refreshChannelNames = false;
     var refreshScopeSettings = false;
+    var refreshResources = false;
 
     for (final message in snapshot.messages) {
       final taskId = message.taskId;
@@ -2025,6 +2065,8 @@ class _ChatScreenState extends State<ChatScreen> {
           case ChatInvalidationKind.resourcesTables:
           case ChatInvalidationKind.resourcesTableColumns:
           case ChatInvalidationKind.resourcesTableRows:
+          case ChatInvalidationKind.resourcesNotes:
+            refreshResources = true;
             break;
         }
       }
@@ -2038,6 +2080,9 @@ class _ChatScreenState extends State<ChatScreen> {
           refreshScopeSettings: refreshScopeSettings,
         ),
       );
+    }
+    if (refreshResources) {
+      unawaited(_refreshResources());
     }
   }
 
@@ -2763,6 +2808,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 updatedAt: t.updatedAt,
               ),
             ),
+            ..._notes.map(
+              (n) => ChatResourceItem(
+                id: n.id,
+                type: ChatResourceType.note,
+                title: n.title,
+                updatedAt: n.updatedAt,
+                notes: n.preview,
+              ),
+            ),
             ..._textHighlights.map(
               (h) => ChatResourceItem(
                 id: h.id,
@@ -2780,6 +2834,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onRequestClose: onRequestClose,
           closeOnChannelSelected: closeOnChannelSelected,
           todoApiService: _todoApiService,
+          noteApiService: _noteApiService,
           onActionSelected: (action) {
             switch (action) {
               case ChatNavigationAction.appSettings:
