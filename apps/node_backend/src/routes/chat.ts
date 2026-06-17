@@ -3,14 +3,17 @@ import rateLimit from "express-rate-limit";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
 import {
   acceptTask,
+  forkThread,
   listUserScopes,
   listSessionMessagesForModel,
   syncMessages,
   upsertMessages,
   type AcceptTaskInput,
+  type ForkThreadInput,
   type MessageUpsertInput,
 } from "../services/chatAsyncTransportService.js";
 import {
+  buildChatSessionId,
   builtinDefaultNodeRef,
   CHAT_ROUTER_LOCAL,
   CHAT_ROUTER_PLUGIN,
@@ -1837,6 +1840,60 @@ router.put("/channel-names", async (req: AuthRequest, res: Response) => {
     res.json({ setting });
   } catch (error) {
     console.error("Upsert chat channel name error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/fork", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const parentSessionId = parseSessionId(body.parentSessionId);
+    const forkMessageId = parseSessionId(body.forkMessageId);
+    const newThreadId = parseSessionId(body.newThreadId);
+
+    if (!parentSessionId || !forkMessageId || !newThreadId) {
+      res.status(400).json({
+        error: "parentSessionId, forkMessageId, and newThreadId are required",
+      });
+      return;
+    }
+
+    // Derive channelId from parentSessionId (format: session:channelId:threadId)
+    const parts = parentSessionId.split(':');
+    if (parts.length < 3 || parts[0] !== 'session') {
+      res.status(400).json({ error: "Invalid parentSessionId format" });
+      return;
+    }
+    const channelId = parts[1];
+    const forkedSessionId = buildChatSessionId(channelId, newThreadId);
+
+    const input: ForkThreadInput = {
+      userId,
+      forkedSessionId,
+      parentSessionId,
+      forkMessageId,
+    };
+    const result = await forkThread(input);
+
+    res.json({
+      threadId: newThreadId,
+      channelId,
+      forkedSessionId: result.forkedSessionId,
+      parentSessionId: result.parentSessionId,
+      forkWriteSeq: result.forkWriteSeq,
+    });
+  } catch (error) {
+    console.error("Fork thread error:", error);
+    if (error instanceof Error && error.message.startsWith("Fork message not found")) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
     res.status(500).json({ error: "Internal server error" });
   }
 });

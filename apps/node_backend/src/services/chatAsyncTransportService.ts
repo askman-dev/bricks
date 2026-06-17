@@ -309,13 +309,68 @@ export async function syncMessages(
 }
 
 
+interface ThreadForkRow {
+  parent_session_id: string;
+  fork_write_seq: string;
+}
+
+/**
+ * Look up the fork record for a session, if one exists.
+ * Returns null when the session is not a fork.
+ */
+async function getThreadFork(
+  userId: string,
+  sessionId: string,
+): Promise<{ parentSessionId: string; forkWriteSeq: bigint } | null> {
+  const result = await pool.query<ThreadForkRow>(
+    `SELECT parent_session_id, fork_write_seq
+       FROM chat_thread_forks
+      WHERE user_id = $1
+        AND forked_session_id = $2
+      LIMIT 1`,
+    [userId, sessionId],
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return {
+    parentSessionId: row.parent_session_id,
+    forkWriteSeq: BigInt(row.fork_write_seq),
+  };
+}
+
+/**
+ * Collect messages from rows into the budget, oldest-first.
+ * rows must be supplied newest-first (ORDER BY write_seq DESC).
+ */
+function collectMessages(
+  rows: ChatMessageRow[],
+  budget: { used: number; maxChars: number },
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  const collected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  for (const row of rows) {
+    const content = row.content?.trim() ?? '';
+    if (!content) continue;
+    if (budget.used + content.length > budget.maxChars) break;
+    budget.used += content.length;
+    collected.push({ role: row.role as 'user' | 'assistant', content });
+  }
+  return collected.reverse();
+}
+
 export async function listSessionMessagesForModel(
   userId: string,
   sessionId: string,
   options: { limit?: number; maxChars?: number } = {},
 ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
   const limit = Math.max(1, Math.min(options.limit ?? 40, 200));
-  const result = await pool.query<ChatMessageRow>(
+  const maxChars = Math.max(200, Math.min(options.maxChars ?? 8000, 64000));
+  const budget = { used: 0, maxChars };
+
+  // Check if this session is a fork; if so, prepend parent context first.
+  const fork = await getThreadFork(userId, sessionId);
+
+  // Fetch own messages (newest-first so we can apply the char budget).
+  const ownResult = await pool.query<ChatMessageRow>(
     `SELECT seq_id, write_seq, message_id, task_id, channel_id, session_id, thread_id,
             role, content, task_state, checkpoint_cursor, metadata, created_at, updated_at
        FROM chat_messages
@@ -327,24 +382,84 @@ export async function listSessionMessagesForModel(
     [userId, sessionId, limit],
   );
 
-  // result.rows is already newest-first (ORDER BY write_seq DESC).
-  // Collect messages greedily from newest to oldest so that the most recent
-  // turns are always included; stop as soon as adding the next message would
-  // exceed the budget.  Reverse at the end to restore chronological order.
-  const maxChars = Math.max(200, Math.min(options.maxChars ?? 8000, 64000));
-  const collected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-  let used = 0;
-  for (const row of result.rows) {
-    const content = row.content?.trim() ?? '';
-    if (!content) continue;
-    if (used + content.length > maxChars) break;
-    used += content.length;
-    collected.push({
-      role: row.role as 'user' | 'assistant',
-      content,
-    });
+  // Collect the forked session's own messages against the shared budget.
+  const ownMessages = collectMessages(ownResult.rows, budget);
+
+  if (!fork) {
+    return ownMessages;
   }
-  return collected.reverse();
+
+  // Fetch parent messages up to (and including) the fork point.
+  const parentResult = await pool.query<ChatMessageRow>(
+    `SELECT seq_id, write_seq, message_id, task_id, channel_id, session_id, thread_id,
+            role, content, task_state, checkpoint_cursor, metadata, created_at, updated_at
+       FROM chat_messages
+      WHERE user_id = $1
+        AND session_id = $2
+        AND role IN ('user', 'assistant')
+        AND write_seq <= $3
+      ORDER BY write_seq DESC
+      LIMIT $4`,
+    [userId, fork.parentSessionId, fork.forkWriteSeq, limit],
+  );
+
+  const parentMessages = collectMessages(parentResult.rows, budget);
+
+  // Return parent context first (chronological), then the fork's own messages.
+  return [...parentMessages, ...ownMessages];
+}
+
+export interface ForkThreadInput {
+  userId: string;
+  forkedSessionId: string;
+  parentSessionId: string;
+  forkMessageId: string;
+}
+
+export interface ForkThreadResult {
+  forkedSessionId: string;
+  parentSessionId: string;
+  forkMessageId: string;
+  forkWriteSeq: number;
+}
+
+/**
+ * Record a thread fork in the database.
+ * The fork point is identified by the parent message_id; its write_seq is
+ * looked up at insert time so that context assembly can use a stable cursor.
+ */
+export async function forkThread(input: ForkThreadInput): Promise<ForkThreadResult> {
+  const { userId, forkedSessionId, parentSessionId, forkMessageId } = input;
+
+  // Look up the write_seq for the fork point message.
+  const msgResult = await pool.query<{ write_seq: string }>(
+    `SELECT write_seq FROM chat_messages
+      WHERE user_id = $1
+        AND session_id = $2
+        AND message_id = $3
+      LIMIT 1`,
+    [userId, parentSessionId, forkMessageId],
+  );
+  if (msgResult.rows.length === 0) {
+    throw new Error(`Fork message not found: ${forkMessageId}`);
+  }
+  const forkWriteSeqBigInt = BigInt(msgResult.rows[0].write_seq);
+  if (forkWriteSeqBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(
+      `Fork write_seq is too large to represent safely: ${msgResult.rows[0].write_seq}`,
+    );
+  }
+  const forkWriteSeq = Number(forkWriteSeqBigInt);
+
+  await pool.query(
+    `INSERT INTO chat_thread_forks
+       (user_id, forked_session_id, parent_session_id, fork_message_id, fork_write_seq)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id, forked_session_id) DO NOTHING`,
+    [userId, forkedSessionId, parentSessionId, forkMessageId, forkWriteSeq],
+  );
+
+  return { forkedSessionId, parentSessionId, forkMessageId, forkWriteSeq };
 }
 
 export async function listUserScopes(userId: string): Promise<ChatPersistedScope[]> {

@@ -47,6 +47,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _messages = [];
+  final Set<String> _archivedMessageIds = {};
   bool _isSending = false;
   bool _isStreaming = false;
   bool _loadingAgents = true;
@@ -886,6 +887,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _activeChannelId = id;
           _activeSubSection = 'main';
           _messages.clear();
+          _archivedMessageIds.clear();
           _latestCheckpointCursor = null;
           _lastSyncedSeq = 0;
         });
@@ -1094,6 +1096,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeChannelId = resolvedChannelId;
       _activeSubSection = restoredSubSection;
       _messages.clear();
+      _archivedMessageIds.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
     });
@@ -1172,6 +1175,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted || _isScopeStale()) return;
       setState(() {
         _messages.clear();
+        _archivedMessageIds.clear();
         _highlights = const {};
         _textHighlights = const [];
         _latestCheckpointCursor = null;
@@ -1265,6 +1269,89 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  void _handleArchiveRound(ChatMessage message) {
+    final messageId = message.messageId;
+    if (messageId == null) return;
+    // Find the user message that immediately precedes this assistant message.
+    String? precedingUserMessageId;
+    bool foundTarget = false;
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      final msg = _messages[i];
+      if (!foundTarget) {
+        if (msg.messageId == messageId) foundTarget = true;
+      } else if (msg.role == 'user') {
+        precedingUserMessageId = msg.messageId;
+        break;
+      }
+    }
+    setState(() {
+      _archivedMessageIds.add(messageId);
+      if (precedingUserMessageId != null) {
+        _archivedMessageIds.add(precedingUserMessageId);
+      }
+    });
+  }
+
+  void _handleArchiveReply(ChatMessage message) {
+    final messageId = message.messageId;
+    if (messageId == null) return;
+    setState(() {
+      _archivedMessageIds.add(messageId);
+    });
+  }
+
+  Future<void> _handleFork(ChatMessage message) async {
+    final messageId = message.messageId;
+    if (messageId == null) return;
+    final parentSessionId = _sessionIdForScope;
+    final newThreadId = _newId('fork');
+    try {
+      await _chatHistoryApiService.forkThread(
+        parentSessionId: parentSessionId,
+        forkMessageId: messageId,
+        newThreadId: newThreadId,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fork failed: $e')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final section = ChatSubSection(
+      id: newThreadId,
+      parentChannelId: _activeChannelId,
+      name: _timestampName(prefix: 'fork'),
+      createdAt: DateTime.now(),
+    );
+    setState(() {
+      final items = _channelSubSections.putIfAbsent(
+        _activeChannelId,
+        () => <ChatSubSection>[],
+      );
+      items.add(section);
+      _activeSubSection = newThreadId;
+      _lastActiveSubSectionByChannel[_activeChannelId] = newThreadId;
+      _messages.clear();
+      _archivedMessageIds.clear();
+      _latestCheckpointCursor = null;
+      _lastSyncedSeq = 0;
+    });
+    _configureActiveScopeSync();
+  }
+
+  Future<void> _handleBranch(ChatMessage message) async {
+    // Branch forks from the user message itself — the new thread inherits
+    // context up to and including this user message from the parent.
+    await _handleFork(message);
+  }
+
+  void _handleResend(ChatMessage message) {
+    if (message.content.trim().isEmpty) return;
+    _sendMessage(message.content);
   }
 
   String _subSectionKey(String channelId, String sectionId) =>
@@ -2266,6 +2353,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeSubSection = id;
       _lastActiveSubSectionByChannel[_activeChannelId] = id;
       _messages.clear();
+      _archivedMessageIds.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
     });
@@ -2343,6 +2431,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastActiveSubSectionByChannel[channelId] = 'main';
       _activeSubSection = 'main';
       _messages.clear();
+      _archivedMessageIds.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
     });
@@ -2369,6 +2458,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeSubSection = subSectionId;
       _lastActiveSubSectionByChannel[_activeChannelId] = subSectionId;
       _messages.clear();
+      _archivedMessageIds.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
     });
@@ -3005,10 +3095,21 @@ class _ChatScreenState extends State<ChatScreen> {
       children: [
         Expanded(
           child: MessageList(
-            messages: _messages,
+            messages: _archivedMessageIds.isEmpty
+                ? _messages
+                : _messages
+                    .where((m) =>
+                        m.messageId == null ||
+                        !_archivedMessageIds.contains(m.messageId))
+                    .toList(),
             highlights: _highlights,
             onHighlight: _handleHighlight,
             onDeleteHighlight: _handleDeleteHighlight,
+            onArchiveRound: _handleArchiveRound,
+            onArchiveReply: _handleArchiveReply,
+            onFork: _handleFork,
+            onBranch: _handleBranch,
+            onResend: _handleResend,
           ),
         ),
         Builder(
