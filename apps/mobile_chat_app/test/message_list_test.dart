@@ -60,6 +60,11 @@ Widget _build(
       ),
     );
 
+Future<void> _openAssistantMessageActions(WidgetTester tester) async {
+  await tester.tap(find.bySemanticsLabel('Message actions'));
+  await tester.pumpAndSettle();
+}
+
 Iterable<TextSpan> _leafTextSpans(InlineSpan span) sync* {
   if (span is TextSpan) {
     final children = span.children;
@@ -1587,8 +1592,7 @@ void main() {
       await tester.pumpWidget(_build([_assistantMsg()]));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_horiz));
-      await tester.pumpAndSettle();
+      await _openAssistantMessageActions(tester);
 
       expect(find.text('归档此轮'), findsNothing);
       expect(find.text('归档此回复'), findsNothing);
@@ -1606,8 +1610,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_horiz));
-      await tester.pumpAndSettle();
+      await _openAssistantMessageActions(tester);
 
       expect(find.text('归档此轮'), findsOneWidget);
       await tester.tap(find.text('归档此轮'));
@@ -1627,8 +1630,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_horiz));
-      await tester.pumpAndSettle();
+      await _openAssistantMessageActions(tester);
 
       expect(find.text('归档此回复'), findsOneWidget);
       await tester.tap(find.text('归档此回复'));
@@ -1648,8 +1650,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_horiz));
-      await tester.pumpAndSettle();
+      await _openAssistantMessageActions(tester);
 
       expect(find.text('移入Thread'), findsOneWidget);
       await tester.tap(find.text('移入Thread'));
@@ -1667,8 +1668,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_horiz));
-      await tester.pumpAndSettle();
+      await _openAssistantMessageActions(tester);
 
       expect(find.text('归档此轮'), findsOneWidget);
       expect(find.text('归档此回复'), findsNothing);
