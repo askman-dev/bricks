@@ -652,7 +652,7 @@ index:
   - feature_id: conversational_notes
     capability: 用户通过自然语言让 AI 将聊天中检索或生成的长 Markdown 资料保存到独立 Note；AI 调用 note_* 内部工具，客户端在 Resources 中只读预览
     code_index:
-      - apps/node_backend/src/db/migrations/023_create_asset_notes.sql
+      - apps/node_backend/src/db/migrations/024_create_asset_notes.sql
       - apps/node_backend/src/services/noteService.ts
       - apps/node_backend/src/services/localAgentLoopService.ts
       - apps/node_backend/src/routes/resources.ts
