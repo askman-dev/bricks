@@ -61,7 +61,18 @@ Widget _build(
     );
 
 Future<void> _openAssistantMessageActions(WidgetTester tester) async {
-  await tester.tap(find.bySemanticsLabel('Message actions'));
+  final action = find.bySemanticsLabel('Message actions');
+  final detectorFinder = find.descendant(
+    of: action,
+    matching: find.byType(GestureDetector),
+  );
+  final detector = tester.widget<GestureDetector>(detectorFinder);
+  detector.onTapUp?.call(
+    TapUpDetails(
+      globalPosition: tester.getCenter(action),
+      kind: PointerDeviceKind.touch,
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
