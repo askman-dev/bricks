@@ -1503,7 +1503,7 @@ class _ChatScreenState extends State<ChatScreen> {
       items.add(
         const PopupMenuItem<String>(
           value: 'main',
-          child: Text('Back to Thread'),
+          child: Text('Back to Main Thread'),
         ),
       );
     }
