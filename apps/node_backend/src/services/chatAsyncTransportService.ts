@@ -443,7 +443,13 @@ export async function forkThread(input: ForkThreadInput): Promise<ForkThreadResu
   if (msgResult.rows.length === 0) {
     throw new Error(`Fork message not found: ${forkMessageId}`);
   }
-  const forkWriteSeq = Number(msgResult.rows[0].write_seq);
+  const forkWriteSeqBigInt = BigInt(msgResult.rows[0].write_seq);
+  if (forkWriteSeqBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(
+      `Fork write_seq is too large to represent safely: ${msgResult.rows[0].write_seq}`,
+    );
+  }
+  const forkWriteSeq = Number(forkWriteSeqBigInt);
 
   await pool.query(
     `INSERT INTO chat_thread_forks
