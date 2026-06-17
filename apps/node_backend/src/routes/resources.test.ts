@@ -6,6 +6,7 @@ import { generateToken } from '../middleware/auth.js';
 import resourcesRouter from './resources.js';
 import { createHighlight } from '../services/textHighlightService.js';
 import { batchAddRows } from '../services/assetTableService.js';
+import { createNote, appendNoteLines } from '../services/noteService.js';
 
 vi.mock('../services/todoService.js', () => ({
   listTodos: vi.fn(),
@@ -41,6 +42,19 @@ vi.mock('../services/textHighlightService.js', () => ({
   deleteHighlight: vi.fn(),
 }));
 
+vi.mock('../services/noteService.js', () => ({
+  MAX_NOTE_LINES: 10000,
+  listNotes: vi.fn(),
+  getNote: vi.fn(),
+  createNote: vi.fn(),
+  updateNote: vi.fn(),
+  deleteNote: vi.fn(),
+  readNoteLines: vi.fn(),
+  appendNoteLines: vi.fn(),
+  replaceNoteLines: vi.fn(),
+  deleteNoteLines: vi.fn(),
+}));
+
 describe('resources routes', () => {
   let server: http.Server;
   let baseUrl: string;
@@ -57,6 +71,26 @@ describe('resources routes', () => {
       color: 'yellow',
       createdAt: '2026-05-19T00:00:00.000Z',
       updatedAt: '2026-05-19T00:00:00.000Z',
+    });
+    vi.mocked(createNote).mockResolvedValue({
+      id: 'note-1',
+      userId: 'user-1',
+      title: 'Research',
+      body: '# Research\n\nUseful finding',
+      isPublished: true,
+      lineCount: 3,
+      createdAt: '2026-06-16T00:00:00.000Z',
+      updatedAt: '2026-06-16T00:00:00.000Z',
+    });
+    vi.mocked(appendNoteLines).mockResolvedValue({
+      id: 'note-1',
+      userId: 'user-1',
+      title: 'Research',
+      body: '# Research\n\nUseful finding\nMore',
+      isPublished: true,
+      lineCount: 4,
+      createdAt: '2026-06-16T00:00:00.000Z',
+      updatedAt: '2026-06-16T00:01:00.000Z',
     });
 
     const app = express();
@@ -108,6 +142,55 @@ describe('resources routes', () => {
       startOffset: 1,
       endOffset: 9,
       color: 'yellow',
+    });
+  });
+
+  it('creates markdown notes with the authenticated user id', async () => {
+    const token = generateToken('user-1');
+
+    const response = await fetch(`${baseUrl}/api/resources/notes`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Research',
+        body: '# Research\n\nUseful finding',
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      id: 'note-1',
+      title: 'Research',
+      body: '# Research\n\nUseful finding',
+    });
+    expect(createNote).toHaveBeenCalledWith('user-1', {
+      title: 'Research',
+      body: '# Research\n\nUseful finding',
+      isPublished: true,
+    });
+  });
+
+  it('returns 400 when appending note lines exceeds the line limit', async () => {
+    const token = generateToken('user-1');
+    vi.mocked(appendNoteLines).mockRejectedValueOnce(
+      new Error('Note body cannot exceed 10000 lines'),
+    );
+
+    const response = await fetch(`${baseUrl}/api/resources/notes/note-1/lines/append`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ lines: ['More'] }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'Note body cannot exceed 10000 lines',
     });
   });
 

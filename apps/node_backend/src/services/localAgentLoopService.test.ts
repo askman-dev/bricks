@@ -57,6 +57,36 @@ vi.mock('./textHighlightService.js', () => ({
   deleteHighlight: vi.fn().mockResolvedValue({ deleted: false }),
 }));
 
+vi.mock('./noteService.js', () => ({
+  listNotes: vi.fn().mockResolvedValue([]),
+  getNote: vi.fn().mockResolvedValue(null),
+  createNote: vi.fn().mockResolvedValue({
+    id: 'note-1',
+    userId: 'u-1',
+    title: 'Research',
+    body: '# Research',
+    isPublished: true,
+    lineCount: 1,
+    createdAt: '2026-06-16T00:00:00.000Z',
+    updatedAt: '2026-06-16T00:00:00.000Z',
+  }),
+  updateNote: vi.fn().mockResolvedValue(null),
+  deleteNote: vi.fn().mockResolvedValue({ deleted: false }),
+  readNoteLines: vi.fn().mockResolvedValue(null),
+  appendNoteLines: vi.fn().mockResolvedValue({
+    id: 'note-1',
+    userId: 'u-1',
+    title: 'Research',
+    body: '# Research\nMore',
+    isPublished: true,
+    lineCount: 2,
+    createdAt: '2026-06-16T00:00:00.000Z',
+    updatedAt: '2026-06-16T00:01:00.000Z',
+  }),
+  replaceNoteLines: vi.fn().mockResolvedValue(null),
+  deleteNoteLines: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('./scheduledActionService.js', () => ({
   listScheduledActions: vi.fn().mockResolvedValue([]),
   getScheduledAction: vi.fn().mockResolvedValue(null),
@@ -473,6 +503,52 @@ describe('localAgentLoopService', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe('invalid_args');
+  });
+
+  // -------------------------------------------------------------------------
+  // Note tool tests
+  // -------------------------------------------------------------------------
+
+  it('dispatches note_create with markdown body and returns the created note', async () => {
+    const { createNote } = await import('./noteService.js');
+    const { executeInternalTool, INTERNAL_TOOL_NOTE_CREATE } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_NOTE_CREATE,
+      args: {
+        title: 'Research',
+        body: '# Research\n\nUseful finding',
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ id: 'note-1', title: 'Research' });
+    expect(createNote).toHaveBeenCalledWith('u-1', {
+      title: 'Research',
+      body: '# Research\n\nUseful finding',
+      isPublished: true,
+    });
+  });
+
+  it('dispatches note_append_lines to append markdown lines', async () => {
+    const { appendNoteLines } = await import('./noteService.js');
+    const { executeInternalTool, INTERNAL_TOOL_NOTE_APPEND_LINES } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_NOTE_APPEND_LINES,
+      args: {
+        noteId: 'note-1',
+        lines: ['## More', '- Item'],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(appendNoteLines).toHaveBeenCalledWith('u-1', 'note-1', [
+      '## More',
+      '- Item',
+    ]);
   });
 
   // -------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-05-21
+last_updated: 2026-06-16
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -441,11 +441,13 @@ index:
       - type filter
       - updatedAt descending
       - atomic resources
+      - notes
     change_risks:
       - 侧边栏入口迁移后页面不可达。
       - 页面间返回路径断裂造成死路由。
       - Resources tab 若按类型分组拼接而不是统一按 updatedAt 排序，会破坏跨资源时间线浏览。
       - 新资源类型必须提供稳定 updatedAt，否则倒序排序会不确定。
+      - Agent tool 成功修改资源后，应通过 typed invalidation 刷新 Resources 列表，否则用户需要刷新页面才看到新资源。
 
   - feature_id: backend_auth
     capability: 后端 GitHub OAuth 认证
@@ -646,6 +648,48 @@ index:
       - 修改 INTERNAL_TOOLS 常量列表若遗漏新工具会导致 tool_not_allowed 错误。
       - todoService 的 updateTodo 使用动态 SET 子句；若新增字段须同步 DTO 和路由 PATCH 处理。
       - TodoApiService 不再接收 token 参数；资源预览和聊天页加载应依赖 AuthenticatedApiClient 的统一缺 token/401 错误路径。
+
+  - feature_id: conversational_notes
+    capability: 用户通过自然语言让 AI 将聊天中检索或生成的长 Markdown 资料保存到独立 Note；AI 调用 note_* 内部工具，客户端在 Resources 中只读预览
+    code_index:
+      - apps/node_backend/src/db/migrations/023_create_asset_notes.sql
+      - apps/node_backend/src/services/noteService.ts
+      - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/routes/resources.ts
+      - apps/node_backend/src/routes/chat.ts
+      - apps/mobile_chat_app/lib/features/chat/note_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_message.dart
+      - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
+    doc_index:
+      - docs/plans/2026-06-16-15-32-+08-note-content-type-implementation.md
+      - docs/tasks/done/2026-06-12-14-00-+08-note-content-type.md
+    test_index:
+      - apps/node_backend/src/routes/resources.test.ts
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
+      - apps/mobile_chat_app/test/chat_navigation_page_test.dart
+    keywords:
+      - asset_notes
+      - note_create
+      - note_list
+      - note_get
+      - note_read_lines
+      - note_append_lines
+      - note_replace_lines
+      - note_delete_lines
+      - resources.notes
+      - Markdown note
+      - read-only preview
+      - line range
+      - 10000 line limit
+    change_risks:
+      - Note body stores long Markdown as plain text; introducing a rich editor later must not corrupt Markdown or line-number semantics.
+      - note_list only returns published notes by default; hidden notes require explicit includeUnpublished handling.
+      - Line operations are 1-based and inclusive; off-by-one errors can overwrite or delete the wrong Markdown block.
+      - append/replace mutations enforce a 10000-line cap in service and route/tool paths; bypassing service logic would skip the guard.
+      - ChatScreen relies on `resources.notes` typed invalidation to refresh the Resources tab after agent tool calls.
+      - The Resources preview loads full Note body on tap; very large notes may need pagination or markdown rendering optimization in a later iteration.
 
   - feature_id: asset_tables
     capability: 用户通过自然语言让 AI 管理动态 JSONB 表格（O(1) 列操作，行软删除）；AI 调用 table_* 工具

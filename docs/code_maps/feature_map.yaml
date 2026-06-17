@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-05-21
+last_updated: 2026-06-16
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -191,7 +191,7 @@ products:
         smoke_checks:
           - 从侧边导航进入每个页面。
           - 页面可正常渲染且无崩溃。
-          - Chat navigation 的 Resources tab 将 todo lists、asset tables、text highlights 作为原子资源按更新时间倒序显示。
+          - Chat navigation 的 Resources tab 将 todo lists、asset tables、notes、text highlights 作为原子资源按更新时间倒序显示。
           - Resources tab 顶部 type filter 可按资源类型过滤列表。
 
       - feature_id: conversational_todos
@@ -221,6 +221,33 @@ products:
           - 用户说"帮我在工作列表里添加：完成报告"，AI 调用 todo_create（带 listId）并确认。
           - 用户说"查看我的工作列表"，AI 调用 todolist_get，返回列表及子项。
           - DELETE /api/resources/todo-lists/:listId 返回 { deleted: true }，同时级联删除所有子项。
+
+      - feature_id: conversational_notes
+        name: 对话式 Markdown Notes
+        user_value: 用户可让 AI 把聊天中检索或生成的长 Markdown 资料保存为独立 Note，并在 Resources 中只读查看。
+        entry_paths:
+          - service: NoteApiService
+            route_hint: apps/mobile_chat_app/lib/features/chat/note_api_service.dart
+          - widget: ChatNavigationPage Resources tab note item and preview
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
+          - route: GET/POST /api/resources/notes
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: GET/PATCH/DELETE /api/resources/notes/:noteId
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: GET /api/resources/notes/:noteId/lines
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - route: POST/PATCH/DELETE /api/resources/notes/:noteId/lines
+            route_hint: apps/node_backend/src/routes/resources.ts
+          - tool: note_create / note_list / note_get / note_update / note_delete
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+          - tool: note_read_lines / note_append_lines / note_replace_lines / note_delete_lines
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - 用户说"把刚才找到的资料保存成 Note"，AI 调用 note_create，body 保留 Markdown 原文。
+          - Resources tab 显示 Note 资源，选择 Notes 过滤器后只显示 Notes。
+          - 点击 Note 资源后打开只读预览，展示完整 body 或列表中的 preview fallback。
+          - note_read_lines 读取指定行号范围时只返回该范围及总行数。
+          - note_append_lines 超过 10000 行上限时返回明确错误且内容不变。
 
       - feature_id: asset_tables
         name: AI 驱动的动态资产表格

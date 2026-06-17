@@ -38,6 +38,17 @@ import {
 import { sanitizeBatchRowCellData, sanitizeTableCellData } from './assetTableCellData.js';
 import { listHighlights } from './textHighlightService.js';
 import {
+  listNotes,
+  getNote,
+  createNote,
+  updateNote,
+  deleteNote,
+  readNoteLines,
+  appendNoteLines,
+  replaceNoteLines,
+  deleteNoteLines,
+} from './noteService.js';
+import {
   listScheduledActions,
   getScheduledAction,
   createScheduledAction,
@@ -89,6 +100,17 @@ export const INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS = 'table.batch_add_rows';
 // Text highlight tools (highlight creation is manual via Flutter; list is AI-accessible)
 export const INTERNAL_TOOL_HIGHLIGHT_LIST = 'highlight.list';
 
+// Note tools (long Markdown resources saved from chat)
+export const INTERNAL_TOOL_NOTE_CREATE = 'note.create';
+export const INTERNAL_TOOL_NOTE_LIST = 'note.list';
+export const INTERNAL_TOOL_NOTE_GET = 'note.get';
+export const INTERNAL_TOOL_NOTE_UPDATE = 'note.update';
+export const INTERNAL_TOOL_NOTE_DELETE = 'note.delete';
+export const INTERNAL_TOOL_NOTE_READ_LINES = 'note.read_lines';
+export const INTERNAL_TOOL_NOTE_APPEND_LINES = 'note.append_lines';
+export const INTERNAL_TOOL_NOTE_REPLACE_LINES = 'note.replace_lines';
+export const INTERNAL_TOOL_NOTE_DELETE_LINES = 'note.delete_lines';
+
 // Scheduled action tools
 export const INTERNAL_TOOL_SCHEDULED_ACTION_CREATE = 'scheduled_action.create';
 export const INTERNAL_TOOL_SCHEDULED_ACTION_LIST = 'scheduled_action.list';
@@ -129,6 +151,15 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_TABLE_DELETE_ROW,
   INTERNAL_TOOL_TABLE_BATCH_ADD_ROWS,
   INTERNAL_TOOL_HIGHLIGHT_LIST,
+  INTERNAL_TOOL_NOTE_CREATE,
+  INTERNAL_TOOL_NOTE_LIST,
+  INTERNAL_TOOL_NOTE_GET,
+  INTERNAL_TOOL_NOTE_UPDATE,
+  INTERNAL_TOOL_NOTE_DELETE,
+  INTERNAL_TOOL_NOTE_READ_LINES,
+  INTERNAL_TOOL_NOTE_APPEND_LINES,
+  INTERNAL_TOOL_NOTE_REPLACE_LINES,
+  INTERNAL_TOOL_NOTE_DELETE_LINES,
   INTERNAL_TOOL_SCHEDULED_ACTION_CREATE,
   INTERNAL_TOOL_SCHEDULED_ACTION_LIST,
   INTERNAL_TOOL_SCHEDULED_ACTION_GET,
@@ -238,6 +269,40 @@ function readStringArg(args: Record<string, unknown>, key: string, maxLength?: n
   if (trimmed.length === 0) return null;
   if (maxLength !== undefined && trimmed.length > maxLength) return null;
   return trimmed;
+}
+
+function readBodyArg(args: Record<string, unknown>, key: string, maxLength = 1024 * 1024): string | null {
+  const raw = args[key];
+  if (typeof raw !== 'string') return null;
+  if (raw.length > maxLength) return null;
+  return raw;
+}
+
+function readLineArrayArg(args: Record<string, unknown>, key: string): string[] | null {
+  const raw = args[key];
+  if (!Array.isArray(raw) || raw.some((item) => typeof item !== 'string')) {
+    return null;
+  }
+  return raw as string[];
+}
+
+function readPositiveIntegerArg(args: Record<string, unknown>, key: string): number | null {
+  const raw = args[key];
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const value = Math.trunc(raw);
+  return value > 0 ? value : null;
+}
+
+function invalidNoteMutation(toolName: string, error: unknown): ExecuteInternalToolResult {
+  return {
+    ok: false,
+    toolName,
+    data: null,
+    error: {
+      code: 'invalid_args',
+      message: error instanceof Error ? error.message : 'Invalid note mutation',
+    },
+  };
 }
 
 async function persistInstruction(params: {
@@ -1011,6 +1076,175 @@ export async function executeInternalTool(
     }
 
     // -------------------------------------------------------------------------
+    // Note tools
+    // -------------------------------------------------------------------------
+    case INTERNAL_TOOL_NOTE_CREATE: {
+      const title = readStringArg(args, 'title');
+      const body = readBodyArg(args, 'body') ?? '';
+      if (!title) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'title is a required string argument' },
+        };
+      }
+      try {
+        const note = await createNote(userId, {
+          title,
+          body,
+          isPublished: typeof args.isPublished === 'boolean' ? args.isPublished : true,
+        });
+        return { ok: true, toolName, data: note as unknown as Record<string, unknown>, error: null };
+      } catch (error) {
+        return invalidNoteMutation(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_NOTE_LIST: {
+      const notes = await listNotes(userId, {
+        includeUnpublished: args.includeUnpublished === true,
+      });
+      return { ok: true, toolName, data: { notes }, error: null };
+    }
+    case INTERNAL_TOOL_NOTE_GET: {
+      const noteId = readStringArg(args, 'noteId');
+      if (!noteId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'noteId is a required string argument' },
+        };
+      }
+      const note = await getNote(userId, noteId);
+      if (!note) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Note not found' } };
+      }
+      return { ok: true, toolName, data: note as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_NOTE_UPDATE: {
+      const noteId = readStringArg(args, 'noteId');
+      if (!noteId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'noteId is a required string argument' },
+        };
+      }
+      const input: { title?: string; body?: string; isPublished?: boolean } = {};
+      if (typeof args.title === 'string') input.title = args.title;
+      if (typeof args.body === 'string') input.body = args.body;
+      if (typeof args.isPublished === 'boolean') input.isPublished = args.isPublished;
+      try {
+        const note = await updateNote(userId, noteId, input);
+        if (!note) {
+          return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Note not found' } };
+        }
+        return { ok: true, toolName, data: note as unknown as Record<string, unknown>, error: null };
+      } catch (error) {
+        return invalidNoteMutation(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_NOTE_DELETE: {
+      const noteId = readStringArg(args, 'noteId');
+      if (!noteId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'noteId is a required string argument' },
+        };
+      }
+      const result = await deleteNote(userId, noteId);
+      return { ok: true, toolName, data: result, error: null };
+    }
+    case INTERNAL_TOOL_NOTE_READ_LINES: {
+      const noteId = readStringArg(args, 'noteId');
+      const startLine = readPositiveIntegerArg(args, 'startLine') ?? 1;
+      const endLine = args.endLine === undefined ? undefined : readPositiveIntegerArg(args, 'endLine');
+      if (!noteId || (args.endLine !== undefined && !endLine)) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'noteId, startLine, and endLine must be valid' },
+        };
+      }
+      const result = await readNoteLines(userId, noteId, startLine, endLine ?? undefined);
+      if (!result) {
+        return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Note not found' } };
+      }
+      return { ok: true, toolName, data: result as unknown as Record<string, unknown>, error: null };
+    }
+    case INTERNAL_TOOL_NOTE_APPEND_LINES: {
+      const noteId = readStringArg(args, 'noteId');
+      const lines = readLineArrayArg(args, 'lines');
+      if (!noteId || !lines) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'noteId and lines are required' },
+        };
+      }
+      try {
+        const note = await appendNoteLines(userId, noteId, lines);
+        if (!note) {
+          return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Note not found' } };
+        }
+        return { ok: true, toolName, data: note as unknown as Record<string, unknown>, error: null };
+      } catch (error) {
+        return invalidNoteMutation(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_NOTE_REPLACE_LINES: {
+      const noteId = readStringArg(args, 'noteId');
+      const startLine = readPositiveIntegerArg(args, 'startLine');
+      const endLine = readPositiveIntegerArg(args, 'endLine');
+      const lines = readLineArrayArg(args, 'lines');
+      if (!noteId || !startLine || !endLine || !lines) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'noteId, startLine, endLine, and lines are required' },
+        };
+      }
+      try {
+        const note = await replaceNoteLines(userId, noteId, startLine, endLine, lines);
+        if (!note) {
+          return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Note not found' } };
+        }
+        return { ok: true, toolName, data: note as unknown as Record<string, unknown>, error: null };
+      } catch (error) {
+        return invalidNoteMutation(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_NOTE_DELETE_LINES: {
+      const noteId = readStringArg(args, 'noteId');
+      const startLine = readPositiveIntegerArg(args, 'startLine');
+      const endLine = readPositiveIntegerArg(args, 'endLine');
+      if (!noteId || !startLine || !endLine) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'noteId, startLine, and endLine are required' },
+        };
+      }
+      try {
+        const note = await deleteNoteLines(userId, noteId, startLine, endLine);
+        if (!note) {
+          return { ok: false, toolName, data: null, error: { code: 'not_found', message: 'Note not found' } };
+        }
+        return { ok: true, toolName, data: note as unknown as Record<string, unknown>, error: null };
+      } catch (error) {
+        return invalidNoteMutation(toolName, error);
+      }
+    }
+
+    // -------------------------------------------------------------------------
     // Scheduled action tools
     // -------------------------------------------------------------------------
     case INTERNAL_TOOL_SCHEDULED_ACTION_CREATE: {
@@ -1707,6 +1941,147 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_HIGHLIGHT_LIST, args),
+    },
+
+    // -------------------------------------------------------------------------
+    // Note tools
+    // -------------------------------------------------------------------------
+    note_create: {
+      description:
+        'Create a new long-form Markdown note resource. Use when the user asks to save material, research, findings, summaries, or generated Markdown from chat into a note.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short title for the note.' },
+          body: { type: 'string', description: 'Markdown/plain-text body to save. Preserve useful Markdown formatting.' },
+          isPublished: { type: 'boolean', description: 'Whether the note should appear in Resources. Defaults to true.' },
+        },
+        required: ['title', 'body'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_CREATE, args),
+    },
+
+    note_list: {
+      description: 'List the user\'s published notes. Use before choosing a target note to update or append.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          includeUnpublished: { type: 'boolean', description: 'Include hidden/unpublished notes when true.' },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_LIST, args),
+    },
+
+    note_get: {
+      description: 'Get a full note by id, including the complete Markdown body.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          noteId: { type: 'string', description: 'The UUID of the note.' },
+        },
+        required: ['noteId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_GET, args),
+    },
+
+    note_update: {
+      description: 'Update a note title, full body, or published visibility.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          noteId: { type: 'string', description: 'The UUID of the note.' },
+          title: { type: 'string', description: 'New title.' },
+          body: { type: 'string', description: 'Replacement Markdown/plain-text body.' },
+          isPublished: { type: 'boolean', description: 'Whether the note appears in Resources.' },
+        },
+        required: ['noteId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_UPDATE, args),
+    },
+
+    note_delete: {
+      description: 'Permanently delete a note. Use only when the user explicitly asks to delete it.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          noteId: { type: 'string', description: 'The UUID of the note.' },
+        },
+        required: ['noteId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_DELETE, args),
+    },
+
+    note_read_lines: {
+      description: 'Read a line range from a long note without loading unrelated content.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          noteId: { type: 'string', description: 'The UUID of the note.' },
+          startLine: { type: 'number', description: '1-based start line. Defaults to 1.' },
+          endLine: { type: 'number', description: '1-based end line. Defaults to startLine.' },
+        },
+        required: ['noteId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_READ_LINES, args),
+    },
+
+    note_append_lines: {
+      description: 'Append Markdown/plain-text lines to the end of an existing note.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          noteId: { type: 'string', description: 'The UUID of the note.' },
+          lines: {
+            type: 'array',
+            description: 'Lines to append, without trailing newline characters.',
+            items: { type: 'string' },
+          },
+        },
+        required: ['noteId', 'lines'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_APPEND_LINES, args),
+    },
+
+    note_replace_lines: {
+      description: 'Replace a 1-based inclusive line range in an existing note.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          noteId: { type: 'string', description: 'The UUID of the note.' },
+          startLine: { type: 'number', description: '1-based start line.' },
+          endLine: { type: 'number', description: '1-based end line.' },
+          lines: {
+            type: 'array',
+            description: 'Replacement lines.',
+            items: { type: 'string' },
+          },
+        },
+        required: ['noteId', 'startLine', 'endLine', 'lines'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_REPLACE_LINES, args),
+    },
+
+    note_delete_lines: {
+      description: 'Delete a 1-based inclusive line range from an existing note.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          noteId: { type: 'string', description: 'The UUID of the note.' },
+          startLine: { type: 'number', description: '1-based start line.' },
+          endLine: { type: 'number', description: '1-based end line.' },
+        },
+        required: ['noteId', 'startLine', 'endLine'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_NOTE_DELETE_LINES, args),
     },
 
     // -------------------------------------------------------------------------

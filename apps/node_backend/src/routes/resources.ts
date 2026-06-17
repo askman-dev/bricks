@@ -31,6 +31,18 @@ import {
   createHighlight,
   deleteHighlight,
 } from '../services/textHighlightService.js';
+import {
+  listNotes,
+  getNote,
+  createNote,
+  updateNote,
+  deleteNote,
+  readNoteLines,
+  appendNoteLines,
+  replaceNoteLines,
+  deleteNoteLines,
+  MAX_NOTE_LINES,
+} from '../services/noteService.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -44,6 +56,41 @@ function readString(value: unknown, maxLength = 4096): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > maxLength) return null;
   return trimmed;
+}
+
+function readBodyString(value: unknown, maxLength = 1024 * 1024): string | null {
+  if (typeof value !== 'string') return null;
+  if (value.length > maxLength) return null;
+  return value;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function readLineArray(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    return null;
+  }
+  return value as string[];
+}
+
+function readLineNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const line = Math.trunc(value);
+  return line > 0 ? line : null;
+}
+
+function noteMutationError(res: express.Response, error: unknown): boolean {
+  if (error instanceof Error && error.message.includes(`${MAX_NOTE_LINES} lines`)) {
+    res.status(400).json({ error: error.message });
+    return true;
+  }
+  if (error instanceof Error && error.message.includes('startLine')) {
+    res.status(400).json({ error: error.message });
+    return true;
+  }
+  return false;
 }
 
 function userId(req: AuthRequest): string {
@@ -328,6 +375,182 @@ router.delete('/tables/:resourceId/rows/:rowId', async (req: AuthRequest, res) =
   }
   const result = await deleteRow(uid, resourceId, rowId);
   res.json(result);
+});
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+router.get('/notes', async (req: AuthRequest, res) => {
+  const notes = await listNotes(userId(req), {
+    includeUnpublished: req.query.includeUnpublished === 'true',
+  });
+  res.json({ notes });
+});
+
+router.post('/notes', async (req: AuthRequest, res) => {
+  const uid = userId(req);
+  const title = readString(req.body?.title);
+  const body = readBodyString(req.body?.body ?? '');
+  if (!title || body === null) {
+    res.status(400).json({ error: 'title and body are required' });
+    return;
+  }
+  try {
+    const note = await createNote(uid, {
+      title,
+      body,
+      isPublished: readBoolean(req.body?.isPublished) ?? true,
+    });
+    res.status(201).json(note);
+  } catch (error) {
+    if (!noteMutationError(res, error)) throw error;
+  }
+});
+
+router.get('/notes/:noteId', async (req: AuthRequest, res) => {
+  const noteId = validPathParam(req.params.noteId);
+  if (!noteId) {
+    res.status(400).json({ error: 'noteId is invalid' });
+    return;
+  }
+  const note = await getNote(userId(req), noteId);
+  if (!note) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json(note);
+});
+
+router.patch('/notes/:noteId', async (req: AuthRequest, res) => {
+  const uid = userId(req);
+  const noteId = validPathParam(req.params.noteId);
+  if (!noteId) {
+    res.status(400).json({ error: 'noteId is invalid' });
+    return;
+  }
+  const patch: { title?: string; body?: string; isPublished?: boolean } = {};
+  if (req.body?.title !== undefined) {
+    const title = readString(req.body.title);
+    if (!title) {
+      res.status(400).json({ error: 'title must be a non-empty string' });
+      return;
+    }
+    patch.title = title;
+  }
+  if (req.body?.body !== undefined) {
+    const body = readBodyString(req.body.body);
+    if (body === null) {
+      res.status(400).json({ error: 'body must be a string' });
+      return;
+    }
+    patch.body = body;
+  }
+  if (req.body?.isPublished !== undefined) {
+    const isPublished = readBoolean(req.body.isPublished);
+    if (isPublished === undefined) {
+      res.status(400).json({ error: 'isPublished must be a boolean' });
+      return;
+    }
+    patch.isPublished = isPublished;
+  }
+  try {
+    const note = await updateNote(uid, noteId, patch);
+    if (!note) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(note);
+  } catch (error) {
+    if (!noteMutationError(res, error)) throw error;
+  }
+});
+
+router.delete('/notes/:noteId', async (req: AuthRequest, res) => {
+  const noteId = validPathParam(req.params.noteId);
+  if (!noteId) {
+    res.status(400).json({ error: 'noteId is invalid' });
+    return;
+  }
+  const result = await deleteNote(userId(req), noteId);
+  res.json(result);
+});
+
+router.get('/notes/:noteId/lines', async (req: AuthRequest, res) => {
+  const noteId = validPathParam(req.params.noteId);
+  const startLine = readLineNumber(Number(req.query.startLine ?? 1));
+  const endLineRaw = req.query.endLine === undefined ? undefined : Number(req.query.endLine);
+  const endLine = endLineRaw === undefined ? undefined : readLineNumber(endLineRaw);
+  if (!noteId || !startLine || (endLineRaw !== undefined && !endLine)) {
+    res.status(400).json({ error: 'noteId, startLine, and endLine are invalid' });
+    return;
+  }
+  const result = await readNoteLines(userId(req), noteId, startLine, endLine ?? undefined);
+  if (!result) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json(result);
+});
+
+router.post('/notes/:noteId/lines/append', async (req: AuthRequest, res) => {
+  const noteId = validPathParam(req.params.noteId);
+  const lines = readLineArray(req.body?.lines);
+  if (!noteId || !lines) {
+    res.status(400).json({ error: 'noteId and lines are required' });
+    return;
+  }
+  try {
+    const note = await appendNoteLines(userId(req), noteId, lines);
+    if (!note) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(note);
+  } catch (error) {
+    if (!noteMutationError(res, error)) throw error;
+  }
+});
+
+router.patch('/notes/:noteId/lines', async (req: AuthRequest, res) => {
+  const noteId = validPathParam(req.params.noteId);
+  const startLine = readLineNumber(req.body?.startLine);
+  const endLine = readLineNumber(req.body?.endLine);
+  const lines = readLineArray(req.body?.lines);
+  if (!noteId || !startLine || !endLine || !lines) {
+    res.status(400).json({ error: 'noteId, startLine, endLine, and lines are required' });
+    return;
+  }
+  try {
+    const note = await replaceNoteLines(userId(req), noteId, startLine, endLine, lines);
+    if (!note) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(note);
+  } catch (error) {
+    if (!noteMutationError(res, error)) throw error;
+  }
+});
+
+router.delete('/notes/:noteId/lines', async (req: AuthRequest, res) => {
+  const noteId = validPathParam(req.params.noteId);
+  const startLine = readLineNumber(req.body?.startLine);
+  const endLine = readLineNumber(req.body?.endLine);
+  if (!noteId || !startLine || !endLine) {
+    res.status(400).json({ error: 'noteId, startLine, and endLine are required' });
+    return;
+  }
+  try {
+    const note = await deleteNoteLines(userId(req), noteId, startLine, endLine);
+    if (!note) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(note);
+  } catch (error) {
+    if (!noteMutationError(res, error)) throw error;
+  }
 });
 
 // ---------------------------------------------------------------------------
