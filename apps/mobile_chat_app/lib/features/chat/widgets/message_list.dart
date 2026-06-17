@@ -947,15 +947,38 @@ class _MessageListState extends State<MessageList> {
                                 foregroundColor: chatColors.onMessageUser,
                               ),
                             ],
+                            if (msg.inputGrammarFix?.isAccepted ?? false) ...[
+                              const SizedBox(width: BricksSpacing.xs),
+                              Tooltip(
+                                message: 'English looks good',
+                                child: Icon(
+                                  Icons.spellcheck,
+                                  size: 14,
+                                  color: chatColors.onMessageUser
+                                      .withValues(alpha: 0.78),
+                                ),
+                              ),
+                            ],
                           ],
+                        ),
+                      ),
+                    if (isUser && (msg.inputGrammarFix?.hasSuggestion ?? false))
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: Text(
+                          msg.inputGrammarFix!.suggestion!,
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: chatColors.onMessageUser
+                                        .withValues(alpha: 0.78),
+                                  ),
                         ),
                       ),
                   ],
                 ),
               ),
             ),
-          if (!isUser)
-            _buildAssistantMetaRow(context, msg, chatColors),
+          if (!isUser) _buildAssistantMetaRow(context, msg, chatColors),
         ],
       ),
     );
@@ -2763,8 +2786,10 @@ class _AssistantMessageActionMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      if (showArchiveRound) const _MenuItem(label: 'Archive Round', value: 'archive_round'),
-      if (showArchiveReply) const _MenuItem(label: 'Archive Reply', value: 'archive_reply'),
+      if (showArchiveRound)
+        const _MenuItem(label: 'Archive Round', value: 'archive_round'),
+      if (showArchiveReply)
+        const _MenuItem(label: 'Archive Reply', value: 'archive_reply'),
       if (showFork) const _MenuItem(label: 'Fork', value: 'fork'),
     ];
     final menuHeight = _itemHeight * items.length;

@@ -3,7 +3,11 @@ import {
   type ChatRouter,
   CHAT_ROUTER_LOCAL,
   type ChatScopeType,
+  type ChatOutputTonePreset,
+  normalizeChatOutputTonePreset,
   normalizeChatThreadId,
+  setChannelInputGrammarFixer,
+  setChannelOutputTone,
   upsertChatScopeSetting,
   listChatScopeSettings,
 } from './chatRouterService.js';
@@ -63,6 +67,9 @@ import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
 export const INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET = 'chat.thread.instruction.set';
+export const INTERNAL_TOOL_CHAT_CHANNEL_OUTPUT_TONE_SET = 'chat.channel.output_tone.set';
+export const INTERNAL_TOOL_CHAT_CHANNEL_CUSTOM_OUTPUT_TONE_SET = 'chat.channel.output_tone.custom.set';
+export const INTERNAL_TOOL_CHAT_CHANNEL_INPUT_GRAMMAR_FIX_SET = 'chat.channel.input_grammar_fix.set';
 export const INTERNAL_TOOL_CHAT_CHANNEL_CREATE = 'chat.channel.create';
 export const INTERNAL_TOOL_CHAT_THREAD_CREATE = 'chat.thread.create';
 export const INTERNAL_TOOL_CHAT_CHANNEL_RENAME = 'chat.channel.rename';
@@ -123,6 +130,9 @@ export const INTERNAL_TOOL_SCHEDULED_ACTION_DELETE = 'scheduled_action.delete';
 export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET,
   INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET,
+  INTERNAL_TOOL_CHAT_CHANNEL_OUTPUT_TONE_SET,
+  INTERNAL_TOOL_CHAT_CHANNEL_CUSTOM_OUTPUT_TONE_SET,
+  INTERNAL_TOOL_CHAT_CHANNEL_INPUT_GRAMMAR_FIX_SET,
   INTERNAL_TOOL_CHAT_CHANNEL_CREATE,
   INTERNAL_TOOL_CHAT_THREAD_CREATE,
   INTERNAL_TOOL_CHAT_CHANNEL_RENAME,
@@ -293,6 +303,11 @@ function readPositiveIntegerArg(args: Record<string, unknown>, key: string): num
   return value > 0 ? value : null;
 }
 
+function readBooleanArg(args: Record<string, unknown>, key: string): boolean | null {
+  const raw = args[key];
+  return typeof raw === 'boolean' ? raw : null;
+}
+
 function invalidNoteMutation(toolName: string, error: unknown): ExecuteInternalToolResult {
   return {
     ok: false,
@@ -332,6 +347,75 @@ async function persistInstruction(params: {
       channelId: setting.channelId,
       threadId: setting.threadId,
       instructions: setting.instructions,
+      updatedAt: setting.updatedAt,
+    },
+    error: null,
+  };
+}
+
+async function persistChannelOutputTone(params: {
+  userId: string;
+  channelId: string;
+  preset: ChatOutputTonePreset;
+}): Promise<ExecuteInternalToolResult> {
+  const setting = await setChannelOutputTone(params.userId, {
+    channelId: params.channelId,
+    outputTone: { type: 'preset', preset: params.preset },
+  });
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_CHANNEL_OUTPUT_TONE_SET,
+    data: {
+      scopeType: setting.scopeType,
+      channelId: setting.channelId,
+      outputTone: setting.outputTone,
+      updatedAt: setting.updatedAt,
+    },
+    error: null,
+  };
+}
+
+async function persistChannelCustomOutputTone(params: {
+  userId: string;
+  channelId: string;
+  instruction: string;
+}): Promise<ExecuteInternalToolResult> {
+  const setting = await setChannelOutputTone(params.userId, {
+    channelId: params.channelId,
+    outputTone: { type: 'custom', instruction: params.instruction },
+  });
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_CHANNEL_CUSTOM_OUTPUT_TONE_SET,
+    data: {
+      scopeType: setting.scopeType,
+      channelId: setting.channelId,
+      outputTone: setting.outputTone,
+      updatedAt: setting.updatedAt,
+    },
+    error: null,
+  };
+}
+
+async function persistChannelInputGrammarFix(params: {
+  userId: string;
+  channelId: string;
+  enabled: boolean;
+}): Promise<ExecuteInternalToolResult> {
+  const setting = await setChannelInputGrammarFixer(params.userId, {
+    channelId: params.channelId,
+    enabled: params.enabled,
+  });
+
+  return {
+    ok: true,
+    toolName: INTERNAL_TOOL_CHAT_CHANNEL_INPUT_GRAMMAR_FIX_SET,
+    data: {
+      scopeType: setting.scopeType,
+      channelId: setting.channelId,
+      inputGrammarFixerEnabled: setting.inputGrammarFixerEnabled,
       updatedAt: setting.updatedAt,
     },
     error: null,
@@ -653,6 +737,54 @@ export async function executeInternalTool(
         threadId,
         instructions: instruction,
       });
+    }
+    case INTERNAL_TOOL_CHAT_CHANNEL_OUTPUT_TONE_SET: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const preset = normalizeChatOutputTonePreset(readStringArg(args, 'preset'));
+      if (!channelId || !preset) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId and preset are required; preset must be direct, socratic, or rhetorical',
+          },
+        };
+      }
+      return persistChannelOutputTone({ userId, channelId, preset });
+    }
+    case INTERNAL_TOOL_CHAT_CHANNEL_CUSTOM_OUTPUT_TONE_SET: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const instruction = readStringArg(args, 'instruction', 4000);
+      if (!channelId || !instruction) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId and instruction are required string arguments',
+          },
+        };
+      }
+      return persistChannelCustomOutputTone({ userId, channelId, instruction });
+    }
+    case INTERNAL_TOOL_CHAT_CHANNEL_INPUT_GRAMMAR_FIX_SET: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const enabled = readBooleanArg(args, 'enabled');
+      if (!channelId || enabled === null) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId and enabled are required arguments',
+          },
+        };
+      }
+      return persistChannelInputGrammarFix({ userId, channelId, enabled });
     }
     case INTERNAL_TOOL_CHAT_CHANNEL_CREATE: {
       const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH) ?? readStringArg(args, 'name', MAX_IDENTIFIER_LENGTH);
@@ -1439,6 +1571,74 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_INSTRUCTION_SET, args),
+    },
+
+    chat_channel_output_tone_set: {
+      description:
+        'Set the output tone preset for a chat channel. ' +
+        'Use this when the user asks future replies in the current channel to be direct, Socratic, or rhetorically rich. ' +
+        'Direct means rigorous, efficient, concise, not exaggerated, and low on decorative rhetoric.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          preset: {
+            type: 'string',
+            enum: ['direct', 'socratic', 'rhetorical'],
+            description: 'The channel output tone preset.',
+          },
+        },
+        required: ['channelId', 'preset'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_OUTPUT_TONE_SET, args),
+    },
+
+    chat_channel_custom_output_tone_set: {
+      description:
+        'Set a custom output tone instruction for future replies in a chat channel. ' +
+        'Use this when the user asks for a channel-specific style that does not fit Direct, Socratic, or Rhetorical.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          instruction: {
+            type: 'string',
+            description: 'The custom output style instruction to inject into future replies for the channel.',
+          },
+        },
+        required: ['channelId', 'instruction'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_CUSTOM_OUTPUT_TONE_SET, args),
+    },
+
+    chat_channel_input_grammar_fix_set: {
+      description:
+        'Enable or disable display-only English grammar suggestions for user input in a chat channel. ' +
+        'This setting does not rewrite the user message before the main model answers.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel identifier.',
+          },
+          enabled: {
+            type: 'boolean',
+            description: 'Whether display-only grammar suggestions should be enabled for this channel.',
+          },
+        },
+        required: ['channelId', 'enabled'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_CHAT_CHANNEL_INPUT_GRAMMAR_FIX_SET, args),
     },
 
     chat_channel_create: {

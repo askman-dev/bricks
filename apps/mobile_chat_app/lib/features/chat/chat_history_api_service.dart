@@ -114,6 +114,7 @@ class ChatHistoryApiService {
     'nodeName',
     'traceId',
     'source',
+    'inputGrammarFix',
   ];
 
   void dispose() {
@@ -206,6 +207,9 @@ class ChatHistoryApiService {
         router: chatRouterFromApi(item['router'] as String?),
         nodeId: item['nodeId'] as String?,
         instructions: item['instructions'] as String?,
+        outputTone: chatOutputToneFromApi(item['outputTone']),
+        inputGrammarFixerEnabled:
+            item['inputGrammarFixerEnabled'] as bool? ?? false,
         resolvedTargetNodeId: item['resolvedTargetNodeId'] as String?,
         resolvedTargetNodeName: item['resolvedTargetNodeName'] as String?,
         resolvedTargetPluginId: item['resolvedTargetPluginId'] as String?,
@@ -438,6 +442,8 @@ class ChatHistoryApiService {
     required ChatRouter? router,
     String? nodeId,
     String? instructions,
+    ChatOutputToneSetting? outputTone,
+    bool? inputGrammarFixerEnabled,
   }) async {
     final response = await _apiClient.put(
       _scopeSettingsUri,
@@ -451,6 +457,9 @@ class ChatHistoryApiService {
         'router': router?.apiValue,
         if (nodeId != null) 'nodeId': nodeId,
         'instructions': instructions,
+        if (outputTone != null) 'outputTone': outputTone.toApiMap(),
+        if (inputGrammarFixerEnabled != null)
+          'inputGrammarFixerEnabled': inputGrammarFixerEnabled,
       }),
     );
     if (response.statusCode != 200) {

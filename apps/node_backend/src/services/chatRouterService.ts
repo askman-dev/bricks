@@ -9,6 +9,10 @@ export const BUILTIN_DEFAULT_NODE_NAME = 'Bricks Default';
 
 export type ChatRouter = typeof CHAT_ROUTER_LOCAL | typeof CHAT_ROUTER_PLUGIN;
 export type ChatScopeType = 'channel' | 'thread';
+export type ChatOutputTonePreset = 'direct' | 'socratic' | 'rhetorical';
+export type ChatOutputTone =
+  | { type: 'preset'; preset: ChatOutputTonePreset }
+  | { type: 'custom'; instruction: string };
 
 interface ChatScopeSettingRow {
   scope_type: ChatScopeType;
@@ -17,6 +21,10 @@ interface ChatScopeSettingRow {
   router: ChatRouter;
   node_id: string | null;
   instructions: string | null;
+  output_tone_type: string | null;
+  output_tone_preset: string | null;
+  output_tone_custom: string | null;
+  input_grammar_fixer_enabled: boolean | number | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,6 +36,8 @@ export interface ChatScopeSetting {
   router: ChatRouter;
   nodeId: string | null;
   instructions: string | null;
+  outputTone: ChatOutputTone;
+  inputGrammarFixerEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +52,43 @@ export interface ChatScopeSettingInput extends ChatScopeSelector {
   router: ChatRouter;
   nodeId?: string | null;
   instructions?: string | null;
+}
+
+export const DEFAULT_CHAT_OUTPUT_TONE_PRESET: ChatOutputTonePreset = 'direct';
+export const DEFAULT_CHAT_OUTPUT_TONE: ChatOutputTone = {
+  type: 'preset',
+  preset: DEFAULT_CHAT_OUTPUT_TONE_PRESET,
+};
+
+export function normalizeChatOutputTonePreset(
+  value: string | null | undefined,
+): ChatOutputTonePreset | null {
+  switch (value) {
+    case 'direct':
+    case 'socratic':
+    case 'rhetorical':
+      return value;
+    default:
+      return null;
+  }
+}
+
+function normalizeOutputTone(row: {
+  output_tone_type?: string | null;
+  output_tone_preset?: string | null;
+  output_tone_custom?: string | null;
+}): ChatOutputTone {
+  if (row.output_tone_type === 'custom') {
+    const instruction = row.output_tone_custom?.trim();
+    if (instruction) return { type: 'custom', instruction };
+  }
+
+  const preset = normalizeChatOutputTonePreset(row.output_tone_preset);
+  return { type: 'preset', preset: preset ?? DEFAULT_CHAT_OUTPUT_TONE_PRESET };
+}
+
+function toBoolean(value: boolean | number | null | undefined): boolean {
+  return value === true || value === 1;
 }
 
 export interface ResolvedChatScopeRouting {
@@ -92,6 +139,10 @@ function toDto(row: ChatScopeSettingRow): ChatScopeSetting {
     router: normalizeChatRouterValue(row.router) ?? CHAT_ROUTER_LOCAL,
     nodeId: row.node_id,
     instructions: row.instructions ?? null,
+    outputTone:
+      row.scope_type === 'channel' ? normalizeOutputTone(row) : DEFAULT_CHAT_OUTPUT_TONE,
+    inputGrammarFixerEnabled:
+      row.scope_type === 'channel' ? toBoolean(row.input_grammar_fixer_enabled) : false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -103,7 +154,9 @@ export function buildChatSessionId(channelId: string, threadId?: string | null):
 
 export async function listChatScopeSettings(userId: string): Promise<ChatScopeSetting[]> {
   const result = await pool.query<ChatScopeSettingRow>(
-    `SELECT scope_type, channel_id, thread_id, router, node_id, instructions, created_at, updated_at
+    `SELECT scope_type, channel_id, thread_id, router, node_id, instructions,
+            output_tone_type, output_tone_preset, output_tone_custom,
+            input_grammar_fixer_enabled, created_at, updated_at
        FROM chat_scope_settings
       WHERE user_id = $1
       ORDER BY channel_id ASC, scope_type ASC, thread_id ASC`,
@@ -136,8 +189,73 @@ export async function upsertChatScopeSetting(
         node_id = EXCLUDED.node_id,
         instructions = EXCLUDED.instructions,
         updated_at = CURRENT_TIMESTAMP
-      RETURNING scope_type, channel_id, thread_id, router, node_id, instructions, created_at, updated_at`,
+      RETURNING scope_type, channel_id, thread_id, router, node_id, instructions,
+                output_tone_type, output_tone_preset, output_tone_custom,
+                input_grammar_fixer_enabled, created_at, updated_at`,
     [userId, input.scopeType, input.channelId, threadId, router, nodeId, instructions],
+  );
+
+  return toDto(result.rows[0]);
+}
+
+export async function setChannelOutputTone(
+  userId: string,
+  input: { channelId: string; outputTone: ChatOutputTone },
+): Promise<ChatScopeSetting> {
+  const type = input.outputTone.type;
+  const preset = type === 'preset' ? input.outputTone.preset : null;
+  const custom = type === 'custom' ? input.outputTone.instruction.trim() : null;
+  const result = await pool.query<ChatScopeSettingRow>(
+    `INSERT INTO chat_scope_settings (
+        user_id,
+        scope_type,
+        channel_id,
+        thread_id,
+        router,
+        node_id,
+        instructions,
+        output_tone_type,
+        output_tone_preset,
+        output_tone_custom
+      ) VALUES ($1, 'channel', $2, '', $3, NULL, NULL, $4, $5, $6)
+      ON CONFLICT (user_id, scope_type, channel_id, thread_id)
+      DO UPDATE SET
+        output_tone_type = EXCLUDED.output_tone_type,
+        output_tone_preset = EXCLUDED.output_tone_preset,
+        output_tone_custom = EXCLUDED.output_tone_custom,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING scope_type, channel_id, thread_id, router, node_id, instructions,
+                output_tone_type, output_tone_preset, output_tone_custom,
+                input_grammar_fixer_enabled, created_at, updated_at`,
+    [userId, input.channelId, CHAT_ROUTER_LOCAL, type, preset, custom],
+  );
+
+  return toDto(result.rows[0]);
+}
+
+export async function setChannelInputGrammarFixer(
+  userId: string,
+  input: { channelId: string; enabled: boolean },
+): Promise<ChatScopeSetting> {
+  const result = await pool.query<ChatScopeSettingRow>(
+    `INSERT INTO chat_scope_settings (
+        user_id,
+        scope_type,
+        channel_id,
+        thread_id,
+        router,
+        node_id,
+        instructions,
+        input_grammar_fixer_enabled
+      ) VALUES ($1, 'channel', $2, '', $3, NULL, NULL, $4)
+      ON CONFLICT (user_id, scope_type, channel_id, thread_id)
+      DO UPDATE SET
+        input_grammar_fixer_enabled = EXCLUDED.input_grammar_fixer_enabled,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING scope_type, channel_id, thread_id, router, node_id, instructions,
+                output_tone_type, output_tone_preset, output_tone_custom,
+                input_grammar_fixer_enabled, created_at, updated_at`,
+    [userId, input.channelId, CHAT_ROUTER_LOCAL, input.enabled],
   );
 
   return toDto(result.rows[0]);
@@ -197,6 +315,8 @@ export async function resolveChatScopeRouting(
 export interface ResolvedScopeInstructions {
   channelInstructions: string | null;
   threadInstructions: string | null;
+  channelOutputTone: ChatOutputTone;
+  inputGrammarFixerEnabled: boolean;
 }
 
 /**
@@ -213,8 +333,13 @@ export async function resolveScopeInstructions(
   const result = await pool.query<{
     scope_type: ChatScopeType;
     instructions: string | null;
+    output_tone_type: string | null;
+    output_tone_preset: string | null;
+    output_tone_custom: string | null;
+    input_grammar_fixer_enabled: boolean | number | null;
   }>(
-    `SELECT scope_type, instructions
+    `SELECT scope_type, instructions, output_tone_type, output_tone_preset,
+            output_tone_custom, input_grammar_fixer_enabled
        FROM chat_scope_settings
       WHERE user_id = $1
         AND channel_id = $2
@@ -228,15 +353,19 @@ export async function resolveScopeInstructions(
 
   let channelInstructions: string | null = null;
   let threadInstructions: string | null = null;
+  let channelOutputTone: ChatOutputTone = DEFAULT_CHAT_OUTPUT_TONE;
+  let inputGrammarFixerEnabled = false;
 
   for (const row of result.rows) {
     const value = row.instructions?.trim() || null;
     if (row.scope_type === 'channel') {
       channelInstructions = value;
+      channelOutputTone = normalizeOutputTone(row);
+      inputGrammarFixerEnabled = toBoolean(row.input_grammar_fixer_enabled);
     } else if (row.scope_type === 'thread' && threadId !== 'main') {
       threadInstructions = value;
     }
   }
 
-  return { channelInstructions, threadInstructions };
+  return { channelInstructions, threadInstructions, channelOutputTone, inputGrammarFixerEnabled };
 }

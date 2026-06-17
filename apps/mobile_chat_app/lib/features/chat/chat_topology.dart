@@ -2,6 +2,61 @@ enum ChatRouter { local, plugin }
 
 enum ChatScopeType { channel, thread }
 
+enum ChatOutputTonePreset { direct, socratic, rhetorical }
+
+extension ChatOutputTonePresetApi on ChatOutputTonePreset {
+  String get apiValue {
+    switch (this) {
+      case ChatOutputTonePreset.direct:
+        return 'direct';
+      case ChatOutputTonePreset.socratic:
+        return 'socratic';
+      case ChatOutputTonePreset.rhetorical:
+        return 'rhetorical';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case ChatOutputTonePreset.direct:
+        return 'Direct';
+      case ChatOutputTonePreset.socratic:
+        return 'Socratic';
+      case ChatOutputTonePreset.rhetorical:
+        return 'Rhetorical';
+    }
+  }
+}
+
+class ChatOutputToneSetting {
+  const ChatOutputToneSetting.preset(this.preset) : customInstruction = null;
+
+  const ChatOutputToneSetting.custom(this.customInstruction) : preset = null;
+
+  static const direct = ChatOutputToneSetting.preset(
+    ChatOutputTonePreset.direct,
+  );
+
+  final ChatOutputTonePreset? preset;
+  final String? customInstruction;
+
+  bool get isCustom => customInstruction != null;
+
+  Map<String, Object?> toApiMap() {
+    final custom = customInstruction?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      return {
+        'type': 'custom',
+        'instruction': custom,
+      };
+    }
+    return {
+      'type': 'preset',
+      'preset': (preset ?? ChatOutputTonePreset.direct).apiValue,
+    };
+  }
+}
+
 extension ChatRouterApi on ChatRouter {
   String get apiValue {
     switch (this) {
@@ -45,6 +100,34 @@ ChatScopeType? chatScopeTypeFromApi(String? value) {
     default:
       return null;
   }
+}
+
+ChatOutputTonePreset chatOutputTonePresetFromApi(String? value) {
+  switch (value) {
+    case 'socratic':
+      return ChatOutputTonePreset.socratic;
+    case 'rhetorical':
+      return ChatOutputTonePreset.rhetorical;
+    case 'direct':
+    default:
+      return ChatOutputTonePreset.direct;
+  }
+}
+
+ChatOutputToneSetting chatOutputToneFromApi(Object? value) {
+  if (value is Map) {
+    final map = Map<Object?, Object?>.from(value);
+    if (map['type'] == 'custom') {
+      final instruction = map['instruction'];
+      if (instruction is String && instruction.trim().isNotEmpty) {
+        return ChatOutputToneSetting.custom(instruction.trim());
+      }
+    }
+    return ChatOutputToneSetting.preset(
+      chatOutputTonePresetFromApi(map['preset'] as String?),
+    );
+  }
+  return ChatOutputToneSetting.direct;
 }
 
 class ChatChannel {
@@ -104,6 +187,8 @@ class ChatScopeSetting {
     this.nodeId,
     this.threadId,
     this.instructions,
+    this.outputTone = ChatOutputToneSetting.direct,
+    this.inputGrammarFixerEnabled = false,
     this.resolvedTargetNodeId,
     this.resolvedTargetNodeName,
     this.resolvedTargetPluginId,
@@ -116,6 +201,8 @@ class ChatScopeSetting {
   final ChatRouter router;
   final String? nodeId;
   final String? instructions;
+  final ChatOutputToneSetting outputTone;
+  final bool inputGrammarFixerEnabled;
   final String? resolvedTargetNodeId;
   final String? resolvedTargetNodeName;
   final String? resolvedTargetPluginId;
