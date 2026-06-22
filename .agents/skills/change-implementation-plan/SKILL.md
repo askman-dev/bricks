@@ -1,6 +1,6 @@
 ---
 name: change-implementation-plan
-description: Use when drafting, revising, or persisting an implementation plan for a feature, bug fix, refactor, documentation update, or other repository change. Guides agents to write English plans with Background, Goals, Implementation Plan, Acceptance Criteria, and Validation Commands, and to save every implementation plan under docs/plans/ with a timestamped filename.
+description: Use when drafting, revising, or persisting an implementation plan for a feature, bug fix, refactor, documentation update, or other repository change. Guides agents to write English plans with Background, Goals, Implementation Plan, Acceptance Criteria, and Validation Commands, and to save every implementation plan under the appropriate docs/tasks lifecycle folder with a timestamped filename.
 ---
 
 # Change Implementation Plan
@@ -11,7 +11,12 @@ This skill is for implementation planning. Do not use it for GitHub issue drafti
 
 ## Persistence Rule
 
-Every implementation plan must be saved under `docs/plans/`.
+Every implementation plan must be saved under the appropriate `docs/tasks/` lifecycle folder.
+
+- Use `docs/tasks/backlog/` for planned work that has not started.
+- Use `docs/tasks/doing/` for active implementation work.
+- Use `docs/tasks/done/` for completed work.
+- Use `docs/tasks/trash/` for abandoned or superseded work.
 
 Name the file with a 24-hour timestamp prefix:
 
@@ -91,7 +96,7 @@ Write the plan in English using these sections, in this order:
 
 Before returning or saving the plan, check:
 
-- The file is saved under `docs/plans/` with a timestamped filename.
+- The file is saved under the correct `docs/tasks/` lifecycle folder with a timestamped filename.
 - The plan includes `Background`, `Goals`, `Implementation Plan`, `Acceptance Criteria`, and `Validation Commands`.
 - Optional Background subsections are used only when they improve clarity.
 - Acceptance criteria describe outcomes, not internal implementation steps.

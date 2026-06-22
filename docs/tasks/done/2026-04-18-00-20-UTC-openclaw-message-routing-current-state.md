@@ -52,4 +52,4 @@
 
 ### Validation commands
 
-- `git diff -- docs/plans docs/code_maps/logic_map.yaml`
+- `git diff -- docs/tasks/done docs/code_maps/logic_map.yaml`
