@@ -22,11 +22,15 @@ Bricks keeps useful information available after the chat moves on.
 - **Notes** - Research summaries, reusable instructions, generated reports, study notes, and specs.
 - **Highlights** - Important facts, decisions, quotes, references, and snippets worth keeping.
 
-## Screenshots
+## Showcase
 
-Screenshots coming soon.
+### Topic-based agent work
 
-<!-- Add product screenshots here when image assets are ready. -->
+![Bricks channel and thread workspace](docs/assets/showcase/chat-knowledge-organization.png)
+
+### Saved highlights and notes
+
+![Bricks resources for highlights and notes](docs/assets/showcase/resources-highlights.png)
 
 ## What's on the roadmap
 
