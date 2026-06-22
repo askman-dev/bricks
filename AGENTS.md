@@ -6,9 +6,11 @@
 - Run mobile app Flutter tests from the package directory: `cd apps/mobile_chat_app && flutter test` (avoid `flutter test apps/mobile_chat_app` from repo root).
 - Never pass Markdown files (for example `*.md`) to `dart format` or other Dart source-only tooling commands; target only Dart files/directories.
 
-## Plan persistence
-- For each feature or task, create and save a markdown plan file in `docs/plans/`.
-- Name plan files with a `YYYY-MM-DD-HH-mm` prefix using 24-hour time (optionally appending a timezone such as `-UTC`).
+## Task lifecycle
+- For each feature or task, create and save a markdown task file under `docs/tasks/`.
+- Use the lifecycle folders: `docs/tasks/backlog/` for planned or not-yet-started work, `docs/tasks/doing/` for active work, `docs/tasks/done/` for completed work, and `docs/tasks/trash/` for abandoned or superseded work.
+- Name task files with a `YYYY-MM-DD-HH-mm` prefix using 24-hour time (optionally appending a timezone such as `-UTC`).
+- Do not add new files to the legacy plan/backlog folders; use `docs/tasks/` instead.
 
 ## Worktree task workflow
 - The repository may contain a top-level `.worktree/` directory for storing local git worktrees.
