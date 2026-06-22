@@ -10,6 +10,8 @@
 .history
 .cache/
 .idea/
+.antigravitycli/
+.agents/skills/source-command-opsx-*/
 
 # IntelliJ/Melos generated files
 *.iml
