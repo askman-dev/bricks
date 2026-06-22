@@ -24,13 +24,9 @@ Bricks keeps useful information available after the chat moves on.
 
 ## Showcase
 
-### Topic-based agent work
-
-![Bricks channel and thread workspace](docs/assets/showcase/chat-knowledge-organization.png)
-
-### Saved highlights and notes
-
-![Bricks resources for highlights and notes](docs/assets/showcase/resources-highlights.png)
+| Topic-based agent work | Saved highlights and notes |
+| --- | --- |
+| ![Bricks channel and thread workspace](docs/assets/showcase/chat-knowledge-organization.png) | ![Bricks resources for highlights and notes](docs/assets/showcase/resources-highlights.png) |
 
 ## What's on the roadmap
 
