@@ -1,7 +1,5 @@
 import pool from '../db/index.js';
 import {
-  buildChatSessionId,
-  listChatScopeSettings,
   normalizeChatThreadId,
 } from './chatRouterService.js';
 
@@ -463,8 +461,7 @@ export async function forkThread(input: ForkThreadInput): Promise<ForkThreadResu
 }
 
 export async function listUserScopes(userId: string): Promise<ChatPersistedScope[]> {
-  const [result, settings] = await Promise.all([
-    pool.query<ChatScopeRow>(
+  const result = await pool.query<ChatScopeRow>(
     `SELECT
         scope.channel_id,
         scope.thread_id,
@@ -490,9 +487,7 @@ export async function listUserScopes(userId: string): Promise<ChatPersistedScope
        GROUP BY scope.channel_id, scope.thread_id, scope.session_id
        ORDER BY last_activity_at DESC`,
     [userId],
-    ),
-    listChatScopeSettings(userId),
-  ]);
+  );
 
   const bySessionId = new Map<string, ChatPersistedScope>();
   for (const row of result.rows) {
@@ -502,21 +497,6 @@ export async function listUserScopes(userId: string): Promise<ChatPersistedScope
       threadId,
       sessionId: row.session_id,
       lastActivityAt: row.last_activity_at,
-    });
-  }
-
-  for (const setting of settings) {
-    const threadId =
-      setting.scopeType === 'thread'
-        ? normalizeChatThreadId(setting.threadId)
-        : 'main';
-    const sessionId = buildChatSessionId(setting.channelId, threadId);
-    if (bySessionId.has(sessionId)) continue;
-    bySessionId.set(sessionId, {
-      channelId: setting.channelId,
-      threadId,
-      sessionId,
-      lastActivityAt: null,
     });
   }
 

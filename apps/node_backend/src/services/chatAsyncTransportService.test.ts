@@ -272,31 +272,12 @@ describe('chatAsyncTransportService', () => {
     ]);
   });
 
-  it('listUserScopes includes configured scopes without message history', async () => {
+  it('listUserScopes excludes configured scopes without message history', async () => {
     queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    queryMock.mockResolvedValueOnce({
-      rows: [
-        {
-          scope_type: 'channel',
-          channel_id: 'openclaw-lab',
-          thread_id: '',
-          router: 'openclaw',
-          created_at: '2026-04-17T07:00:00.000Z',
-          updated_at: '2026-04-17T07:00:00.000Z',
-        },
-      ],
-      rowCount: 1,
-    });
 
     const scopes = await listUserScopes('u-1');
 
-    expect(scopes).toEqual([
-      {
-        channelId: 'openclaw-lab',
-        threadId: 'main',
-        sessionId: 'session:openclaw-lab:main',
-        lastActivityAt: null,
-      },
-    ]);
+    expect(scopes).toEqual([]);
+    expect(queryMock).toHaveBeenCalledTimes(1);
   });
 });

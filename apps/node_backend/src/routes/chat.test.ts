@@ -23,9 +23,9 @@ const {
   claimFirstMessageGeneratedNameAttemptMock,
   completeFirstMessageGeneratedNameMock,
   insertFirstMessageExactNameIfMissingMock,
-  listChatChannelNamesMock,
-  upsertChatChannelNameMock,
-  deleteChatChannelNameMock,
+  archiveChatChannelMock,
+  listChatChannelsMock,
+  upsertChatChannelMock,
   generateWithUserConfigMock,
   streamWithAgentToolsAndUserConfigMock,
   buildAgentToolsMock,
@@ -73,15 +73,25 @@ const {
   claimFirstMessageGeneratedNameAttemptMock: vi.fn(async () => null),
   completeFirstMessageGeneratedNameMock: vi.fn(async () => null),
   insertFirstMessageExactNameIfMissingMock: vi.fn(async () => null),
-  listChatChannelNamesMock: vi.fn(async () => []),
-  upsertChatChannelNameMock: vi.fn(async () => ({
+  archiveChatChannelMock: vi.fn(async () => ({
     channelId: "channel-1",
     threadId: null,
+    scopeType: "channel",
     displayName: "项目频道",
+    archivedAt: "2026-04-18T08:02:00.000Z",
+    createdAt: "2026-04-18T08:00:00.000Z",
+    updatedAt: "2026-04-18T08:02:00.000Z",
+  })),
+  listChatChannelsMock: vi.fn(async () => []),
+  upsertChatChannelMock: vi.fn(async () => ({
+    channelId: "channel-1",
+    threadId: null,
+    scopeType: "channel",
+    displayName: "项目频道",
+    archivedAt: null,
     createdAt: "2026-04-18T08:00:00.000Z",
     updatedAt: "2026-04-18T08:00:00.000Z",
   })),
-  deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
   generateWithUserConfigMock: vi.fn(async () => ({
     provider: "anthropic",
     model: "claude-sonnet-4-5",
@@ -149,13 +159,13 @@ vi.mock("../services/platformNodeService.js", () => ({
   listPlatformNodes: listPlatformNodesMock,
 }));
 
-vi.mock("../services/chatChannelNameService.js", () => ({
+vi.mock("../services/chatChannelService.js", () => ({
+  archiveChatChannel: archiveChatChannelMock,
   claimFirstMessageGeneratedNameAttempt: claimFirstMessageGeneratedNameAttemptMock,
   completeFirstMessageGeneratedName: completeFirstMessageGeneratedNameMock,
-  deleteChatChannelName: deleteChatChannelNameMock,
   insertFirstMessageExactNameIfMissing: insertFirstMessageExactNameIfMissingMock,
-  listChatChannelNames: listChatChannelNamesMock,
-  upsertChatChannelName: upsertChatChannelNameMock,
+  listChatChannels: listChatChannelsMock,
+  upsertChatChannel: upsertChatChannelMock,
 }));
 
 vi.mock('../services/localAgentLoopService.js', () => ({
@@ -240,9 +250,9 @@ describe("chat routes", () => {
     completeFirstMessageGeneratedNameMock.mockResolvedValue(null);
     insertFirstMessageExactNameIfMissingMock.mockReset();
     insertFirstMessageExactNameIfMissingMock.mockResolvedValue(null);
-    listChatChannelNamesMock.mockClear();
-    upsertChatChannelNameMock.mockClear();
-    deleteChatChannelNameMock.mockClear();
+    archiveChatChannelMock.mockClear();
+    listChatChannelsMock.mockClear();
+    upsertChatChannelMock.mockClear();
     generateWithUserConfigMock.mockReset();
     generateWithUserConfigMock.mockResolvedValue({
       provider: "anthropic",
@@ -943,28 +953,30 @@ describe("chat routes", () => {
     expect(differentSession.status).toBe(200);
   });
 
-  it("lists persisted channel names", async () => {
-    listChatChannelNamesMock.mockResolvedValueOnce([
+  it("lists persisted chat channels", async () => {
+    listChatChannelsMock.mockResolvedValueOnce([
       {
         channelId: "channel-1",
         threadId: null,
+        scopeType: "channel",
         displayName: "重命名频道",
+        archivedAt: null,
         createdAt: "2026-04-18T08:00:00.000Z",
         updatedAt: "2026-04-18T08:01:00.000Z",
       },
     ] as any);
 
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`);
+    const response = await fetch(`${baseUrl}/api/chat/channels`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      channelNames?: Array<{ channelId: string; displayName: string }>;
+      channels?: Array<{ channelId: string; displayName: string }>;
     };
-    expect(body.channelNames?.[0]?.channelId).toBe("channel-1");
-    expect(body.channelNames?.[0]?.displayName).toBe("重命名频道");
+    expect(body.channels?.[0]?.channelId).toBe("channel-1");
+    expect(body.channels?.[0]?.displayName).toBe("重命名频道");
   });
 
-  it("upserts channel name when displayName is non-empty", async () => {
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+  it("upserts channel when displayName is non-empty", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -974,16 +986,16 @@ describe("chat routes", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith("user-123", {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith("user-123", {
       channelId: "channel-1",
       threadId: null,
       displayName: "新频道名",
     });
-    expect(deleteChatChannelNameMock).not.toHaveBeenCalled();
+    expect(archiveChatChannelMock).not.toHaveBeenCalled();
   });
 
-  it("upserts subsection name when threadId is provided", async () => {
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+  it("upserts thread channel row when threadId is provided", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -994,15 +1006,15 @@ describe("chat routes", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith("user-123", {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith("user-123", {
       channelId: "channel-1",
       threadId: "sub-1",
       displayName: "新分区名",
     });
   });
 
-  it("deletes channel name mapping when displayName is null", async () => {
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+  it("rejects channel upsert when displayName is null", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1011,13 +1023,28 @@ describe("chat routes", () => {
       }),
     });
 
+    expect(response.status).toBe(400);
+    expect(upsertChatChannelMock).not.toHaveBeenCalled();
+    expect(archiveChatChannelMock).not.toHaveBeenCalled();
+  });
+
+  it("archives channel row through explicit lifecycle endpoint", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelId: "channel-1",
+        displayName: "Archived Channel",
+      }),
+    });
+
     expect(response.status).toBe(200);
-    expect(deleteChatChannelNameMock).toHaveBeenCalledWith(
-      "user-123",
-      "channel-1",
-      null,
-    );
-    expect(upsertChatChannelNameMock).not.toHaveBeenCalled();
+    expect(archiveChatChannelMock).toHaveBeenCalledWith("user-123", {
+      channelId: "channel-1",
+      threadId: null,
+      displayName: "Archived Channel",
+    });
+    expect(upsertChatChannelMock).not.toHaveBeenCalled();
   });
 
   it('writes tool_call_start DB message when onToolCallStart callback is triggered', async () => {
@@ -1398,7 +1425,8 @@ describe("chat routes", () => {
 
     const expectedInvalidations = [
       { kind: 'chat.channelNames', channelId: 'channel-1', threadId: null },
-      { kind: 'chat.scopes', channelId: 'channel-1', threadId: 'thread-1' },
+      { kind: 'chat.channelNames', channelId: 'channel-1', threadId: 'thread-1' },
+      { kind: 'chat.scopeSettings', channelId: 'channel-1', threadId: 'thread-1' },
     ];
     expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
       expect.objectContaining({

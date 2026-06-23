@@ -54,7 +54,7 @@ products:
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
           - local 与 plugin 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
           - 发送后 user query 仍先显示“已接受”状态；assistant 身份占位可在 SSE dispatch 占位到达时提前出现，但 assistant 正文气泡仍应等待真实内容开始到达。
-          - Agent tool 结果可通过 message metadata 的 typed invalidations 驱动前端局部刷新；普通对话完成不应全量请求 scopes/channel-names/scope-settings。
+          - Agent tool 结果可通过 message metadata 的 typed invalidations 驱动前端局部刷新；普通对话完成不应全量请求 scopes/channels/scope-settings。
           - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，local/其他远端为第二枚 ✓，OpenClaw plugin 为单色路由状态图标。
           - user query 的时间/线程与投递状态应显示在气泡内；长按气泡可弹出“复制/分叉（待开发）/重发（待开发）”菜单，并在底部显示 message id 与 task id。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
@@ -66,7 +66,7 @@ products:
           - 当向上浏览历史消息后，输入框上方应出现向下箭头按钮；点击后应快速跳转到最新消息。
           - 刷新页面后，已发送过消息的频道仍会在侧边栏中显示并可继续会话。
           - 新建频道时必须输入频道名，且重复名称会被拦截。
-          - 新建频道确认后，即使还没有发送消息，刷新页面后侧边栏仍应从 `chat_channel_names` 恢复该频道名称。
+          - 新建频道确认后，即使还没有发送消息，刷新页面后侧边栏仍应从 `chat_channels` 恢复该频道名称。
           - Navigation 的 Channels tab 创建按钮显示为 `New Channel`。
           - 默认频道显示为 `Default Channel`。
           - Navigation 的 Channels tab 列表项不显示 leading 图标；长按频道菜单显示 `Rename` / `Archive`。
@@ -96,8 +96,8 @@ products:
           - 当路由为 OpenClaw 时，输入框左下角应额外出现 `/` 斜杠命令按钮，选择命令后应自动填充到输入框。
           - 未来新增的 plugin 平台（例如 Hermes）应复用 plugin 路由，平台差异留在 node/plugin 配置层。
           - 顶部频道名称应支持下拉切换频道，切换后分区标签与分区列表需同步刷新为目标频道的数据。
-          - AI tool 创建 thread 或改名当前 channel 后，客户端应通过同步 scopes/channel names 刷新顶部名称与 Thread 列表，不需要整页刷新。
-          - 非主 Thread 首次收到用户消息时，后端应先在 `chat_channel_names` 写入 `source=first_message_exact` 的可读名；本轮 assistant 成功完成后仅尝试一次 `first_message_generated`，成功或 fallback 后通过 typed invalidation 刷新 Thread 名称。
+          - AI tool 创建 thread 或改名当前 channel 后，客户端应通过同步 scopes/channels 刷新顶部名称与 Thread 列表，不需要整页刷新。
+          - 非主 Thread 首次收到用户消息时，后端应先在 `chat_channels` 写入 `source=first_message_exact` 的可读名；本轮 assistant 成功完成后仅尝试一次 `first_message_generated`，成功或 fallback 后通过 typed invalidation 刷新 Thread 名称。
           - 顶部频道下拉菜单顶部应显示 `Rename` / `Archive` 功能分组；默认频道下这两个功能禁用，非默认频道下应调用频道改名与归档持久化路径；频道很多时菜单应限制在合理最大高度内并支持内部滚动。
           - 频道名称右侧应内嵌分区下拉按钮（显示当前分区名+下箭头），且该菜单与频道标题左对齐，不再使用右上角三个点。
           - Thread 菜单主线程显示为 `Thread`；菜单应先显示 `New Thread` 功能组；在子线程内应显示小号浅色“当前组”标题及 `Rename` / `Archive` 操作；主线程不显示当前组操作；底部列表组显示主线程和已有子线程；菜单弹出动画应保持快速缩放+淡入。
@@ -383,7 +383,7 @@ products:
           - '非目标 plugin 对其他 plugin 创建的 assistant message 执行 PATCH 时，应返回 403。'
           - '/api/v1/platform/events/ack 禁止 body 中传 pluginId，合法 ACK 可重复调用并返回成功。'
           - '/api/config/nodes/:nodeId/agents?sourcePlatform=openclaw 在请求时即时执行 OpenClaw CLI 查询 agents，并用于 plugin 路由的 OpenClaw @ 下拉菜单。'
-          - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
+          - '调用 /api/chat/channels 可保存并读取每个用户的频道与 Thread 注册信息；调用 /api/chat/channels/archive 可归档并隐藏对应行。'
           - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
           - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'
           - '高频访问 `/api/config?category=llm` 不应因应用层全局 IP 限流触发 429。'

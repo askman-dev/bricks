@@ -46,7 +46,7 @@ index:
       - Quick Login
       - LOCAL_LLM_CONFIG_ENABLED
       - channel New UI harness
-      - chat_channel_names checkpoint
+      - chat_channels checkpoint
       - evidence checkpoint browser harness
       - local manual AI test environment
       - channel dropdown height evidence case
@@ -105,7 +105,7 @@ index:
       - apps/mobile_chat_app/lib/features/agents/agents_screen.dart
       - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
-      - apps/node_backend/src/services/chatChannelNameService.ts
+      - apps/node_backend/src/services/chatChannelService.ts
       - apps/mobile_chat_app/lib/features/settings/llm_config_service.dart
       - apps/mobile_chat_app/lib/features/chat/chat_message_sort.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
@@ -121,6 +121,7 @@ index:
       - apps/node_backend/src/llm/llm_service.ts
       - apps/node_backend/src/db/migrations/019_scope_chat_channel_names.sql
       - apps/node_backend/src/db/migrations/020_chat_channel_name_source.sql
+      - apps/node_backend/src/db/migrations/025_create_chat_channels.sql
     doc_index:
       - docs/intro.md
       - docs/product/overview.md
@@ -241,7 +242,7 @@ index:
       - 若 default `/chat/respond` 回退为同步阻塞路径，会导致“先入库再异步回复”契约失效并放大接口延迟。
       - 若 dispatch 占位与真实 assistant 正文未复用同一 `messageId`/合并链路，可能出现重复头像行或占位残留。
       - 若 dispatch 占位被渲染成普通空 assistant 气泡，用户会误判 AI 已经输出正文并干扰两段状态图标语义。
-      - 若 SSE 终态消息不区分变更类型就全量刷新 topology，会把普通对话 completion 放大成多次 scopes/channel-names/scope-settings 请求并触发 429。
+      - 若 SSE 终态消息不区分变更类型就全量刷新 topology，会把普通对话 completion 放大成多次 scopes/channels/scope-settings 请求并触发 429。
       - tool-driven UI 刷新应依赖 message metadata invalidations；新增会改变频道、线程、scope settings 或资源列表的工具时必须同步维护 invalidation mapping。
       - 若前端回退到“全量重放 upsert”，会再次引入 write_seq 噪声推进与重复写入风险。
       - channel 会话若错误暴露 thread 路由菜单，用户可能误写 thread scope 配置并造成路由预期不一致。
@@ -257,7 +258,7 @@ index:
       - 若发送追问时只依赖历史滚动标记而不是当前视野是否看到最新回复结尾，用户读旧回复时可能被强制跳走，或读完后发送无法回到新消息。
       - 若初始历史批次没有 user 消息时仍套用 user 锚点 padding，最后一段 AI/tool/status 内容会被不自然地抬高。
       - 若初始历史加载回退为全量历史而非最后 20 条，会放大长会话进入页面的渲染和滚动定位成本。
-      - 如果仅从历史 scope 恢复频道列表，用户刚新建但尚未发送消息的频道会在刷新后从侧边栏消失，即使 `chat_channel_names` 已持久化。
+      - 如果仅从历史 scope 恢复频道列表，用户刚新建但尚未发送消息的频道会在刷新后从侧边栏消失；可见频道与 Thread 必须来自 `chat_channels` registry。
       - 若移动端没有可写的本地 Agents 目录，登录后的 chat setup 会在历史会话加载前失败，表现为同账号移动端看不到网页历史数据。
       - 若 iOS 本地路径解析依赖 `HOME` 环境变量，真机启动会在 chat setup 阶段失败并阻断历史会话加载。
       - 若本地自定义 Agent 文件读取与线上会话初始化共用同一个失败边界，单个本地文件系统异常会误伤频道和历史加载。
@@ -492,7 +493,7 @@ index:
       - apps/node_backend/src/services/chatRouterService.ts
       - apps/node_backend/src/services/platformNodeService.ts
       - apps/node_backend/src/services/openclawAgentRuntimeService.ts
-      - apps/node_backend/src/services/chatChannelNameService.ts
+      - apps/node_backend/src/services/chatChannelService.ts
       - apps/node_backend/src/middleware/platformAuth.ts
       - apps/node_backend/src/services/platformIntegrationService.ts
       - apps/node_backend/src/db/migrations/012_add_node_id_to_chat_scope_settings.sql
