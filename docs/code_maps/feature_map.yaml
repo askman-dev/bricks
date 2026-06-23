@@ -42,6 +42,7 @@ products:
           - 发送一条消息后可以看到消息列表更新。
           - 发送消息后输入框应保持可输入并恢复焦点，流式回复期间仍可继续编辑下一条草稿。
           - 宽屏内联 Navigation 打开时，拖动右侧分隔手柄应能在最小/最大宽度范围内调整侧边栏宽度。
+          - 宽屏内联 Navigation 打开时，Navigation 与 chat 区域之间应显示一条可拖拽的垂直分界线。
           - 将路由切到 plugin/OpenClaw 节点后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
           - 当用户拥有多个 OpenClaw 节点时，输入框左侧路由菜单应仅列出真实节点；菜单主标题显示节点名称，副标题显示 `OpenClaw`。
@@ -193,6 +194,7 @@ products:
           - 页面可正常渲染且无崩溃。
           - Chat navigation 的 Resources tab 将 todo lists、asset tables、notes、text highlights 作为原子资源按更新时间倒序显示。
           - Resources tab 顶部 type filter 可按资源类型过滤列表。
+          - Resources tab item 标题最多显示两行并省略溢出，第二行用小 icon + 类型文本显示资源类型。
 
       - feature_id: conversational_todos
         name: 对话式待办列表与待办事项

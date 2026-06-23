@@ -3285,15 +3285,19 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                     child: SizedBox(
                       width: 12,
-                      child: Center(
-                        child: SizedBox(
-                          width: 1,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: theme.dividerColor,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: 1,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: theme.dividerColor,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
