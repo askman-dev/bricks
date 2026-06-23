@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const upsertChatScopeSettingMock = vi.fn();
-const upsertChatChannelNameMock = vi.fn();
+const upsertChatChannelMock = vi.fn();
 const listChatScopeSettingsMock = vi.fn().mockResolvedValue([]);
-const listChatChannelNamesMock = vi.fn().mockResolvedValue([]);
+const listChatChannelsMock = vi.fn().mockResolvedValue([]);
 
 vi.mock('./chatRouterService.js', () => ({
   CHAT_ROUTER_LOCAL: 'local',
@@ -17,9 +17,9 @@ vi.mock('./chatRouterService.js', () => ({
   listChatScopeSettings: listChatScopeSettingsMock,
 }));
 
-vi.mock('./chatChannelNameService.js', () => ({
-  upsertChatChannelName: upsertChatChannelNameMock,
-  listChatChannelNames: listChatChannelNamesMock,
+vi.mock('./chatChannelService.js', () => ({
+  upsertChatChannel: upsertChatChannelMock,
+  listChatChannels: listChatChannelsMock,
 }));
 
 vi.mock('./todoService.js', () => ({
@@ -114,7 +114,7 @@ vi.mock('./scheduledActionService.js', () => ({
 describe('localAgentLoopService', () => {
   beforeEach(() => {
     upsertChatScopeSettingMock.mockReset();
-    upsertChatChannelNameMock.mockReset();
+    upsertChatChannelMock.mockReset();
   });
 
   it('rejects tools outside allowlist', async () => {
@@ -178,6 +178,11 @@ describe('localAgentLoopService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.data?.sessionId).toBe('session:ops:main');
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'ops',
+      displayName: 'ops',
+      source: 'tool',
+    });
   });
 
   it('creates thread scope for create tool', async () => {
@@ -199,6 +204,12 @@ describe('localAgentLoopService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.data?.sessionId).toBe('session:ops:bugs');
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'ops',
+      threadId: 'bugs',
+      displayName: 'bugs',
+      source: 'tool',
+    });
   });
 
   it('runs tool calls in sequence and stops on failure', async () => {
@@ -287,7 +298,7 @@ describe('localAgentLoopService', () => {
   });
 
   it('renames a channel via chat_channel_rename tool', async () => {
-    upsertChatChannelNameMock.mockResolvedValue({
+    upsertChatChannelMock.mockResolvedValue({
       channelId: 'default',
       displayName: 'My Channel',
       createdAt: '2026-05-09T00:00:00.000Z',
@@ -308,7 +319,7 @@ describe('localAgentLoopService', () => {
     expect(result.ok).toBe(true);
     expect(result.data?.channelId).toBe('default');
     expect(result.data?.displayName).toBe('My Channel');
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith('u-1', {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
       channelId: 'default',
       displayName: 'My Channel',
     });
@@ -331,7 +342,7 @@ describe('localAgentLoopService', () => {
   });
 
   it('renames a thread via chat_thread_rename tool', async () => {
-    upsertChatChannelNameMock.mockResolvedValue({
+    upsertChatChannelMock.mockResolvedValue({
       channelId: 'default',
       threadId: 'bugs',
       displayName: 'Bug Reports',
@@ -354,7 +365,7 @@ describe('localAgentLoopService', () => {
     expect(result.data?.channelId).toBe('default');
     expect(result.data?.threadId).toBe('bugs');
     expect(result.data?.displayName).toBe('Bug Reports');
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith('u-1', {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
       channelId: 'default',
       threadId: 'bugs',
       displayName: 'Bug Reports',

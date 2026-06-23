@@ -168,7 +168,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
-      List<ChatChannelNameSetting> channelNames = const [];
+      List<ChatChannelSetting> channels = const [];
       List<PlatformNodeConfig> platformNodes = const [];
       Map<String, List<PlatformAgentConfig>> openClawAgentsByNodeId = const {};
       List<TodoList> todoLists = const [];
@@ -191,10 +191,10 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
       try {
-        channelNames = await _chatHistoryApiService.loadChannelNames();
+        channels = await _chatHistoryApiService.loadChannels();
       } catch (e) {
         debugPrint(
-          'loadChannelNames failed, continuing without channel name hydration: $e',
+          'loadChannels failed, continuing without channel hydration: $e',
         );
       }
       try {
@@ -246,17 +246,13 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (!mounted) return;
       _syncParticipants(mergedDefinitions);
-      final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
-      final restoredNamedChannels = _applyPersistedChannelNames(
-        channels: restoredChannels,
-        channelNames: channelNames,
-      );
-      final restoredSubSections = _hydrateSubSectionsFromScopes(
-        scopes: persistedScopes,
-        channelNames: channelNames,
-      );
+      final restoredChannels = _hydrateChannelsFromRegistry(channels);
+      final restoredSubSections = _hydrateSubSectionsFromRegistry(channels);
       final restoredLastSubSectionByChannel =
-          _hydrateLastActiveSubSectionByChannel(persistedScopes);
+          _hydrateLastActiveSubSectionByChannel(
+        persistedScopes,
+        restoredSubSections,
+      );
       final restoredChannelLastMessageAt =
           _hydrateChannelLastMessageAt(persistedScopes);
       final restoredChannelRouters = _hydrateChannelRouters(scopeSettings);
@@ -289,7 +285,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _authToken = authToken;
         _channels
           ..clear()
-          ..addAll(restoredNamedChannels);
+          ..addAll(restoredChannels);
         _channelLastMessageAt
           ..clear()
           ..addAll(restoredChannelLastMessageAt);
@@ -657,20 +653,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$prefix-${now.year}-${two(now.month)}-${two(now.day)}-${two(now.hour)}-${two(now.minute)}-${two(now.second)}-${three(now.millisecond)}';
   }
 
-  String _fallbackScopeName(String id, {required String prefix}) {
-    final parsedEpoch = int.tryParse(
-      id.replaceFirst(RegExp(r'^[a-zA-Z_-]+-'), ''),
-    );
-    if (parsedEpoch != null && parsedEpoch > 0) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(parsedEpoch);
-      String two(int value) => value.toString().padLeft(2, '0');
-      return '$prefix-${dt.year}-${two(dt.month)}-${two(dt.day)}-${two(dt.hour)}-${two(dt.minute)}';
-    }
-    return id;
-  }
-
-  List<ChatChannel> _hydrateChannelsFromScopes(
-    List<ChatPersistedScope> scopes,
+  List<ChatChannel> _hydrateChannelsFromRegistry(
+    List<ChatChannelSetting> channels,
   ) {
     final channelsById = <String, ChatChannel>{
       'default': const ChatChannel(
@@ -679,13 +663,14 @@ class _ChatScreenState extends State<ChatScreen> {
         isDefault: true,
       ),
     };
-    for (final scope in scopes) {
-      if (scope.channelId == 'default') continue;
+    for (final channel in channels) {
+      if (channel.scopeType != ChatScopeType.channel) continue;
+      if (channel.channelId == 'default') continue;
       channelsById.putIfAbsent(
-        scope.channelId,
+        channel.channelId,
         () => ChatChannel(
-          id: scope.channelId,
-          name: _fallbackScopeName(scope.channelId, prefix: 'channel'),
+          id: channel.channelId,
+          name: channel.displayName,
           isDefault: false,
         ),
       );
@@ -713,63 +698,52 @@ class _ChatScreenState extends State<ChatScreen> {
     return byChannel;
   }
 
-  Map<String, List<ChatSubSection>> _hydrateSubSectionsFromScopes({
-    required List<ChatPersistedScope> scopes,
-    required List<ChatChannelNameSetting> channelNames,
-  }) {
-    final threadNamesByScope = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId != null &&
-            item.threadId!.trim().isNotEmpty &&
-            item.threadId != 'main')
-          _subSectionKey(item.channelId, item.threadId!): item.displayName,
-    };
+  Map<String, List<ChatSubSection>> _hydrateSubSectionsFromRegistry(
+    List<ChatChannelSetting> channels,
+  ) {
     final subSections = <String, List<ChatSubSection>>{
       'default': <ChatSubSection>[],
     };
-    for (final scope in scopes) {
+    for (final channel in channels) {
+      final threadId = channel.threadId;
+      if (channel.scopeType != ChatScopeType.thread ||
+          threadId == null ||
+          threadId.trim().isEmpty ||
+          threadId == 'main') {
+        continue;
+      }
       final channelSections = subSections.putIfAbsent(
-        scope.channelId,
+        channel.channelId,
         () => <ChatSubSection>[],
       );
-      if (scope.threadId == 'main' ||
-          channelSections.any((item) => item.id == scope.threadId)) {
+      if (channelSections.any((item) => item.id == threadId)) {
         continue;
       }
       channelSections.add(
         ChatSubSection(
-          id: scope.threadId,
-          parentChannelId: scope.channelId,
-          name: threadNamesByScope[_subSectionKey(
-                scope.channelId,
-                scope.threadId,
-              )] ??
-              _fallbackScopeName(scope.threadId, prefix: 'sub'),
-          createdAt: scope.lastActivityAt ?? DateTime.now(),
+          id: threadId,
+          parentChannelId: channel.channelId,
+          name: channel.displayName,
+          createdAt: DateTime.now(),
         ),
       );
     }
     return subSections;
   }
 
-  List<ChatChannel> _applyPersistedChannelNames({
-    required List<ChatChannel> channels,
-    required List<ChatChannelNameSetting> channelNames,
-  }) {
-    if (channelNames.isEmpty) return channels;
-    final namesById = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId == null || item.threadId!.trim().isEmpty)
-          item.channelId: item.displayName,
-    };
-    return applyChannelDisplayNames(channels, namesById);
-  }
-
   Map<String, String> _hydrateLastActiveSubSectionByChannel(
     List<ChatPersistedScope> scopes,
+    Map<String, List<ChatSubSection>> subSectionsByChannel,
   ) {
     final byChannel = <String, ChatPersistedScope>{};
     for (final scope in scopes) {
+      if (scope.threadId != 'main') {
+        final visibleSections = subSectionsByChannel[scope.channelId];
+        final isVisible =
+            visibleSections?.any((section) => section.id == scope.threadId) ??
+                false;
+        if (!isVisible) continue;
+      }
       final current = byChannel[scope.channelId];
       final currentAt = current?.lastActivityAt;
       final nextAt = scope.lastActivityAt;
@@ -894,7 +868,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _configureActiveScopeSync();
         unawaited(
           _chatHistoryApiService
-              .saveChannelName(
+              .saveChannel(
             channelId: id,
             displayName: name,
           )
@@ -946,7 +920,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         unawaited(
           _chatHistoryApiService
-              .saveChannelName(
+              .saveChannel(
             channelId: channelId,
             displayName: name,
           )
@@ -989,9 +963,9 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     unawaited(
       _chatHistoryApiService
-          .saveChannelName(
+          .archiveChannel(
         channelId: channelId,
-        displayName: null,
+        displayName: channel.name,
       )
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('Failed to archive channel "$channelId": $error');
@@ -1341,6 +1315,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _configureActiveScopeSync();
+    unawaited(
+      _chatHistoryApiService
+          .saveChannel(
+        channelId: _activeChannelId,
+        threadId: section.id,
+        displayName: section.name,
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Failed to save subsection "${section.id}": $error');
+      }),
+    );
   }
 
   Future<void> _handleBranch(ChatMessage message) async {
@@ -2129,7 +2114,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _consumeChatInvalidations(ChatHistorySnapshot snapshot) {
     var refreshScopes = false;
-    var refreshChannelNames = false;
+    var refreshChannels = false;
     var refreshScopeSettings = false;
     var refreshResources = false;
 
@@ -2144,7 +2129,7 @@ class _ChatScreenState extends State<ChatScreen> {
           case ChatInvalidationKind.chatScopes:
             refreshScopes = true;
           case ChatInvalidationKind.chatChannelNames:
-            refreshChannelNames = true;
+            refreshChannels = true;
           case ChatInvalidationKind.chatScopeSettings:
             refreshScopeSettings = true;
           case ChatInvalidationKind.resourcesTodoLists:
@@ -2159,11 +2144,11 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    if (refreshScopes || refreshChannelNames || refreshScopeSettings) {
+    if (refreshScopes || refreshChannels || refreshScopeSettings) {
       unawaited(
         _refreshScopeTopologyParts(
           refreshScopes: refreshScopes,
-          refreshChannelNames: refreshChannelNames,
+          refreshChannels: refreshChannels,
           refreshScopeSettings: refreshScopeSettings,
         ),
       );
@@ -2196,66 +2181,26 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
       ];
 
-  List<ChatChannelNameSetting> _currentChannelNameSettings() => [
+  List<ChatChannelSetting> _currentChannelSettings() => [
         for (final channel in _channels)
-          ChatChannelNameSetting(
+          ChatChannelSetting(
             channelId: channel.id,
             displayName: channel.name,
+            scopeType: ChatScopeType.channel,
           ),
         for (final sections in _channelSubSections.values)
           for (final section in sections)
-            ChatChannelNameSetting(
+            ChatChannelSetting(
               channelId: section.parentChannelId,
               threadId: section.id,
               displayName: section.name,
+              scopeType: ChatScopeType.thread,
             ),
       ];
 
-  void _applyChannelNamesToCurrentTopology(
-    List<ChatChannelNameSetting> channelNames,
-  ) {
-    final channelNamesById = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId == null || item.threadId == 'main')
-          item.channelId: item.displayName,
-    };
-    final threadNamesByKey = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId != null &&
-            item.threadId!.trim().isNotEmpty &&
-            item.threadId != 'main')
-          _subSectionKey(item.channelId, item.threadId!): item.displayName,
-    };
-
-    final renamedChannels = [
-      for (final channel in _channels)
-        ChatChannel(
-          id: channel.id,
-          name: channelNamesById[channel.id] ?? channel.name,
-          isDefault: channel.isDefault,
-        ),
-    ];
-    _channels
-      ..clear()
-      ..addAll(renamedChannels);
-    _channelSubSections.updateAll(
-      (channelId, sections) => [
-        for (final section in sections)
-          ChatSubSection(
-            id: section.id,
-            parentChannelId: section.parentChannelId,
-            name: threadNamesByKey[
-                    _subSectionKey(section.parentChannelId, section.id)] ??
-                section.name,
-            createdAt: section.createdAt,
-          ),
-      ],
-    );
-  }
-
   Future<void> _refreshScopeTopologyParts({
     required bool refreshScopes,
-    required bool refreshChannelNames,
+    required bool refreshChannels,
     required bool refreshScopeSettings,
   }) async {
     if (_refreshingScopeTopology) return;
@@ -2263,7 +2208,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final results = await Future.wait<Object>([
         if (refreshScopes) _chatHistoryApiService.loadScopes(),
-        if (refreshChannelNames) _chatHistoryApiService.loadChannelNames(),
+        if (refreshChannels) _chatHistoryApiService.loadChannels(),
         if (refreshScopeSettings) _chatHistoryApiService.loadScopeSettings(),
       ]);
       if (!mounted) return;
@@ -2271,30 +2216,23 @@ class _ChatScreenState extends State<ChatScreen> {
       final scopes = refreshScopes
           ? results[index++] as List<ChatPersistedScope>
           : _currentPersistedScopes();
-      final channelNames = refreshChannelNames
-          ? results[index++] as List<ChatChannelNameSetting>
-          : _currentChannelNameSettings();
+      final channels = refreshChannels
+          ? results[index++] as List<ChatChannelSetting>
+          : _currentChannelSettings();
       final settings = refreshScopeSettings
           ? results[index++] as List<ChatScopeSetting>
           : const <ChatScopeSetting>[];
-      final restoredChannels = _hydrateChannelsFromScopes(scopes);
-      final restoredNamedChannels = _applyPersistedChannelNames(
-        channels: restoredChannels,
-        channelNames: channelNames,
-      );
+      final restoredChannels = _hydrateChannelsFromRegistry(channels);
       final restoredChannelLastMessageAt = _hydrateChannelLastMessageAt(scopes);
-      final restoredSubSections = _hydrateSubSectionsFromScopes(
-        scopes: scopes,
-        channelNames: channelNames,
-      );
+      final restoredSubSections = _hydrateSubSectionsFromRegistry(channels);
       final restoredLastSubSectionByChannel =
-          _hydrateLastActiveSubSectionByChannel(scopes);
+          _hydrateLastActiveSubSectionByChannel(scopes, restoredSubSections);
 
       setState(() {
-        if (refreshScopes) {
+        if (refreshScopes || refreshChannels) {
           _channels
             ..clear()
-            ..addAll(restoredNamedChannels);
+            ..addAll(restoredChannels);
           _channelLastMessageAt
             ..clear()
             ..addAll(restoredChannelLastMessageAt);
@@ -2304,8 +2242,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _lastActiveSubSectionByChannel
             ..clear()
             ..addAll(restoredLastSubSectionByChannel);
-        } else if (refreshChannelNames) {
-          _applyChannelNamesToCurrentTopology(channelNames);
         }
         if (refreshScopeSettings) {
           _channelRouters
@@ -2358,6 +2294,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _configureActiveScopeSync();
+    unawaited(
+      _chatHistoryApiService
+          .saveChannel(
+        channelId: _activeChannelId,
+        threadId: section.id,
+        displayName: section.name,
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Failed to save subsection "${section.id}": $error');
+      }),
+    );
   }
 
   void _renameActiveSubSection() {
@@ -2401,7 +2348,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         unawaited(
           _chatHistoryApiService
-              .saveChannelName(
+              .saveChannel(
             channelId: channelId,
             threadId: sectionId,
             displayName: name,
@@ -2439,10 +2386,10 @@ class _ChatScreenState extends State<ChatScreen> {
     unawaited(_loadMessagesForActiveScope());
     unawaited(
       _chatHistoryApiService
-          .saveChannelName(
+          .archiveChannel(
         channelId: channelId,
         threadId: sectionId,
-        displayName: null,
+        displayName: sectionName,
       )
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('Failed to archive subsection "$sectionId": $error');
@@ -3285,15 +3232,19 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                     child: SizedBox(
                       width: 12,
-                      child: Center(
-                        child: SizedBox(
-                          width: 1,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: theme.dividerColor,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: 1,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: theme.dividerColor,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),

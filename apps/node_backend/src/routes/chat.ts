@@ -27,13 +27,13 @@ import {
   upsertChatScopeSetting,
 } from "../services/chatRouterService.js";
 import {
+  archiveChatChannel,
   claimFirstMessageGeneratedNameAttempt,
   completeFirstMessageGeneratedName,
-  deleteChatChannelName,
   insertFirstMessageExactNameIfMissing,
-  listChatChannelNames,
-  upsertChatChannelName,
-} from "../services/chatChannelNameService.js";
+  listChatChannels,
+  upsertChatChannel,
+} from "../services/chatChannelService.js";
 import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
@@ -124,12 +124,22 @@ function invalidationsForToolResult(
 
   switch (stepResult.toolName) {
     case "chat_channel_create":
-      return [{ kind: "chat.scopes", ...(channelId ? { channelId } : {}) }];
+      if (!channelId) return [];
+      return [
+        { kind: "chat.channelNames", channelId, threadId: null },
+        { kind: "chat.scopeSettings", channelId, threadId: null },
+      ];
     case "chat_thread_create":
+      if (!channelId) return [];
       return [
         {
-          kind: "chat.scopes",
-          ...(channelId ? { channelId } : {}),
+          kind: "chat.channelNames",
+          channelId,
+          ...(threadId ? { threadId } : {}),
+        },
+        {
+          kind: "chat.scopeSettings",
+          channelId,
           ...(threadId ? { threadId } : {}),
         },
       ];
@@ -1782,7 +1792,7 @@ router.get("/scope-settings", async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get("/channel-names", async (req: AuthRequest, res: Response) => {
+router.get("/channels", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
@@ -1790,15 +1800,15 @@ router.get("/channel-names", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const channelNames = await listChatChannelNames(userId);
-    res.json({ channelNames });
+    const channels = await listChatChannels(userId);
+    res.json({ channels });
   } catch (error) {
-    console.error("List chat channel names error:", error);
+    console.error("List chat channels error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.put("/channel-names", async (req: AuthRequest, res: Response) => {
+router.put("/channels", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
@@ -1827,19 +1837,60 @@ router.put("/channel-names", async (req: AuthRequest, res: Response) => {
     }
 
     if (!displayNameRaw) {
-      const deleted = await deleteChatChannelName(userId, channelId, threadId);
-      res.json({ deleted: deleted.deleted });
+      res.status(400).json({
+        error: "Invalid payload: displayName is required",
+      });
       return;
     }
 
-    const setting = await upsertChatChannelName(userId, {
+    const setting = await upsertChatChannel(userId, {
       channelId,
       threadId,
       displayName: displayNameRaw,
     });
     res.json({ setting });
   } catch (error) {
-    console.error("Upsert chat channel name error:", error);
+    console.error("Upsert chat channel error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/channels/archive", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const channelId = parseSessionId(body.channelId);
+    const threadId = parseSessionId(body.threadId);
+    const displayNameRaw =
+      typeof body.displayName === "string" ? body.displayName.trim() : "";
+
+    if (!channelId) {
+      res.status(400).json({
+        error: "Invalid payload: channelId is required",
+      });
+      return;
+    }
+
+    if (displayNameRaw.length > 255) {
+      res.status(400).json({
+        error: "Invalid payload: displayName must be 255 characters or fewer",
+      });
+      return;
+    }
+
+    const setting = await archiveChatChannel(userId, {
+      channelId,
+      threadId,
+      displayName: displayNameRaw || channelId,
+    });
+    res.json({ setting });
+  } catch (error) {
+    console.error("Archive chat channel error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

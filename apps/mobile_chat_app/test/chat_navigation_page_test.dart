@@ -271,7 +271,8 @@ void main() {
           ChatResourceItem(
             id: 'highlight_1',
             type: ChatResourceType.textHighlight,
-            title: 'Important highlighted text',
+            title:
+                'Important highlighted text with enough detail to wrap beyond two visual lines',
             updatedAt: DateTime.utc(2026, 5, 19, 10),
             notes: 'Highlighted text',
           ),
@@ -291,18 +292,52 @@ void main() {
 
       expect(find.text('My Todo List'), findsOneWidget);
       expect(find.text('Asset Table'), findsOneWidget);
-      expect(find.text('Important highlighted text'), findsOneWidget);
+      expect(
+        find.text(
+          'Important highlighted text with enough detail to wrap beyond two visual lines',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Research Note'), findsOneWidget);
+      expect(find.text('Todo List'), findsOneWidget);
+      expect(find.text('Table'), findsOneWidget);
+      expect(find.text('Text Highlight'), findsOneWidget);
+      expect(find.text('Note'), findsOneWidget);
       expect(find.byIcon(Icons.checklist_outlined), findsOneWidget);
       expect(find.byIcon(Icons.table_chart_outlined), findsOneWidget);
       expect(find.byIcon(Icons.description_outlined), findsOneWidget);
       expect(find.byIcon(Icons.format_color_text_outlined), findsOneWidget);
 
+      final highlightTile = tester.widget<ListTile>(
+        find.widgetWithText(
+          ListTile,
+          'Important highlighted text with enough detail to wrap beyond two visual lines',
+        ),
+      );
+      expect(highlightTile.leading, isNull);
+
+      final highlightTitle = tester.widget<Text>(
+        find.descendant(
+          of: find.widgetWithText(
+            ListTile,
+            'Important highlighted text with enough detail to wrap beyond two visual lines',
+          ),
+          matching: find.text(
+            'Important highlighted text with enough detail to wrap beyond two visual lines',
+          ),
+        ),
+      );
+      expect(highlightTitle.maxLines, 2);
+      expect(highlightTitle.overflow, TextOverflow.ellipsis);
+
       final noteTop = tester.getTopLeft(
         find.widgetWithText(ListTile, 'Research Note'),
       );
       final highlightTop = tester.getTopLeft(
-        find.widgetWithText(ListTile, 'Important highlighted text'),
+        find.widgetWithText(
+          ListTile,
+          'Important highlighted text with enough detail to wrap beyond two visual lines',
+        ),
       );
       final tableTop = tester.getTopLeft(
         find.widgetWithText(ListTile, 'Asset Table'),

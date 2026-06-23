@@ -7,7 +7,7 @@ import {
   upsertChatScopeSetting,
   listChatScopeSettings,
 } from './chatRouterService.js';
-import { upsertChatChannelName, listChatChannelNames } from './chatChannelNameService.js';
+import { listChatChannels, upsertChatChannel } from './chatChannelService.js';
 import {
   listTodos,
   createTodo,
@@ -343,13 +343,20 @@ async function createChannelScope(params: {
   channelId: string;
 }): Promise<ExecuteInternalToolResult> {
   const router: ChatRouter = CHAT_ROUTER_LOCAL;
-  await upsertChatScopeSetting(params.userId, {
-    scopeType: 'channel',
-    channelId: params.channelId,
-    threadId: null,
-    router,
-    instructions: null,
-  });
+  await Promise.all([
+    upsertChatChannel(params.userId, {
+      channelId: params.channelId,
+      displayName: params.channelId,
+      source: 'tool',
+    }),
+    upsertChatScopeSetting(params.userId, {
+      scopeType: 'channel',
+      channelId: params.channelId,
+      threadId: null,
+      router,
+      instructions: null,
+    }),
+  ]);
 
   return {
     ok: true,
@@ -368,7 +375,7 @@ async function renameChannel(params: {
   channelId: string;
   displayName: string;
 }): Promise<ExecuteInternalToolResult> {
-  const setting = await upsertChatChannelName(params.userId, {
+  const setting = await upsertChatChannel(params.userId, {
     channelId: params.channelId,
     displayName: params.displayName,
   });
@@ -391,7 +398,7 @@ async function renameThread(params: {
   threadId: string;
   displayName: string;
 }): Promise<ExecuteInternalToolResult> {
-  const setting = await upsertChatChannelName(params.userId, {
+  const setting = await upsertChatChannel(params.userId, {
     channelId: params.channelId,
     threadId: params.threadId,
     displayName: params.displayName,
@@ -417,13 +424,21 @@ async function createThreadScope(params: {
 }): Promise<ExecuteInternalToolResult> {
   const router: ChatRouter = CHAT_ROUTER_LOCAL;
   const normalizedThreadId = normalizeChatThreadId(params.threadId);
-  await upsertChatScopeSetting(params.userId, {
-    scopeType: 'thread',
-    channelId: params.channelId,
-    threadId: normalizedThreadId,
-    router,
-    instructions: null,
-  });
+  await Promise.all([
+    upsertChatChannel(params.userId, {
+      channelId: params.channelId,
+      threadId: normalizedThreadId,
+      displayName: normalizedThreadId,
+      source: 'tool',
+    }),
+    upsertChatScopeSetting(params.userId, {
+      scopeType: 'thread',
+      channelId: params.channelId,
+      threadId: normalizedThreadId,
+      router,
+      instructions: null,
+    }),
+  ]);
 
   return {
     ok: true,
@@ -441,25 +456,26 @@ async function createThreadScope(params: {
 async function listChannels(params: {
   userId: string;
 }): Promise<ExecuteInternalToolResult> {
-  const [scopes, names] = await Promise.all([
+  const [scopes, registryRows] = await Promise.all([
     listChatScopeSettings(params.userId),
-    listChatChannelNames(params.userId),
+    listChatChannels(params.userId),
   ]);
 
-  // Build the name map and collect unique channel IDs in one pass over `names`.
   const nameMap = new Map<string, string>();
   const channelIds = new Set<string>();
-  for (const n of names) {
-    nameMap.set(n.channelId, n.displayName);
-    channelIds.add(n.channelId);
+  for (const channel of registryRows) {
+    if (channel.scopeType !== 'channel') continue;
+    nameMap.set(channel.channelId, channel.displayName);
+    channelIds.add(channel.channelId);
   }
-  for (const s of scopes) channelIds.add(s.channelId);
 
   const channels = Array.from(channelIds)
     .sort()
     .map((channelId) => {
       const scope = scopes.find((s) => s.scopeType === 'channel' && s.channelId === channelId);
-      const threadCount = scopes.filter((s) => s.scopeType === 'thread' && s.channelId === channelId).length;
+      const threadCount = registryRows.filter(
+        (row) => row.scopeType === 'thread' && row.channelId === channelId,
+      ).length;
       return {
         channelId,
         displayName: nameMap.get(channelId) ?? null,
@@ -480,18 +496,31 @@ async function getChannel(params: {
   userId: string;
   channelId: string;
 }): Promise<ExecuteInternalToolResult> {
-  const [scopes, names] = await Promise.all([
+  const [scopes, channels] = await Promise.all([
     listChatScopeSettings(params.userId),
-    listChatChannelNames(params.userId),
+    listChatChannels(params.userId),
   ]);
 
-  const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
+  const nameMap = new Map(
+    channels
+      .filter((n) => n.scopeType === 'channel')
+      .map((n) => [n.channelId, n.displayName]),
+  );
   const channelScope = scopes.find(
     (s) => s.scopeType === 'channel' && s.channelId === params.channelId,
   );
-  const threads = scopes
-    .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId)
-    .map((s) => ({ threadId: s.threadId, instructions: s.instructions }));
+  const instructionsByThreadId = new Map(
+    scopes
+      .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId && s.threadId)
+      .map((s) => [s.threadId as string, s.instructions]),
+  );
+  const threads = channels
+    .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId && s.threadId)
+    .map((s) => ({
+      threadId: s.threadId,
+      displayName: s.displayName,
+      instructions: s.threadId ? (instructionsByThreadId.get(s.threadId) ?? null) : null,
+    }));
 
   return {
     ok: true,
@@ -510,23 +539,22 @@ async function listThreads(params: {
   userId: string;
   channelId: string;
 }): Promise<ExecuteInternalToolResult> {
-  const [scopes, names] = await Promise.all([
+  const [scopes, channels] = await Promise.all([
     listChatScopeSettings(params.userId),
-    listChatChannelNames(params.userId),
+    listChatChannels(params.userId),
   ]);
 
-  const threadNameMap = new Map(
-    names
-      .filter((n) => n.channelId === params.channelId && n.threadId)
-      .map((n) => [n.threadId as string, n.displayName]),
+  const instructionsByThreadId = new Map(
+    scopes
+      .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId && s.threadId)
+      .map((s) => [s.threadId as string, s.instructions]),
   );
-
-  const threads = scopes
-    .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId)
+  const threads = channels
+    .filter((s) => s.scopeType === 'thread' && s.channelId === params.channelId && s.threadId)
     .map((s) => ({
       threadId: s.threadId,
-      displayName: s.threadId ? (threadNameMap.get(s.threadId) ?? null) : null,
-      instructions: s.instructions,
+      displayName: s.displayName,
+      instructions: s.threadId ? (instructionsByThreadId.get(s.threadId) ?? null) : null,
     }));
 
   return {
@@ -542,15 +570,19 @@ async function getThread(params: {
   channelId: string;
   threadId: string;
 }): Promise<ExecuteInternalToolResult> {
-  const [scopes, names] = await Promise.all([
+  const [scopes, channels] = await Promise.all([
     listChatScopeSettings(params.userId),
-    listChatChannelNames(params.userId),
+    listChatChannels(params.userId),
   ]);
 
-  const nameMap = new Map(names.map((n) => [n.channelId, n.displayName]));
+  const nameMap = new Map(
+    channels
+      .filter((n) => n.scopeType === 'channel')
+      .map((n) => [n.channelId, n.displayName]),
+  );
   const threadNameMap = new Map(
-    names
-      .filter((n) => n.threadId)
+    channels
+      .filter((n) => n.scopeType === 'thread' && n.threadId)
       .map((n) => [`${n.channelId}:${n.threadId}`, n.displayName]),
   );
   const threadDisplayName = threadNameMap.get(`${params.channelId}:${params.threadId}`) ?? null;
