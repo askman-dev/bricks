@@ -60,4 +60,6 @@ CREATE TRIGGER update_chat_channels_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-DROP TABLE IF EXISTS chat_channel_names;
+-- Keep chat_channel_names as a deprecated rollback backup.
+-- Runtime code no longer reads or writes this table after this migration.
+-- Drop it only in a separate cleanup migration after production validation.
