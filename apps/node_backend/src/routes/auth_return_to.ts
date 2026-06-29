@@ -40,11 +40,17 @@ export function isAllowedReturnTo(
     return false;
   }
 
-  // Required preview pattern:
-  //   https://bricks-<alnum-or-hyphens>-askman-dev.vercel.app
-  // Hyphens are allowed because Vercel branch-deployment slugs include them
-  // (e.g. bricks-git-copilot-add-text-underline-feature-askman-dev.vercel.app).
+  // Legacy Vercel preview pattern.
   if (/^bricks-[A-Za-z0-9-]+-askman-dev\.vercel\.app$/u.test(parsed.hostname)) {
+    return true;
+  }
+
+  // Dokku branch preview pattern:
+  //   https://<branch-slug>.craft-dev.bricks.cool
+  // Slugs are produced by GitHub Actions and limited to lowercase letters,
+  // numbers, and hyphens. Require at least one dot label before craft-dev so
+  // the apex craft-dev.bricks.cool can be controlled separately.
+  if (/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.craft-dev\.bricks\.cool$/u.test(parsed.hostname)) {
     return true;
   }
 

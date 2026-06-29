@@ -346,7 +346,28 @@ function collectMessages(
 ): Array<{ role: 'user' | 'assistant'; content: string }> {
   const collected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   for (const row of rows) {
-    const content = row.content?.trim() ?? '';
+    const metadata = parseMetadata(row.metadata);
+    const mediaAttachments = Array.isArray(metadata?.mediaAttachments)
+      ? metadata.mediaAttachments
+      : [];
+    const mediaContext = mediaAttachments
+      .map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return '';
+        const record = item as Record<string, unknown>;
+        const kind = typeof record.kind === 'string' ? record.kind : 'file';
+        const origin = typeof record.origin === 'string' ? record.origin : 'media';
+        const path =
+          typeof record.channelRelativePath === 'string'
+            ? record.channelRelativePath
+            : '';
+        const mimeType = typeof record.mimeType === 'string' ? record.mimeType : '';
+        return path ? `[${origin} ${kind}: ${path}${mimeType ? ` (${mimeType})` : ''}]` : '';
+      })
+      .filter(Boolean)
+      .join('\n');
+    const content = [row.content?.trim() ?? '', mediaContext]
+      .filter((part) => part.trim().length > 0)
+      .join('\n\n');
     if (!content) continue;
     if (budget.used + content.length > budget.maxChars) break;
     budget.used += content.length;

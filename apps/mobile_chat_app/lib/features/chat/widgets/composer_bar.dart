@@ -2,6 +2,8 @@ import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
+import '../chat_message.dart';
+
 /// Actions available in the composer popup menu.
 enum ComposerMenuAction { model, info }
 
@@ -30,7 +32,10 @@ class ComposerBar extends StatefulWidget {
     this.activeModelLabel,
     this.slashCommands = const [],
     this.atActions = const [],
+    this.attachments = const [],
     this.onSend,
+    this.onAttachImage,
+    this.onRemoveAttachment,
     this.onAgentSelected,
     this.onAtActionSelected,
     this.onOpenModelSelection,
@@ -47,7 +52,10 @@ class ComposerBar extends StatefulWidget {
   final String? activeModelLabel;
   final List<String> slashCommands;
   final List<ComposerAtAction> atActions;
+  final List<ChatMediaAttachment> attachments;
   final void Function(String text)? onSend;
+  final VoidCallback? onAttachImage;
+  final void Function(String mediaId)? onRemoveAttachment;
 
   @Deprecated(
     'ComposerBar no longer invokes onAgentSelected from the @ menu. '
@@ -85,14 +93,25 @@ class _ComposerBarState extends State<ComposerBar>
   }
 
   void _onDraftChanged() {
-    final nextHasDraft = _controller.text.trim().isNotEmpty;
+    final nextHasDraft =
+        _controller.text.trim().isNotEmpty || widget.attachments.isNotEmpty;
     if (_hasDraft == nextHasDraft) return;
     setState(() => _hasDraft = nextHasDraft);
   }
 
+  @override
+  void didUpdateWidget(covariant ComposerBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.attachments.length != widget.attachments.length) {
+      _onDraftChanged();
+    }
+  }
+
   void _submit() {
     final text = _controller.text.trim();
-    if (text.isEmpty || widget.onSend == null) return;
+    if ((text.isEmpty && widget.attachments.isEmpty) || widget.onSend == null) {
+      return;
+    }
     widget.onSend!(text);
     _controller.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -159,6 +178,35 @@ class _ComposerBarState extends State<ComposerBar>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (widget.attachments.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        BricksSpacing.sm,
+                        BricksSpacing.sm,
+                        BricksSpacing.sm,
+                        0,
+                      ),
+                      child: SizedBox(
+                        height: 72,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: widget.attachments.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: BricksSpacing.xs),
+                          itemBuilder: (context, index) {
+                            final attachment = widget.attachments[index];
+                            return _PendingAttachmentTile(
+                              attachment: attachment,
+                              onRemove: widget.onRemoveAttachment == null
+                                  ? null
+                                  : () => widget.onRemoveAttachment!(
+                                        attachment.id,
+                                      ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
                   TextField(
                     controller: _controller,
                     focusNode: _focusNode,
@@ -198,6 +246,17 @@ class _ComposerBarState extends State<ComposerBar>
                             ],
                           ),
                         ],
+                        IconButton(
+                          tooltip: 'Attach image',
+                          onPressed: isSending || widget.isStreaming
+                              ? null
+                              : widget.onAttachImage,
+                          icon: Icon(
+                            Icons.image_outlined,
+                            color: chatColors.composerActionIdle,
+                          ),
+                        ),
+                        const SizedBox(width: BricksSpacing.xs),
                         if (widget.slashCommands.isNotEmpty) ...[
                           PopupMenuButton<String>(
                             popUpAnimationStyle:
@@ -372,6 +431,51 @@ class _ComposerBarState extends State<ComposerBar>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PendingAttachmentTile extends StatelessWidget {
+  const _PendingAttachmentTile({
+    required this.attachment,
+    this.onRemove,
+  });
+
+  final ChatMediaAttachment attachment;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final chatColors =
+        Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+    return SizedBox(
+      width: 72,
+      height: 72,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(BricksRadius.sm),
+              child: Container(
+                color: chatColors.composerBackground,
+                child: const Icon(Icons.image, size: 28),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 2,
+            top: 2,
+            child: IconButton.filled(
+              tooltip: 'Remove image',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+              iconSize: 14,
+              onPressed: onRemove,
+              icon: const Icon(Icons.close),
+            ),
+          ),
+        ],
       ),
     );
   }

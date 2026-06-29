@@ -9,6 +9,8 @@ const llmRouter = express.Router();
 const chatRouter = express.Router();
 const platformRouter = express.Router();
 const resourcesRouter = express.Router();
+const mediaRouter = express.Router();
+const cronRouter = express.Router();
 
 authRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
@@ -38,6 +40,14 @@ resourcesRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
 });
 
+mediaRouter.get('/noop', (_req, res) => {
+  res.json({ ok: true });
+});
+
+cronRouter.get('/noop', (_req, res) => {
+  res.json({ ok: true });
+});
+
 vi.mock('./db/migrate.js', () => ({
   runMigrations: runMigrationsMock,
 }));
@@ -64,6 +74,14 @@ vi.mock('./routes/platform.js', () => ({
 
 vi.mock('./routes/resources.js', () => ({
   default: resourcesRouter,
+}));
+
+vi.mock('./routes/media.js', () => ({
+  default: mediaRouter,
+}));
+
+vi.mock('./routes/cron.js', () => ({
+  default: cronRouter,
 }));
 
 let server: ReturnType<express.Express['listen']> | null = null;

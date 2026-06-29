@@ -116,6 +116,7 @@ class ChatHistoryApiService {
     'nodeName',
     'traceId',
     'source',
+    'mediaAttachments',
   ];
 
   void dispose() {
@@ -150,6 +151,13 @@ class ChatHistoryApiService {
   Uri get _channelsUri => Uri.parse('$_base/api/chat/channels');
   Uri get _archiveChannelUri => Uri.parse('$_base/api/chat/channels/archive');
   Uri get _forkUri => Uri.parse('$_base/api/chat/fork');
+  Uri get _mediaUploadsUri => Uri.parse('$_base/api/media/uploads');
+
+  Uri mediaUrl(String pathOrUrl) {
+    final parsed = Uri.tryParse(pathOrUrl);
+    if (parsed != null && parsed.hasScheme) return parsed;
+    return Uri.parse('$_base$pathOrUrl');
+  }
 
   ChatTaskState? _parseTaskState(Object? value) {
     if (value is! String || value.isEmpty) return null;
@@ -389,6 +397,7 @@ class ChatHistoryApiService {
     required String userMessageId,
     required String assistantMessageId,
     required String userMessage,
+    List<String> mediaAttachmentIds = const [],
     String? resolvedBotId,
     String? resolvedSkillId,
     String? provider,
@@ -412,6 +421,8 @@ class ChatHistoryApiService {
         'userMessageId': userMessageId,
         'assistantMessageId': assistantMessageId,
         'userMessage': userMessage,
+        if (mediaAttachmentIds.isNotEmpty)
+          'mediaAttachmentIds': mediaAttachmentIds,
         'resolvedBotId': resolvedBotId,
         'resolvedSkillId': resolvedSkillId,
         'provider': provider,
@@ -437,6 +448,37 @@ class ChatHistoryApiService {
       taskState: _parseTaskState(map['state']),
       router: map['router'] as String?,
     );
+  }
+
+  Future<ChatMediaAttachment> uploadImage({
+    required ChatSessionScope scope,
+    required String filename,
+    required String mimeType,
+    required String dataBase64,
+  }) async {
+    final response = await _apiClient.post(
+      _mediaUploadsUri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'channelId': scope.channelId,
+        'threadId': scope.threadId == 'main' ? null : scope.threadId,
+        'filename': filename,
+        'mimeType': mimeType,
+        'dataBase64': dataBase64,
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw Exception('Failed to upload image (${response.statusCode})');
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map || raw['media'] is! Map) {
+      throw const FormatException('Invalid media upload response');
+    }
+    final attachment = ChatMediaAttachment.fromMap(raw['media']);
+    if (attachment == null) {
+      throw const FormatException('Invalid media attachment response');
+    }
+    return attachment;
   }
 
   Future<void> saveScopeSetting({

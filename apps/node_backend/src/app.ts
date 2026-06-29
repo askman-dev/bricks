@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import path from 'path';
 import authRoutes from './routes/auth.js';
 import configRoutes from './routes/config.js';
 import llmRoutes from './routes/llm.js';
@@ -9,6 +10,7 @@ import chatRoutes from './routes/chat.js';
 import platformRoutes from './routes/platform.js';
 import resourcesRoutes from './routes/resources.js';
 import cronRoutes from './routes/cron.js';
+import mediaRoutes from './routes/media.js';
 import { runMigrations } from './db/migrate.js';
 
 // Load environment variables (no-op in Vercel production where env vars are injected directly)
@@ -18,7 +20,11 @@ const app = express();
 
 // Only enable trust proxy when running behind Vercel (or another trusted proxy),
 // so non-proxied environments keep the safer default behavior.
-if (process.env.VERCEL || process.env.VERCEL_ENV) {
+if (
+  process.env.VERCEL ||
+  process.env.VERCEL_ENV ||
+  process.env.TRUST_PROXY === 'true'
+) {
   app.set('trust proxy', 1);
 }
 
@@ -50,8 +56,8 @@ const corsOptions =
 app.use(cors(corsOptions));
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '30mb' }));
+app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
 // Run database migrations once per process / Vercel cold start.
 // The promise is cached so subsequent requests incur no overhead.
@@ -94,10 +100,24 @@ app.use('/api', authRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/llm', llmRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/media', mediaRoutes);
 app.use('/api/v1/platform', platformRoutes);
 app.use('/api/resources', resourcesRoutes);
 // Cron routes do NOT use the JWT authenticate middleware — they use CRON_SECRET.
 app.use('/api/cron', cronRoutes);
+
+const staticRoot = process.env.BRICKS_STATIC_ROOT?.trim();
+if (staticRoot) {
+  const resolvedStaticRoot = path.resolve(staticRoot);
+  app.use(express.static(resolvedStaticRoot));
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api/')) {
+      next();
+      return;
+    }
+    res.sendFile(path.join(resolvedStaticRoot, 'index.html'));
+  });
+}
 
 // 404 handler
 app.use((req: Request, res: Response) => {

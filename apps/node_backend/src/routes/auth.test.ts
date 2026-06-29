@@ -93,6 +93,32 @@ describe('auth return_to validation', () => {
       })
     ).toBe(false);
   });
+
+  it('allows Dokku branch preview URLs under craft-dev.bricks.cool', () => {
+    expect(
+      isAllowedReturnTo('https://feature-login-fix.craft-dev.bricks.cool/', {
+        nodeEnv: 'production',
+      })
+    ).toBe(true);
+  });
+
+  it('rejects invalid Dokku preview-like return targets', () => {
+    expect(
+      isAllowedReturnTo('https://craft-dev.bricks.cool/', {
+        nodeEnv: 'production',
+      })
+    ).toBe(false);
+    expect(
+      isAllowedReturnTo('https://feature-login-fix.evil-craft-dev.bricks.cool/', {
+        nodeEnv: 'production',
+      })
+    ).toBe(false);
+    expect(
+      isAllowedReturnTo('https://Feature_Login.craft-dev.bricks.cool/', {
+        nodeEnv: 'production',
+      })
+    ).toBe(false);
+  });
 });
 
 /** Encodes a state payload in the base64url JSON format used by the auth flow. */

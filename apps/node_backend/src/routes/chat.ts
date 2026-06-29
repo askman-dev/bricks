@@ -46,6 +46,11 @@ import {
 import {
   buildAgentTools,
 } from "../services/localAgentLoopService.js";
+import {
+  listMediaAssetsForUser,
+  mediaAssetToDto,
+  type MediaAsset,
+} from "../services/mediaService.js";
 import type { AgentLoopStepResult, LlmProvider } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
 
@@ -575,6 +580,30 @@ function parseProvider(value: unknown): LlmProvider | undefined {
 
 function parseChatRouter(value: unknown): ChatRouter | null {
   return typeof value === "string" ? normalizeChatRouterValue(value) : null;
+}
+
+function parseMediaAttachmentIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const mediaId =
+      typeof item === "string"
+        ? item.trim()
+        : isRecord(item) && typeof item.mediaId === "string"
+          ? item.mediaId.trim()
+          : isRecord(item) && typeof item.id === "string"
+            ? item.id.trim()
+            : "";
+    if (!mediaId || seen.has(mediaId)) continue;
+    seen.add(mediaId);
+    ids.push(mediaId);
+  }
+  return ids.slice(0, 10);
+}
+
+function mediaAttachmentsMetadata(assets: MediaAsset[]) {
+  return assets.map((asset) => mediaAssetToDto(asset));
 }
 
 function parseScopeType(value: unknown): ChatScopeType | null {
@@ -1317,6 +1346,19 @@ router.post(
       const assistantMessageId = parseSessionId(body.assistantMessageId);
       const userMessage =
         typeof body.userMessage === "string" ? body.userMessage.trim() : "";
+      const mediaAttachmentIds = parseMediaAttachmentIds(body.mediaAttachmentIds);
+      const mediaAssets =
+        mediaAttachmentIds.length > 0
+          ? await listMediaAssetsForUser(userId, mediaAttachmentIds)
+          : [];
+      const mediaById = new Map(mediaAssets.map((asset) => [asset.id, asset]));
+      const orderedMediaAssets = mediaAttachmentIds
+        .map((mediaId) => mediaById.get(mediaId))
+        .filter((asset): asset is MediaAsset => Boolean(asset));
+      const hasMissingMedia = orderedMediaAssets.length !== mediaAttachmentIds.length;
+      const hasWrongChannelMedia = orderedMediaAssets.some(
+        (asset) => asset.channelId !== channelId,
+      );
       const parsedMaxTokens = parseMaxTokens(body.maxTokens);
 
       if (
@@ -1326,11 +1368,18 @@ router.post(
         !sessionId ||
         !userMessageId ||
         !assistantMessageId ||
-        !userMessage
+        (!userMessage && orderedMediaAssets.length === 0)
       ) {
         res.status(400).json({
           error:
-            "Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, userMessage are required",
+            "Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, and userMessage or mediaAttachmentIds are required",
+        });
+        return;
+      }
+
+      if (hasMissingMedia || hasWrongChannelMedia) {
+        res.status(400).json({
+          error: "Invalid payload: all media attachments must exist and belong to the current channel",
         });
         return;
       }
@@ -1395,6 +1444,9 @@ router.post(
         targetPluginId: isPluginRoute ? targetNode?.pluginId : null,
         pendingAssistantMessageId:
           isPluginRoute ? assistantMessageId : undefined,
+        ...(orderedMediaAssets.length > 0
+          ? { mediaAttachments: mediaAttachmentsMetadata(orderedMediaAssets) }
+          : {}),
       };
 
       if (resolvedRouter === CHAT_ROUTER_PLUGIN) {

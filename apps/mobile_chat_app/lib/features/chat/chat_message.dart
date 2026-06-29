@@ -1,5 +1,103 @@
 enum ChatTaskState { accepted, dispatched, completed, failed, cancelled }
 
+class ChatMediaAttachment {
+  const ChatMediaAttachment({
+    required this.id,
+    required this.kind,
+    required this.origin,
+    required this.mimeType,
+    required this.filename,
+    required this.previewUrl,
+    required this.contentUrl,
+    required this.downloadUrl,
+    required this.sizeBytes,
+    this.status,
+    this.width,
+    this.height,
+    this.channelRelativePath,
+  });
+
+  final String id;
+  final String kind;
+  final String origin;
+  final String mimeType;
+  final String filename;
+  final String previewUrl;
+  final String contentUrl;
+  final String downloadUrl;
+  final int sizeBytes;
+  final String? status;
+  final int? width;
+  final int? height;
+  final String? channelRelativePath;
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'mediaId': id,
+        'kind': kind,
+        'origin': origin,
+        'mimeType': mimeType,
+        'filename': filename,
+        'previewUrl': previewUrl,
+        'contentUrl': contentUrl,
+        'downloadUrl': downloadUrl,
+        'sizeBytes': sizeBytes,
+        if (status != null) 'status': status,
+        if (width != null) 'width': width,
+        if (height != null) 'height': height,
+        if (channelRelativePath != null)
+          'channelRelativePath': channelRelativePath,
+      };
+
+  static ChatMediaAttachment? fromMap(Object? value) {
+    if (value is! Map) return null;
+    final map = Map<Object?, Object?>.from(value);
+    String? readString(String key) {
+      final raw = map[key];
+      return raw is String && raw.trim().isNotEmpty ? raw.trim() : null;
+    }
+
+    int? readInt(String key) {
+      final raw = map[key];
+      return raw is num ? raw.toInt() : null;
+    }
+
+    final id = readString('id') ?? readString('mediaId');
+    final kind = readString('kind');
+    final origin = readString('origin');
+    final mimeType = readString('mimeType');
+    final filename = readString('filename');
+    final previewUrl = readString('previewUrl');
+    final contentUrl = readString('contentUrl');
+    final downloadUrl = readString('downloadUrl');
+    if (id == null ||
+        kind == null ||
+        origin == null ||
+        mimeType == null ||
+        filename == null ||
+        previewUrl == null ||
+        contentUrl == null ||
+        downloadUrl == null) {
+      return null;
+    }
+    return ChatMediaAttachment(
+      id: id,
+      kind: kind,
+      origin: origin,
+      mimeType: mimeType,
+      filename: filename,
+      previewUrl: previewUrl,
+      contentUrl: contentUrl,
+      downloadUrl: downloadUrl,
+      sizeBytes: readInt('sizeBytes') ?? 0,
+      status: readString('status'),
+      width: readInt('width'),
+      height: readInt('height'),
+      channelRelativePath: readString('channelRelativePath'),
+    );
+  }
+}
+
 enum ChatInvalidationKind {
   chatScopes('chat.scopes'),
   chatChannelNames('chat.channelNames'),
@@ -125,6 +223,7 @@ class ChatMessage {
     this.agentLoopPhase,
     this.agentLoopTool,
     this.invalidations = const [],
+    this.mediaAttachments = const [],
   }) : timestamp = timestamp ?? DateTime.now();
 
   final String role;
@@ -174,6 +273,7 @@ class ChatMessage {
   /// Extracted from `agentLoop.toolName` in server metadata.
   final String? agentLoopTool;
   final List<ChatInvalidation> invalidations;
+  final List<ChatMediaAttachment> mediaAttachments;
 
   ChatMessage copyWith({
     String? role,
@@ -211,6 +311,7 @@ class ChatMessage {
     String? agentLoopPhase,
     String? agentLoopTool,
     List<ChatInvalidation>? invalidations,
+    List<ChatMediaAttachment>? mediaAttachments,
   }) {
     return ChatMessage(
       role: role ?? this.role,
@@ -249,6 +350,7 @@ class ChatMessage {
       agentLoopPhase: agentLoopPhase ?? this.agentLoopPhase,
       agentLoopTool: agentLoopTool ?? this.agentLoopTool,
       invalidations: invalidations ?? this.invalidations,
+      mediaAttachments: mediaAttachments ?? this.mediaAttachments,
     );
   }
 
@@ -290,6 +392,9 @@ class ChatMessage {
       'agentLoopTool': agentLoopTool,
       if (invalidations.isNotEmpty)
         'invalidations': invalidations.map((item) => item.toMap()).toList(),
+      if (mediaAttachments.isNotEmpty)
+        'mediaAttachments':
+            mediaAttachments.map((item) => item.toMap()).toList(),
     };
   }
 
@@ -319,6 +424,14 @@ class ChatMessage {
       return value
           .map(ChatInvalidation.fromMap)
           .whereType<ChatInvalidation>()
+          .toList(growable: false);
+    }
+
+    List<ChatMediaAttachment> parseMediaAttachments(Object? value) {
+      if (value is! List) return const [];
+      return value
+          .map(ChatMediaAttachment.fromMap)
+          .whereType<ChatMediaAttachment>()
           .toList(growable: false);
     }
 
@@ -360,6 +473,7 @@ class ChatMessage {
       agentLoopPhase: map['agentLoopPhase'] as String?,
       agentLoopTool: map['agentLoopTool'] as String?,
       invalidations: parseInvalidations(map['invalidations']),
+      mediaAttachments: parseMediaAttachments(map['mediaAttachments']),
     );
   }
 }

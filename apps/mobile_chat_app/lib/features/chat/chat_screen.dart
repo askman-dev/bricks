@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:agent_core/agent_core.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
@@ -50,6 +52,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final Set<String> _archivedMessageIds = {};
   bool _isSending = false;
   bool _isStreaming = false;
+  bool _isUploadingAttachment = false;
+  final List<ChatMediaAttachment> _pendingMediaAttachments = [];
   bool _loadingAgents = true;
   bool _loadingLlmConfigs = true;
   bool _refreshingScopeTopology = false;
@@ -2479,8 +2483,65 @@ class _ChatScreenState extends State<ChatScreen> {
     return true;
   }
 
+  String _mimeTypeForPickedFile(PlatformFile file) {
+    final extension = (file.extension ?? '').toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'png':
+      default:
+        return 'image/png';
+    }
+  }
+
+  Future<void> _attachImageToDraft() async {
+    if (_isUploadingAttachment || _isSending) return;
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+      final file =
+          result == null || result.files.isEmpty ? null : result.files.first;
+      final bytes = file?.bytes;
+      if (file == null || bytes == null || bytes.isEmpty) return;
+      setState(() => _isUploadingAttachment = true);
+      final attachment = await _chatHistoryApiService.uploadImage(
+        scope: _activeScope,
+        filename: file.name,
+        mimeType: _mimeTypeForPickedFile(file),
+        dataBase64: base64Encode(bytes),
+      );
+      if (!mounted) return;
+      setState(() {
+        _pendingMediaAttachments.add(attachment);
+        _isUploadingAttachment = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isUploadingAttachment = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image upload failed: $error')),
+      );
+    }
+  }
+
+  void _removePendingAttachment(String mediaId) {
+    setState(() {
+      _pendingMediaAttachments.removeWhere((item) => item.id == mediaId);
+    });
+  }
+
   void _sendMessage(String text) {
-    if (text.trim().isEmpty || _isSending) return;
+    final attachments =
+        List<ChatMediaAttachment>.unmodifiable(_pendingMediaAttachments);
+    if ((text.trim().isEmpty && attachments.isEmpty) || _isSending) return;
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
@@ -2524,6 +2585,7 @@ class _ChatScreenState extends State<ChatScreen> {
       messageId: userMessageId,
       role: 'user',
       content: text,
+      mediaAttachments: attachments,
       taskId: taskId,
       idempotencyKey: idempotencyKey,
       createdAt: envelope.createdAt,
@@ -2545,6 +2607,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _isSending = true;
       _isStreaming = false;
+      _pendingMediaAttachments.clear();
     });
 
     final runtimeSettings = _settingsForAgent(agent);
@@ -2558,6 +2621,7 @@ class _ChatScreenState extends State<ChatScreen> {
       userMessageId: userMessageId,
       assistantMessageId: assistantMessageId,
       userMessage: text,
+      mediaAttachmentIds: attachments.map((item) => item.id).toList(),
       resolvedBotId: resolvedBotId,
       resolvedSkillId: resolvedSkillId,
       provider: runtimeSettings.provider,
@@ -3183,6 +3247,10 @@ class _ChatScreenState extends State<ChatScreen> {
               onOpenModelSelection: _openRuntimeModelConfigDialog,
               onShowInfo: _showDebugInfoDialog,
               onSend: _isSending ? null : _sendMessage,
+              onAttachImage:
+                  _isUploadingAttachment ? null : _attachImageToDraft,
+              onRemoveAttachment: _removePendingAttachment,
+              attachments: _pendingMediaAttachments,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,
             );

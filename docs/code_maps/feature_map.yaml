@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-06-16
+last_updated: 2026-06-29
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -112,6 +112,33 @@ products:
           - 输入框底部可点击且非禁用的动作按钮（路由、`/`、`@`、配置、发送）应使用一致的白色系 enabled 颜色，除非该状态刻意使用 accent。
           - OpenClaw plugin 路由与投递状态图标应使用单色图标，不使用彩色 emoji。
           - 用户消息与 assistant 消息正文应共享同一文本样式基线（字号一致）；时间/thread 等 meta 信息应统一为次级灰。
+
+      - feature_id: chat_media_attachments
+        name: 频道内图片附件与生成图片持久化
+        user_value: 用户可在聊天中上传图片，刷新后仍能预览/下载；AI 生成图片可作为频道内持久附件保存，供同一频道 workspace/Agent 访问。
+        entry_paths:
+          - screen: ChatScreen composer image action
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - widget: ComposerBar attachment strip
+            route_hint: apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
+          - widget: MessageList media attachment rendering
+            route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+          - service: ChatHistoryApiService.uploadImage/respond mediaAttachmentIds
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+          - route: POST /api/media/uploads
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: POST /api/media/generated-images
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: GET /api/media/:mediaId/preview|content|download
+            route_hint: apps/node_backend/src/routes/media.ts
+        smoke_checks:
+          - 选择图片后，输入框上方显示待发送附件。
+          - 发送带图片的消息后，user 气泡显示图片附件并保持原有投递状态。
+          - 刷新或 SSE 同步后，图片附件仍从 message metadata 恢复并可加载预览。
+          - 访问 media preview/content/download 路由必须携带当前用户 token；跨用户 media id 返回 404。
+          - 数据库 `media_assets.channel_relative_path` 只保存频道内相对路径，不保存宿主机绝对路径。
+          - 同一 channel 的上传图片写入该 channel 目录下 `media/uploads/`，生成图片写入 `media/generated/images/`。
+          - 不支持的 MIME、空图片、超过 20MB 的图片被后端拒绝。
 
       - feature_id: scope_instructions_config
         name: 频道和分区会话指令配置
@@ -462,3 +489,36 @@ products:
           - 执行 `DOCS_URL=http://localhost:3000 DOCS_BASE_URL=/docs/ npm run build` 后，docs 输出可被 `/docs/` 前缀访问。
           - 执行 `bash ./tools/vercel-build.sh` 后，`apps/mobile_chat_app/build/web/docs/index.html` 存在。
           - 本地静态服务访问 `/docs/` 呈现 Docusaurus 页面，访问 `/` 仍呈现 Flutter Web 首页。
+
+  - product_id: dokku_deployment
+    name: Dokku Deployment
+    platform:
+      - dokku
+      - docker
+      - github_actions
+    entry_points:
+      - path: Dockerfile
+        route: Dokku Dockerfile deployment
+      - path: .github/workflows/dokku_production_deploy.yml
+        route: main branch production deploy
+      - path: .github/workflows/dokku_preview_deploy.yml
+        route: pull request preview deploy
+      - path: docs/deploy/dokku.md
+        route: deployment runbook
+    features:
+      - feature_id: dokku_channel_deployment
+        name: Dokku 主站与 PR 预览部署
+        user_value: main 分支自动部署到 `craft.bricks.cool`，PR 分支自动部署到独立预览域名和独立频道磁盘根目录。
+        entry_paths:
+          - route: https://craft.bricks.cool
+            route_hint: .github/workflows/dokku_production_deploy.yml
+          - route: https://<branch-slug>.craft-dev.bricks.cool
+            route_hint: .github/workflows/dokku_preview_deploy.yml
+          - mount: /app/data/channels
+            route_hint: Dockerfile
+        smoke_checks:
+          - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/channels`。
+          - PR open/synchronize 后创建或更新 `bricks-preview-<branch-slug>`，域名为 `<branch-slug>.craft-dev.bricks.cool`。
+          - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/channels`，不共享 production 或其他 preview 的 channel 文件。
+          - PR close/merge 后对应 preview app 被 destroy，preview data root 被删除。
+          - GitHub OAuth callback 固定为 `https://craft.bricks.cool/api/callback`，preview 登录完成后可 redirect 回 preview 域名。

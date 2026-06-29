@@ -1,0 +1,85 @@
+name: Deploy Production to Dokku
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: dokku-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DOKKU_HOST: ${{ secrets.DOKKU_HOST }}
+      DOKKU_PORT: ${{ secrets.DOKKU_PORT || '22' }}
+      DOKKU_APP: bricks
+      PRODUCTION_DOMAIN: craft.bricks.cool
+      PRODUCTION_CHANNEL_ROOT: /home/bricks/data/production/channels
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DOKKU_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          ssh-keyscan -p "${DOKKU_PORT}" "${DOKKU_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Ensure production app
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" bash -s <<'REMOTE'
+            set -euo pipefail
+            app="bricks"
+            data_root="/home/bricks/data/production/channels"
+            domain="craft.bricks.cool"
+            dokku apps:exists "$app" || dokku apps:create "$app"
+            mkdir -p "$data_root"
+            if ! dokku storage:list "$app" | grep -Fq "$data_root:/app/data/channels"; then
+              dokku storage:mount "$app" "$data_root:/app/data/channels"
+            fi
+            dokku domains:set "$app" "$domain"
+          REMOTE
+
+      - name: Configure production environment
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
+            dokku config:set --no-restart "${DOKKU_APP}" \
+              NODE_ENV=production \
+              TRUST_PROXY=true \
+              BRICKS_STATIC_ROOT=/app/public \
+              BRICKS_CHANNEL_ROOT=/app/data/channels \
+              GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback \
+              OAUTH_ALLOWED_RETURN_ORIGINS=https://craft.bricks.cool \
+              CORS_ORIGIN=https://craft.bricks.cool \
+              TURSO_DATABASE_URL="${{ secrets.TURSO_DATABASE_URL }}" \
+              TURSO_AUTH_TOKEN="${{ secrets.TURSO_AUTH_TOKEN }}" \
+              GITHUB_CLIENT_ID="${{ secrets.GH_OAUTH_CLIENT_ID }}" \
+              GITHUB_CLIENT_SECRET="${{ secrets.GH_OAUTH_CLIENT_SECRET }}" \
+              JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
+              CRON_SECRET="${{ secrets.CRON_SECRET }}" \
+              GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+              ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}"
+
+      - name: Deploy to Dokku
+        run: |
+          set -euo pipefail
+          git remote add dokku "ssh://dokku@${DOKKU_HOST}:${DOKKU_PORT}/${DOKKU_APP}" || true
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+            git push dokku HEAD:refs/heads/main --force
+
+      - name: Enable HTTPS
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
+            dokku letsencrypt:enable "${DOKKU_APP}" || true

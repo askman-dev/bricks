@@ -31,6 +31,8 @@ const {
   buildAgentToolsMock,
   getPlatformNodeByNodeIdMock,
   listPlatformNodesMock,
+  listMediaAssetsForUserMock,
+  mediaAssetToDtoMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -125,6 +127,18 @@ const {
       updatedAt: "2026-04-17T07:00:00.000Z",
     },
   ]),
+  listMediaAssetsForUserMock: vi.fn(async () => []),
+  mediaAssetToDtoMock: vi.fn((asset: Record<string, unknown>) => ({
+    id: asset.id,
+    kind: asset.kind,
+    origin: asset.origin,
+    mimeType: asset.mimeType,
+    filename: asset.filename,
+    previewUrl: `/api/media/${asset.id}/preview`,
+    contentUrl: `/api/media/${asset.id}/content`,
+    downloadUrl: `/api/media/${asset.id}/download`,
+    channelRelativePath: asset.channelRelativePath,
+  })),
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -170,6 +184,11 @@ vi.mock("../services/chatChannelService.js", () => ({
 
 vi.mock('../services/localAgentLoopService.js', () => ({
   buildAgentTools: buildAgentToolsMock,
+}));
+
+vi.mock("../services/mediaService.js", () => ({
+  listMediaAssetsForUser: listMediaAssetsForUserMock,
+  mediaAssetToDto: mediaAssetToDtoMock,
 }));
 
 vi.mock("../llm/llm_service.js", () => ({

@@ -3,6 +3,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:design_system/design_system.dart';
 import 'package:intl/intl.dart';
+import '../../auth/auth_service.dart';
+import '../../settings/llm_config_service.dart';
 import '../chat_message.dart';
 import '../text_highlight_api_service.dart';
 
@@ -396,9 +398,9 @@ class _MessageListState extends State<MessageList> {
             label: 'Message actions',
             button: true,
             child: GestureDetector(
-              onTapUp: (details) => _showAssistantMessageActionMenu(
+              onTap: () => _showAssistantMessageActionMenu(
                 context: context,
-                globalPosition: details.globalPosition,
+                globalPosition: Offset.zero,
                 message: message,
               ),
               behavior: HitTestBehavior.opaque,
@@ -832,6 +834,7 @@ class _MessageListState extends State<MessageList> {
                         message: msg,
                       )
                   : null,
+              behavior: HitTestBehavior.opaque,
               child: Container(
                 key: ValueKey<String>(
                   'message-${msg.messageId ?? '${msg.timestamp}-$index'}',
@@ -867,7 +870,18 @@ class _MessageListState extends State<MessageList> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (isUser)
+                    if (msg.mediaAttachments.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(
+                          bottom:
+                              msg.content.trim().isEmpty ? 0 : BricksSpacing.sm,
+                        ),
+                        child: _MediaAttachmentStrip(
+                          attachments: msg.mediaAttachments,
+                          isUser: isUser,
+                        ),
+                      ),
+                    if (isUser && msg.content.trim().isNotEmpty)
                       _MessageExpandToggle(
                         key: ValueKey<String>(
                           'expand-toggle-${msg.messageId ?? '${msg.timestamp}-$index'}',
@@ -875,7 +889,7 @@ class _MessageListState extends State<MessageList> {
                         text: msg.content,
                         textColor: chatColors.onMessageUser,
                       )
-                    else
+                    else if (!isUser && msg.content.trim().isNotEmpty)
                       _AssistantMarkdownText(
                         text: msg.content,
                         textColor: chatColors.onMessageAssistant,
@@ -954,8 +968,7 @@ class _MessageListState extends State<MessageList> {
                 ),
               ),
             ),
-          if (!isUser)
-            _buildAssistantMetaRow(context, msg, chatColors),
+          if (!isUser) _buildAssistantMetaRow(context, msg, chatColors),
         ],
       ),
     );
@@ -1554,6 +1567,116 @@ class _AssistantMarkdownText extends StatefulWidget {
 
   @override
   State<_AssistantMarkdownText> createState() => _AssistantMarkdownTextState();
+}
+
+class _MediaAttachmentStrip extends StatelessWidget {
+  const _MediaAttachmentStrip({
+    required this.attachments,
+    required this.isUser,
+  });
+
+  final List<ChatMediaAttachment> attachments;
+  final bool isUser;
+
+  Uri _mediaUri(String value) {
+    final parsed = Uri.tryParse(value);
+    if (parsed != null && parsed.hasScheme) return parsed;
+    return Uri.parse('${LlmConfigService.resolveBaseUrl()}$value');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chatColors =
+        Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+    return Wrap(
+      spacing: BricksSpacing.xs,
+      runSpacing: BricksSpacing.xs,
+      children: attachments
+          .map(
+            (attachment) => _MediaAttachmentTile(
+              attachment: attachment,
+              uri: _mediaUri(attachment.previewUrl),
+              borderColor: isUser
+                  ? chatColors.onMessageUser.withValues(alpha: 0.24)
+                  : chatColors.composerBorder,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class _MediaAttachmentTile extends StatelessWidget {
+  const _MediaAttachmentTile({
+    required this.attachment,
+    required this.uri,
+    required this.borderColor,
+  });
+
+  final ChatMediaAttachment attachment;
+  final Uri uri;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: AuthService.getToken(),
+      builder: (context, snapshot) {
+        final token = snapshot.data;
+        final headers = token == null || token.isEmpty
+            ? null
+            : {'Authorization': 'Bearer $token'};
+        return Container(
+          width: 168,
+          constraints: const BoxConstraints(maxHeight: 148),
+          decoration: BoxDecoration(
+            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(BricksRadius.sm),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 4 / 3,
+                child: Image.network(
+                  uri.toString(),
+                  headers: headers,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, _, __) => const Center(
+                    child: Icon(Icons.broken_image_outlined),
+                  ),
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: BricksSpacing.xs,
+                  vertical: 3,
+                ),
+                child: Text(
+                  attachment.filename,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _AssistantMarkdownTextState extends State<_AssistantMarkdownText> {
@@ -2678,8 +2801,8 @@ class _UserMessageContextMenu extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _MenuItem(label: 'Copy', value: 'copy'),
-                _MenuItem(label: 'Branch', value: 'branch'),
-                _MenuItem(label: 'Resend', value: 'resend'),
+                _MenuItem(label: 'Branch (coming soon)', value: 'branch'),
+                _MenuItem(label: 'Resend (coming soon)', value: 'resend'),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -2763,8 +2886,10 @@ class _AssistantMessageActionMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      if (showArchiveRound) const _MenuItem(label: 'Archive Round', value: 'archive_round'),
-      if (showArchiveReply) const _MenuItem(label: 'Archive Reply', value: 'archive_reply'),
+      if (showArchiveRound)
+        const _MenuItem(label: '归档此轮', value: 'archive_round'),
+      if (showArchiveReply)
+        const _MenuItem(label: '归档此回复', value: 'archive_reply'),
       if (showFork) const _MenuItem(label: 'Fork', value: 'fork'),
     ];
     final menuHeight = _itemHeight * items.length;

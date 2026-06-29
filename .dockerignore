@@ -1,0 +1,10 @@
+.git
+.worktree
+.dart_tool
+**/.dart_tool
+**/build
+**/node_modules
+.env
+.env.local
+.env.*.local
+.DS_Store
