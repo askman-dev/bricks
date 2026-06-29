@@ -5,6 +5,8 @@ FROM ghcr.io/cirruslabs/flutter:stable AS web-build
 WORKDIR /workspace
 COPY --from=node-tools /usr/local/ /usr/local/
 COPY . .
+ENV DOCS_URL=https://craft.bricks.cool
+ENV DOCS_BASE_URL=/docs/
 RUN bash ./tools/vercel-build.sh
 
 FROM node:20-bookworm-slim AS backend-build
