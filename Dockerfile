@@ -30,6 +30,7 @@ WORKDIR /app
 COPY --from=backend-build /workspace/apps/node_backend/package*.json ./
 COPY --from=backend-build /workspace/apps/node_backend/node_modules ./node_modules
 COPY --from=backend-build /workspace/apps/node_backend/dist ./dist
+COPY --from=backend-build /workspace/apps/node_backend/src/db/migrations ./dist/db/migrations
 COPY --from=web-build /workspace/apps/mobile_chat_app/build/web ./public
 
 EXPOSE 3000
