@@ -158,7 +158,7 @@ describe('app security headers', () => {
 
     const csp = response.headers.get('content-security-policy');
     expect(csp).toContain("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.gstatic.com");
-    expect(csp).toContain("connect-src 'self' https://www.gstatic.com");
+    expect(csp).toContain("connect-src 'self' https://www.gstatic.com https://fonts.gstatic.com");
     expect(csp).toContain("worker-src 'self' blob:");
   });
 });

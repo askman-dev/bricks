@@ -35,7 +35,7 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         "script-src": ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", "https://www.gstatic.com"],
-        "connect-src": ["'self'", "https://www.gstatic.com"],
+        "connect-src": ["'self'", "https://www.gstatic.com", "https://fonts.gstatic.com"],
         "worker-src": ["'self'", "blob:"],
         "img-src": ["'self'", "data:", "blob:"],
       },
