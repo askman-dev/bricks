@@ -520,5 +520,6 @@ products:
           - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/channels`。
           - PR open/synchronize 后创建或更新 `bricks-preview-<branch-slug>`，域名为 `<branch-slug>.craft-dev.bricks.cool`。
           - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/channels`，不共享 production 或其他 preview 的 channel 文件。
+          - Turso credentials, JWT signing secret, and encryption key stay in Dokku server config; preview apps copy them from the production app on the server instead of reading GitHub Actions secrets.
           - PR close/merge 后对应 preview app 被 destroy，preview data root 被删除。
           - GitHub OAuth callback 固定为 `https://craft.bricks.cool/api/callback`，preview 登录完成后可 redirect 回 preview 域名。

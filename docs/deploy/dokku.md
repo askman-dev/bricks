@@ -29,7 +29,10 @@ dokku domains:set bricks craft.bricks.cool
 dokku letsencrypt:enable bricks
 ```
 
-Set required config values without committing secrets:
+Set required config values on the Dokku server without committing secrets.
+Runtime secrets such as Turso credentials, JWT signing keys, and encryption keys
+must stay in Dokku config on the server; do not store them in GitHub Actions
+secrets for this open-source repository.
 
 ```sh
 dokku config:set bricks \
@@ -62,3 +65,7 @@ https://<branch-slug>.craft-dev.bricks.cool
 The preview keeps `GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback`
 so GitHub always returns to production, then production redirects back to the
 validated preview `return_to` URL.
+
+Preview apps copy `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `JWT_SECRET`, and
+`ENCRYPTION_KEY` from the production Dokku app on the server during deployment,
+so those values do not leave the server through GitHub Actions.

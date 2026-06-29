@@ -55,12 +55,8 @@ jobs:
 
       - name: Configure production environment
         env:
-          SECRET_TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          SECRET_TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           SECRET_GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           SECRET_GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
-          SECRET_JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          SECRET_ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           SECRET_CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -82,12 +78,8 @@ jobs:
               config_args+=("${key}=${value}")
             fi
           }
-          add_config TURSO_DATABASE_URL "$SECRET_TURSO_DATABASE_URL"
-          add_config TURSO_AUTH_TOKEN "$SECRET_TURSO_AUTH_TOKEN"
           add_config GITHUB_CLIENT_ID "$SECRET_GH_OAUTH_CLIENT_ID"
           add_config GITHUB_CLIENT_SECRET "$SECRET_GH_OAUTH_CLIENT_SECRET"
-          add_config JWT_SECRET "$SECRET_JWT_SECRET"
-          add_config ENCRYPTION_KEY "$SECRET_ENCRYPTION_KEY"
           add_config CRON_SECRET "$SECRET_CRON_SECRET"
           add_config GEMINI_API_KEY "$SECRET_GEMINI_API_KEY"
           add_config ANTHROPIC_API_KEY "$SECRET_ANTHROPIC_API_KEY"

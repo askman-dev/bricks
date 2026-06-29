@@ -680,6 +680,8 @@ index:
     keywords:
       - Dokku
       - Vultr
+      - server-only runtime secrets
+      - preview config copy
       - craft.bricks.cool
       - craft-dev.bricks.cool
       - BRICKS_CHANNEL_ROOT
