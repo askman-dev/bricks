@@ -1,6 +1,12 @@
+FROM node:20-bookworm-slim AS node-tools
+
 FROM ghcr.io/cirruslabs/flutter:stable AS web-build
 
 WORKDIR /workspace
+COPY --from=node-tools /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-tools /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=node-tools /usr/local/bin/npx /usr/local/bin/npx
+COPY --from=node-tools /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY . .
 RUN bash ./tools/vercel-build.sh
 
