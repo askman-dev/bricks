@@ -47,6 +47,8 @@ jobs:
               dokku storage:mount "$app" "$data_root:/app/data/channels"
             fi
             dokku domains:set "$app" "$domain"
+            dokku ports:set "$app" http:80:3000
+            dokku letsencrypt:set "$app" email admin@bricks.cool
           REMOTE
 
       - name: Configure production environment
