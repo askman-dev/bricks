@@ -1,13 +1,23 @@
-FROM node:20-bookworm-slim AS node-tools
-
-FROM ghcr.io/cirruslabs/flutter:stable AS web-build
+FROM ghcr.io/cirruslabs/flutter:stable AS flutter-web-build
 
 WORKDIR /workspace
-COPY --from=node-tools /usr/local/ /usr/local/
-COPY . .
+COPY pubspec.yaml melos.yaml ./
+COPY packages ./packages
+COPY apps/mobile_chat_app ./apps/mobile_chat_app
+RUN flutter config --enable-web >/dev/null \
+  && cd apps/mobile_chat_app \
+  && flutter pub get \
+  && flutter build web --release
+
+FROM node:20-bookworm-slim AS docs-build
+
+WORKDIR /workspace
+COPY apps/docs_site/package*.json ./apps/docs_site/
+RUN cd apps/docs_site && npm ci
+COPY apps/docs_site ./apps/docs_site
+COPY docs ./docs
 ENV DOCS_URL=https://craft.bricks.cool
-ENV DOCS_BASE_URL=/docs/
-RUN bash ./tools/vercel-build.sh
+RUN cd apps/docs_site && npm run build
 
 FROM node:20-bookworm-slim AS backend-build
 
@@ -31,7 +41,8 @@ COPY --from=backend-build /workspace/apps/node_backend/package*.json ./
 COPY --from=backend-build /workspace/apps/node_backend/node_modules ./node_modules
 COPY --from=backend-build /workspace/apps/node_backend/dist ./dist
 COPY --from=backend-build /workspace/apps/node_backend/src/db/migrations ./dist/db/migrations
-COPY --from=web-build /workspace/apps/mobile_chat_app/build/web ./public
+COPY --from=flutter-web-build /workspace/apps/mobile_chat_app/build/web ./public
+COPY --from=docs-build /workspace/apps/docs_site/build ./public/docs
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
