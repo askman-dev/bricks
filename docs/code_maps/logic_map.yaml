@@ -282,6 +282,8 @@ index:
       - apps/node_backend/src/routes/media.ts
       - apps/node_backend/src/services/mediaService.ts
       - apps/node_backend/src/services/channelFileService.ts
+      - apps/node_backend/src/llm/types.ts
+      - apps/node_backend/src/llm/llm_service.ts
       - apps/node_backend/src/routes/chat.ts
       - apps/node_backend/src/services/chatAsyncTransportService.ts
       - apps/mobile_chat_app/lib/features/chat/chat_message.dart
@@ -290,6 +292,7 @@ index:
       - apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
     doc_index:
+      - docs/tasks/doing/2026-06-29-23-06-CST-media-upload-preview-multimodal.md
       - docs/tasks/doing/2026-06-29-16-13-CST-dokku-channel-media-deployment-plan.md
     test_index:
       - apps/node_backend/src/services/channelFileService.test.ts
@@ -304,6 +307,8 @@ index:
       - mediaAttachments
       - image upload
       - generated image
+      - Gemini image input
+      - multimodal parts
       - previewUrl
       - downloadUrl
       - FilePicker
@@ -312,6 +317,7 @@ index:
       - media_assets 必须按 user_id 授权读取；若只按 media id 查找，可能泄露其他用户上传/生成图片。
       - channel_relative_path 必须拒绝绝对路径、空 path、`..` 与反斜杠逃逸；否则 Agent/media 路径可能越过当前 channel root。
       - Flutter Image.network 预览依赖 Authorization header；若 AuthService token hydration 失败，图片附件会显示 broken image 但消息文本仍可见。
+      - Gemini 多模态输入只应把当前用户可访问、当前 channel 的 ready image asset 转为 image part；错误地传递跨 channel 或失败 asset 会造成隐私或 provider 错误风险。
       - chat_messages.metadata 是第一阶段附件同步桥；后续若改为 join 查询，需要继续保证 sync/history/SSE 返回 mediaAttachments。
       - 生成图片当前只实现持久化入口，完整 provider-side image generation 仍需后续 Gemini capability/tool 集成。
 

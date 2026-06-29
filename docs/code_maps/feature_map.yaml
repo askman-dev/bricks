@@ -115,7 +115,7 @@ products:
 
       - feature_id: chat_media_attachments
         name: 频道内图片附件与生成图片持久化
-        user_value: 用户可在聊天中上传图片，刷新后仍能预览/下载；AI 生成图片可作为频道内持久附件保存，供同一频道 workspace/Agent 访问。
+        user_value: 用户可在聊天中上传图片，上传中/失败时能看到草稿缩略图与重试/移除操作，刷新后仍能预览/下载；Gemini 路由会把上传图片作为多模态输入读取；AI 生成图片可作为频道内持久附件保存，供同一频道 workspace/Agent 访问。
         entry_paths:
           - screen: ChatScreen composer image action
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
@@ -131,9 +131,13 @@ products:
             route_hint: apps/node_backend/src/routes/media.ts
           - route: GET /api/media/:mediaId/preview|content|download
             route_hint: apps/node_backend/src/routes/media.ts
+          - llm: Gemini multimodal image parts
+            route_hint: apps/node_backend/src/routes/chat.ts
         smoke_checks:
-          - 选择图片后，输入框上方显示待发送附件。
+          - 选择图片后，输入框上方立即显示本地缩略图与上传进度；失败后保留缩略图并提供重试和移除。
+          - 上传成功后，输入框上方显示带 Authorization header 的 media preview，而不是只显示占位 icon。
           - 发送带图片的消息后，user 气泡显示图片附件并保持原有投递状态。
+          - Gemini/Google AI Studio 路由收到上传图片时，模型请求包含 text part 与 image part，能够基于图片内容回答。
           - 刷新或 SSE 同步后，图片附件仍从 message metadata 恢复并可加载预览。
           - 访问 media preview/content/download 路由必须携带当前用户 token；跨用户 media id 返回 404。
           - 数据库 `media_assets.channel_relative_path` 只保存频道内相对路径，不保存宿主机绝对路径。
