@@ -117,26 +117,45 @@ jobs:
           REMOTE
 
       - name: Configure preview environment
+        env:
+          SECRET_TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          SECRET_TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          SECRET_GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          SECRET_GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          SECRET_JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SECRET_ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          SECRET_CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
+          config_args=(
+            NODE_ENV=production
+            TRUST_PROXY=true
+            BRICKS_STATIC_ROOT=/app/public
+            BRICKS_CHANNEL_ROOT=/app/data/channels
+            GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback
+            "OAUTH_ALLOWED_RETURN_ORIGINS=https://${DOMAIN}"
+            "CORS_ORIGIN=https://${DOMAIN}"
+          )
+          add_config() {
+            local key="$1"
+            local value="$2"
+            if [ -n "$value" ]; then
+              config_args+=("${key}=${value}")
+            fi
+          }
+          add_config TURSO_DATABASE_URL "$SECRET_TURSO_DATABASE_URL"
+          add_config TURSO_AUTH_TOKEN "$SECRET_TURSO_AUTH_TOKEN"
+          add_config GITHUB_CLIENT_ID "$SECRET_GH_OAUTH_CLIENT_ID"
+          add_config GITHUB_CLIENT_SECRET "$SECRET_GH_OAUTH_CLIENT_SECRET"
+          add_config JWT_SECRET "$SECRET_JWT_SECRET"
+          add_config ENCRYPTION_KEY "$SECRET_ENCRYPTION_KEY"
+          add_config CRON_SECRET "$SECRET_CRON_SECRET"
+          add_config GEMINI_API_KEY "$SECRET_GEMINI_API_KEY"
+          add_config ANTHROPIC_API_KEY "$SECRET_ANTHROPIC_API_KEY"
           ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
-            dokku config:set --no-restart "${APP_NAME}" \
-              NODE_ENV=production \
-              TRUST_PROXY=true \
-              BRICKS_STATIC_ROOT=/app/public \
-              BRICKS_CHANNEL_ROOT=/app/data/channels \
-              GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback \
-              OAUTH_ALLOWED_RETURN_ORIGINS="https://${DOMAIN}" \
-              CORS_ORIGIN="https://${DOMAIN}" \
-              TURSO_DATABASE_URL="${{ secrets.TURSO_DATABASE_URL }}" \
-              TURSO_AUTH_TOKEN="${{ secrets.TURSO_AUTH_TOKEN }}" \
-              GITHUB_CLIENT_ID="${{ secrets.GH_OAUTH_CLIENT_ID }}" \
-              GITHUB_CLIENT_SECRET="${{ secrets.GH_OAUTH_CLIENT_SECRET }}" \
-              JWT_SECRET="${{ secrets.JWT_SECRET }}" \
-              ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
-              CRON_SECRET="${{ secrets.CRON_SECRET }}" \
-              GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
-              ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}"
+            dokku config:set --no-restart "${APP_NAME}" "${config_args[@]}"
 
       - name: Deploy preview
         run: |
