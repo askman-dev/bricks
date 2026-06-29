@@ -28,8 +28,19 @@ if (
   app.set('trust proxy', 1);
 }
 
-// Security middleware
-app.use(helmet());
+// Security middleware. Flutter Web's generated index.html uses a small inline
+// bootstrap script, and the web renderer may compile same-origin WASM assets.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        "script-src": ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
+        "worker-src": ["'self'", "blob:"],
+        "img-src": ["'self'", "data:", "blob:"],
+      },
+    },
+  })
+);
 
 // CORS configuration
 const corsOrigin = process.env.CORS_ORIGIN || '*';

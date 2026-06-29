@@ -150,3 +150,14 @@ describe('app rate limiting', () => {
     }
   });
 });
+
+describe('app security headers', () => {
+  it('allows Flutter Web bootstrap scripts under CSP', async () => {
+    const response = await fetch(`${baseUrl}/api/health`);
+    expect(response.status).toBe(200);
+
+    const csp = response.headers.get('content-security-policy');
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'");
+    expect(csp).toContain("worker-src 'self' blob:");
+  });
+});

@@ -687,6 +687,7 @@ index:
       - BRICKS_CHANNEL_ROOT
       - BRICKS_STATIC_ROOT
       - TRUST_PROXY
+      - Flutter Web CSP
       - production deploy
       - pull request preview
       - preview cleanup
