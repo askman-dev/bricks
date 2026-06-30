@@ -1609,7 +1609,7 @@ class _MediaAttachmentStrip extends StatelessWidget {
   }
 }
 
-class _MediaAttachmentTile extends StatelessWidget {
+class _MediaAttachmentTile extends StatefulWidget {
   const _MediaAttachmentTile({
     required this.attachment,
     required this.previewUri,
@@ -1618,26 +1618,40 @@ class _MediaAttachmentTile extends StatelessWidget {
     required this.borderColor,
   });
 
+  static const double _tileWidth = 168;
+  static const double _tileHeight = 148;
+  static const double _labelHeight = 24;
+  static const double _pointerSlop = 12;
+
   final ChatMediaAttachment attachment;
   final Uri previewUri;
   final Uri contentUri;
   final Uri downloadUri;
   final Color borderColor;
 
-  static const double _tileWidth = 168;
-  static const double _tileHeight = 148;
-  static const double _labelHeight = 24;
+  @override
+  State<_MediaAttachmentTile> createState() => _MediaAttachmentTileState();
+}
+
+class _MediaAttachmentTileState extends State<_MediaAttachmentTile> {
+  int? _primaryPointer;
+  Offset? _primaryPointerDownPosition;
+  bool _suppressPrimaryPointerUp = false;
 
   Future<void> _openPreview(
     BuildContext context,
     Map<String, String>? headers,
+    String? token,
   ) async {
-    if (attachment.kind != 'image') return;
+    if (widget.attachment.kind != 'image') return;
     await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(
         builder: (_) => _FullScreenMediaPreview(
-          uri: contentUri,
+          uri: widget.contentUri,
+          downloadUri: widget.downloadUri,
+          filename: widget.attachment.filename,
           headers: headers,
+          authToken: token,
         ),
       ),
     );
@@ -1682,8 +1696,8 @@ class _MediaAttachmentTile extends StatelessWidget {
   Future<void> _download(BuildContext context, String? token) async {
     try {
       await downloadChatMedia(
-        uri: downloadUri,
-        filename: attachment.filename,
+        uri: widget.downloadUri,
+        filename: widget.attachment.filename,
         authToken: token,
       );
       if (!context.mounted) return;
@@ -1698,6 +1712,41 @@ class _MediaAttachmentTile extends StatelessWidget {
     }
   }
 
+  void _handlePointerDown(PointerDownEvent event) {
+    if (widget.attachment.kind != 'image') return;
+    if (event.buttons != kPrimaryButton) return;
+    _primaryPointer = event.pointer;
+    _primaryPointerDownPosition = event.localPosition;
+    _suppressPrimaryPointerUp = false;
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (event.pointer != _primaryPointer) return;
+    _clearPrimaryPointer();
+  }
+
+  void _handlePointerUp(
+    PointerUpEvent event,
+    Map<String, String>? headers,
+    String? token,
+  ) {
+    if (event.pointer != _primaryPointer) return;
+    final downPosition = _primaryPointerDownPosition;
+    final shouldOpen = !_suppressPrimaryPointerUp &&
+        downPosition != null &&
+        (event.localPosition - downPosition).distance <=
+            _MediaAttachmentTile._pointerSlop;
+    _clearPrimaryPointer();
+    if (!shouldOpen) return;
+    _openPreview(context, headers, token);
+  }
+
+  void _clearPrimaryPointer() {
+    _primaryPointer = null;
+    _primaryPointerDownPosition = null;
+    _suppressPrimaryPointerUp = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<String?>(
@@ -1707,67 +1756,101 @@ class _MediaAttachmentTile extends StatelessWidget {
         final headers = token == null || token.isEmpty
             ? null
             : {'Authorization': 'Bearer $token'};
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _openPreview(context, headers),
-          onLongPressStart: (details) =>
-              _showContextMenu(context, details.globalPosition, token),
-          onSecondaryTapDown: (details) =>
-              _showContextMenu(context, details.globalPosition, token),
-          child: MouseRegion(
-            cursor: attachment.kind == 'image'
-                ? SystemMouseCursors.click
-                : MouseCursor.defer,
-            child: Container(
-              width: _tileWidth,
-              height: _tileHeight,
-              decoration: BoxDecoration(
-                border: Border.all(color: borderColor),
-                borderRadius: BorderRadius.circular(BricksRadius.sm),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Image.network(
-                      previewUri.toString(),
-                      headers: headers,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, _, __) => const Center(
-                        child: Icon(Icons.broken_image_outlined),
-                      ),
-                      loadingBuilder: (context, child, progress) {
-                        if (progress == null) return child;
-                        return const Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+        return Listener(
+          onPointerDown: _handlePointerDown,
+          onPointerCancel: _handlePointerCancel,
+          onPointerUp: (event) => _handlePointerUp(event, headers, token),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPressStart: (details) {
+              _suppressPrimaryPointerUp = true;
+              _showContextMenu(context, details.globalPosition, token);
+            },
+            onSecondaryTapDown: (details) =>
+                _showContextMenu(context, details.globalPosition, token),
+            child: MouseRegion(
+              cursor: widget.attachment.kind == 'image'
+                  ? SystemMouseCursors.click
+                  : MouseCursor.defer,
+              child: Container(
+                width: _MediaAttachmentTile._tileWidth,
+                height: _MediaAttachmentTile._tileHeight,
+                decoration: BoxDecoration(
+                  border: Border.all(color: widget.borderColor),
+                  borderRadius: BorderRadius.circular(BricksRadius.sm),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Image.network(
+                            widget.previewUri.toString(),
+                            headers: headers,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, _, __) => const Center(
+                              child: Icon(Icons.broken_image_outlined),
+                            ),
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
+                        ),
+                        SizedBox(
+                          height: _MediaAttachmentTile._labelHeight,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: BricksSpacing.xs,
+                            ),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                widget.attachment.filename,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  SizedBox(
-                    height: _labelHeight,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: BricksSpacing.xs,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          attachment.filename,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall,
+                    if (widget.attachment.kind == 'image')
+                      Positioned(
+                        top: BricksSpacing.xs,
+                        right: BricksSpacing.xs,
+                        child: Material(
+                          color: AppColors.surfaceElevated,
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: IconButton(
+                            tooltip: 'Open image',
+                            constraints: const BoxConstraints.tightFor(
+                              width: 32,
+                              height: 32,
+                            ),
+                            padding: EdgeInsets.zero,
+                            iconSize: 18,
+                            color: AppColors.textPrimary,
+                            icon: const Icon(Icons.open_in_full),
+                            onPressed: () =>
+                                _openPreview(context, headers, token),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1782,11 +1865,36 @@ enum _MediaAttachmentAction { download }
 class _FullScreenMediaPreview extends StatelessWidget {
   const _FullScreenMediaPreview({
     required this.uri,
+    required this.downloadUri,
+    required this.filename,
     required this.headers,
+    required this.authToken,
   });
 
   final Uri uri;
+  final Uri downloadUri;
+  final String filename;
   final Map<String, String>? headers;
+  final String? authToken;
+
+  Future<void> _download(BuildContext context) async {
+    try {
+      await downloadChatMedia(
+        uri: downloadUri,
+        filename: filename,
+        authToken: authToken,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Download started')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Download failed: $error')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1824,16 +1932,33 @@ class _FullScreenMediaPreview extends StatelessWidget {
             Positioned(
               top: BricksSpacing.sm,
               right: BricksSpacing.sm,
-              child: Material(
-                color: AppColors.surfaceElevated,
-                shape: const CircleBorder(),
-                clipBehavior: Clip.antiAlias,
-                child: IconButton(
-                  tooltip: 'Back to chat',
-                  color: AppColors.textPrimary,
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Material(
+                    color: AppColors.surfaceElevated,
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: IconButton(
+                      tooltip: 'Download image',
+                      color: AppColors.textPrimary,
+                      icon: const Icon(Icons.download_outlined),
+                      onPressed: () => _download(context),
+                    ),
+                  ),
+                  const SizedBox(width: BricksSpacing.xs),
+                  Material(
+                    color: AppColors.surfaceElevated,
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: IconButton(
+                      tooltip: 'Back to chat',
+                      color: AppColors.textPrimary,
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

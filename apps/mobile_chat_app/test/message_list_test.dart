@@ -1176,10 +1176,13 @@ void main() {
       await tester.pumpWidget(_build([assistant]));
       await tester.pump();
 
+      expect(find.byTooltip('Open image'), findsOneWidget);
+
       await tester.tap(find.text('plant.png'));
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('Back to chat'), findsOneWidget);
+      expect(find.byTooltip('Download image'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back to chat'));
       await tester.pumpAndSettle();

@@ -338,6 +338,7 @@ index:
       - media_assets 必须按 user_id 授权读取；若只按 media id 查找，可能泄露其他用户上传/生成图片。
       - channel_relative_path 必须拒绝绝对路径、空 path、`..` 与反斜杠逃逸；否则 Agent/media 路径可能越过当前 channel root。
       - Flutter Image.network 预览依赖 Authorization header；若 AuthService token hydration 失败，图片附件会显示 broken image 但消息文本仍可见。
+      - 桌面 Safari 对聊天图片 tile 的高阶 tap 手势可能不稳定；缩略图打开必须保留 primary pointer down/up 链路和可见 Open image 入口，避免只依赖 GestureDetector.onTap。
       - Web 下载不能直接导航到 `/download`，必须用当前 token 拉取 Blob 后触发浏览器下载；否则受保护 media 会返回 401。
       - Gemini 多模态输入只应把当前用户可访问、当前 channel 的 ready image asset 转为 image part；错误地传递跨 channel 或失败 asset 会造成隐私或 provider 错误风险。
       - Gemini image generation 和 Veo reference images 只能读取当前用户、当前 channel、ready image asset；跨 channel 或非 image media 必须被拒绝。
