@@ -36,6 +36,10 @@ ENV TRUST_PROXY=true
 ENV BRICKS_STATIC_ROOT=/app/public
 ENV BRICKS_CHANNEL_ROOT=/app/data/channels
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates git \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=backend-build /workspace/apps/node_backend/package*.json ./
 COPY --from=backend-build /workspace/apps/node_backend/node_modules ./node_modules

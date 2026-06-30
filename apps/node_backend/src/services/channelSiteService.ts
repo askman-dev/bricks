@@ -239,6 +239,55 @@ function starterFiles() {
   ]);
 }
 
+function isMissingExecutableError(error: unknown, executable: string): boolean {
+  if (!(error instanceof Error)) return false;
+  const maybeCode = (error as NodeJS.ErrnoException).code;
+  return maybeCode === 'ENOENT' && error.message.includes(executable);
+}
+
+async function initializeGitRepositoryIfAvailable(root: string): Promise<void> {
+  try {
+    await fs.access(path.join(root, '.git'));
+    return;
+  } catch {
+    // Continue to initialization below.
+  }
+
+  try {
+    await execFileAsync('git', ['init'], { cwd: root });
+    await execFileAsync('git', ['add', '.'], { cwd: root });
+    await execFileAsync('git', ['commit', '-m', 'Initial Bricks site'], {
+      cwd: root,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Bricks',
+        GIT_AUTHOR_EMAIL: 'bricks@localhost',
+        GIT_COMMITTER_NAME: 'Bricks',
+        GIT_COMMITTER_EMAIL: 'bricks@localhost',
+      },
+    });
+  } catch (error) {
+    if (!isMissingExecutableError(error, 'git')) {
+      throw error;
+    }
+    const markerPath = path.join(root, '..', '.bricks', 'git-unavailable.json');
+    await fs.mkdir(path.dirname(markerPath), { recursive: true });
+    await fs.writeFile(
+      markerPath,
+      JSON.stringify(
+        {
+          ok: false,
+          reason: 'git executable is not available in this runtime',
+          createdAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ) + '\n',
+      'utf8',
+    );
+  }
+}
+
 export async function ensureWebsiteWorkspace(userId: string, channelId: string): Promise<ChannelSite> {
   const site = await ensureChannelSite(userId, channelId);
   await ensureChannelBaseDirectories(userId, channelId);
@@ -259,22 +308,7 @@ export async function ensureWebsiteWorkspace(userId: string, channelId: string):
     }
   }
 
-  try {
-    await fs.access(path.join(root, '.git'));
-  } catch {
-    await execFileAsync('git', ['init'], { cwd: root });
-    await execFileAsync('git', ['add', '.'], { cwd: root });
-    await execFileAsync('git', ['commit', '-m', 'Initial Bricks site'], {
-      cwd: root,
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: 'Bricks',
-        GIT_AUTHOR_EMAIL: 'bricks@localhost',
-        GIT_COMMITTER_NAME: 'Bricks',
-        GIT_COMMITTER_EMAIL: 'bricks@localhost',
-      },
-    });
-  }
+  await initializeGitRepositoryIfAvailable(root);
 
   return site;
 }
