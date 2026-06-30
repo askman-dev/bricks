@@ -1,28 +1,26 @@
-import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-
-const DEFAULT_CHANNEL_ROOT = path.resolve(process.cwd(), '.bricks-data', 'channels');
+import {
+  getSandboxRoot,
+  opaqueSandboxSegment,
+  userSandboxChannelDirectory,
+  userSandboxFsRoot,
+} from './userSandboxService.js';
 
 export function getChannelRoot(): string {
-  return path.resolve(process.env.BRICKS_CHANNEL_ROOT || DEFAULT_CHANNEL_ROOT);
-}
-
-function safeOpaqueSegment(prefix: string, value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.includes('\0')) {
-    throw new Error(`Invalid ${prefix} identifier`);
-  }
-  const hash = crypto.createHash('sha256').update(trimmed).digest('hex').slice(0, 16);
-  return `${prefix}-${hash}`;
+  return path.join(getSandboxRoot(), 'channels-legacy-view');
 }
 
 export function userDirectory(userId: string): string {
-  return path.join(getChannelRoot(), safeOpaqueSegment('user', userId));
+  return userSandboxFsRoot(userId);
 }
 
 export function channelDirectory(userId: string, channelId: string): string {
-  return path.join(userDirectory(userId), 'channels', safeOpaqueSegment('channel', channelId));
+  return userSandboxChannelDirectory(userId, channelId);
+}
+
+export function channelOpaqueSegment(channelId: string): string {
+  return opaqueSandboxSegment('channel', channelId);
 }
 
 export function ensureSafeChannelRelativePath(relativePath: string): string {

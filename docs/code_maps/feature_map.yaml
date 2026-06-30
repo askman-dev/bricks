@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-06-29
+last_updated: 2026-06-30
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -168,6 +168,12 @@ products:
             route_hint: apps/node_backend/src/db/migrations/028_create_channel_sites.sql
           - service: user-scoped channel filesystem paths
             route_hint: apps/node_backend/src/services/channelFileService.ts
+          - service: persistent per-user sandbox filesystem and shell runner
+            route_hint: apps/node_backend/src/services/userSandboxService.ts
+          - service: same-host gVisor sandbox runner
+            route_hint: apps/node_sandbox_runner/src/index.ts
+          - ops: Vultr host sandbox runner installer
+            route_hint: tools/sandbox_runner/install_vultr.sh
           - service: site workspace, starter, build, media copy
             route_hint: apps/node_backend/src/services/channelSiteService.ts
           - route: Host <slug>.craft-spaces.bricks.cool static site serving
@@ -178,8 +184,11 @@ products:
             route_hint: apps/node_backend/src/services/localAgentLoopService.ts
         smoke_checks:
           - "`site_workspace_init` initializes one Vite + React + TypeScript workspace for the current channel and creates an initial git commit."
-          - Channel filesystem directories are nested under opaque user and channel path segments, so raw user IDs and channel IDs are not exposed in paths.
+          - Channel filesystem directories are nested under one persistent per-user sandbox with opaque user and channel path segments, so raw user IDs and channel IDs are not exposed in paths.
+          - Same-user channels share one sandbox filesystem root, while different users resolve to different sandbox roots.
           - "`site_file_write/read/list/mkdir/delete` operate only inside the current channel workspace and reject traversal paths."
+          - "`site_shell_exec` and `site_build` execute through the user sandbox runner instead of direct host shell execution."
+          - Production uses `BRICKS_SANDBOX_RUNNER=http` so the Bricks app is control plane only; user commands run in same-host gVisor containers managed by the sandbox runner.
           - "`site_build` runs npm install/build, writes `jobs/build.log` and `jobs/build.json`, and only replaces `web/dist` after a successful build."
           - "`site_media_copy` copies current-channel uploaded/generated media into `workspace/public/assets/` and returns a public asset path."
           - "Production requests to `<slug>.craft-spaces.bricks.cool` resolve through `channel_sites.public_slug`, serve the latest successful `web/dist`, apply React SPA fallback, and include `X-Robots-Tag: noindex`."
@@ -561,13 +570,13 @@ products:
             route_hint: .github/workflows/dokku_production_deploy.yml
           - route: https://<branch-slug>.craft-dev.bricks.cool
             route_hint: .github/workflows/dokku_preview_deploy.yml
-          - mount: /app/data/channels
+          - mount: /app/data/sandboxes
             route_hint: Dockerfile
         smoke_checks:
-          - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/channels`。
+          - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/sandboxes`。
           - PR open/synchronize 后创建或更新 `bricks-preview-<branch-slug>`，域名为 `<branch-slug>.craft-dev.bricks.cool`。
           - Dokku preview deploy 成功后发布 GitHub Deployment status，PR timeline 的 `View deployment` 按钮指向 preview 域名。
-          - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/channels`，不共享 production 或其他 preview 的 channel 文件。
+          - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/sandboxes`，不共享 production 或其他 preview 的 sandbox 文件。
           - Turso credentials, JWT signing secret, and encryption key stay in Dokku server config; preview apps copy them from the production app on the server instead of reading GitHub Actions secrets.
           - Production CSP must allow Flutter Web bootstrap scripts so `craft.bricks.cool` renders the login app instead of a blank page.
           - Flutter Web app shell files such as `index.html`, `main.dart.js`, `flutter.js`, and `flutter_service_worker.js` must return no-store/no-cache headers so preview deploys do not serve stale UI bundles.

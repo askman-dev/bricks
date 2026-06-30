@@ -1,8 +1,6 @@
 import crypto from 'crypto';
-import { exec, execFile } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
-import { promisify } from 'util';
 import pool from '../db/index.js';
 import {
   channelDirectory,
@@ -11,9 +9,10 @@ import {
   resolveChannelPath,
 } from './channelFileService.js';
 import { getMediaAssetForUser, resolveMediaAssetPath } from './mediaService.js';
-
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
+import {
+  runInUserSandbox,
+  sandboxWorkspaceContainerPath,
+} from './userSandboxService.js';
 
 const DEFAULT_PUBLIC_SITE_DOMAIN = 'craft-spaces.bricks.cool';
 const MAX_WORKSPACE_FILE_BYTES = 2 * 1024 * 1024;
@@ -246,35 +245,38 @@ function starterFiles() {
 function isMissingExecutableError(error: unknown, executable: string): boolean {
   if (!(error instanceof Error)) return false;
   const maybeCode = (error as NodeJS.ErrnoException).code;
-  return maybeCode === 'ENOENT' && error.message.includes(executable);
+  return maybeCode === 'ENOENT' || error.message.includes(`${executable}: command not found`);
 }
 
-async function initializeGitRepositoryIfAvailable(root: string): Promise<void> {
+async function initializeGitRepositoryIfAvailable(params: {
+  userId: string;
+  channelId: string;
+  root: string;
+}): Promise<void> {
   try {
-    await fs.access(path.join(root, '.git'));
+    await fs.access(path.join(params.root, '.git'));
     return;
   } catch {
     // Continue to initialization below.
   }
 
   try {
-    await execFileAsync('git', ['init'], { cwd: root });
-    await execFileAsync('git', ['add', '.'], { cwd: root });
-    await execFileAsync('git', ['commit', '-m', 'Initial Bricks site'], {
-      cwd: root,
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: 'Bricks',
-        GIT_AUTHOR_EMAIL: 'bricks@localhost',
-        GIT_COMMITTER_NAME: 'Bricks',
-        GIT_COMMITTER_EMAIL: 'bricks@localhost',
-      },
+    const result = await runInUserSandbox({
+      userId: params.userId,
+      hostCwd: params.root,
+      containerCwd: sandboxWorkspaceContainerPath(params.channelId),
+      command:
+        'git init && git add . && ' +
+        'GIT_AUTHOR_NAME=Bricks GIT_AUTHOR_EMAIL=bricks@localhost ' +
+        'GIT_COMMITTER_NAME=Bricks GIT_COMMITTER_EMAIL=bricks@localhost ' +
+        'git commit -m "Initial Bricks site"',
     });
+    if (result.exitCode !== 0) throw new Error(result.stderr || 'git initialization failed');
   } catch (error) {
     if (!isMissingExecutableError(error, 'git')) {
       throw error;
     }
-    const markerPath = path.join(root, '..', '.bricks', 'git-unavailable.json');
+    const markerPath = path.join(params.root, '..', '.bricks', 'git-unavailable.json');
     await fs.mkdir(path.dirname(markerPath), { recursive: true });
     await fs.writeFile(
       markerPath,
@@ -312,7 +314,7 @@ export async function ensureWebsiteWorkspace(userId: string, channelId: string):
     }
   }
 
-  await initializeGitRepositoryIfAvailable(root);
+  await initializeGitRepositoryIfAvailable({ userId, channelId, root });
 
   return site;
 }
@@ -441,12 +443,19 @@ export async function runWorkspaceCommand(params: {
     throw new ChannelSiteError('command is required');
   }
   try {
-    const result = await execAsync(command, {
-      cwd: workspacePath(params.userId, params.channelId),
-      timeout: 120_000,
-      maxBuffer: MAX_SHELL_OUTPUT_BYTES * 4,
+    const result = await runInUserSandbox({
+      userId: params.userId,
+      hostCwd: workspacePath(params.userId, params.channelId),
+      containerCwd: sandboxWorkspaceContainerPath(params.channelId),
+      command,
+      timeoutMs: 120_000,
+      maxBufferBytes: MAX_SHELL_OUTPUT_BYTES * 4,
     });
-    return { stdout: truncateOutput(result.stdout), stderr: truncateOutput(result.stderr), exitCode: 0 };
+    return {
+      stdout: truncateOutput(result.stdout),
+      stderr: truncateOutput(result.stderr),
+      exitCode: result.exitCode,
+    };
   } catch (error) {
     const err = error as Error & { stdout?: string; stderr?: string; code?: number };
     return {
