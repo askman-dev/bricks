@@ -59,13 +59,7 @@ async function sendStaticFile(res: Response, filePath: string): Promise<void> {
   res.send(data);
 }
 
-router.use(async (req: Request, res: Response, next: NextFunction) => {
-  const slug = slugFromPublicSiteHost(requestHost(req));
-  if (!slug) {
-    next();
-    return;
-  }
-
+async function serveChannelSiteBySlug(slug: string, req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const site = await getChannelSiteBySlug(slug);
     if (!site || site.latestBuildStatus !== 'succeeded') {
@@ -100,6 +94,24 @@ router.use(async (req: Request, res: Response, next: NextFunction) => {
   } catch (error) {
     next(error);
   }
+}
+
+router.use('/sites/:slug', async (req: Request, res: Response, next: NextFunction) => {
+  const slug = String(req.params.slug ?? '').toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)) {
+    res.status(404).send('Site not found');
+    return;
+  }
+  await serveChannelSiteBySlug(slug, req, res, next);
+});
+
+router.use(async (req: Request, res: Response, next: NextFunction) => {
+  const slug = slugFromPublicSiteHost(requestHost(req));
+  if (!slug) {
+    next();
+    return;
+  }
+  await serveChannelSiteBySlug(slug, req, res, next);
 });
 
 export default router;

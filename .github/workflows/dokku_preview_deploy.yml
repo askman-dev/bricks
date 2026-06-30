@@ -139,6 +139,7 @@ jobs:
             TRUST_PROXY=true
             BRICKS_STATIC_ROOT=/app/public
             BRICKS_CHANNEL_ROOT=/app/data/channels
+            "BRICKS_PUBLIC_SITE_BASE_URL=https://${DOMAIN}"
             GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback
             "OAUTH_ALLOWED_RETURN_ORIGINS=https://${DOMAIN}"
             "CORS_ORIGIN=https://${DOMAIN}"

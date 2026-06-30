@@ -77,4 +77,12 @@ describe('channelSiteHost route', () => {
     expect(response.headers.get('cache-control')).toContain('no-store');
     expect(await response.text()).toContain('<div id="root">site</div>');
   });
+
+  it('serves the same site through app-host path previews', async () => {
+    const response = await fetch(`${baseUrl}/sites/s-abc123/nested/page`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex');
+    expect(await response.text()).toContain('<div id="root">site</div>');
+  });
 });

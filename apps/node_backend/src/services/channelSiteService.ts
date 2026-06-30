@@ -66,6 +66,10 @@ export function publicSiteDomain(): string {
 }
 
 export function publicSiteUrl(publicSlug: string): string {
+  const baseUrl = process.env.BRICKS_PUBLIC_SITE_BASE_URL?.trim();
+  if (baseUrl) {
+    return `${baseUrl.replace(/\/+$/, '')}/sites/${publicSlug}`;
+  }
   return `https://${publicSlug}.${publicSiteDomain()}`;
 }
 
