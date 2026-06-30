@@ -1573,6 +1573,107 @@ describe("chat routes", () => {
     ]);
   });
 
+  it('attaches generated media from successful agent tool results to the final assistant message', async () => {
+    const generatedMedia = {
+      id: 'generated-image-1',
+      kind: 'image',
+      origin: 'generated_image',
+      status: 'ready',
+      mimeType: 'image/png',
+      filename: 'generated-image-1.png',
+      sizeBytes: 12345,
+      previewUrl: '/api/media/generated-image-1/preview',
+      contentUrl: '/api/media/generated-image-1/content',
+      downloadUrl: '/api/media/generated-image-1/download',
+      channelRelativePath: 'media/generated/images/generated-image-1.png',
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implGeneratedMedia = async (...args: any[]) => {
+      const options = args[3] as {
+        onStepFinish?: (
+          stepResults: Array<{
+            toolName: string;
+            args: Record<string, unknown>;
+            result: unknown;
+          }>,
+        ) => Promise<void>;
+      };
+      if (options.onStepFinish) {
+        await options.onStepFinish([
+          {
+            toolName: 'media_image_generate',
+            args: {
+              prompt: 'Generate a Mars greenhouse',
+            },
+            result: {
+              ok: true,
+              toolName: 'media.image.generate',
+              data: {
+                job: {
+                  id: 'job-generated-image-1',
+                  kind: 'image',
+                  status: 'succeeded',
+                  resultMediaId: 'generated-image-1',
+                  resultMedia: generatedMedia,
+                },
+                media: generatedMedia,
+              },
+              error: null,
+            },
+          },
+        ]);
+      }
+      return {
+        textStream: (async function* () {
+          yield '图像生成完成\n\n';
+          yield '[image: media/generated/images/generated-image-1.png (image/png)]\n\n';
+          yield '渲染日志';
+        })(),
+        provider: 'google_ai_studio',
+        modelId: 'gemini-flash-latest',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implGeneratedMedia as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-generated-media-1',
+        idempotencyKey: 'idem-generated-media-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-generated-media-1',
+        assistantMessageId: 'msg-a-generated-media-1',
+        userMessage: 'generate an image',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-generated-media-1:ts:1',
+        metadata: expect.objectContaining({
+          mediaAttachments: [generatedMedia],
+        }),
+      }),
+    ]);
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-generated-media-1',
+        role: 'assistant',
+        taskState: 'completed',
+        content: '图像生成完成\n\n渲染日志',
+        metadata: expect.objectContaining({
+          mediaAttachments: [generatedMedia],
+        }),
+      }),
+    ]);
+  });
+
   it('writes reasoning DB message when onReasoningChunk callback is triggered', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const implR = async (...args: any[]) => {

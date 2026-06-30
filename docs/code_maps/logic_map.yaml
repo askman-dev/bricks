@@ -318,6 +318,8 @@ index:
       - media_generation_jobs
       - Gemini image input
       - Gemini image generation
+      - media_image_generate
+      - media_video_generate
       - Veo video generation
       - referenceImages
       - firstFrame
@@ -336,6 +338,7 @@ index:
       - Veo operation 完成后必须及时下载 provider video URI 到 Bricks-owned storage；只保存 provider URI 会受 2 天 provider retention 影响。
       - "`media_generation_jobs` 轮询依赖用户仍有可用 Google AI Studio 配置；若 key 被删除或替换，running job 需要进入显式 failed 状态而不是永久 pending。"
       - chat_messages.metadata 是第一阶段附件同步桥；后续若改为 join 查询，需要继续保证 sync/history/SSE 返回 mediaAttachments。
+      - Agent tool 生成的 media 不应只作为模型文本里的 `[image: ...]` 标记返回；最终 assistant 消息必须结构化写入 mediaAttachments，否则刷新和真实预览都会丢失。
       - 生成媒体已接入 backend API 和 local agent tools；移动端显式生成 UI、poster/thumbnail rendition、后台 cron worker 仍是后续风险点。
 
 

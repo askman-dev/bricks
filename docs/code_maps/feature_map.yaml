@@ -153,6 +153,7 @@ products:
           - 数据库 `media_assets.channel_relative_path` 只保存频道内相对路径，不保存宿主机绝对路径。
           - 同一 channel 的上传图片写入该 channel 目录下 `media/uploads/`，生成图片写入 `media/generated/images/`，生成视频写入 `media/generated/videos/`。
           - "`POST /api/media/image-generations` 使用用户的 Google AI Studio 配置调用 Gemini Interactions API，并把返回图片保存成 `generated_image`。"
+          - "AI 通过 `media_image_generate` 生成成功后，最终 assistant 消息 metadata 应包含 `mediaAttachments`，UI 显示真实预览而不是 `[image: ...]` 文本占位。"
           - "`POST /api/media/video-generations` 创建 `media_generation_jobs` 记录并保存 Veo operation name；轮询 job 完成后下载 provider video URI 并保存成 `generated_video`。"
           - Veo `referenceImages` 最多接受 3 张 ready image media；`lastFrameMediaId` 必须搭配 `firstFrameMediaId`。
           - 不支持的 MIME、空图片、超过 20MB 的图片、空视频或非 mp4 视频被后端拒绝。

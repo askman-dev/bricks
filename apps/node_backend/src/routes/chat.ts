@@ -109,6 +109,88 @@ function toolResultSucceeded(result: unknown): boolean {
   return isRecord(result) && result.ok === true;
 }
 
+function isGeneratedMediaToolName(toolName: string): boolean {
+  return toolName === "media_image_generate" || toolName === "media_video_generate";
+}
+
+function isMediaAttachmentMetadata(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.kind === "string" &&
+    typeof value.origin === "string" &&
+    typeof value.mimeType === "string" &&
+    typeof value.filename === "string" &&
+    typeof value.previewUrl === "string" &&
+    typeof value.contentUrl === "string" &&
+    typeof value.downloadUrl === "string"
+  );
+}
+
+function mediaAttachmentsForToolResult(
+  stepResult: AgentLoopStepResult,
+): Record<string, unknown>[] {
+  if (!isGeneratedMediaToolName(stepResult.toolName) || !toolResultSucceeded(stepResult.result)) {
+    return [];
+  }
+  const resultData = isRecord(stepResult.result)
+    ? isRecord(stepResult.result.data)
+      ? stepResult.result.data
+      : {}
+    : {};
+  const attachments: Record<string, unknown>[] = [];
+  if (isMediaAttachmentMetadata(resultData.media)) {
+    attachments.push(resultData.media);
+  }
+  const resultJob = isRecord(resultData.job) ? resultData.job : null;
+  if (isMediaAttachmentMetadata(resultJob?.resultMedia)) {
+    attachments.push(resultJob.resultMedia);
+  }
+  return attachments;
+}
+
+function appendMediaAttachments(
+  target: Record<string, unknown>[],
+  additions: Record<string, unknown>[],
+): void {
+  const seenIds = new Set(
+    target
+      .map((item) => item.id)
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+  );
+  for (const addition of additions) {
+    const id = typeof addition.id === "string" ? addition.id.trim() : "";
+    if (!id || seenIds.has(id)) continue;
+    seenIds.add(id);
+    target.push(addition);
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripGeneratedMediaReferenceText(
+  content: string,
+  attachments: Record<string, unknown>[],
+): string {
+  if (attachments.length === 0 || content.length === 0) return content;
+  let next = content;
+  for (const attachment of attachments) {
+    const relativePath =
+      typeof attachment.channelRelativePath === "string"
+        ? attachment.channelRelativePath.trim()
+        : "";
+    if (!relativePath) continue;
+    const markerPattern = new RegExp(
+      `\\[\\s*(?:image|video):\\s*${escapeRegExp(relativePath)}(?:\\s*\\([^\\)]*\\))?\\s*\\]`,
+      "g",
+    );
+    next = next.replace(markerPattern, "");
+  }
+  return next.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function invalidationsForToolResult(
   stepResult: AgentLoopStepResult,
 ): ChatClientInvalidation[] {
@@ -846,6 +928,7 @@ async function runDefaultRouterRespondAsync(params: {
     let completedToolCallCount = 0;
     let failedToolCallCount = 0;
     const collectedInvalidations: ChatClientInvalidation[] = [];
+    const collectedMediaAttachments: Record<string, unknown>[] = [];
     try {
       collectedInvalidations.push(
         ...(await insertFirstMessageExactThreadName({
@@ -893,6 +976,12 @@ async function runDefaultRouterRespondAsync(params: {
             const stepInvalidations = dedupeInvalidations(
               stepResults.flatMap(invalidationsForToolResult),
             );
+            const stepMediaAttachments: Record<string, unknown>[] = [];
+            appendMediaAttachments(
+              stepMediaAttachments,
+              stepResults.flatMap(mediaAttachmentsForToolResult),
+            );
+            appendMediaAttachments(collectedMediaAttachments, stepMediaAttachments);
             collectedInvalidations.push(...stepInvalidations);
             const stepSuffix = `:ts:${toolStepIndex}`;
             const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
@@ -929,6 +1018,9 @@ async function runDefaultRouterRespondAsync(params: {
 	                  ...(stepInvalidations.length > 0
 	                    ? { invalidations: stepInvalidations }
 	                    : {}),
+                    ...(stepMediaAttachments.length > 0
+                      ? { mediaAttachments: stepMediaAttachments }
+                      : {}),
 	                },
 	                createdAt: null,
 	              },
@@ -1171,7 +1263,7 @@ async function runDefaultRouterRespondAsync(params: {
       sessionId: acceptedSessionId,
       threadId,
       role: "assistant",
-      content,
+      content: stripGeneratedMediaReferenceText(content, collectedMediaAttachments),
       taskState: "dispatched",
       checkpointCursor: null,
       metadata: {
@@ -1183,6 +1275,9 @@ async function runDefaultRouterRespondAsync(params: {
         }),
         provider,
         streamMode: "model-chunk",
+        ...(collectedMediaAttachments.length > 0
+          ? { mediaAttachments: collectedMediaAttachments }
+          : {}),
       },
       createdAt: null,
     });
@@ -1236,7 +1331,9 @@ async function runDefaultRouterRespondAsync(params: {
     const finalInvalidations = dedupeInvalidations(collectedInvalidations);
     const streamStopInfo = getStreamStopInfo();
     const emptyFinalStopReason =
-      assistantContent.trim().length === 0 && totalToolCallCount > 0
+      assistantContent.trim().length === 0 &&
+      collectedMediaAttachments.length === 0 &&
+      totalToolCallCount > 0
         ? classifyEmptyFinalStopReason({
             totalToolCallCount,
             loopMaxToolCalls,
@@ -1245,14 +1342,20 @@ async function runDefaultRouterRespondAsync(params: {
             streamStopInfo,
           })
         : null;
+    const visibleAssistantContent = stripGeneratedMediaReferenceText(
+      assistantContent,
+      collectedMediaAttachments,
+    );
+    const hasVisibleAssistantContent = visibleAssistantContent.trim().length > 0;
+    const hasGeneratedMediaAttachments = collectedMediaAttachments.length > 0;
     const finalContent =
-      assistantContent.trim().length > 0
-        ? assistantContent
+      hasVisibleAssistantContent
+        ? visibleAssistantContent
         : emptyFinalStopReason != null
           ? emptyFinalStopReason.message
-          : assistantContent;
+          : visibleAssistantContent;
     const finalTaskState =
-      assistantContent.trim().length === 0 && totalToolCallCount > 0
+      !hasVisibleAssistantContent && !hasGeneratedMediaAttachments && totalToolCallCount > 0
         ? "failed"
         : "completed";
     const agentLoopStopReason =
@@ -1289,6 +1392,9 @@ async function runDefaultRouterRespondAsync(params: {
           }),
           provider,
           streamMode: "model-chunk",
+          ...(collectedMediaAttachments.length > 0
+            ? { mediaAttachments: collectedMediaAttachments }
+            : {}),
           ...(finalInvalidations.length > 0
             ? { invalidations: finalInvalidations }
             : {}),

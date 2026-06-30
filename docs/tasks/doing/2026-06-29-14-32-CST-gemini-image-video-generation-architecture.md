@@ -32,7 +32,8 @@ The first production slice implements provider-side Gemini media generation on t
 - Local agent tools now expose `media_image_generate` and `media_video_generate`, so Bricks Default can invoke generation through the normal tool loop.
 - Video reference-image input follows the official Veo REST shape: `referenceImages` contains up to three `{ image: { inlineData: { mimeType, data } }, referenceType: "asset" }` entries. First/last frame support is also wired as `image` and `lastFrame`, with `lastFrame` requiring a first frame.
 - Follow-up fix from preview testing: media generation job updates use `CURRENT_TIMESTAMP` instead of PostgreSQL-only `NOW()`, and chat-scoped agent tools receive the current `channelId`, `threadId`, and user message as prompt fallback when the model omits them.
-- The dedicated durable worker/cron loop, generated-media chat attachment UX, poster/thumbnail renditions, and full mobile controls remain follow-up work.
+- Follow-up fix from preview testing: successful `media_image_generate` tool results are copied into assistant `mediaAttachments`, so generated images render through the existing authenticated preview UI instead of only appearing as `[image: ...]` text markers.
+- The dedicated durable worker/cron loop, generated-video completion attachment updates, poster/thumbnail renditions, and full mobile controls remain follow-up work.
 
 Official docs checked:
 
