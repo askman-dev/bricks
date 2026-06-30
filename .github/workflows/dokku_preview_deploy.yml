@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: read
+
 concurrency:
   group: dokku-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -183,3 +188,39 @@ jobs:
           set -euo pipefail
           ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
             dokku letsencrypt:enable "${APP_NAME}" || true
+
+      - name: Publish GitHub deployment status
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: https://${{ needs.slug.outputs.domain }}
+          BRANCH_SLUG: ${{ needs.slug.outputs.branch_slug }}
+        with:
+          script: |
+            const previewUrl = process.env.PREVIEW_URL;
+            const branchSlug = process.env.BRANCH_SLUG;
+            const environment = `dokku-preview/${branchSlug}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha,
+              auto_merge: false,
+              required_contexts: [],
+              environment,
+              transient_environment: true,
+              production_environment: false,
+              description: `Dokku preview for PR #${context.payload.pull_request.number}`,
+            });
+
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'success',
+              environment,
+              environment_url: previewUrl,
+              log_url: runUrl,
+              auto_inactive: true,
+              description: 'Dokku preview deployment is ready.',
+            });
