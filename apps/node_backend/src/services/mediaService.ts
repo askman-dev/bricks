@@ -69,7 +69,12 @@ const IMAGE_MIME_TO_EXTENSION = new Map<string, string>([
   ['image/gif', 'gif'],
 ]);
 
+const VIDEO_MIME_TO_EXTENSION = new Map<string, string>([
+  ['video/mp4', 'mp4'],
+]);
+
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
 
 function toMediaAsset(row: MediaAssetRow): MediaAsset {
   return {
@@ -109,6 +114,21 @@ export function assertSupportedImage(mimeType: string, data: Buffer): string {
   }
   if (data.length > MAX_IMAGE_BYTES) {
     throw new Error('Image exceeds the 20MB limit');
+  }
+  return extension;
+}
+
+export function assertSupportedVideo(mimeType: string, data: Buffer): string {
+  const normalizedMime = mimeType.trim().toLowerCase();
+  const extension = VIDEO_MIME_TO_EXTENSION.get(normalizedMime);
+  if (!extension) {
+    throw new Error('Unsupported video MIME type');
+  }
+  if (data.length === 0) {
+    throw new Error('Video data is empty');
+  }
+  if (data.length > MAX_VIDEO_BYTES) {
+    throw new Error('Video exceeds the 512MB limit');
   }
   return extension;
 }
@@ -182,6 +202,70 @@ export async function createImageMediaAsset(params: {
       filename,
       relativePath,
       data.length,
+      params.sourceMessageId ?? null,
+      params.provider ?? null,
+      params.providerOperationName ?? null,
+      params.prompt ?? null,
+    ],
+  );
+  return toMediaAsset(result.rows[0]);
+}
+
+export async function createVideoMediaAsset(params: {
+  userId: string;
+  channelId: string;
+  threadId?: string | null;
+  origin: Extract<MediaOrigin, 'generated_video'>;
+  mimeType: string;
+  filename?: string;
+  data: Buffer;
+  sourceMessageId?: string | null;
+  provider?: string | null;
+  providerOperationName?: string | null;
+  prompt?: string | null;
+  durationMs?: number | null;
+}): Promise<MediaAsset> {
+  const extension = assertSupportedVideo(params.mimeType, params.data);
+  const id = crypto.randomUUID();
+  const filename = sanitizeFilename(params.filename, `${id}.${extension}`);
+  const relativePath = `media/generated/videos/${id}.${extension}`;
+  await writeChannelFile({
+    channelId: params.channelId,
+    relativePath,
+    data: params.data,
+  });
+
+  const result = await pool.query<MediaAssetRow>(
+    `INSERT INTO media_assets (
+        id,
+        user_id,
+        channel_id,
+        thread_id,
+        kind,
+        origin,
+        status,
+        mime_type,
+        filename,
+        channel_relative_path,
+        size_bytes,
+        duration_ms,
+        source_message_id,
+        provider,
+        provider_operation_name,
+        prompt
+      ) VALUES ($1,$2,$3,$4,'video',$5,'ready',$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      RETURNING *`,
+    [
+      id,
+      params.userId,
+      params.channelId,
+      params.threadId ?? null,
+      params.origin,
+      params.mimeType.trim().toLowerCase(),
+      filename,
+      relativePath,
+      params.data.length,
+      params.durationMs ?? null,
       params.sourceMessageId ?? null,
       params.provider ?? null,
       params.providerOperationName ?? null,

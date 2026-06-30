@@ -27,4 +27,15 @@ describe('mediaService validation', () => {
       /Image data is empty/,
     );
   });
+
+  it('accepts mp4 generated videos and rejects unsupported or empty video data', async () => {
+    const { assertSupportedVideo } = await import('./mediaService.js');
+    expect(assertSupportedVideo('video/mp4', Buffer.from('data'))).toBe('mp4');
+    expect(() => assertSupportedVideo('video/quicktime', Buffer.from('data'))).toThrow(
+      /Unsupported video MIME type/,
+    );
+    expect(() => assertSupportedVideo('video/mp4', Buffer.alloc(0))).toThrow(
+      /Video data is empty/,
+    );
+  });
 });

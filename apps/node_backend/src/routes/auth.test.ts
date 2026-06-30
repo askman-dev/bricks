@@ -1,3 +1,4 @@
+import express from 'express';
 import { describe, expect, it, vi } from 'vitest';
 import { isAllowedReturnTo } from './auth_return_to.js';
 
@@ -15,6 +16,7 @@ vi.mock('../services/userService.js', () => ({
 }));
 
 import {
+  default as authRoutes,
   buildPostLoginRedirectTarget,
   decodeOAuthState,
   validateOAuthCallbackState,
@@ -118,6 +120,36 @@ describe('auth return_to validation', () => {
         nodeEnv: 'production',
       })
     ).toBe(false);
+  });
+});
+
+describe('auth route limiter scope', () => {
+  it('does not rate limit later /api routes when authRoutes is mounted at /api for legacy callbacks', async () => {
+    const app = express();
+    app.use('/api', authRoutes);
+    app.get('/api/config/noop', (_req, res) => {
+      res.json({ ok: true });
+    });
+
+    const server = app.listen(0, '127.0.0.1');
+    try {
+      await new Promise<void>((resolve) => server.once('listening', resolve));
+      const address = server.address();
+      if (!address || typeof address !== 'object') {
+        throw new Error('Test server did not expose an address');
+      }
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+      for (let i = 0; i < 40; i += 1) {
+        const response = await fetch(`${baseUrl}/api/config/noop`, {
+          headers: { Authorization: 'Bearer test-token' },
+        });
+        expect(response.status).toBe(200);
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+    }
   });
 });
 

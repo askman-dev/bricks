@@ -51,6 +51,7 @@ export async function ensureChannelBaseDirectories(channelId: string): Promise<v
   await fs.mkdir(path.join(channelDir, 'workspace'), { recursive: true });
   await fs.mkdir(path.join(channelDir, 'media', 'uploads'), { recursive: true });
   await fs.mkdir(path.join(channelDir, 'media', 'generated', 'images'), { recursive: true });
+  await fs.mkdir(path.join(channelDir, 'media', 'generated', 'videos'), { recursive: true });
   await fs.mkdir(path.join(channelDir, 'media', 'thumbnails'), { recursive: true });
   await fs.mkdir(path.join(channelDir, 'web', 'dist'), { recursive: true });
   await fs.mkdir(path.join(channelDir, 'jobs'), { recursive: true });

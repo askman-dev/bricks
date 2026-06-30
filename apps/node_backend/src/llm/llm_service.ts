@@ -148,7 +148,7 @@ export async function generateWithUserConfig(
   request: UnifiedChatRequest,
   preferredProvider?: LlmProvider,
 ): Promise<UnifiedChatResponse> {
-  const runtimeConfig = await resolveRuntimeConfig(
+  const runtimeConfig = await resolveRuntimeConfigForUser(
     userId,
     preferredProvider,
     request.configId,
@@ -179,7 +179,7 @@ export async function streamWithUserConfig(
   provider: LlmProvider;
   modelId: string;
 }> {
-  const runtimeConfig = await resolveRuntimeConfig(
+  const runtimeConfig = await resolveRuntimeConfigForUser(
     userId,
     preferredProvider,
     request.configId,
@@ -201,7 +201,7 @@ export async function streamWithUserConfig(
   };
 }
 
-async function resolveRuntimeConfig(
+export async function resolveRuntimeConfigForUser(
   userId: string,
   preferredProvider?: LlmProvider,
   preferredConfigId?: string,
@@ -257,7 +257,7 @@ export async function resolveRuntimeConfigForTest(
   preferredProvider?: LlmProvider,
   preferredConfigId?: string,
 ): Promise<LlmRuntimeConfig> {
-  return resolveRuntimeConfig(userId, preferredProvider, preferredConfigId);
+  return resolveRuntimeConfigForUser(userId, preferredProvider, preferredConfigId);
 }
 
 function defaultEndpoint(provider: LlmProvider): string {
@@ -469,7 +469,7 @@ export async function streamWithAgentToolsAndUserConfig(
   modelId: string;
   getStopInfo: () => AgentLoopStreamStopInfo | null;
 }> {
-  const runtimeConfig = await resolveRuntimeConfig(
+  const runtimeConfig = await resolveRuntimeConfigForUser(
     userId,
     preferredProvider,
     request.configId,

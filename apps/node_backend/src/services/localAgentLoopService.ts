@@ -59,6 +59,13 @@ import {
   type CreateScheduledActionInput,
   type UpdateScheduledActionInput,
 } from './scheduledActionService.js';
+import {
+  generateImageMedia,
+  mediaGenerationJobToDto,
+  startVideoGenerationJob,
+  MediaGenerationError,
+} from './mediaGenerationService.js';
+import { mediaAssetToDto } from './mediaService.js';
 import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
@@ -71,6 +78,10 @@ export const INTERNAL_TOOL_CHAT_CHANNEL_LIST = 'chat.channel.list';
 export const INTERNAL_TOOL_CHAT_CHANNEL_GET = 'chat.channel.get';
 export const INTERNAL_TOOL_CHAT_THREAD_LIST = 'chat.thread.list';
 export const INTERNAL_TOOL_CHAT_THREAD_GET = 'chat.thread.get';
+
+// Media generation tools
+export const INTERNAL_TOOL_MEDIA_IMAGE_GENERATE = 'media.image.generate';
+export const INTERNAL_TOOL_MEDIA_VIDEO_GENERATE = 'media.video.generate';
 
 // Todo list tools (parent entities that group todo items)
 export const INTERNAL_TOOL_TODO_LIST_CREATE = 'todolist.create';
@@ -131,6 +142,8 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_CHANNEL_GET,
   INTERNAL_TOOL_CHAT_THREAD_LIST,
   INTERNAL_TOOL_CHAT_THREAD_GET,
+  INTERNAL_TOOL_MEDIA_IMAGE_GENERATE,
+  INTERNAL_TOOL_MEDIA_VIDEO_GENERATE,
   INTERNAL_TOOL_TODO_LIST_CREATE,
   INTERNAL_TOOL_TODO_LIST_LIST,
   INTERNAL_TOOL_TODO_LIST_GET,
@@ -183,7 +196,7 @@ export interface ExecuteInternalToolResult {
   data: Record<string, unknown> | null;
   error:
     | {
-        code: 'invalid_args' | 'not_implemented' | 'tool_not_allowed' | 'not_found';
+        code: 'invalid_args' | 'not_implemented' | 'tool_not_allowed' | 'not_found' | 'provider_error';
         message: string;
       }
     | null;
@@ -199,6 +212,12 @@ export interface ExecuteInternalToolSequenceResult {
   calls: ExecuteInternalToolResult[];
   completedCalls: number;
   failedCall: ExecuteInternalToolResult | null;
+}
+
+export interface AgentToolContext {
+  channelId?: string | null;
+  threadId?: string | null;
+  defaultPrompt?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +321,22 @@ function invalidNoteMutation(toolName: string, error: unknown): ExecuteInternalT
       code: 'invalid_args',
       message: error instanceof Error ? error.message : 'Invalid note mutation',
     },
+  };
+}
+
+function mediaGenerationFailure(toolName: string, error: unknown): ExecuteInternalToolResult {
+  const message = error instanceof Error ? error.message : 'Media generation failed';
+  const code =
+    error instanceof MediaGenerationError && error.statusCode === 404
+      ? 'not_found'
+      : error instanceof MediaGenerationError && error.statusCode >= 500
+        ? 'provider_error'
+        : 'invalid_args';
+  return {
+    ok: false,
+    toolName,
+    data: null,
+    error: { code, message },
   };
 }
 
@@ -809,6 +844,97 @@ export async function executeInternalTool(
         };
       }
       return renameThread({ userId, channelId, threadId, displayName });
+    }
+    case INTERNAL_TOOL_MEDIA_IMAGE_GENERATE: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const threadId = readStringArg(args, 'threadId', MAX_IDENTIFIER_LENGTH);
+      const prompt = readStringArg(args, 'prompt');
+      const referenceMediaIds = readLineArrayArg(args, 'referenceMediaIds') ?? [];
+      const model = readStringArg(args, 'model', MAX_IDENTIFIER_LENGTH);
+      const configId = readStringArg(args, 'configId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId || !prompt) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId and prompt are required string arguments',
+          },
+        };
+      }
+      try {
+        const { job, media } = await generateImageMedia({
+          userId,
+          channelId,
+          threadId,
+          prompt,
+          referenceMediaIds,
+          model,
+          configId,
+        });
+        return {
+          ok: true,
+          toolName,
+          data: {
+            job: mediaGenerationJobToDto(job, media),
+            media: mediaAssetToDto(media),
+          },
+          error: null,
+        };
+      } catch (error) {
+        return mediaGenerationFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_MEDIA_VIDEO_GENERATE: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const threadId = readStringArg(args, 'threadId', MAX_IDENTIFIER_LENGTH);
+      const prompt = readStringArg(args, 'prompt');
+      const referenceMediaIds = readLineArrayArg(args, 'referenceMediaIds') ?? [];
+      const firstFrameMediaId = readStringArg(args, 'firstFrameMediaId', MAX_IDENTIFIER_LENGTH);
+      const lastFrameMediaId = readStringArg(args, 'lastFrameMediaId', MAX_IDENTIFIER_LENGTH);
+      const aspectRatio = readStringArg(args, 'aspectRatio', MAX_IDENTIFIER_LENGTH);
+      const durationSeconds = readPositiveIntegerArg(args, 'durationSeconds');
+      const resolution = readStringArg(args, 'resolution', MAX_IDENTIFIER_LENGTH);
+      const model = readStringArg(args, 'model', MAX_IDENTIFIER_LENGTH);
+      const configId = readStringArg(args, 'configId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId || !prompt) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: {
+            code: 'invalid_args',
+            message: 'channelId and prompt are required string arguments',
+          },
+        };
+      }
+      try {
+        const job = await startVideoGenerationJob({
+          userId,
+          channelId,
+          threadId,
+          prompt,
+          referenceMediaIds,
+          firstFrameMediaId,
+          lastFrameMediaId,
+          aspectRatio,
+          durationSeconds,
+          resolution,
+          model,
+          configId,
+        });
+        return {
+          ok: true,
+          toolName,
+          data: {
+            job: mediaGenerationJobToDto(job),
+          },
+          error: null,
+        };
+      } catch (error) {
+        return mediaGenerationFailure(toolName, error);
+      }
     }
     // -------------------------------------------------------------------------
     case INTERNAL_TOOL_TODO_LIST_CREATE: {
@@ -1420,9 +1546,28 @@ export async function executeInternalToolSequence(params: {
  * The tool implementations delegate to `executeInternalTool` using the
  * canonical dot-delimited internal names.
  */
-export function buildAgentTools(userId: string): Record<string, AgentTool> {
-  const runTool = (toolName: string, args: Record<string, unknown>) =>
-    executeInternalTool({ userId, toolName, args });
+export function buildAgentTools(
+  userId: string,
+  context: AgentToolContext = {},
+): Record<string, AgentTool> {
+  const runTool = (toolName: string, args: Record<string, unknown>) => {
+    const effectiveArgs = { ...args };
+    if (
+      toolName === INTERNAL_TOOL_MEDIA_IMAGE_GENERATE ||
+      toolName === INTERNAL_TOOL_MEDIA_VIDEO_GENERATE
+    ) {
+      if (typeof effectiveArgs.channelId !== 'string' && context.channelId) {
+        effectiveArgs.channelId = context.channelId;
+      }
+      if (typeof effectiveArgs.threadId !== 'string' && context.threadId) {
+        effectiveArgs.threadId = context.threadId;
+      }
+      if (typeof effectiveArgs.prompt !== 'string' && context.defaultPrompt) {
+        effectiveArgs.prompt = context.defaultPrompt;
+      }
+    }
+    return executeInternalTool({ userId, toolName, args: effectiveArgs });
+  };
 
   return {
     chat_channel_instruction_set: {
@@ -1626,6 +1771,92 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_CHAT_THREAD_RENAME, args),
+    },
+
+    media_image_generate: {
+      description:
+        'Generate a durable image attachment in a Bricks channel using Gemini image generation. ' +
+        'Use when the user explicitly asks to create or edit an image. For image editing, pass uploaded image media IDs as referenceMediaIds.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel where the generated image should be stored.',
+          },
+          threadId: {
+            type: 'string',
+            description: 'Optional thread identifier for the generated media.',
+          },
+          prompt: {
+            type: 'string',
+            description: 'The image generation or editing prompt.',
+          },
+          referenceMediaIds: {
+            type: 'array',
+            description: 'Optional image media IDs to use as references for image editing.',
+            items: { type: 'string' },
+          },
+        },
+        required: ['prompt'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_MEDIA_IMAGE_GENERATE, args),
+    },
+
+    media_video_generate: {
+      description:
+        'Start a durable Veo video generation job in a Bricks channel. ' +
+        'Use referenceMediaIds for up to three style/content reference images, or firstFrameMediaId and optional lastFrameMediaId for interpolation.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: {
+            type: 'string',
+            description: 'The channel where the generated video should be stored.',
+          },
+          threadId: {
+            type: 'string',
+            description: 'Optional thread identifier for the video job.',
+          },
+          prompt: {
+            type: 'string',
+            description: 'The video generation prompt, including motion, camera, style, and audio cues where needed.',
+          },
+          referenceMediaIds: {
+            type: 'array',
+            description: 'Optional image media IDs used as Veo referenceImages; maximum three.',
+            items: { type: 'string' },
+            maxItems: 3,
+          },
+          firstFrameMediaId: {
+            type: 'string',
+            description: 'Optional image media ID to use as the starting frame.',
+          },
+          lastFrameMediaId: {
+            type: 'string',
+            description: 'Optional image media ID to use as the ending frame; requires firstFrameMediaId.',
+          },
+          aspectRatio: {
+            type: 'string',
+            enum: ['16:9', '9:16'],
+            description: 'Optional Veo aspect ratio.',
+          },
+          durationSeconds: {
+            type: 'number',
+            enum: [4, 6, 8],
+            description: 'Optional Veo duration. Use 8 when using reference images or 1080p/4k.',
+          },
+          resolution: {
+            type: 'string',
+            enum: ['720p', '1080p', '4k'],
+            description: 'Optional Veo output resolution.',
+          },
+        },
+        required: ['prompt'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_MEDIA_VIDEO_GENERATE, args),
     },
 
     // -------------------------------------------------------------------------

@@ -6,6 +6,14 @@ import {
   mediaAssetToDto,
   resolveMediaAssetPath,
 } from '../services/mediaService.js';
+import {
+  generateImageMedia,
+  getMediaGenerationJobForUser,
+  mediaGenerationJobToDto,
+  MediaGenerationError,
+  refreshVideoGenerationJobForUser,
+  startVideoGenerationJob,
+} from '../services/mediaGenerationService.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -16,12 +24,33 @@ function readString(value: unknown): string | null {
     : null;
 }
 
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function readPositiveInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const integer = Math.trunc(value);
+  return integer > 0 ? integer : null;
+}
+
 function sendMediaError(res: Response, error: unknown): void {
+  if (error instanceof MediaGenerationError) {
+    res.status(error.statusCode).json({ error: error.message });
+    return;
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (
     message.includes('Unsupported image MIME type') ||
+    message.includes('Unsupported video MIME type') ||
     message.includes('Image data is empty') ||
+    message.includes('Video data is empty') ||
     message.includes('20MB') ||
+    message.includes('512MB') ||
     message.includes('Invalid channel-relative path')
   ) {
     res.status(400).json({ error: message });
@@ -60,6 +89,37 @@ router.post('/uploads', async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.post('/image-generations', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const channelId = readString(req.body?.channelId);
+    const prompt = readString(req.body?.prompt);
+    if (!channelId || !prompt) {
+      res.status(400).json({ error: 'channelId and prompt are required' });
+      return;
+    }
+    const { job, media } = await generateImageMedia({
+      userId,
+      channelId,
+      threadId: readString(req.body?.threadId),
+      prompt,
+      referenceMediaIds: readStringArray(req.body?.referenceMediaIds),
+      model: readString(req.body?.model),
+      configId: readString(req.body?.configId),
+    });
+    res.status(201).json({
+      job: mediaGenerationJobToDto(job, media),
+      media: mediaAssetToDto(media),
+    });
+  } catch (error) {
+    sendMediaError(res, error);
+  }
+});
+
 router.post('/generated-images', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
@@ -88,6 +148,96 @@ router.post('/generated-images', async (req: AuthRequest, res: Response) => {
       prompt: readString(req.body?.prompt),
     });
     res.status(201).json({ media: mediaAssetToDto(asset) });
+  } catch (error) {
+    sendMediaError(res, error);
+  }
+});
+
+router.post('/video-generations', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const channelId = readString(req.body?.channelId);
+    const prompt = readString(req.body?.prompt);
+    if (!channelId || !prompt) {
+      res.status(400).json({ error: 'channelId and prompt are required' });
+      return;
+    }
+    const job = await startVideoGenerationJob({
+      userId,
+      channelId,
+      threadId: readString(req.body?.threadId),
+      prompt,
+      referenceMediaIds: readStringArray(req.body?.referenceMediaIds),
+      firstFrameMediaId: readString(req.body?.firstFrameMediaId),
+      lastFrameMediaId: readString(req.body?.lastFrameMediaId),
+      aspectRatio: readString(req.body?.aspectRatio),
+      durationSeconds: readPositiveInteger(req.body?.durationSeconds),
+      resolution: readString(req.body?.resolution),
+      model: readString(req.body?.model),
+      configId: readString(req.body?.configId),
+    });
+    res.status(202).json({ job: mediaGenerationJobToDto(job) });
+  } catch (error) {
+    sendMediaError(res, error);
+  }
+});
+
+router.get('/generation-jobs/:jobId', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const jobId = readString(req.params.jobId);
+    if (!jobId) {
+      res.status(400).json({ error: 'jobId is required' });
+      return;
+    }
+    const shouldRefresh = req.query.refresh !== 'false';
+    if (shouldRefresh) {
+      const { job, media } = await refreshVideoGenerationJobForUser({
+        userId,
+        jobId,
+        configId: readString(req.query.configId),
+      });
+      res.json({ job: mediaGenerationJobToDto(job, media), media: media ? mediaAssetToDto(media) : null });
+      return;
+    }
+    const job = await getMediaGenerationJobForUser(userId, jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Media generation job not found' });
+      return;
+    }
+    const media = job.resultMediaId ? await getMediaAssetForUser(userId, job.resultMediaId) : null;
+    res.json({ job: mediaGenerationJobToDto(job, media), media: media ? mediaAssetToDto(media) : null });
+  } catch (error) {
+    sendMediaError(res, error);
+  }
+});
+
+router.post('/generation-jobs/:jobId/poll', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const jobId = readString(req.params.jobId);
+    if (!jobId) {
+      res.status(400).json({ error: 'jobId is required' });
+      return;
+    }
+    const { job, media } = await refreshVideoGenerationJobForUser({
+      userId,
+      jobId,
+      configId: readString(req.body?.configId),
+    });
+    res.json({ job: mediaGenerationJobToDto(job, media), media: media ? mediaAssetToDto(media) : null });
   } catch (error) {
     sendMediaError(res, error);
   }

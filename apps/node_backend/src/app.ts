@@ -118,15 +118,40 @@ app.use('/api/resources', resourcesRoutes);
 // Cron routes do NOT use the JWT authenticate middleware — they use CRON_SECRET.
 app.use('/api/cron', cronRoutes);
 
+const NO_STORE_STATIC_CACHE = 'no-store, no-cache, must-revalidate, max-age=0';
+const SHORT_STATIC_CACHE = 'public, max-age=60';
+const NO_STORE_STATIC_FILENAMES = new Set([
+  'index.html',
+  'main.dart.js',
+  'flutter.js',
+  'flutter_service_worker.js',
+  'manifest.json',
+  'version.json',
+]);
+
+function setStaticCacheHeaders(res: Response, filePath: string): void {
+  const filename = path.basename(filePath);
+  if (NO_STORE_STATIC_FILENAMES.has(filename)) {
+    res.setHeader('Cache-Control', NO_STORE_STATIC_CACHE);
+    return;
+  }
+  res.setHeader('Cache-Control', SHORT_STATIC_CACHE);
+}
+
 const staticRoot = process.env.BRICKS_STATIC_ROOT?.trim();
 if (staticRoot) {
   const resolvedStaticRoot = path.resolve(staticRoot);
-  app.use(express.static(resolvedStaticRoot));
+  app.use(
+    express.static(resolvedStaticRoot, {
+      setHeaders: setStaticCacheHeaders,
+    })
+  );
   app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/api/')) {
       next();
       return;
     }
+    res.setHeader('Cache-Control', NO_STORE_STATIC_CACHE);
     res.sendFile(path.join(resolvedStaticRoot, 'index.html'));
   });
 }
