@@ -114,8 +114,8 @@ products:
           - 用户消息与 assistant 消息正文应共享同一文本样式基线（字号一致）；时间/thread 等 meta 信息应统一为次级灰。
 
       - feature_id: chat_media_attachments
-        name: 频道内图片附件与生成图片持久化
-        user_value: 用户可在聊天中上传图片，上传中/失败时能看到草稿缩略图与重试/移除操作，刷新后仍能预览/下载；Gemini 路由会把上传图片作为多模态输入读取；AI 生成图片可作为频道内持久附件保存，供同一频道 workspace/Agent 访问。
+        name: 频道内图片附件、生成图片与生成视频持久化
+        user_value: 用户可在聊天中上传图片，上传中/失败时能看到草稿缩略图与重试/移除操作，刷新后仍能预览/下载；Gemini 路由会把上传图片作为多模态输入读取；AI 生成图片和 Veo 生成视频可作为频道内持久附件保存，供同一频道 workspace/Agent 访问。
         entry_paths:
           - screen: ChatScreen composer image action
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
@@ -129,8 +129,18 @@ products:
             route_hint: apps/node_backend/src/routes/media.ts
           - route: POST /api/media/generated-images
             route_hint: apps/node_backend/src/routes/media.ts
+          - route: POST /api/media/image-generations
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: POST /api/media/video-generations
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: GET|POST /api/media/generation-jobs/:jobId
+            route_hint: apps/node_backend/src/routes/media.ts
           - route: GET /api/media/:mediaId/preview|content|download
             route_hint: apps/node_backend/src/routes/media.ts
+          - service: Gemini media generation provider integration
+            route_hint: apps/node_backend/src/services/mediaGenerationService.ts
+          - tool: media_image_generate / media_video_generate
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
           - llm: Gemini multimodal image parts
             route_hint: apps/node_backend/src/routes/chat.ts
         smoke_checks:
@@ -141,8 +151,11 @@ products:
           - 刷新或 SSE 同步后，图片附件仍从 message metadata 恢复并可加载预览。
           - 访问 media preview/content/download 路由必须携带当前用户 token；跨用户 media id 返回 404。
           - 数据库 `media_assets.channel_relative_path` 只保存频道内相对路径，不保存宿主机绝对路径。
-          - 同一 channel 的上传图片写入该 channel 目录下 `media/uploads/`，生成图片写入 `media/generated/images/`。
-          - 不支持的 MIME、空图片、超过 20MB 的图片被后端拒绝。
+          - 同一 channel 的上传图片写入该 channel 目录下 `media/uploads/`，生成图片写入 `media/generated/images/`，生成视频写入 `media/generated/videos/`。
+          - "`POST /api/media/image-generations` 使用用户的 Google AI Studio 配置调用 Gemini Interactions API，并把返回图片保存成 `generated_image`。"
+          - "`POST /api/media/video-generations` 创建 `media_generation_jobs` 记录并保存 Veo operation name；轮询 job 完成后下载 provider video URI 并保存成 `generated_video`。"
+          - Veo `referenceImages` 最多接受 3 张 ready image media；`lastFrameMediaId` 必须搭配 `firstFrameMediaId`。
+          - 不支持的 MIME、空图片、超过 20MB 的图片、空视频或非 mp4 视频被后端拒绝。
 
       - feature_id: scope_instructions_config
         name: 频道和分区会话指令配置

@@ -4,6 +4,14 @@ const upsertChatScopeSettingMock = vi.fn();
 const upsertChatChannelMock = vi.fn();
 const listChatScopeSettingsMock = vi.fn().mockResolvedValue([]);
 const listChatChannelsMock = vi.fn().mockResolvedValue([]);
+const generateImageMediaMock = vi.fn();
+const startVideoGenerationJobMock = vi.fn();
+const mediaAssetToDtoMock = vi.fn((asset: Record<string, unknown>) => ({
+  id: asset.id,
+  kind: asset.kind,
+  previewUrl: `/api/media/${asset.id}/preview`,
+  downloadUrl: `/api/media/${asset.id}/download`,
+}));
 
 vi.mock('./chatRouterService.js', () => ({
   CHAT_ROUTER_LOCAL: 'local',
@@ -111,10 +119,38 @@ vi.mock('./scheduledActionService.js', () => ({
   deleteScheduledAction: vi.fn().mockResolvedValue({ deleted: true }),
 }));
 
+vi.mock('./mediaGenerationService.js', () => {
+  class MockMediaGenerationError extends Error {
+    constructor(message: string, readonly statusCode = 400) {
+      super(message);
+      this.name = 'MediaGenerationError';
+    }
+  }
+
+  return {
+    generateImageMedia: generateImageMediaMock,
+    startVideoGenerationJob: startVideoGenerationJobMock,
+    mediaGenerationJobToDto: vi.fn((job: Record<string, unknown>, media?: Record<string, unknown>) => ({
+      id: job.id,
+      kind: job.kind,
+      status: job.status,
+      resultMediaId: media?.id ?? job.resultMediaId ?? null,
+    })),
+    MediaGenerationError: MockMediaGenerationError,
+  };
+});
+
+vi.mock('./mediaService.js', () => ({
+  mediaAssetToDto: mediaAssetToDtoMock,
+}));
+
 describe('localAgentLoopService', () => {
   beforeEach(() => {
     upsertChatScopeSettingMock.mockReset();
     upsertChatChannelMock.mockReset();
+    generateImageMediaMock.mockReset();
+    startVideoGenerationJobMock.mockReset();
+    mediaAssetToDtoMock.mockClear();
   });
 
   it('rejects tools outside allowlist', async () => {
@@ -722,6 +758,116 @@ describe('localAgentLoopService', () => {
       { name: 'Alice', age: '30', active: 'true' },
       { name: 'Bob', score: '7', archived: null },
     ]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Media generation tool tests
+  // -------------------------------------------------------------------------
+
+  it('exposes media generation tools in buildAgentTools', async () => {
+    const { buildAgentTools } = await import('./localAgentLoopService.js');
+
+    const tools = buildAgentTools('u-1');
+
+    expect(tools.media_image_generate).toBeDefined();
+    expect(tools.media_video_generate).toBeDefined();
+    expect(tools.media_video_generate.parametersSchema).toMatchObject({
+      type: 'object',
+      required: ['channelId', 'prompt'],
+      properties: {
+        referenceMediaIds: {
+          type: 'array',
+          maxItems: 3,
+        },
+      },
+    });
+  });
+
+  it('dispatches media_image_generate and returns job and media DTOs', async () => {
+    generateImageMediaMock.mockResolvedValue({
+      job: {
+        id: 'job-1',
+        kind: 'image',
+        status: 'succeeded',
+        resultMediaId: 'media-1',
+      },
+      media: {
+        id: 'media-1',
+        kind: 'image',
+      },
+    });
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_MEDIA_IMAGE_GENERATE,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_MEDIA_IMAGE_GENERATE,
+      args: {
+        channelId: 'default',
+        threadId: 'thread-1',
+        prompt: 'Create a tiny isometric house',
+        referenceMediaIds: ['media-ref'],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(generateImageMediaMock).toHaveBeenCalledWith({
+      userId: 'u-1',
+      channelId: 'default',
+      threadId: 'thread-1',
+      prompt: 'Create a tiny isometric house',
+      referenceMediaIds: ['media-ref'],
+      model: null,
+      configId: null,
+    });
+    expect(result.data?.media).toEqual(
+      expect.objectContaining({ id: 'media-1', previewUrl: '/api/media/media-1/preview' }),
+    );
+  });
+
+  it('dispatches media_video_generate and returns a running job DTO', async () => {
+    startVideoGenerationJobMock.mockResolvedValue({
+      id: 'job-video-1',
+      kind: 'video',
+      status: 'running',
+      resultMediaId: null,
+    });
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_MEDIA_VIDEO_GENERATE,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_MEDIA_VIDEO_GENERATE,
+      args: {
+        channelId: 'default',
+        prompt: 'Animate this product photo',
+        referenceMediaIds: ['image-1', 'image-2'],
+        durationSeconds: 8,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(startVideoGenerationJobMock).toHaveBeenCalledWith({
+      userId: 'u-1',
+      channelId: 'default',
+      threadId: null,
+      prompt: 'Animate this product photo',
+      referenceMediaIds: ['image-1', 'image-2'],
+      firstFrameMediaId: null,
+      lastFrameMediaId: null,
+      aspectRatio: null,
+      durationSeconds: 8,
+      resolution: null,
+      model: null,
+      configId: null,
+    });
+    expect(result.data?.job).toEqual(
+      expect.objectContaining({ id: 'job-video-1', status: 'running' }),
+    );
   });
 
   // -------------------------------------------------------------------------

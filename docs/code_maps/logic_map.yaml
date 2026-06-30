@@ -279,9 +279,12 @@ index:
     capability: 频道作用域图片上传、预览/下载、生成图片持久化与聊天附件同步
     code_index:
       - apps/node_backend/src/db/migrations/026_create_media_assets.sql
+      - apps/node_backend/src/db/migrations/027_create_media_generation_jobs.sql
       - apps/node_backend/src/routes/media.ts
       - apps/node_backend/src/services/mediaService.ts
+      - apps/node_backend/src/services/mediaGenerationService.ts
       - apps/node_backend/src/services/channelFileService.ts
+      - apps/node_backend/src/services/localAgentLoopService.ts
       - apps/node_backend/src/llm/types.ts
       - apps/node_backend/src/llm/llm_service.ts
       - apps/node_backend/src/routes/chat.ts
@@ -293,10 +296,14 @@ index:
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
     doc_index:
       - docs/tasks/done/2026-06-29-23-06-CST-media-upload-preview-multimodal.md
+      - docs/tasks/doing/2026-06-29-14-32-CST-gemini-image-video-generation-architecture.md
       - docs/tasks/doing/2026-06-29-16-13-CST-dokku-channel-media-deployment-plan.md
     test_index:
       - apps/node_backend/src/services/channelFileService.test.ts
       - apps/node_backend/src/services/mediaService.test.ts
+      - apps/node_backend/src/services/mediaGenerationService.test.ts
+      - apps/node_backend/src/routes/media.test.ts
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
       - apps/node_backend/src/routes/chat.test.ts
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
@@ -307,7 +314,14 @@ index:
       - mediaAttachments
       - image upload
       - generated image
+      - generated video
+      - media_generation_jobs
       - Gemini image input
+      - Gemini image generation
+      - Veo video generation
+      - referenceImages
+      - firstFrame
+      - lastFrame
       - multimodal parts
       - previewUrl
       - downloadUrl
@@ -318,8 +332,11 @@ index:
       - channel_relative_path 必须拒绝绝对路径、空 path、`..` 与反斜杠逃逸；否则 Agent/media 路径可能越过当前 channel root。
       - Flutter Image.network 预览依赖 Authorization header；若 AuthService token hydration 失败，图片附件会显示 broken image 但消息文本仍可见。
       - Gemini 多模态输入只应把当前用户可访问、当前 channel 的 ready image asset 转为 image part；错误地传递跨 channel 或失败 asset 会造成隐私或 provider 错误风险。
+      - Gemini image generation 和 Veo reference images 只能读取当前用户、当前 channel、ready image asset；跨 channel 或非 image media 必须被拒绝。
+      - Veo operation 完成后必须及时下载 provider video URI 到 Bricks-owned storage；只保存 provider URI 会受 2 天 provider retention 影响。
+      - "`media_generation_jobs` 轮询依赖用户仍有可用 Google AI Studio 配置；若 key 被删除或替换，running job 需要进入显式 failed 状态而不是永久 pending。"
       - chat_messages.metadata 是第一阶段附件同步桥；后续若改为 join 查询，需要继续保证 sync/history/SSE 返回 mediaAttachments。
-      - 生成图片当前只实现持久化入口，完整 provider-side image generation 仍需后续 Gemini capability/tool 集成。
+      - 生成媒体已接入 backend API 和 local agent tools；移动端显式生成 UI、poster/thumbnail rendition、后台 cron worker 仍是后续风险点。
 
 
   - feature_id: scope_instructions_config
