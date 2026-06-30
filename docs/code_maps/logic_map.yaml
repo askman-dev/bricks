@@ -292,7 +292,7 @@ index:
       - apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
     doc_index:
-      - docs/tasks/doing/2026-06-29-23-06-CST-media-upload-preview-multimodal.md
+      - docs/tasks/done/2026-06-29-23-06-CST-media-upload-preview-multimodal.md
       - docs/tasks/doing/2026-06-29-16-13-CST-dokku-channel-media-deployment-plan.md
     test_index:
       - apps/node_backend/src/services/channelFileService.test.ts

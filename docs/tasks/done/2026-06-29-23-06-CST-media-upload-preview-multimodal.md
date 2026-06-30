@@ -28,9 +28,21 @@ Production chat can log in, send text, and receive assistant replies. Image uplo
 - A Gemini-capable route receives uploaded image bytes as image parts and can answer questions about image content.
 - Text-only chat continues to work.
 
+## Verified Status
+
+- Production `craft.bricks.cool` login, text send, and assistant text reply were already verified before this fix.
+- Preview subdomain access was restored after Cloudflare edge certificate coverage was updated for `*.craft-dev.bricks.cool`.
+- Preview login, text/image send, uploaded image preview inside the sent message, and image persistence after refresh were manually verified.
+- Draft upload now shows a small thumbnail/progress tile during upload, and successful uploaded draft media uses an authenticated preview request.
+- Gemini image understanding was manually verified: the assistant answered based on the actual uploaded image content.
+- Upload failure retry UI is implemented but the offline/network-failure retry path has not yet been manually smoke tested.
+- Media download remains covered by the existing authenticated download endpoint, but it was not part of this manual first-batch browser pass.
+
 ## Validation Commands
 
 - `./tools/init_dev_env.sh`
 - `cd apps/node_backend && npm test`
 - `cd apps/node_backend && npm run type-check`
-- `cd apps/mobile_chat_app && flutter test`
+- `cd apps/mobile_chat_app && flutter analyze`
+- `cd apps/mobile_chat_app && flutter test test/message_list_test.dart test/chat_history_api_service_test.dart`
+- `npx js-yaml docs/code_maps/feature_map.yaml > /dev/null && npx js-yaml docs/code_maps/logic_map.yaml > /dev/null`
