@@ -543,5 +543,6 @@ products:
           - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/channels`，不共享 production 或其他 preview 的 channel 文件。
           - Turso credentials, JWT signing secret, and encryption key stay in Dokku server config; preview apps copy them from the production app on the server instead of reading GitHub Actions secrets.
           - Production CSP must allow Flutter Web bootstrap scripts so `craft.bricks.cool` renders the login app instead of a blank page.
+          - Flutter Web app shell files such as `index.html`, `main.dart.js`, `flutter.js`, and `flutter_service_worker.js` must return no-store/no-cache headers so preview deploys do not serve stale UI bundles.
           - PR close/merge 后对应 preview app 被 destroy，preview data root 被删除。
           - GitHub OAuth callback 固定为 `https://craft.bricks.cool/api/callback`，preview 登录完成后可 redirect 回 preview 域名。

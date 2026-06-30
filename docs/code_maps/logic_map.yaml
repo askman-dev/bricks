@@ -730,6 +730,7 @@ index:
       - preview branch slug 必须同时满足 Dokku app name、DNS label 与 Cloudflare wildcard 约束；过长或含非法字符会导致 app/domain 创建失败。
       - GitHub OAuth 只能回调主域名；`return_to` allowlist 必须允许合法 preview 子域名，并拒绝 apex、大小写/下划线和相邻恶意域名。
       - 静态资源回退必须避开 `/api` 路由，否则 API 404 会被 SPA index.html 覆盖。
+      - Flutter Web app shell 文件名不带内容 hash；若 `main.dart.js` 或 `flutter.js` 被长缓存，preview deploy 后浏览器会继续运行旧 UI。
       - PR close/merge 清理必须限制在 `/home/bricks/data/previews/<slug>` 命名空间内，避免误删生产数据。
 
   - feature_id: conversational_todos
