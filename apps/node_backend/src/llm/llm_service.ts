@@ -136,6 +136,13 @@ function resolveModel(
   return { model: adapter.createModel(modelId, runtimeConfig), modelId };
 }
 
+function toAiSdkMessages(request: UnifiedChatRequest) {
+  return request.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+}
+
 export async function generateWithUserConfig(
   userId: string,
   request: UnifiedChatRequest,
@@ -150,10 +157,8 @@ export async function generateWithUserConfig(
 
   const result = await generateText({
     model,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: toAiSdkMessages(request) as any,
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
   });
@@ -183,10 +188,8 @@ export async function streamWithUserConfig(
 
   const result = streamText({
     model,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: toAiSdkMessages(request) as any,
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
   });
@@ -537,10 +540,8 @@ export async function streamWithAgentToolsAndUserConfig(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     stopWhen: stopConditions as any,
     abortSignal: abortController.signal,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: toAiSdkMessages(request) as any,
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
     // The onStepFinish callback shape changed in AI SDK v6; cast the event to

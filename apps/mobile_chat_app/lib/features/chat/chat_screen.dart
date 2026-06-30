@@ -53,6 +53,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSending = false;
   bool _isStreaming = false;
   bool _isUploadingAttachment = false;
+  int _imageUploadGeneration = 0;
+  ComposerDraftUpload? _draftUpload;
   final List<ChatMediaAttachment> _pendingMediaAttachments = [];
   bool _loadingAgents = true;
   bool _loadingLlmConfigs = true;
@@ -2511,18 +2513,24 @@ class _ChatScreenState extends State<ChatScreen> {
           result == null || result.files.isEmpty ? null : result.files.first;
       final bytes = file?.bytes;
       if (file == null || bytes == null || bytes.isEmpty) return;
-      setState(() => _isUploadingAttachment = true);
-      final attachment = await _chatHistoryApiService.uploadImage(
-        scope: _activeScope,
-        filename: file.name,
-        mimeType: _mimeTypeForPickedFile(file),
-        dataBase64: base64Encode(bytes),
-      );
-      if (!mounted) return;
+      final mimeType = _mimeTypeForPickedFile(file);
+      final dataBase64 = base64Encode(bytes);
+      final generation = ++_imageUploadGeneration;
       setState(() {
-        _pendingMediaAttachments.add(attachment);
-        _isUploadingAttachment = false;
+        _isUploadingAttachment = true;
+        _draftUpload = ComposerDraftUpload(
+          filename: file.name,
+          mimeType: mimeType,
+          dataBase64: dataBase64,
+          isUploading: true,
+        );
       });
+      await _uploadDraftImage(
+        filename: file.name,
+        mimeType: mimeType,
+        dataBase64: dataBase64,
+        generation: generation,
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _isUploadingAttachment = false);
@@ -2530,6 +2538,74 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text('Image upload failed: $error')),
       );
     }
+  }
+
+  Future<void> _uploadDraftImage({
+    required String filename,
+    required String mimeType,
+    required String dataBase64,
+    required int generation,
+  }) async {
+    try {
+      final attachment = await _chatHistoryApiService.uploadImage(
+        scope: _activeScope,
+        filename: filename,
+        mimeType: mimeType,
+        dataBase64: dataBase64,
+      );
+      if (!mounted || generation != _imageUploadGeneration) return;
+      setState(() {
+        _pendingMediaAttachments.add(attachment);
+        _draftUpload = null;
+        _isUploadingAttachment = false;
+      });
+    } catch (error) {
+      if (!mounted || generation != _imageUploadGeneration) return;
+      setState(() {
+        _draftUpload = ComposerDraftUpload(
+          filename: filename,
+          mimeType: mimeType,
+          dataBase64: dataBase64,
+          isUploading: false,
+          errorText: error.toString(),
+        );
+        _isUploadingAttachment = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image upload failed: $error')),
+      );
+    }
+  }
+
+  void _retryDraftImageUpload() {
+    final draft = _draftUpload;
+    if (draft == null || draft.isUploading || _isSending) return;
+    final generation = ++_imageUploadGeneration;
+    setState(() {
+      _isUploadingAttachment = true;
+      _draftUpload = ComposerDraftUpload(
+        filename: draft.filename,
+        mimeType: draft.mimeType,
+        dataBase64: draft.dataBase64,
+        isUploading: true,
+      );
+    });
+    unawaited(
+      _uploadDraftImage(
+        filename: draft.filename,
+        mimeType: draft.mimeType,
+        dataBase64: draft.dataBase64,
+        generation: generation,
+      ),
+    );
+  }
+
+  void _cancelDraftImageUpload() {
+    _imageUploadGeneration++;
+    setState(() {
+      _draftUpload = null;
+      _isUploadingAttachment = false;
+    });
   }
 
   void _removePendingAttachment(String mediaId) {
@@ -2608,6 +2684,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _isSending = true;
       _isStreaming = false;
       _pendingMediaAttachments.clear();
+      _draftUpload = null;
     });
 
     final runtimeSettings = _settingsForAgent(agent);
@@ -3249,8 +3326,11 @@ class _ChatScreenState extends State<ChatScreen> {
               onSend: _isSending ? null : _sendMessage,
               onAttachImage:
                   _isUploadingAttachment ? null : _attachImageToDraft,
+              onCancelDraftUpload: _cancelDraftImageUpload,
+              onRetryDraftUpload: _retryDraftImageUpload,
               onRemoveAttachment: _removePendingAttachment,
               attachments: _pendingMediaAttachments,
+              draftUpload: _draftUpload,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,
             );

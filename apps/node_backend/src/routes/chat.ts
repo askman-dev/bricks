@@ -1,4 +1,5 @@
 import express, { Response } from "express";
+import { readFile } from "fs/promises";
 import rateLimit from "express-rate-limit";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
 import {
@@ -49,9 +50,10 @@ import {
 import {
   listMediaAssetsForUser,
   mediaAssetToDto,
+  resolveMediaAssetPath,
   type MediaAsset,
 } from "../services/mediaService.js";
-import type { AgentLoopStepResult, LlmProvider } from "../llm/types.js";
+import type { AgentLoopStepResult, LlmProvider, UnifiedMessage } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
 
 const router = express.Router();
@@ -606,6 +608,48 @@ function mediaAttachmentsMetadata(assets: MediaAsset[]) {
   return assets.map((asset) => mediaAssetToDto(asset));
 }
 
+async function imageAssetsToModelParts(assets: MediaAsset[]) {
+  const parts: Array<{ type: "image"; image: Uint8Array; mediaType: string }> = [];
+  for (const asset of assets) {
+    if (asset.kind !== "image" || asset.status !== "ready") continue;
+    const absolutePath = await resolveMediaAssetPath(asset);
+    const data = await readFile(absolutePath);
+    parts.push({
+      type: "image",
+      image: data,
+      mediaType: asset.mimeType,
+    });
+  }
+  return parts;
+}
+
+async function attachImagesToLatestUserMessage(
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  assets: MediaAsset[],
+): Promise<UnifiedMessage[]> {
+  if (assets.length === 0) return messages;
+  let latestUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages[index].role === "user") {
+      latestUserIndex = index;
+      break;
+    }
+  }
+  if (latestUserIndex < 0) return messages;
+  const imageParts = await imageAssetsToModelParts(assets);
+  if (imageParts.length === 0) return messages;
+  return messages.map((message, index) => {
+    if (index !== latestUserIndex) return message;
+    const content: UnifiedMessage["content"] = [
+      ...(message.content.trim()
+        ? [{ type: "text" as const, text: message.content }]
+        : []),
+      ...imageParts,
+    ];
+    return { ...message, content };
+  });
+}
+
 function parseScopeType(value: unknown): ChatScopeType | null {
   if (value === "channel" || value === "thread") return value;
   return null;
@@ -719,6 +763,7 @@ async function runDefaultRouterRespondAsync(params: {
   systemPrompt: string | null;
   channelInstructions: string | null;
   threadInstructions: string | null;
+  mediaAttachments: MediaAsset[];
 }) {
   const {
     userId,
@@ -735,6 +780,7 @@ async function runDefaultRouterRespondAsync(params: {
     systemPrompt,
     channelInstructions,
     threadInstructions,
+    mediaAttachments,
   } = params;
 
   // NOTE: This runs after the HTTP response has been sent. On Vercel Serverless
@@ -775,6 +821,11 @@ async function runDefaultRouterRespondAsync(params: {
       limit: 40,
       maxChars: 10000,
     });
+    const preferredProvider = parseProvider(body.provider);
+    const modelMessagesWithMedia =
+      preferredProvider === "google_ai_studio"
+        ? await attachImagesToLatestUserMessage(modelMessages, mediaAttachments)
+        : modelMessages;
 
     const composedSystemPrompt = buildComposedSystemPrompt({
       systemPrompt,
@@ -784,8 +835,8 @@ async function runDefaultRouterRespondAsync(params: {
       threadId,
     });
     const messagesWithSystem = composedSystemPrompt
-      ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
-      : modelMessages;
+      ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessagesWithMedia]
+      : modelMessagesWithMedia;
 
     let textStream: AsyncIterable<string>;
     let provider: string;
@@ -1097,7 +1148,7 @@ async function runDefaultRouterRespondAsync(params: {
             ]);
           },
         },
-        parseProvider(body.provider),
+        preferredProvider,
       );
     textStream = streamResult.textStream;
     provider = streamResult.provider;
@@ -1538,6 +1589,7 @@ router.post(
         systemPrompt,
         channelInstructions: scopeInstructions.channelInstructions,
         threadInstructions: scopeInstructions.threadInstructions,
+        mediaAttachments: orderedMediaAssets,
       });
 
       res.json({

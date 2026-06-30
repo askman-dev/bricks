@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
+import '../../auth/auth_service.dart';
+import '../../settings/llm_config_service.dart';
 import '../chat_message.dart';
 
 /// Actions available in the composer popup menu.
@@ -21,6 +25,24 @@ class ComposerAtAction {
   final String? insertText;
 }
 
+class ComposerDraftUpload {
+  const ComposerDraftUpload({
+    required this.filename,
+    required this.mimeType,
+    required this.dataBase64,
+    required this.isUploading,
+    this.errorText,
+  });
+
+  final String filename;
+  final String mimeType;
+  final String dataBase64;
+  final bool isUploading;
+  final String? errorText;
+
+  bool get hasError => errorText != null && errorText!.trim().isNotEmpty;
+}
+
 /// The input composer bar at the bottom of the chat screen.
 class ComposerBar extends StatefulWidget {
   const ComposerBar({
@@ -33,8 +55,11 @@ class ComposerBar extends StatefulWidget {
     this.slashCommands = const [],
     this.atActions = const [],
     this.attachments = const [],
+    this.draftUpload,
     this.onSend,
     this.onAttachImage,
+    this.onCancelDraftUpload,
+    this.onRetryDraftUpload,
     this.onRemoveAttachment,
     this.onAgentSelected,
     this.onAtActionSelected,
@@ -53,8 +78,11 @@ class ComposerBar extends StatefulWidget {
   final List<String> slashCommands;
   final List<ComposerAtAction> atActions;
   final List<ChatMediaAttachment> attachments;
+  final ComposerDraftUpload? draftUpload;
   final void Function(String text)? onSend;
   final VoidCallback? onAttachImage;
+  final VoidCallback? onCancelDraftUpload;
+  final VoidCallback? onRetryDraftUpload;
   final void Function(String mediaId)? onRemoveAttachment;
 
   @Deprecated(
@@ -93,8 +121,9 @@ class _ComposerBarState extends State<ComposerBar>
   }
 
   void _onDraftChanged() {
-    final nextHasDraft =
-        _controller.text.trim().isNotEmpty || widget.attachments.isNotEmpty;
+    final nextHasDraft = _controller.text.trim().isNotEmpty ||
+        widget.attachments.isNotEmpty ||
+        widget.draftUpload != null;
     if (_hasDraft == nextHasDraft) return;
     setState(() => _hasDraft = nextHasDraft);
   }
@@ -102,14 +131,17 @@ class _ComposerBarState extends State<ComposerBar>
   @override
   void didUpdateWidget(covariant ComposerBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.attachments.length != widget.attachments.length) {
+    if (oldWidget.attachments.length != widget.attachments.length ||
+        oldWidget.draftUpload != widget.draftUpload) {
       _onDraftChanged();
     }
   }
 
   void _submit() {
     final text = _controller.text.trim();
-    if ((text.isEmpty && widget.attachments.isEmpty) || widget.onSend == null) {
+    if ((text.isEmpty && widget.attachments.isEmpty) ||
+        widget.draftUpload != null ||
+        widget.onSend == null) {
       return;
     }
     widget.onSend!(text);
@@ -157,6 +189,7 @@ class _ComposerBarState extends State<ComposerBar>
   @override
   Widget build(BuildContext context) {
     final isSending = widget.onSend == null;
+    final hasDraftUpload = widget.draftUpload != null;
     final chatColors =
         Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
 
@@ -178,7 +211,8 @@ class _ComposerBarState extends State<ComposerBar>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (widget.attachments.isNotEmpty)
+                  if (widget.attachments.isNotEmpty ||
+                      widget.draftUpload != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         BricksSpacing.sm,
@@ -190,11 +224,21 @@ class _ComposerBarState extends State<ComposerBar>
                         height: 72,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
-                          itemCount: widget.attachments.length,
+                          itemCount: widget.attachments.length +
+                              (widget.draftUpload == null ? 0 : 1),
                           separatorBuilder: (_, __) =>
                               const SizedBox(width: BricksSpacing.xs),
                           itemBuilder: (context, index) {
-                            final attachment = widget.attachments[index];
+                            final draftUpload = widget.draftUpload;
+                            if (draftUpload != null && index == 0) {
+                              return _DraftUploadTile(
+                                upload: draftUpload,
+                                onCancel: widget.onCancelDraftUpload,
+                                onRetry: widget.onRetryDraftUpload,
+                              );
+                            }
+                            final attachment = widget.attachments[
+                                index - (draftUpload == null ? 0 : 1)];
                             return _PendingAttachmentTile(
                               attachment: attachment,
                               onRemove: widget.onRemoveAttachment == null
@@ -248,9 +292,10 @@ class _ComposerBarState extends State<ComposerBar>
                         ],
                         IconButton(
                           tooltip: 'Attach image',
-                          onPressed: isSending || widget.isStreaming
-                              ? null
-                              : widget.onAttachImage,
+                          onPressed:
+                              isSending || widget.isStreaming || hasDraftUpload
+                                  ? null
+                                  : widget.onAttachImage,
                           icon: Icon(
                             Icons.image_outlined,
                             color: chatColors.composerActionIdle,
@@ -406,7 +451,8 @@ class _ComposerBarState extends State<ComposerBar>
                           )
                         else
                           IconButton(
-                            onPressed: isSending ? null : _submit,
+                            onPressed:
+                                isSending || hasDraftUpload ? null : _submit,
                             icon: isSending
                                 ? const SizedBox(
                                     width: 20,
@@ -417,7 +463,7 @@ class _ComposerBarState extends State<ComposerBar>
                                   )
                                 : Icon(
                                     Icons.send,
-                                    color: _hasDraft
+                                    color: _hasDraft && !hasDraftUpload
                                         ? chatColors.sendActive
                                         : chatColors.sendIdle,
                                   ),
@@ -457,9 +503,12 @@ class _PendingAttachmentTile extends StatelessWidget {
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(BricksRadius.sm),
-              child: Container(
-                color: chatColors.composerBackground,
-                child: const Icon(Icons.image, size: 28),
+              child: _AuthenticatedAttachmentPreview(
+                previewUrl: attachment.previewUrl,
+                fallback: Container(
+                  color: chatColors.composerBackground,
+                  child: const Icon(Icons.image, size: 28),
+                ),
               ),
             ),
           ),
@@ -477,6 +526,131 @@ class _PendingAttachmentTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DraftUploadTile extends StatelessWidget {
+  const _DraftUploadTile({
+    required this.upload,
+    this.onCancel,
+    this.onRetry,
+  });
+
+  final ComposerDraftUpload upload;
+  final VoidCallback? onCancel;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final chatColors =
+        Theme.of(context).extension<ChatColors>() ?? ChatColors.light;
+    final imageBytes = base64Decode(upload.dataBase64);
+    return SizedBox(
+      width: 72,
+      height: 72,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(BricksRadius.sm),
+              child: Image.memory(
+                imageBytes,
+                fit: BoxFit.cover,
+                errorBuilder: (context, _, __) => Container(
+                  color: chatColors.composerBackground,
+                  child: const Icon(Icons.broken_image_outlined, size: 28),
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black
+                    .withValues(alpha: upload.hasError ? 0.34 : 0.22),
+                borderRadius: BorderRadius.circular(BricksRadius.sm),
+              ),
+              child: Center(
+                child: upload.hasError
+                    ? IconButton.filledTonal(
+                        tooltip: 'Retry upload',
+                        iconSize: 18,
+                        constraints: const BoxConstraints.tightFor(
+                            width: 36, height: 36),
+                        onPressed: onRetry,
+                        icon: const Icon(Icons.refresh),
+                      )
+                    : const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 2,
+            top: 2,
+            child: IconButton.filled(
+              tooltip: 'Remove image',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+              iconSize: 14,
+              onPressed: onCancel,
+              icon: const Icon(Icons.close),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthenticatedAttachmentPreview extends StatelessWidget {
+  const _AuthenticatedAttachmentPreview({
+    required this.previewUrl,
+    required this.fallback,
+  });
+
+  final String previewUrl;
+  final Widget fallback;
+
+  Uri _mediaUri(String value) {
+    final parsed = Uri.tryParse(value);
+    if (parsed != null && parsed.hasScheme) return parsed;
+    return Uri.parse('${LlmConfigService.resolveBaseUrl()}$value');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: AuthService.getToken(),
+      builder: (context, snapshot) {
+        final token = snapshot.data;
+        final headers = token == null || token.isEmpty
+            ? null
+            : {'Authorization': 'Bearer $token'};
+        return Image.network(
+          _mediaUri(previewUrl).toString(),
+          headers: headers,
+          fit: BoxFit.cover,
+          errorBuilder: (context, _, __) => fallback,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return const Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -33,6 +33,8 @@ const {
   listPlatformNodesMock,
   listMediaAssetsForUserMock,
   mediaAssetToDtoMock,
+  resolveMediaAssetPathMock,
+  readFileMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -139,6 +141,12 @@ const {
     downloadUrl: `/api/media/${asset.id}/download`,
     channelRelativePath: asset.channelRelativePath,
   })),
+  resolveMediaAssetPathMock: vi.fn(async () => "/tmp/bricks-test-image.jpg"),
+  readFileMock: vi.fn(async () => Buffer.from("fake-image")),
+}));
+
+vi.mock("fs/promises", () => ({
+  readFile: readFileMock,
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -189,6 +197,7 @@ vi.mock('../services/localAgentLoopService.js', () => ({
 vi.mock("../services/mediaService.js", () => ({
   listMediaAssetsForUser: listMediaAssetsForUserMock,
   mediaAssetToDto: mediaAssetToDtoMock,
+  resolveMediaAssetPath: resolveMediaAssetPathMock,
 }));
 
 vi.mock("../llm/llm_service.js", () => ({
@@ -280,6 +289,13 @@ describe("chat routes", () => {
     });
     streamWithAgentToolsAndUserConfigMock.mockClear();
     buildAgentToolsMock.mockClear();
+    listMediaAssetsForUserMock.mockReset();
+    listMediaAssetsForUserMock.mockResolvedValue([]);
+    mediaAssetToDtoMock.mockClear();
+    resolveMediaAssetPathMock.mockReset();
+    resolveMediaAssetPathMock.mockResolvedValue("/tmp/bricks-test-image.jpg");
+    readFileMock.mockReset();
+    readFileMock.mockResolvedValue(Buffer.from("fake-image"));
     getPlatformNodeByNodeIdMock.mockReset();
     getPlatformNodeByNodeIdMock.mockImplementation(
       async (_userId: string, nodeId: string) => ({
@@ -480,6 +496,88 @@ describe("chat routes", () => {
         content: "sync reply",
       }),
     ]);
+  });
+
+  it("passes uploaded image attachments to Gemini as multimodal parts", async () => {
+    resolveChatScopeRoutingMock.mockResolvedValueOnce({
+      router: "local",
+      nodeId: null,
+    });
+    listSessionMessagesForModelMock.mockResolvedValueOnce([
+      { role: "user", content: "What is in this image?" },
+    ] as any);
+    listMediaAssetsForUserMock.mockResolvedValueOnce([
+      {
+        id: "media-1",
+        userId: "user-123",
+        channelId: "default",
+        threadId: null,
+        kind: "image",
+        origin: "user_upload",
+        status: "ready",
+        mimeType: "image/jpeg",
+        filename: "photo.jpg",
+        channelRelativePath: "media/uploads/media-1.jpg",
+        thumbnailChannelRelativePath: null,
+        sizeBytes: 42,
+        width: null,
+        height: null,
+        durationMs: null,
+        sourceMessageId: null,
+        provider: null,
+        providerOperationName: null,
+        prompt: null,
+        errorText: null,
+        createdAt: "2026-06-29T00:00:00.000Z",
+        updatedAt: "2026-06-29T00:00:00.000Z",
+      },
+    ] as any);
+    readFileMock.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: "task-image-1",
+        idempotencyKey: "idem-image-1",
+        channelId: "default",
+        sessionId: "session:default:main",
+        userMessageId: "msg-user-image-1",
+        assistantMessageId: "msg-assistant-image-1",
+        userMessage: "What is in this image?",
+        provider: "gemini",
+        mediaAttachmentIds: ["media-1"],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 0);
+    });
+    expect(resolveMediaAssetPathMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "media-1" }),
+    );
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalledWith(
+      "user-123",
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: [
+              { type: "text", text: "What is in this image?" },
+              {
+                type: "image",
+                image: Buffer.from([1, 2, 3]),
+                mediaType: "image/jpeg",
+              },
+            ],
+          }),
+        ]),
+      }),
+      expect.any(Object),
+      expect.any(Object),
+      "google_ai_studio",
+    );
   });
 
   it("auto-names a non-main thread from the first message and generates one title", async () => {
