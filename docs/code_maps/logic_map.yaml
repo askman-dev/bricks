@@ -291,6 +291,9 @@ index:
       - apps/node_backend/src/services/chatAsyncTransportService.ts
       - apps/mobile_chat_app/lib/features/chat/chat_message.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/media_download.dart
+      - apps/mobile_chat_app/lib/features/chat/media_download_stub.dart
+      - apps/mobile_chat_app/lib/features/chat/media_download_web.dart
       - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
@@ -327,12 +330,15 @@ index:
       - multimodal parts
       - previewUrl
       - downloadUrl
+      - full-screen media preview
+      - authenticated media download
       - FilePicker
       - Image.network Authorization
     change_risks:
       - media_assets 必须按 user_id 授权读取；若只按 media id 查找，可能泄露其他用户上传/生成图片。
       - channel_relative_path 必须拒绝绝对路径、空 path、`..` 与反斜杠逃逸；否则 Agent/media 路径可能越过当前 channel root。
       - Flutter Image.network 预览依赖 Authorization header；若 AuthService token hydration 失败，图片附件会显示 broken image 但消息文本仍可见。
+      - Web 下载不能直接导航到 `/download`，必须用当前 token 拉取 Blob 后触发浏览器下载；否则受保护 media 会返回 401。
       - Gemini 多模态输入只应把当前用户可访问、当前 channel 的 ready image asset 转为 image part；错误地传递跨 channel 或失败 asset 会造成隐私或 provider 错误风险。
       - Gemini image generation 和 Veo reference images 只能读取当前用户、当前 channel、ready image asset；跨 channel 或非 image media 必须被拒绝。
       - Veo operation 完成后必须及时下载 provider video URI 到 Bricks-owned storage；只保存 provider URI 会受 2 天 provider retention 影响。

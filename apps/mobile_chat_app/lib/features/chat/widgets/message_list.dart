@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../auth/auth_service.dart';
 import '../../settings/llm_config_service.dart';
 import '../chat_message.dart';
+import '../media_download.dart';
 import '../text_highlight_api_service.dart';
 
 // Extra bottom padding as a fraction of screen height, so the latest user
@@ -1595,7 +1596,9 @@ class _MediaAttachmentStrip extends StatelessWidget {
           .map(
             (attachment) => _MediaAttachmentTile(
               attachment: attachment,
-              uri: _mediaUri(attachment.previewUrl),
+              previewUri: _mediaUri(attachment.previewUrl),
+              contentUri: _mediaUri(attachment.contentUrl),
+              downloadUri: _mediaUri(attachment.downloadUrl),
               borderColor: isUser
                   ? chatColors.onMessageUser.withValues(alpha: 0.24)
                   : chatColors.composerBorder,
@@ -1609,13 +1612,91 @@ class _MediaAttachmentStrip extends StatelessWidget {
 class _MediaAttachmentTile extends StatelessWidget {
   const _MediaAttachmentTile({
     required this.attachment,
-    required this.uri,
+    required this.previewUri,
+    required this.contentUri,
+    required this.downloadUri,
     required this.borderColor,
   });
 
   final ChatMediaAttachment attachment;
-  final Uri uri;
+  final Uri previewUri;
+  final Uri contentUri;
+  final Uri downloadUri;
   final Color borderColor;
+
+  static const double _tileWidth = 168;
+  static const double _tileHeight = 148;
+  static const double _labelHeight = 24;
+
+  Future<void> _openPreview(
+    BuildContext context,
+    Map<String, String>? headers,
+  ) async {
+    if (attachment.kind != 'image') return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullScreenMediaPreview(
+          uri: contentUri,
+          headers: headers,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showContextMenu(
+    BuildContext context,
+    LongPressStartDetails details,
+    String? token,
+  ) async {
+    final overlay = Overlay.of(context).context.findRenderObject();
+    if (overlay is! RenderBox) return;
+    final selected = await showMenu<_MediaAttachmentAction>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(
+          details.globalPosition.dx,
+          details.globalPosition.dy,
+          1,
+          1,
+        ),
+        Offset.zero & overlay.size,
+      ),
+      items: const [
+        PopupMenuItem<_MediaAttachmentAction>(
+          value: _MediaAttachmentAction.download,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.download_outlined, size: 18),
+              SizedBox(width: BricksSpacing.sm),
+              Text('Download'),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (selected != _MediaAttachmentAction.download) return;
+    await _download(context, token);
+  }
+
+  Future<void> _download(BuildContext context, String? token) async {
+    try {
+      await downloadChatMedia(
+        uri: downloadUri,
+        filename: attachment.filename,
+        authToken: token,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Download started')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Download failed: $error')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1626,55 +1707,135 @@ class _MediaAttachmentTile extends StatelessWidget {
         final headers = token == null || token.isEmpty
             ? null
             : {'Authorization': 'Bearer $token'};
-        return Container(
-          width: 168,
-          constraints: const BoxConstraints(maxHeight: 148),
-          decoration: BoxDecoration(
-            border: Border.all(color: borderColor),
-            borderRadius: BorderRadius.circular(BricksRadius.sm),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AspectRatio(
-                aspectRatio: 4 / 3,
-                child: Image.network(
-                  uri.toString(),
-                  headers: headers,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, _, __) => const Center(
-                    child: Icon(Icons.broken_image_outlined),
-                  ),
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return const Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+        return GestureDetector(
+          onTap: () => _openPreview(context, headers),
+          onLongPressStart: (details) =>
+              _showContextMenu(context, details, token),
+          child: MouseRegion(
+            cursor: attachment.kind == 'image'
+                ? SystemMouseCursors.click
+                : MouseCursor.defer,
+            child: Container(
+              width: _tileWidth,
+              height: _tileHeight,
+              decoration: BoxDecoration(
+                border: Border.all(color: borderColor),
+                borderRadius: BorderRadius.circular(BricksRadius.sm),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Image.network(
+                      previewUri.toString(),
+                      headers: headers,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, _, __) => const Center(
+                        child: Icon(Icons.broken_image_outlined),
                       ),
-                    );
-                  },
-                ),
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    height: _labelHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: BricksSpacing.xs,
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          attachment.filename,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: BricksSpacing.xs,
-                  vertical: 3,
-                ),
-                child: Text(
-                  attachment.filename,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+enum _MediaAttachmentAction { download }
+
+class _FullScreenMediaPreview extends StatelessWidget {
+  const _FullScreenMediaPreview({
+    required this.uri,
+    required this.headers,
+  });
+
+  final Uri uri;
+  final Map<String, String>? headers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundChrome,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4,
+                child: Center(
+                  child: Image.network(
+                    uri.toString(),
+                    headers: headers,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, _, __) => const Icon(
+                      Icons.broken_image_outlined,
+                      color: AppColors.textPrimary,
+                      size: 40,
+                    ),
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: BricksSpacing.sm,
+              right: BricksSpacing.sm,
+              child: Material(
+                color: AppColors.surfaceElevated,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: IconButton(
+                  tooltip: 'Back to chat',
+                  color: AppColors.textPrimary,
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

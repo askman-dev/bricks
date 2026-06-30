@@ -147,6 +147,8 @@ products:
           - 选择图片后，输入框上方立即显示本地缩略图与上传进度；失败后保留缩略图并提供重试和移除。
           - 上传成功后，输入框上方显示带 Authorization header 的 media preview，而不是只显示占位 icon。
           - 发送带图片的消息后，user 气泡显示图片附件并保持原有投递状态。
+          - 点击/点按聊天图片附件会打开全屏预览；右上角关闭按钮返回聊天。
+          - 长按聊天图片附件会显示 Download 菜单项，并通过带 Authorization 的下载请求保存图片。
           - Gemini/Google AI Studio 路由收到上传图片时，模型请求包含 text part 与 image part，能够基于图片内容回答。
           - 刷新或 SSE 同步后，图片附件仍从 message metadata 恢复并可加载预览。
           - 访问 media preview/content/download 路由必须携带当前用户 token；跨用户 media id 返回 404。
