@@ -171,6 +171,8 @@ describe('mediaGenerationService', () => {
         providerOperationName: 'interaction-1',
       }),
     );
+    expect(poolMock.query.mock.calls[1][0]).toContain('CURRENT_TIMESTAMP');
+    expect(poolMock.query.mock.calls[1][0]).not.toContain('NOW()');
   });
 
   it('starts a Veo video job with up to three referenceImages', async () => {

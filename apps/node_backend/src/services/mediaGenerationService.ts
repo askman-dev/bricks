@@ -63,6 +63,8 @@ export class MediaGenerationError extends Error {
   }
 }
 
+const currentTimestampSql = 'CURRENT_TIMESTAMP';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -179,7 +181,7 @@ async function updateMediaGenerationJob(
            provider_operation_name = COALESCE($3, provider_operation_name),
            result_media_id = COALESCE($4, result_media_id),
            error_text = $5,
-           updated_at = NOW()
+           updated_at = ${currentTimestampSql}
      WHERE id = $1
      RETURNING *`,
     [

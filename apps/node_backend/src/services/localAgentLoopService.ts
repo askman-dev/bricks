@@ -214,6 +214,12 @@ export interface ExecuteInternalToolSequenceResult {
   failedCall: ExecuteInternalToolResult | null;
 }
 
+export interface AgentToolContext {
+  channelId?: string | null;
+  threadId?: string | null;
+  defaultPrompt?: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -1540,9 +1546,28 @@ export async function executeInternalToolSequence(params: {
  * The tool implementations delegate to `executeInternalTool` using the
  * canonical dot-delimited internal names.
  */
-export function buildAgentTools(userId: string): Record<string, AgentTool> {
-  const runTool = (toolName: string, args: Record<string, unknown>) =>
-    executeInternalTool({ userId, toolName, args });
+export function buildAgentTools(
+  userId: string,
+  context: AgentToolContext = {},
+): Record<string, AgentTool> {
+  const runTool = (toolName: string, args: Record<string, unknown>) => {
+    const effectiveArgs = { ...args };
+    if (
+      toolName === INTERNAL_TOOL_MEDIA_IMAGE_GENERATE ||
+      toolName === INTERNAL_TOOL_MEDIA_VIDEO_GENERATE
+    ) {
+      if (typeof effectiveArgs.channelId !== 'string' && context.channelId) {
+        effectiveArgs.channelId = context.channelId;
+      }
+      if (typeof effectiveArgs.threadId !== 'string' && context.threadId) {
+        effectiveArgs.threadId = context.threadId;
+      }
+      if (typeof effectiveArgs.prompt !== 'string' && context.defaultPrompt) {
+        effectiveArgs.prompt = context.defaultPrompt;
+      }
+    }
+    return executeInternalTool({ userId, toolName, args: effectiveArgs });
+  };
 
   return {
     chat_channel_instruction_set: {
@@ -1773,7 +1798,7 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
             items: { type: 'string' },
           },
         },
-        required: ['channelId', 'prompt'],
+        required: ['prompt'],
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_MEDIA_IMAGE_GENERATE, args),
@@ -1828,7 +1853,7 @@ export function buildAgentTools(userId: string): Record<string, AgentTool> {
             description: 'Optional Veo output resolution.',
           },
         },
-        required: ['channelId', 'prompt'],
+        required: ['prompt'],
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_MEDIA_VIDEO_GENERATE, args),

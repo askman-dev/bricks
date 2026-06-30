@@ -715,7 +715,11 @@ describe("chat routes", () => {
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123', {
+      channelId: 'default',
+      threadId: null,
+      defaultPrompt: '/channel create ops',
+    });
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
@@ -739,7 +743,11 @@ describe("chat routes", () => {
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123', {
+      channelId: 'default',
+      threadId: null,
+      defaultPrompt: 'create a channel called ops',
+    });
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 

@@ -869,7 +869,11 @@ async function runDefaultRouterRespondAsync(params: {
     // plain natural language.  The managedStream generator yields text deltas
     // eagerly for tool-free steps, so streaming UX is equivalent to the direct
     // streamWithUserConfig path for ordinary chat messages.
-    const agentTools = buildAgentTools(userId);
+    const agentTools = buildAgentTools(userId, {
+      channelId,
+      threadId,
+      defaultPrompt: userMessage,
+    });
     const streamResult = await streamWithAgentToolsAndUserConfig(
         userId,
         {

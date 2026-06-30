@@ -773,7 +773,7 @@ describe('localAgentLoopService', () => {
     expect(tools.media_video_generate).toBeDefined();
     expect(tools.media_video_generate.parametersSchema).toMatchObject({
       type: 'object',
-      required: ['channelId', 'prompt'],
+      required: ['prompt'],
       properties: {
         referenceMediaIds: {
           type: 'array',
@@ -825,6 +825,45 @@ describe('localAgentLoopService', () => {
     expect(result.data?.media).toEqual(
       expect.objectContaining({ id: 'media-1', previewUrl: '/api/media/media-1/preview' }),
     );
+  });
+
+  it('injects current chat context into media generation agent tools', async () => {
+    generateImageMediaMock.mockResolvedValue({
+      job: {
+        id: 'job-context-1',
+        kind: 'image',
+        status: 'succeeded',
+        resultMediaId: 'media-context-1',
+      },
+      media: {
+        id: 'media-context-1',
+        kind: 'image',
+      },
+    });
+    const { buildAgentTools } = await import('./localAgentLoopService.js');
+
+    const tools = buildAgentTools('u-1', {
+      channelId: 'default',
+      threadId: 'thread-1',
+      defaultPrompt: 'Generate a pixel spaceship',
+    });
+    const result = await tools.media_image_generate.execute({});
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        toolName: 'media.image.generate',
+      }),
+    );
+    expect(generateImageMediaMock).toHaveBeenCalledWith({
+      userId: 'u-1',
+      channelId: 'default',
+      threadId: 'thread-1',
+      prompt: 'Generate a pixel spaceship',
+      referenceMediaIds: [],
+      model: null,
+      configId: null,
+    });
   });
 
   it('dispatches media_video_generate and returns a running job DTO', async () => {
