@@ -20,7 +20,20 @@ const anonymousAuthLimiter = rateLimit({
     error: 'Too many anonymous auth requests from this IP, please try again later.',
   },
 });
-router.use(anonymousAuthLimiter);
+
+function isAnonymousAuthPath(pathname: string): boolean {
+  return pathname === '/github' ||
+    pathname === '/github/callback' ||
+    pathname === '/callback';
+}
+
+router.use((req, res, next) => {
+  if (!isAnonymousAuthPath(req.path)) {
+    next();
+    return;
+  }
+  anonymousAuthLimiter(req, res, next);
+});
 
 interface GitHubUser {
   id: number;

@@ -405,6 +405,7 @@ products:
           - 未登录请求返回预期状态码。
           - 合法回跳参数通过校验。
           - 仅允许受控 native OAuth callback，拒绝任意自定义 scheme 回跳。
+          - legacy `/api` OAuth route mount 只应限流 OAuth anonymous endpoints，不得让已认证的 `/api/config?category=llm` 读请求误返回 anonymous auth 429。
 
       - feature_id: backend_chat_llm
         name: Chat 与 LLM 调用

@@ -555,6 +555,7 @@ index:
       - return_to 校验规则变动可能引入开放重定向漏洞。
       - native callback target 放宽过度会引入自定义 scheme 开放跳转风险。
       - 认证路由限流策略过严会导致正常登录流程误触发 429。
+      - authRoutes 同时挂载在 `/api/auth` 与 legacy `/api`；anonymous OAuth limiter 必须只包 OAuth endpoints，否则会在 `/api/config` 等后续路由前返回 429。
 
   - feature_id: backend_chat_llm
     capability: 后端聊天与 LLM 路由
