@@ -7,6 +7,19 @@ const router = express.Router();
 
 const LONG_STATIC_CACHE = 'public, max-age=31536000, immutable';
 const HTML_CACHE = 'no-store, no-cache, must-revalidate, max-age=0';
+const GENERATED_SITE_CSP = [
+  "default-src 'self' https: data: blob:",
+  "script-src 'self' https: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
+  "style-src 'self' https: 'unsafe-inline'",
+  "connect-src 'self' https: wss:",
+  "img-src 'self' https: data: blob:",
+  "font-src 'self' https: data:",
+  "media-src 'self' https: data: blob:",
+  "worker-src 'self' blob:",
+  "frame-src 'self' https:",
+  "form-action 'self' https:",
+  "object-src 'none'",
+].join('; ');
 
 function requestHost(req: Request): string {
   const forwardedHost = String(req.headers['x-forwarded-host'] ?? '').split(',')[0]?.trim();
@@ -54,6 +67,7 @@ function contentTypeFor(filePath: string): string {
 async function sendStaticFile(res: Response, filePath: string): Promise<void> {
   const data = await fs.readFile(filePath);
   res.setHeader('X-Robots-Tag', 'noindex');
+  res.setHeader('Content-Security-Policy', GENERATED_SITE_CSP);
   res.setHeader('Content-Type', contentTypeFor(filePath));
   res.setHeader('Cache-Control', path.basename(filePath) === 'index.html' ? HTML_CACHE : LONG_STATIC_CACHE);
   res.send(data);

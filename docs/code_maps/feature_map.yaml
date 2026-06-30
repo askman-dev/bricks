@@ -184,6 +184,7 @@ products:
           - "`site_media_copy` copies current-channel uploaded/generated media into `workspace/public/assets/` and returns a public asset path."
           - "Production requests to `<slug>.craft-spaces.bricks.cool` resolve through `channel_sites.public_slug`, serve the latest successful `web/dist`, apply React SPA fallback, and include `X-Robots-Tag: noindex`."
           - "Preview deployments set `BRICKS_PUBLIC_SITE_BASE_URL` so site tools return `https://<preview-host>/sites/<slug>` URLs that do not depend on the global `craft-spaces` wildcard origin certificate."
+          - "Generated site responses override the main app CSP with a site-specific policy that allows common external HTTPS scripts, styles, fonts, media, workers, frames, and WebSocket connections."
 
       - feature_id: scope_instructions_config
         name: 频道和分区会话指令配置

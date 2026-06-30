@@ -75,6 +75,8 @@ describe('channelSiteHost route', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-robots-tag')).toBe('noindex');
     expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(response.headers.get('content-security-policy')).toContain("script-src 'self' https: 'unsafe-inline' 'unsafe-eval'");
+    expect(response.headers.get('content-security-policy')).toContain("connect-src 'self' https: wss:");
     expect(await response.text()).toContain('<div id="root">site</div>');
   });
 

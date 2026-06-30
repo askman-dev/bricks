@@ -378,12 +378,14 @@ index:
       - web/dist
       - jobs/build.log
       - X-Robots-Tag
+      - generated site CSP
     change_risks:
       - Channel filesystem paths must include an opaque user segment and opaque channel segment; channelId-only paths can leak or collide across users.
       - Workspace file tools must reject absolute paths, `..`, `.`, null bytes, empty segments, and protected `.git` or `node_modules` deletion.
       - Failed builds must never replace the previous successful `web/dist`; otherwise a bad agent edit can take down the public site.
       - Public slug lookup must not expose user_id or channel_id, and `craft-spaces` responses must include `X-Robots-Tag: noindex`.
       - PR preview environments should use `BRICKS_PUBLIC_SITE_BASE_URL` path URLs; otherwise generated `craft-spaces` links can fail before production wildcard origin TLS is configured.
+      - Generated site responses need a more permissive CSP than the Bricks app shell; otherwise user-authored apps that reference CDN scripts/styles such as Tailwind, UMD React, Babel, analytics, fonts, or media fail at runtime.
       - Host-based site serving must run before the main Flutter app SPA fallback; otherwise public site URLs can incorrectly serve the Bricks app shell.
 
   - feature_id: scope_instructions_config
