@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:design_system/design_system.dart';
@@ -1201,6 +1202,29 @@ void main() {
       await tester.pump();
 
       await tester.longPress(find.text('plant.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Download'), findsOneWidget);
+    });
+
+    testWidgets('secondary click shows image download action', (tester) async {
+      SharedPreferences.setMockInitialValues({'auth_token': 'token-123'});
+      final assistant = ChatMessage(
+        messageId: 'a-media-secondary-menu',
+        role: 'assistant',
+        content: '',
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+        mediaAttachments: [_imageAttachment()],
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pump();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('plant.png')),
+        buttons: kSecondaryButton,
+      );
+      await gesture.up();
       await tester.pumpAndSettle();
 
       expect(find.text('Download'), findsOneWidget);

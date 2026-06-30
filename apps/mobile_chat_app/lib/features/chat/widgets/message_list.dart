@@ -1633,7 +1633,7 @@ class _MediaAttachmentTile extends StatelessWidget {
     Map<String, String>? headers,
   ) async {
     if (attachment.kind != 'image') return;
-    await Navigator.of(context).push(
+    await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(
         builder: (_) => _FullScreenMediaPreview(
           uri: contentUri,
@@ -1645,7 +1645,7 @@ class _MediaAttachmentTile extends StatelessWidget {
 
   Future<void> _showContextMenu(
     BuildContext context,
-    LongPressStartDetails details,
+    Offset globalPosition,
     String? token,
   ) async {
     final overlay = Overlay.of(context).context.findRenderObject();
@@ -1654,8 +1654,8 @@ class _MediaAttachmentTile extends StatelessWidget {
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(
-          details.globalPosition.dx,
-          details.globalPosition.dy,
+          globalPosition.dx,
+          globalPosition.dy,
           1,
           1,
         ),
@@ -1708,9 +1708,12 @@ class _MediaAttachmentTile extends StatelessWidget {
             ? null
             : {'Authorization': 'Bearer $token'};
         return GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => _openPreview(context, headers),
           onLongPressStart: (details) =>
-              _showContextMenu(context, details, token),
+              _showContextMenu(context, details.globalPosition, token),
+          onSecondaryTapDown: (details) =>
+              _showContextMenu(context, details.globalPosition, token),
           child: MouseRegion(
             cursor: attachment.kind == 'image'
                 ? SystemMouseCursors.click

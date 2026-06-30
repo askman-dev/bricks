@@ -22,14 +22,14 @@ Chat media attachments already render authenticated thumbnails in message bubble
 
 - Added a web media downloader that fetches protected media with the current bearer token and saves it through a browser Blob download.
 - Added tap/click handling on chat image attachments to open a full-screen authenticated preview with a close button back to chat.
-- Added long-press handling on chat image attachments to show a Download context menu action.
+- Added long-press and secondary-click handling on chat image attachments to show a Download context menu action.
 - Added `MessageList` widget tests for opening/closing the preview and exposing the download action.
 
 ## Acceptance Criteria
 
 - Tapping or clicking a chat image opens a full-screen preview.
 - The preview has a close/cancel icon button that returns to chat.
-- Long-pressing a chat image shows a context menu with Download.
+- Long-pressing or right-clicking/two-finger-clicking a chat image shows a context menu with Download.
 - Download uses the authenticated media download URL.
 
 ## Validation Commands
