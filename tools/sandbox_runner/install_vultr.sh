@@ -14,6 +14,8 @@ RUNNER_PORT="${RUNNER_PORT:-8787}"
 RUNNER_TOKEN="${RUNNER_TOKEN:-}"
 SANDBOX_IMAGE="${SANDBOX_IMAGE:-node:22-bookworm}"
 SANDBOX_RUNTIME="${SANDBOX_RUNTIME:-runsc}"
+DOCKER_BRIDGE_INTERFACE="${DOCKER_BRIDGE_INTERFACE:-docker0}"
+DOCKER_BRIDGE_CIDR="${DOCKER_BRIDGE_CIDR:-172.17.0.0/16}"
 
 if [[ ! -f "${RUNNER_DIR}/package.json" ]]; then
   echo "Expected sandbox runner package at ${RUNNER_DIR}" >&2
@@ -108,6 +110,13 @@ for attempt in {1..20}; do
   sleep 1
 done
 echo
+
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+  echo "==> Allowing Docker bridge access to sandbox runner"
+  ufw allow in on "${DOCKER_BRIDGE_INTERFACE}" proto tcp \
+    from "${DOCKER_BRIDGE_CIDR}" to "${RUNNER_HOST}" port "${RUNNER_PORT}" \
+    comment "Bricks sandbox runner from Dokku containers"
+fi
 
 echo "==> Verifying runsc Docker runtime"
 docker run --rm --runtime="${SANDBOX_RUNTIME}" hello-world >/dev/null

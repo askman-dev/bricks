@@ -42,4 +42,5 @@ Implement the safe per-user local filesystem and shell execution design for Bric
 - Vultr host `149.28.225.252` has `runsc` registered as a Docker runtime.
 - `bricks-sandbox-runner` is enabled as a systemd service on `172.17.0.1:8787`.
 - Dokku app `bricks` is configured with `BRICKS_SANDBOX_RUNNER=http`, `BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787`, and `/home/bricks/data/production/sandboxes:/app/data/sandboxes`.
+- UFW allows only Docker bridge traffic from `172.17.0.0/16` to `172.17.0.1:8787` for the runner; the runner port is not opened publicly.
 - A token-authenticated `/v1/run` request created a file inside a temporary per-user gVisor container under the production sandbox root, and the temporary verification container/directory was removed afterward.

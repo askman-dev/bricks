@@ -40,6 +40,11 @@ RUNNER_TOKEN="<shared-runner-token>" \
   sudo -E tools/sandbox_runner/install_vultr.sh
 ```
 
+The installer registers Docker's `runsc` runtime, starts the
+`bricks-sandbox-runner` systemd service, and, when UFW is active, allows only
+Docker bridge traffic from `172.17.0.0/16` to `172.17.0.1:8787`. Do not expose
+the runner port on the public network.
+
 Set required config values on the Dokku server without committing secrets.
 Runtime secrets such as Turso credentials, JWT signing keys, and encryption keys
 must stay in Dokku config on the server; do not store them in GitHub Actions
