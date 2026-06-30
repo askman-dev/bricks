@@ -160,6 +160,28 @@ products:
           - Veo `referenceImages` 最多接受 3 张 ready image media；`lastFrameMediaId` 必须搭配 `firstFrameMediaId`。
           - 不支持的 MIME、空图片、超过 20MB 的图片、空视频或非 mp4 视频被后端拒绝。
 
+      - feature_id: channel_react_site_workspace
+        name: Channel React Site Workspace and Public Preview
+        user_value: 用户可以让 Agent 在当前 channel 里创建、编辑、构建一个静态 React/Vite 网站，并通过固定 `craft-spaces.bricks.cool` 子域名访问最新成功构建。
+        entry_paths:
+          - migration: channel_sites public slug binding
+            route_hint: apps/node_backend/src/db/migrations/028_create_channel_sites.sql
+          - service: user-scoped channel filesystem paths
+            route_hint: apps/node_backend/src/services/channelFileService.ts
+          - service: site workspace, starter, build, media copy
+            route_hint: apps/node_backend/src/services/channelSiteService.ts
+          - route: Host <slug>.craft-spaces.bricks.cool static site serving
+            route_hint: apps/node_backend/src/routes/channelSiteHost.ts
+          - tools: site_workspace_config/init, site_file_*, site_shell_exec, site_build, site_media_copy
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - "`site_workspace_init` initializes one Vite + React + TypeScript workspace for the current channel and creates an initial git commit."
+          - Channel filesystem directories are nested under opaque user and channel path segments, so raw user IDs and channel IDs are not exposed in paths.
+          - "`site_file_write/read/list/mkdir/delete` operate only inside the current channel workspace and reject traversal paths."
+          - "`site_build` runs npm install/build, writes `jobs/build.log` and `jobs/build.json`, and only replaces `web/dist` after a successful build."
+          - "`site_media_copy` copies current-channel uploaded/generated media into `workspace/public/assets/` and returns a public asset path."
+          - "Requests to `<slug>.craft-spaces.bricks.cool` resolve through `channel_sites.public_slug`, serve the latest successful `web/dist`, apply React SPA fallback, and include `X-Robots-Tag: noindex`."
+
       - feature_id: scope_instructions_config
         name: 频道和分区会话指令配置
         user_value: 用户可在聊天区域右上角打开会话配置，为当前频道和当前子区分别设置指令，为默认路由请求提供范围上下文。

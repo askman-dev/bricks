@@ -348,6 +348,41 @@ index:
       - Agent tool 生成的 media 不应只作为模型文本里的 `[image: ...]` 标记返回；最终 assistant 消息必须结构化写入 mediaAttachments，否则刷新和真实预览都会丢失。
       - 生成媒体已接入 backend API 和 local agent tools；移动端显式生成 UI、poster/thumbnail rendition、后台 cron worker 仍是后续风险点。
 
+  - feature_id: channel_react_site_workspace
+    capability: Channel-scoped React/Vite website workspace, build, media asset copy, and public static preview host
+    code_index:
+      - apps/node_backend/src/db/migrations/028_create_channel_sites.sql
+      - apps/node_backend/src/services/channelFileService.ts
+      - apps/node_backend/src/services/channelSiteService.ts
+      - apps/node_backend/src/routes/channelSiteHost.ts
+      - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/app.ts
+    doc_index:
+      - docs/tasks/doing/2026-06-30-11-57-CST-channel-react-site-workspace-preview.md
+    test_index:
+      - apps/node_backend/src/services/channelFileService.test.ts
+      - apps/node_backend/src/routes/channelSiteHost.test.ts
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
+      - apps/node_backend/src/app.test.ts
+    keywords:
+      - channel_sites
+      - public_slug
+      - craft-spaces.bricks.cool
+      - site_workspace_init
+      - site_build
+      - site_media_copy
+      - Vite
+      - React
+      - user-scoped filesystem
+      - web/dist
+      - jobs/build.log
+      - X-Robots-Tag
+    change_risks:
+      - Channel filesystem paths must include an opaque user segment and opaque channel segment; channelId-only paths can leak or collide across users.
+      - Workspace file tools must reject absolute paths, `..`, `.`, null bytes, empty segments, and protected `.git` or `node_modules` deletion.
+      - Failed builds must never replace the previous successful `web/dist`; otherwise a bad agent edit can take down the public site.
+      - Public slug lookup must not expose user_id or channel_id, and `craft-spaces` responses must include `X-Robots-Tag: noindex`.
+      - Host-based site serving must run before the main Flutter app SPA fallback; otherwise public site URLs can incorrectly serve the Bricks app shell.
 
   - feature_id: scope_instructions_config
     capability: 频道与分区级别的会话指令配置及提示词组合

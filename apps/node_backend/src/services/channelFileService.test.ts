@@ -25,6 +25,7 @@ describe('channelFileService', () => {
   it('writes files inside a channel-scoped directory', async () => {
     const { channelDirectory, writeChannelFile } = await import('./channelFileService.js');
     const relativePath = await writeChannelFile({
+      userId: 'user-1',
       channelId: 'feature/site',
       relativePath: 'media/uploads/a.png',
       data: Buffer.from('png-bytes'),
@@ -32,22 +33,27 @@ describe('channelFileService', () => {
 
     expect(relativePath).toBe('media/uploads/a.png');
     const written = await fs.readFile(
-      path.join(channelDirectory('feature/site'), relativePath),
+      path.join(channelDirectory('user-1', 'feature/site'), relativePath),
       'utf8',
     );
     expect(written).toBe('png-bytes');
+    expect(channelDirectory('user-1', 'feature/site')).not.toContain('feature');
+    expect(channelDirectory('user-1', 'feature/site')).not.toContain('user-1');
   });
 
   it('rejects absolute and parent-relative paths', async () => {
     const { resolveChannelPath } = await import('./channelFileService.js');
 
-    expect(() => resolveChannelPath('default', '/tmp/file.png')).toThrow(
+    expect(() => resolveChannelPath('user-1', 'default', '/tmp/file.png')).toThrow(
       /Invalid channel-relative path/,
     );
-    expect(() => resolveChannelPath('default', '../file.png')).toThrow(
+    expect(() => resolveChannelPath('user-1', 'default', '../file.png')).toThrow(
       /Invalid channel-relative path/,
     );
-    expect(() => resolveChannelPath('default', 'media/../file.png')).toThrow(
+    expect(() => resolveChannelPath('user-1', 'default', 'media/../file.png')).toThrow(
+      /Invalid channel-relative path/,
+    );
+    expect(() => resolveChannelPath('user-1', 'default', './file.png')).toThrow(
       /Invalid channel-relative path/,
     );
   });
