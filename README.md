@@ -27,6 +27,8 @@ Bricks keeps useful information available after the chat moves on.
 
 ## Showcase
 
+![Bricks code agent builds a website and returns a public URL](docs/assets/showcase/code-agent-website-public-url.png)
+
 | Topic-based agent work | Saved highlights and notes |
 | --- | --- |
 | ![Bricks channel and thread workspace](docs/assets/showcase/chat-knowledge-organization.png) | ![Bricks resources for highlights and notes](docs/assets/showcase/resources-highlights.png) |
