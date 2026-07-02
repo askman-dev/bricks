@@ -192,7 +192,7 @@ products:
             route_hint: apps/node_backend/src/services/localAgentLoopService.ts
         smoke_checks:
           - "`site_workspace_init` initializes one Vite + React + TypeScript workspace for the current channel and creates an initial git commit."
-          - Chat title bar shows a lightweight Site status pill; opening it shows the public URL, publish time, current commit, live commit, refresh action, and a Publish button that sends a publish prompt.
+          - Chat title bar shows a lightweight Site status pill; opening it shows the public URL, publish time, current commit, live commit, Visit, Share, Refresh, and Publish actions.
           - Channel filesystem directories are nested under one persistent per-user sandbox with opaque user and channel path segments, so raw user IDs and channel IDs are not exposed in paths.
           - Same-user channels share one sandbox filesystem root, while different users resolve to different sandbox roots.
           - "`site_file_write/read/list/mkdir/delete` operate only inside the current channel workspace and reject traversal paths."

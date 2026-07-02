@@ -371,6 +371,7 @@ index:
       - docs/tasks/done/2026-06-30-23-30-CST-gvisor-sandbox-runner.md
       - docs/tasks/done/2026-07-02-10-43-CST-fix-sandbox-runner-root-scoping.md
       - docs/tasks/done/2026-07-02-12-18-CST-site-publish-status.md
+      - docs/tasks/done/2026-07-02-14-47-CST-site-publish-visit-share.md
       - docs/deploy/dokku.md
     test_index:
       - apps/node_sandbox_runner/src/sandboxRunner.test.ts

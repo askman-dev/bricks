@@ -8,6 +8,8 @@ import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
@@ -3012,6 +3014,29 @@ class _ChatScreenState extends State<ChatScreen> {
         '${local.minute.toString().padLeft(2, '0')}';
   }
 
+  String _siteShareText(String publicUrl) {
+    return 'Check out this site I made with Bricks: $publicUrl';
+  }
+
+  Future<void> _visitSite(String publicUrl) async {
+    final uri = Uri.tryParse(publicUrl);
+    if (uri == null) return;
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open site')),
+      );
+    }
+  }
+
+  Future<void> _shareSite(String publicUrl) async {
+    await Clipboard.setData(ClipboardData(text: _siteShareText(publicUrl)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Share text copied')),
+    );
+  }
+
   Widget _sitePublishStatusButton(BuildContext context) {
     final color = _sitePublishColor(context);
     return Padding(
@@ -3041,6 +3066,7 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (context) {
         final publicUrl = status?.publicUrl ?? '';
+        final hasPublicUrl = publicUrl.trim().isNotEmpty;
         return AlertDialog(
           title: const Text('Site publish'),
           content: ConstrainedBox(
@@ -3071,6 +3097,24 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           actions: [
+            TextButton(
+              onPressed: hasPublicUrl
+                  ? () {
+                      Navigator.of(context).pop();
+                      unawaited(_visitSite(publicUrl));
+                    }
+                  : null,
+              child: const Text('Visit'),
+            ),
+            TextButton(
+              onPressed: hasPublicUrl
+                  ? () {
+                      Navigator.of(context).pop();
+                      unawaited(_shareSite(publicUrl));
+                    }
+                  : null,
+              child: const Text('Share'),
+            ),
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
