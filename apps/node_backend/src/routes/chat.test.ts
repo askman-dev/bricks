@@ -478,7 +478,7 @@ describe("chat routes", () => {
       expect.objectContaining({
         maxSteps: 10,
         maxToolCalls: 50,
-        timeoutMs: 60000,
+        timeoutMs: 600000,
       }),
       undefined,
     );
@@ -1446,7 +1446,7 @@ describe("chat routes", () => {
         modelId: 'claude-sonnet-4-5',
         getStopInfo: () => ({
           type: 'timeout_reached',
-          timeoutMs: 60000,
+          timeoutMs: 600000,
           stepIndex: 1,
         }),
       };
@@ -1476,11 +1476,11 @@ describe("chat routes", () => {
         messageId: 'msg-a-timeout-1',
         role: 'assistant',
         taskState: 'failed',
-        content: expect.stringContaining('step timeout was reached (60000ms)'),
+        content: expect.stringContaining('step timeout was reached (600000ms)'),
         metadata: expect.objectContaining({
           agentLoopStopReason: expect.objectContaining({
             type: 'timeout_reached',
-            timeoutMs: 60000,
+            timeoutMs: 600000,
             timeoutStepIndex: 1,
             toolCallCount: 1,
             completedToolCallCount: 1,

@@ -394,7 +394,7 @@ interface SdkStepSummary {
 type AgentStopCondition = (event: { steps?: SdkStepSummary[] }) => boolean;
 
 /** Maximum timeout we allow for a single agent-loop model step (ms). */
-const MAX_AGENT_TIMEOUT_MS = 120_000;
+const MAX_AGENT_TIMEOUT_MS = 600_000;
 
 /**
  * Streams a model-driven agent loop that can call internal tools.

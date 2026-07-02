@@ -369,7 +369,7 @@ products:
           - 在 Turso/libSQL 数据库下，table_create / table_add_column / table_add_row / table_update_row / table_delete_row 均应成功执行，不应因 PostgreSQL-only SQL（例如 NOW() 或 ::jsonb）失败。
           - 当 table_create 执行时抛出数据库错误，聊天历史应显示工具错误结果，并将对应 tool_call_start 标记为已完成，不能永久显示“正在调用”。
           - 相邻工具调用在聊天流中应折叠为一个 `Thinking` / `Thinking complete completed/total` 标志，不直接显示工具名或长 JSON；同 task 的 thinking 行应显示在 `Processing...` 占位前；点击 thinking 标志可在模态窗口查看具体 tool/reasoning 过程；紧随其后的助手文本不重复显示头像/模型名。
-          - 默认 agent-loop 预算为 10 steps / 50 tool calls，单步模型流超时为 60s；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
+          - 默认 agent-loop 预算为 10 steps / 50 tool calls，单步模型流超时为 10 分钟；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
           - 添加一列 Priority 后，已有行不变（O(1) schema change）。
           - 软删除行后，table_get 不返回该行。
 
