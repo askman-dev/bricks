@@ -128,6 +128,12 @@ router.use('/sites/:slug', async (req: Request, res: Response, next: NextFunctio
     res.status(404).send('Site not found');
     return;
   }
+  const originalPath = req.originalUrl.split('?')[0] ?? '';
+  if (originalPath === `/sites/${slug}`) {
+    const query = req.originalUrl.includes('?') ? `?${req.originalUrl.split('?').slice(1).join('?')}` : '';
+    res.redirect(308, `/sites/${slug}/${query}`);
+    return;
+  }
   await serveChannelSiteBySlug(slug, req, res, next);
 });
 

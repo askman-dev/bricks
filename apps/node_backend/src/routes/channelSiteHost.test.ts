@@ -88,10 +88,19 @@ describe('channelSiteHost route', () => {
     expect(await response.text()).toContain('<div id="root">site</div>');
   });
 
+  it('redirects path preview roots to a trailing slash so relative assets resolve under the site slug', async () => {
+    const response = await fetch(`${baseUrl}/sites/s-abc123?view=live`, {
+      redirect: 'manual',
+    });
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe('/sites/s-abc123/?view=live');
+  });
+
   it('returns not published instead of 500 when dist index is missing', async () => {
     serviceMock.webDistPath.mockReturnValue(path.join(tempDir, 'missing-dist'));
 
-    const response = await fetch(`${baseUrl}/sites/s-abc123`);
+    const response = await fetch(`${baseUrl}/sites/s-abc123/`);
 
     expect(response.status).toBe(404);
     expect(response.headers.get('x-robots-tag')).toBe('noindex');
