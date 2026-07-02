@@ -87,4 +87,14 @@ describe('channelSiteHost route', () => {
     expect(response.headers.get('x-robots-tag')).toBe('noindex');
     expect(await response.text()).toContain('<div id="root">site</div>');
   });
+
+  it('returns not published instead of 500 when dist index is missing', async () => {
+    serviceMock.webDistPath.mockReturnValue(path.join(tempDir, 'missing-dist'));
+
+    const response = await fetch(`${baseUrl}/sites/s-abc123`);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex');
+    expect(await response.text()).toBe('Site not published');
+  });
 });

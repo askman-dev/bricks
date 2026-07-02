@@ -168,7 +168,7 @@ function starterFiles() {
         {
           scripts: {
             dev: 'vite',
-            build: 'vite build --outDir ../web/dist-next --emptyOutDir',
+            build: 'vite build --base ./ --outDir ../web/dist-next --emptyOutDir',
             preview: 'vite preview',
           },
           dependencies: {

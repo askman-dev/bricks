@@ -403,8 +403,9 @@ index:
       - Same-user channels intentionally share one sandbox filesystem, so privacy and deletion safety boundaries must be enforced at user level rather than channel level.
       - Workspace file tools must reject absolute paths, `..`, `.`, null bytes, empty segments, and protected `.git` or `node_modules` deletion.
       - Failed builds must never replace the previous successful `web/dist`; otherwise a bad agent edit can take down the public site.
+      - A `succeeded` build record with a missing `web/dist/index.html` must return a controlled not-published response instead of leaking a backend 500.
       - Public slug lookup must not expose user_id or channel_id, and `craft-spaces` responses must include `X-Robots-Tag: noindex`.
-      - PR preview environments should use `BRICKS_PUBLIC_SITE_BASE_URL` path URLs; otherwise generated `craft-spaces` links can fail before production wildcard origin TLS is configured.
+      - PR preview environments should use `BRICKS_PUBLIC_SITE_BASE_URL` path URLs and Vite starter builds must use relative asset paths; otherwise generated `craft-spaces` links can fail before production wildcard origin TLS is configured or assets can resolve to the Bricks app root.
       - Generated site responses need a more permissive CSP than the Bricks app shell; otherwise user-authored apps that reference CDN scripts/styles such as Tailwind, UMD React, Babel, analytics, fonts, or media fail at runtime.
       - Host-based site serving must run before the main Flutter app SPA fallback; otherwise public site URLs can incorrectly serve the Bricks app shell.
 

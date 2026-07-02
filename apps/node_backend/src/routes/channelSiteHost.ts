@@ -73,12 +73,16 @@ async function sendStaticFile(res: Response, filePath: string): Promise<void> {
   res.send(data);
 }
 
+function sendSiteNotPublished(res: Response): void {
+  res.setHeader('X-Robots-Tag', 'noindex');
+  res.status(404).send('Site not published');
+}
+
 async function serveChannelSiteBySlug(slug: string, req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const site = await getChannelSiteBySlug(slug);
     if (!site || site.latestBuildStatus !== 'succeeded') {
-      res.setHeader('X-Robots-Tag', 'noindex');
-      res.status(404).send('Site not published');
+      sendSiteNotPublished(res);
       return;
     }
 
@@ -104,7 +108,15 @@ async function serveChannelSiteBySlug(slug: string, req: Request, res: Response,
       // Fall through to SPA fallback.
     }
 
-    await sendStaticFile(res, path.join(distRoot, 'index.html'));
+    try {
+      await sendStaticFile(res, path.join(distRoot, 'index.html'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        sendSiteNotPublished(res);
+        return;
+      }
+      throw error;
+    }
   } catch (error) {
     next(error);
   }
