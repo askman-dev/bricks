@@ -168,6 +168,7 @@ export async function createImageMediaAsset(params: {
       : 'media/generated/images';
   const relativePath = `${relativeDir}/${id}.${extension}`;
   await writeChannelFile({
+    userId: params.userId,
     channelId: params.channelId,
     relativePath,
     data,
@@ -230,6 +231,7 @@ export async function createVideoMediaAsset(params: {
   const filename = sanitizeFilename(params.filename, `${id}.${extension}`);
   const relativePath = `media/generated/videos/${id}.${extension}`;
   await writeChannelFile({
+    userId: params.userId,
     channelId: params.channelId,
     relativePath,
     data: params.data,
@@ -301,7 +303,7 @@ export async function listMediaAssetsForUser(
 
 export async function resolveMediaAssetPath(asset: MediaAsset): Promise<string> {
   const safeRelativePath = ensureSafeChannelRelativePath(asset.channelRelativePath);
-  const absolutePath = resolveChannelPath(asset.channelId, safeRelativePath);
+  const absolutePath = resolveChannelPath(asset.userId, asset.channelId, safeRelativePath);
   const stat = await fs.stat(absolutePath);
   if (!stat.isFile()) {
     throw new Error('Media asset path is not a file');

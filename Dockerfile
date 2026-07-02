@@ -34,7 +34,14 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV TRUST_PROXY=true
 ENV BRICKS_STATIC_ROOT=/app/public
-ENV BRICKS_CHANNEL_ROOT=/app/data/channels
+ENV BRICKS_SANDBOX_ROOT=/app/data/sandboxes
+ENV BRICKS_SANDBOX_RUNNER=http
+ENV BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787
+ENV BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates git \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=backend-build /workspace/apps/node_backend/package*.json ./

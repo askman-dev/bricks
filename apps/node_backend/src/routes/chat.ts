@@ -76,7 +76,7 @@ const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 const STREAM_FLUSH_INTERVAL_MS = 300;
 const DEFAULT_INTERNAL_LOOP_MAX_STEPS = 10;
 const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 50;
-const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 60000;
+const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 600000;
 const MAX_AUTO_THREAD_NAME_CHARS = 80;
 const AUTO_THREAD_TITLE_GENERATION_TIMEOUT_MS = 20_000;
 
@@ -896,7 +896,7 @@ async function runDefaultRouterRespondAsync(params: {
     const loopTimeoutMs = parseBoundedInt(body.timeoutMs, {
       fallback: DEFAULT_INTERNAL_LOOP_TIMEOUT_MS,
       min: 1000,
-      max: 120000,
+      max: 600000,
     });
 
     const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {

@@ -10,7 +10,7 @@ vi.mock('./index.js', () => ({
   },
 }));
 
-import { adaptMigrationForSqlite } from './migrate.js';
+import { adaptMigrationForSqlite, isRecoverableSqliteDuplicateColumn } from './migrate.js';
 
 // ---------------------------------------------------------------------------
 // adaptMigrationForSqlite – unit tests
@@ -351,5 +351,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_channel_names_scope_unique
     const rebuiltTableStmt = stmts.find((s) => /CREATE TABLE chat_channel_names__tmp/i.test(s));
     expect(rebuiltTableStmt).toBeDefined();
     expect(rebuiltTableStmt).not.toMatch(/UNIQUE\s*\(\s*user_id\s*,\s*channel_id\s*\)/i);
+  });
+});
+
+describe('isRecoverableSqliteDuplicateColumn', () => {
+  it('treats duplicate ADD COLUMN errors as recoverable for SQLite migrations', () => {
+    expect(
+      isRecoverableSqliteDuplicateColumn(
+        'ALTER TABLE channel_sites ADD COLUMN published_commit_sha VARCHAR(64)',
+        new Error('SQLITE_UNKNOWN: SQLite error: duplicate column name: published_commit_sha'),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not hide unrelated SQLite migration failures', () => {
+    expect(
+      isRecoverableSqliteDuplicateColumn(
+        'CREATE TABLE channel_sites (id UUID PRIMARY KEY)',
+        new Error('SQLite error: table channel_sites already exists'),
+      ),
+    ).toBe(false);
   });
 });

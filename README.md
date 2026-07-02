@@ -11,6 +11,9 @@ Bricks helps you run AI work across conversations, OpenClaw nodes, and durable w
 - Connect OpenClaw and route messages to specific agent nodes
 - Configure AI model providers, channel instructions, thread instructions, and node tokens
 - Automate recurring agent tasks on a schedule
+- Upload images, ask Gemini about them, and keep media previews/downloads inside the channel
+- Generate images and videos as durable channel media
+- Let agents create and build static websites for a channel, then open the latest version from a public URL
 - Fully open source: Flutter app, Node backend, mobile clients, docs, and plugin runtime
 
 ## What you can save
@@ -23,6 +26,8 @@ Bricks keeps useful information available after the chat moves on.
 - **Highlights** - Important facts, decisions, quotes, references, and snippets worth keeping.
 
 ## Showcase
+
+![Bricks code agent builds a website and returns a public URL](docs/assets/showcase/code-agent-website-public-url.png)
 
 | Topic-based agent work | Saved highlights and notes |
 | --- | --- |

@@ -13,7 +13,9 @@ const chatRouter = express.Router();
 const platformRouter = express.Router();
 const resourcesRouter = express.Router();
 const mediaRouter = express.Router();
+const channelSiteApiRouter = express.Router();
 const cronRouter = express.Router();
+const channelSiteHostRouter = express.Router();
 
 authRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
@@ -44,6 +46,10 @@ resourcesRouter.get('/noop', (_req, res) => {
 });
 
 mediaRouter.get('/noop', (_req, res) => {
+  res.json({ ok: true });
+});
+
+channelSiteApiRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
 });
 
@@ -83,8 +89,16 @@ vi.mock('./routes/media.js', () => ({
   default: mediaRouter,
 }));
 
+vi.mock('./routes/channelSiteApi.js', () => ({
+  default: channelSiteApiRouter,
+}));
+
 vi.mock('./routes/cron.js', () => ({
   default: cronRouter,
+}));
+
+vi.mock('./routes/channelSiteHost.js', () => ({
+  default: channelSiteHostRouter,
 }));
 
 let server: ReturnType<express.Express['listen']> | null = null;

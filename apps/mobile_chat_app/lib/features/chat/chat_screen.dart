@@ -8,6 +8,8 @@ import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
@@ -28,6 +30,7 @@ import 'chat_message.dart';
 import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
 import 'note_api_service.dart';
+import 'site_publish_api_service.dart';
 import 'todo_api_service.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
@@ -89,6 +92,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final TodoApiService _todoApiService = TodoApiService();
   final AssetTableApiService _assetTableApiService = AssetTableApiService();
   final NoteApiService _noteApiService = NoteApiService();
+  final SitePublishApiService _sitePublishApiService = SitePublishApiService();
+  SitePublishStatus? _sitePublishStatus;
+  bool _loadingSitePublishStatus = false;
+  int _sitePublishStatusGeneration = 0;
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
@@ -327,6 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _notes = notes;
       });
       await _loadMessagesForActiveScope();
+      unawaited(_refreshSitePublishStatus());
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -870,8 +878,10 @@ class _ChatScreenState extends State<ChatScreen> {
           _archivedMessageIds.clear();
           _latestCheckpointCursor = null;
           _lastSyncedSeq = 0;
+          _sitePublishStatus = null;
         });
         _configureActiveScopeSync();
+        unawaited(_refreshSitePublishStatus());
         unawaited(
           _chatHistoryApiService
               .saveChannel(
@@ -1079,8 +1089,10 @@ class _ChatScreenState extends State<ChatScreen> {
       _archivedMessageIds.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
+      _sitePublishStatus = null;
     });
     unawaited(_loadMessagesForActiveScope());
+    unawaited(_refreshSitePublishStatus());
   }
 
   List<ChatSubSection> get _activeSubSections {
@@ -2801,6 +2813,37 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _refreshSitePublishStatus() async {
+    final channelId = _activeChannelId;
+    final generation = ++_sitePublishStatusGeneration;
+    setState(() {
+      _loadingSitePublishStatus = true;
+    });
+    try {
+      final status = await _sitePublishApiService.fetchStatus(channelId);
+      if (!mounted ||
+          generation != _sitePublishStatusGeneration ||
+          channelId != _activeChannelId) {
+        return;
+      }
+      setState(() {
+        _sitePublishStatus = status;
+        _loadingSitePublishStatus = false;
+      });
+    } catch (error) {
+      debugPrint('loadSitePublishStatus failed: $error');
+      if (!mounted ||
+          generation != _sitePublishStatusGeneration ||
+          channelId != _activeChannelId) {
+        return;
+      }
+      setState(() {
+        _sitePublishStatus = null;
+        _loadingSitePublishStatus = false;
+      });
+    }
+  }
+
   AgentDefinition? _findAgent(String agentId) {
     for (final agent in _agents) {
       if (agent.name == agentId) return agent;
@@ -2922,6 +2965,177 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  String _sitePublishLabel() {
+    if (_loadingSitePublishStatus) return 'Site';
+    switch (_sitePublishStatus?.state) {
+      case SitePublishState.published:
+        return 'Published';
+      case SitePublishState.updateAvailable:
+        return 'Update';
+      case SitePublishState.publishFailed:
+        return 'Failed';
+      case SitePublishState.notPublished:
+      case null:
+        return 'Site';
+    }
+  }
+
+  Color _sitePublishColor(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    if (_loadingSitePublishStatus) return colors.outline;
+    switch (_sitePublishStatus?.state) {
+      case SitePublishState.published:
+        return colors.primary;
+      case SitePublishState.updateAvailable:
+        return colors.tertiary;
+      case SitePublishState.publishFailed:
+        return colors.error;
+      case SitePublishState.notPublished:
+      case null:
+        return colors.outline;
+    }
+  }
+
+  String _shortCommit(String? sha) {
+    if (sha == null || sha.isEmpty) return 'Unknown';
+    return sha.length <= 7 ? sha : sha.substring(0, 7);
+  }
+
+  String _publishedAtLabel(DateTime? value) {
+    if (value == null) return 'Never';
+    final local = value.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _siteShareText(String publicUrl) {
+    return 'Check out this site I made with Bricks: $publicUrl';
+  }
+
+  Future<void> _visitSite(String publicUrl) async {
+    final uri = Uri.tryParse(publicUrl);
+    if (uri == null) return;
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open site')),
+      );
+    }
+  }
+
+  Future<void> _shareSite(String publicUrl) async {
+    await Clipboard.setData(ClipboardData(text: _siteShareText(publicUrl)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Share text copied')),
+    );
+  }
+
+  Widget _sitePublishStatusButton(BuildContext context) {
+    final color = _sitePublishColor(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+        onPressed: _showSitePublishDialog,
+        icon: _loadingSitePublishStatus
+            ? SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              )
+            : Icon(Icons.public, size: 18, color: color),
+        label: Text(_sitePublishLabel()),
+      ),
+    );
+  }
+
+  Future<void> _showSitePublishDialog() async {
+    final status = _sitePublishStatus;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        final publicUrl = status?.publicUrl ?? '';
+        final hasPublicUrl = publicUrl.trim().isNotEmpty;
+        return AlertDialog(
+          title: const Text('Site publish'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  publicUrl.isEmpty ? 'Public URL not ready' : publicUrl,
+                ),
+                const SizedBox(height: 16),
+                _SitePublishInfoRow(
+                    label: 'Status', value: _sitePublishLabel()),
+                _SitePublishInfoRow(
+                  label: 'Published',
+                  value: _publishedAtLabel(status?.latestBuildAt),
+                ),
+                _SitePublishInfoRow(
+                  label: 'Current',
+                  value: _shortCommit(status?.currentCommitSha),
+                ),
+                _SitePublishInfoRow(
+                  label: 'Live',
+                  value: _shortCommit(status?.publishedCommitSha),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: hasPublicUrl
+                  ? () {
+                      Navigator.of(context).pop();
+                      unawaited(_visitSite(publicUrl));
+                    }
+                  : null,
+              child: const Text('Visit'),
+            ),
+            TextButton(
+              onPressed: hasPublicUrl
+                  ? () {
+                      Navigator.of(context).pop();
+                      unawaited(_shareSite(publicUrl));
+                    }
+                  : null,
+              child: const Text('Share'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                unawaited(_refreshSitePublishStatus());
+              },
+              child: const Text('Refresh'),
+            ),
+            FilledButton(
+              onPressed: _isSending
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      _sendMessage(
+                        'Publish the current website for this channel. If the build fails, inspect the build log, fix the issue, and publish again.',
+                      );
+                    },
+              child: const Text('Publish'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -3170,6 +3384,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       actions: [
+        _sitePublishStatusButton(context),
         IconButton(
           icon: const Icon(Icons.tune_outlined),
           tooltip: 'Conversation config',
@@ -3427,6 +3642,34 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         appBar: appBar,
         body: chatContent,
+      ),
+    );
+  }
+}
+
+class _SitePublishInfoRow extends StatelessWidget {
+  const _SitePublishInfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: BricksSpacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 84,
+            child: Text(label, style: textTheme.bodySmall),
+          ),
+          Expanded(child: SelectableText(value)),
+        ],
       ),
     );
   }

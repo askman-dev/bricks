@@ -36,7 +36,7 @@ jobs:
           branch_slug="${base}-${hash}"
           app_name="bricks-preview-${branch_slug}"
           domain="${branch_slug}.craft-dev.bricks.cool"
-          data_root="/home/bricks/data/previews/${branch_slug}/channels"
+          data_root="/home/bricks/data/production/sandboxes"
           echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
           echo "app_name=${app_name}" >> "$GITHUB_OUTPUT"
           echo "domain=${domain}" >> "$GITHUB_OUTPUT"
@@ -71,14 +71,18 @@ jobs:
               bricks-preview-*) ;;
               *) echo "Refusing unexpected app name: $app" >&2; exit 1 ;;
             esac
+            preserve_data_root=false
             case "$data_root" in
-              /home/bricks/data/previews/*/channels) ;;
+              /home/bricks/data/production/sandboxes) preserve_data_root=true ;;
+              /home/bricks/data/previews/*/sandboxes) ;;
               *) echo "Refusing unexpected data root: $data_root" >&2; exit 1 ;;
             esac
             if dokku apps:exists "$app"; then
               dokku apps:destroy "$app" --force
             fi
-            rm -rf -- "$(dirname "$data_root")"
+            if [ "$preserve_data_root" = false ]; then
+              rm -rf -- "$(dirname "$data_root")"
+            fi
           REMOTE
 
   deploy:
@@ -115,8 +119,8 @@ jobs:
             data_root="$3"
             dokku apps:exists "$app" || dokku apps:create "$app"
             mkdir -p "$data_root"
-            if ! dokku storage:list "$app" | grep -Fq "$data_root:/app/data/channels"; then
-              dokku storage:mount "$app" "$data_root:/app/data/channels"
+            if ! dokku storage:list "$app" | grep -Fq "$data_root:/app/data/sandboxes"; then
+              dokku storage:mount "$app" "$data_root:/app/data/sandboxes"
             fi
             dokku domains:set "$app" "$domain"
             if ! dokku ports:list "$app" | grep -Eq 'http:80:3000|http[[:space:]]+80[[:space:]]+3000'; then
@@ -132,13 +136,18 @@ jobs:
           SECRET_CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_SANDBOX_RUNNER_TOKEN: ${{ secrets.SANDBOX_RUNNER_TOKEN }}
         run: |
           set -euo pipefail
           config_args=(
             NODE_ENV=production
             TRUST_PROXY=true
             BRICKS_STATIC_ROOT=/app/public
-            BRICKS_CHANNEL_ROOT=/app/data/channels
+            BRICKS_SANDBOX_ROOT=/app/data/sandboxes
+            BRICKS_SANDBOX_RUNNER=http
+            BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787
+            BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes
+            "BRICKS_PUBLIC_SITE_BASE_URL=https://${DOMAIN}"
             GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback
             "OAUTH_ALLOWED_RETURN_ORIGINS=https://${DOMAIN}"
             "CORS_ORIGIN=https://${DOMAIN}"
@@ -155,6 +164,7 @@ jobs:
           add_config CRON_SECRET "$SECRET_CRON_SECRET"
           add_config GEMINI_API_KEY "$SECRET_GEMINI_API_KEY"
           add_config ANTHROPIC_API_KEY "$SECRET_ANTHROPIC_API_KEY"
+          add_config BRICKS_SANDBOX_RUNNER_TOKEN "$SECRET_SANDBOX_RUNNER_TOKEN"
           ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
             dokku config:set --no-restart "${APP_NAME}" "${config_args[@]}"
           ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \

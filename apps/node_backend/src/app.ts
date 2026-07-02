@@ -11,6 +11,8 @@ import platformRoutes from './routes/platform.js';
 import resourcesRoutes from './routes/resources.js';
 import cronRoutes from './routes/cron.js';
 import mediaRoutes from './routes/media.js';
+import channelSiteApiRoutes from './routes/channelSiteApi.js';
+import channelSiteHostRoutes from './routes/channelSiteHost.js';
 import { runMigrations } from './db/migrate.js';
 
 // Load environment variables (no-op in Vercel production where env vars are injected directly)
@@ -113,10 +115,12 @@ app.use('/api/config', configRoutes);
 app.use('/api/llm', llmRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/sites', channelSiteApiRoutes);
 app.use('/api/v1/platform', platformRoutes);
 app.use('/api/resources', resourcesRoutes);
 // Cron routes do NOT use the JWT authenticate middleware — they use CRON_SECRET.
 app.use('/api/cron', cronRoutes);
+app.use(channelSiteHostRoutes);
 
 const NO_STORE_STATIC_CACHE = 'no-store, no-cache, must-revalidate, max-age=0';
 const SHORT_STATIC_CACHE = 'public, max-age=60';

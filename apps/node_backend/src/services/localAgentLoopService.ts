@@ -66,6 +66,22 @@ import {
   MediaGenerationError,
 } from './mediaGenerationService.js';
 import { mediaAssetToDto } from './mediaService.js';
+import {
+  buildChannelSite,
+  channelSiteDto,
+  channelSitePublishStatusDto,
+  ChannelSiteError,
+  copyMediaToSiteAssets,
+  deleteWorkspacePath,
+  ensureChannelSite,
+  ensureWebsiteWorkspace,
+  getChannelSitePublishStatus,
+  listWorkspaceFiles,
+  makeWorkspaceDirectory,
+  readWorkspaceFile,
+  runWorkspaceCommand,
+  writeWorkspaceFile,
+} from './channelSiteService.js';
 import type { AgentTool } from '../llm/types.js';
 
 export const INTERNAL_TOOL_CHAT_CHANNEL_INSTRUCTION_SET = 'chat.channel.instruction.set';
@@ -82,6 +98,19 @@ export const INTERNAL_TOOL_CHAT_THREAD_GET = 'chat.thread.get';
 // Media generation tools
 export const INTERNAL_TOOL_MEDIA_IMAGE_GENERATE = 'media.image.generate';
 export const INTERNAL_TOOL_MEDIA_VIDEO_GENERATE = 'media.video.generate';
+
+// Channel website workspace tools
+export const INTERNAL_TOOL_SITE_WORKSPACE_CONFIG = 'site.workspace.config';
+export const INTERNAL_TOOL_SITE_WORKSPACE_INIT = 'site.workspace.init';
+export const INTERNAL_TOOL_SITE_FILE_LIST = 'site.file.list';
+export const INTERNAL_TOOL_SITE_FILE_READ = 'site.file.read';
+export const INTERNAL_TOOL_SITE_FILE_WRITE = 'site.file.write';
+export const INTERNAL_TOOL_SITE_DIRECTORY_MKDIR = 'site.directory.mkdir';
+export const INTERNAL_TOOL_SITE_PATH_DELETE = 'site.path.delete';
+export const INTERNAL_TOOL_SITE_SHELL_EXEC = 'site.shell.exec';
+export const INTERNAL_TOOL_SITE_PUBLISH_STATUS = 'site.publish.status';
+export const INTERNAL_TOOL_SITE_BUILD = 'site.build';
+export const INTERNAL_TOOL_SITE_MEDIA_COPY = 'site.media.copy';
 
 // Todo list tools (parent entities that group todo items)
 export const INTERNAL_TOOL_TODO_LIST_CREATE = 'todolist.create';
@@ -144,6 +173,17 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_CHAT_THREAD_GET,
   INTERNAL_TOOL_MEDIA_IMAGE_GENERATE,
   INTERNAL_TOOL_MEDIA_VIDEO_GENERATE,
+  INTERNAL_TOOL_SITE_WORKSPACE_CONFIG,
+  INTERNAL_TOOL_SITE_WORKSPACE_INIT,
+  INTERNAL_TOOL_SITE_FILE_LIST,
+  INTERNAL_TOOL_SITE_FILE_READ,
+  INTERNAL_TOOL_SITE_FILE_WRITE,
+  INTERNAL_TOOL_SITE_DIRECTORY_MKDIR,
+  INTERNAL_TOOL_SITE_PATH_DELETE,
+  INTERNAL_TOOL_SITE_SHELL_EXEC,
+  INTERNAL_TOOL_SITE_PUBLISH_STATUS,
+  INTERNAL_TOOL_SITE_BUILD,
+  INTERNAL_TOOL_SITE_MEDIA_COPY,
   INTERNAL_TOOL_TODO_LIST_CREATE,
   INTERNAL_TOOL_TODO_LIST_LIST,
   INTERNAL_TOOL_TODO_LIST_GET,
@@ -332,6 +372,20 @@ function mediaGenerationFailure(toolName: string, error: unknown): ExecuteIntern
       : error instanceof MediaGenerationError && error.statusCode >= 500
         ? 'provider_error'
         : 'invalid_args';
+  return {
+    ok: false,
+    toolName,
+    data: null,
+    error: { code, message },
+  };
+}
+
+function channelSiteFailure(toolName: string, error: unknown): ExecuteInternalToolResult {
+  const message = error instanceof Error ? error.message : 'Channel site operation failed';
+  const code =
+    error instanceof ChannelSiteError && error.statusCode === 404
+      ? 'not_found'
+      : 'invalid_args';
   return {
     ok: false,
     toolName,
@@ -934,6 +988,212 @@ export async function executeInternalTool(
         };
       } catch (error) {
         return mediaGenerationFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_WORKSPACE_CONFIG: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId is a required string argument' },
+        };
+      }
+      try {
+        const site = await ensureChannelSite(userId, channelId);
+        return { ok: true, toolName, data: { site: channelSiteDto(site) }, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_WORKSPACE_INIT: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId is a required string argument' },
+        };
+      }
+      try {
+        const site = await ensureWebsiteWorkspace(userId, channelId);
+        return { ok: true, toolName, data: { site: channelSiteDto(site) }, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_FILE_LIST: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const relativePath = readStringArg(args, 'path');
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId is a required string argument' },
+        };
+      }
+      try {
+        const files = await listWorkspaceFiles({ userId, channelId, relativePath: relativePath ?? undefined });
+        return { ok: true, toolName, data: { files }, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_FILE_READ: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const relativePath = readStringArg(args, 'path');
+      if (!channelId || !relativePath) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId and path are required string arguments' },
+        };
+      }
+      try {
+        const file = await readWorkspaceFile({ userId, channelId, relativePath });
+        return { ok: true, toolName, data: { file }, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_FILE_WRITE: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const relativePath = readStringArg(args, 'path');
+      const content = readBodyArg(args, 'content');
+      if (!channelId || !relativePath || content == null) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId, path, and content are required' },
+        };
+      }
+      try {
+        const file = await writeWorkspaceFile({ userId, channelId, relativePath, content });
+        return { ok: true, toolName, data: { file }, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_DIRECTORY_MKDIR: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const relativePath = readStringArg(args, 'path');
+      if (!channelId || !relativePath) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId and path are required string arguments' },
+        };
+      }
+      try {
+        const directory = await makeWorkspaceDirectory({ userId, channelId, relativePath });
+        return { ok: true, toolName, data: { directory }, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_PATH_DELETE: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const relativePath = readStringArg(args, 'path');
+      if (!channelId || !relativePath) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId and path are required string arguments' },
+        };
+      }
+      try {
+        const result = await deleteWorkspacePath({ userId, channelId, relativePath });
+        return { ok: true, toolName, data: result, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_SHELL_EXEC: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const command = readStringArg(args, 'command');
+      if (!channelId || !command) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId and command are required string arguments' },
+        };
+      }
+      try {
+        const result = await runWorkspaceCommand({ userId, channelId, command });
+        return { ok: result.exitCode === 0, toolName, data: result, error: result.exitCode === 0 ? null : { code: 'invalid_args', message: 'Workspace command failed' } };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_PUBLISH_STATUS: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId is a required string argument' },
+        };
+      }
+      try {
+        const result = await getChannelSitePublishStatus({ userId, channelId });
+        return {
+          ok: true,
+          toolName,
+          data: channelSitePublishStatusDto(result.site, result.status),
+          error: null,
+        };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_BUILD: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId is a required string argument' },
+        };
+      }
+      try {
+        const result = await buildChannelSite({ userId, channelId });
+        return {
+          ok: result.ok,
+          toolName,
+          data: { site: channelSiteDto(result.site), log: result.log },
+          error: result.ok ? null : { code: 'invalid_args', message: 'Site build failed; inspect jobs/build.log' },
+        };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_MEDIA_COPY: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      const mediaId = readStringArg(args, 'mediaId', MAX_IDENTIFIER_LENGTH);
+      const filename = readStringArg(args, 'filename');
+      if (!channelId || !mediaId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId and mediaId are required string arguments' },
+        };
+      }
+      try {
+        const copied = await copyMediaToSiteAssets({ userId, channelId, mediaId, filename });
+        return { ok: true, toolName, data: { asset: copied }, error: null };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
       }
     }
     // -------------------------------------------------------------------------
@@ -1554,7 +1814,8 @@ export function buildAgentTools(
     const effectiveArgs = { ...args };
     if (
       toolName === INTERNAL_TOOL_MEDIA_IMAGE_GENERATE ||
-      toolName === INTERNAL_TOOL_MEDIA_VIDEO_GENERATE
+      toolName === INTERNAL_TOOL_MEDIA_VIDEO_GENERATE ||
+      toolName.startsWith('site.')
     ) {
       if (typeof effectiveArgs.channelId !== 'string' && context.channelId) {
         effectiveArgs.channelId = context.channelId;
@@ -1857,6 +2118,159 @@ export function buildAgentTools(
         additionalProperties: false,
       },
       execute: (args) => runTool(INTERNAL_TOOL_MEDIA_VIDEO_GENERATE, args),
+    },
+
+    site_workspace_config: {
+      description:
+        'Return the current channel website workspace configuration, including public URL, build log path, and dist path. Use before creating or editing a website.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_WORKSPACE_CONFIG, args),
+    },
+
+    site_workspace_init: {
+      description:
+        'Initialize the current channel static React/Vite/TypeScript website workspace and starter git repository.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_WORKSPACE_INIT, args),
+    },
+
+    site_file_list: {
+      description: 'List files inside the current channel website workspace.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+          path: { type: 'string', description: 'Optional workspace-relative directory path.' },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_FILE_LIST, args),
+    },
+
+    site_file_read: {
+      description: 'Read a UTF-8 text file from the current channel website workspace.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+          path: { type: 'string', description: 'Workspace-relative file path.' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_FILE_READ, args),
+    },
+
+    site_file_write: {
+      description: 'Create or replace a UTF-8 text file in the current channel website workspace.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+          path: { type: 'string', description: 'Workspace-relative file path.' },
+          content: { type: 'string', description: 'Full file contents.' },
+        },
+        required: ['path', 'content'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_FILE_WRITE, args),
+    },
+
+    site_directory_mkdir: {
+      description: 'Create a directory inside the current channel website workspace.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+          path: { type: 'string', description: 'Workspace-relative directory path.' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_DIRECTORY_MKDIR, args),
+    },
+
+    site_path_delete: {
+      description: 'Delete a file or directory inside the current channel website workspace, excluding protected paths.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+          path: { type: 'string', description: 'Workspace-relative file or directory path.' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_PATH_DELETE, args),
+    },
+
+    site_shell_exec: {
+      description:
+        'Run a shell command inside the current channel website workspace. Use for npm, git, and local build/debug commands after editing source files.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+          command: { type: 'string', description: 'Shell command to run inside the workspace.' },
+        },
+        required: ['command'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_SHELL_EXEC, args),
+    },
+
+    site_publish_status: {
+      description:
+        'Return the current channel website publish status, public URL, latest publish time, current git commit, and last successful published commit. Use before reporting whether a site is live or up to date.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_PUBLISH_STATUS, args),
+    },
+
+    site_build: {
+      description:
+        'Publish the current channel website: create a git snapshot commit, install dependencies if needed, build the site, and publish the latest successful dist to the fixed public URL. After editing website files, call this tool automatically so the user does not need to ask for compilation. Failed builds keep the previous public dist.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_BUILD, args),
+    },
+
+    site_media_copy: {
+      description:
+        'Copy an uploaded or generated channel media asset into the website public/assets directory so React code can reference it.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+          mediaId: { type: 'string', description: 'Media asset ID from the current channel.' },
+          filename: { type: 'string', description: 'Optional destination filename suffix.' },
+        },
+        required: ['mediaId'],
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_MEDIA_COPY, args),
     },
 
     // -------------------------------------------------------------------------

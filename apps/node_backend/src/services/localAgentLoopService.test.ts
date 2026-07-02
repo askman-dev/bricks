@@ -144,6 +144,37 @@ vi.mock('./mediaService.js', () => ({
   mediaAssetToDto: mediaAssetToDtoMock,
 }));
 
+vi.mock('./channelSiteService.js', () => {
+  class MockChannelSiteError extends Error {
+    constructor(message: string, readonly statusCode = 400) {
+      super(message);
+      this.name = 'ChannelSiteError';
+    }
+  }
+  const site = {
+    id: 'site-1',
+    channelId: 'default',
+    publicSlug: 's-abc123',
+    publicUrl: 'https://s-abc123.craft-spaces.bricks.cool',
+    latestBuildStatus: 'not_built',
+    latestBuildAt: null,
+  };
+  return {
+    ChannelSiteError: MockChannelSiteError,
+    ensureChannelSite: vi.fn().mockResolvedValue(site),
+    ensureWebsiteWorkspace: vi.fn().mockResolvedValue(site),
+    channelSiteDto: vi.fn((value) => value),
+    listWorkspaceFiles: vi.fn().mockResolvedValue([]),
+    readWorkspaceFile: vi.fn().mockResolvedValue({ path: 'src/main.tsx', content: 'content', sizeBytes: 7 }),
+    writeWorkspaceFile: vi.fn().mockResolvedValue({ path: 'src/main.tsx', sizeBytes: 7 }),
+    makeWorkspaceDirectory: vi.fn().mockResolvedValue({ path: 'src' }),
+    deleteWorkspacePath: vi.fn().mockResolvedValue({ path: 'src/old.ts', deleted: true }),
+    runWorkspaceCommand: vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
+    buildChannelSite: vi.fn().mockResolvedValue({ site, ok: true, log: 'ok' }),
+    copyMediaToSiteAssets: vi.fn().mockResolvedValue({ mediaId: 'media-1', path: 'public/assets/media-1.png', publicPath: '/assets/media-1.png' }),
+  };
+});
+
 describe('localAgentLoopService', () => {
   beforeEach(() => {
     upsertChatScopeSettingMock.mockReset();

@@ -1,33 +1,52 @@
 # Dokku Deployment
 
 This deployment runs one Bricks instance per Dokku app. Each app mounts one
-channel data root into the same container path:
+per-user sandbox data root into the same container path:
 
 ```text
-/app/data/channels
+/app/data/sandboxes
 ```
 
 Production host data:
 
 ```text
-/home/bricks/data/production/channels
+/home/bricks/data/production/sandboxes
 ```
 
 Preview host data:
 
 ```text
-/home/bricks/data/previews/<branch-slug>/channels
+/home/bricks/data/previews/<branch-slug>/sandboxes
 ```
 
 ## Production App
 
 ```sh
 dokku apps:create bricks
-mkdir -p /home/bricks/data/production/channels
-dokku storage:mount bricks /home/bricks/data/production/channels:/app/data/channels
+mkdir -p /home/bricks/data/production/sandboxes
+dokku storage:mount bricks /home/bricks/data/production/sandboxes:/app/data/sandboxes
 dokku domains:set bricks craft.bricks.cool
 dokku letsencrypt:enable bricks
 ```
+
+Install the same-host sandbox runner before enabling AI shell execution:
+
+```sh
+cd /path/to/bricks
+RUNNER_TOKEN="<shared-runner-token>" \
+  SANDBOX_ROOT=/home/bricks/data \
+  RUNNER_HOST=172.17.0.1 \
+  RUNNER_PORT=8787 \
+  sudo -E tools/sandbox_runner/install_vultr.sh
+```
+
+The installer registers Docker's `runsc` runtime, starts the
+`bricks-sandbox-runner` systemd service, and, when UFW is active, allows only
+Docker bridge traffic from `172.17.0.0/16` to `172.17.0.1:8787`. Do not expose
+the runner port on the public network. The runner root must be the shared host
+data root. Production and preview currently share the same database and channel
+IDs, so both environments use `production,sandboxes` as the runner root
+segments and mount the same workspace root.
 
 Set required config values on the Dokku server without committing secrets.
 Runtime secrets such as Turso credentials, JWT signing keys, and encryption keys
@@ -39,7 +58,11 @@ dokku config:set bricks \
   NODE_ENV=production \
   TRUST_PROXY=true \
   BRICKS_STATIC_ROOT=/app/public \
-  BRICKS_CHANNEL_ROOT=/app/data/channels \
+  BRICKS_SANDBOX_ROOT=/app/data/sandboxes \
+  BRICKS_SANDBOX_RUNNER=http \
+  BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787 \
+  BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes \
+  BRICKS_SANDBOX_RUNNER_TOKEN="<shared-runner-token>" \
   GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback \
   OAUTH_ALLOWED_RETURN_ORIGINS=https://craft.bricks.cool \
   TURSO_DATABASE_URL=... \
@@ -55,7 +78,9 @@ dokku config:set bricks \
 
 ## Preview Apps
 
-Each PR preview app uses a separate Dokku app and a separate host data root.
+Each PR preview app uses a separate Dokku app. Because previews currently share
+the production database and channel IDs, they also mount the production sandbox
+root so site workspace files are consistent across production and preview.
 The GitHub Actions workflow computes the branch slug and deploys to:
 
 ```text

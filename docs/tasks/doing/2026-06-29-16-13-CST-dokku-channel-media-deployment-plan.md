@@ -35,22 +35,25 @@ Cloudflare already points `*.craft-dev.bricks.cool` to the Vultr server IP. GitH
 ## Implementation Plan
 
 1. Define the channel-scoped filesystem contract.
-   - Add a backend configuration value such as `BRICKS_CHANNEL_ROOT`, defaulting to a safe local development path and set to `/app/data/channels` in Dokku.
-   - Use a stable channel root layout:
+   - Add a backend configuration value such as `BRICKS_SANDBOX_ROOT`, defaulting to a safe local development path and set to `/app/data/sandboxes` in Dokku.
+   - Use a stable per-user sandbox root layout:
 
      ```text
-     /app/data/channels/
-       <channel-id>/
-         workspace/
-         media/
-           uploads/
-           generated/
-             images/
-           thumbnails/
-         web/
-           dist/
-         jobs/
-         .bricks/
+     /app/data/sandboxes/
+       user-<hash>/
+         fs/
+           channels/
+             channel-<hash>/
+               workspace/
+               media/
+                 uploads/
+                 generated/
+                   images/
+                 thumbnails/
+               web/
+                 dist/
+               jobs/
+               .bricks/
      ```
 
    - Store only channel-relative paths in the database, never absolute host paths.
@@ -93,12 +96,12 @@ Cloudflare already points `*.craft-dev.bricks.cool` to the Vultr server IP. GitH
    - Mount host data:
 
      ```text
-     /home/bricks/data/production/channels -> /app/data/channels
+     /home/bricks/data/production/sandboxes -> /app/data/sandboxes
      ```
 
    - Configure the production domain `craft.bricks.cool`.
    - Enable HTTPS.
-   - Set Dokku config values migrated from Vercel, including Turso, GitHub OAuth, JWT/encryption, CORS, cron, provider keys, and `BRICKS_CHANNEL_ROOT=/app/data/channels`.
+   - Set Dokku config values migrated from Vercel, including Turso, GitHub OAuth, JWT/encryption, CORS, cron, provider keys, and `BRICKS_SANDBOX_ROOT=/app/data/sandboxes`.
    - Ensure the app runs as at least a web process and a worker process if generated image work or future media jobs require background processing.
 
 8. Add GitHub Actions production deployment.
@@ -117,7 +120,7 @@ Cloudflare already points `*.craft-dev.bricks.cool` to the Vultr server IP. GitH
    - Mount an isolated host data root:
 
      ```text
-     /home/bricks/data/previews/<branch-slug>/channels -> /app/data/channels
+     /home/bricks/data/previews/<branch-slug>/sandboxes -> /app/data/sandboxes
      ```
 
    - Set the preview domain:
@@ -157,11 +160,11 @@ Cloudflare already points `*.craft-dev.bricks.cool` to the Vultr server IP. GitH
 ## Acceptance Criteria
 
 - Production Bricks is reachable at `https://craft.bricks.cool`.
-- The production Dokku app uses `/app/data/channels` inside the container and persists data under `/home/bricks/data/production/channels` on the host.
+- The production Dokku app uses `/app/data/sandboxes` inside the container and persists data under `/home/bricks/data/production/sandboxes` on the host.
 - A main branch push automatically builds and deploys the production Dokku app.
 - Opening or updating a PR deploys a preview app at `https://<branch-slug>.craft-dev.bricks.cool`.
-- Each preview app uses a unique data root under `/home/bricks/data/previews/<branch-slug>/channels`.
-- Preview apps cannot read or write production channel files or another preview app's channel files through the configured mount.
+- Each preview app uses a unique data root under `/home/bricks/data/previews/<branch-slug>/sandboxes`.
+- Preview apps cannot read or write production sandbox files or another preview app's sandbox files through the configured mount.
 - Closing or merging a PR destroys the matching preview app and removes its preview data root.
 - GitHub OAuth login works from `https://craft.bricks.cool`.
 - GitHub OAuth login from a preview domain returns the user to that preview domain after the fixed production callback at `https://craft.bricks.cool/api/callback`.

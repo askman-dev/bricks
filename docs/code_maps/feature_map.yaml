@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-06-29
+last_updated: 2026-06-30
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -159,6 +159,53 @@ products:
           - "`POST /api/media/video-generations` 创建 `media_generation_jobs` 记录并保存 Veo operation name；轮询 job 完成后下载 provider video URI 并保存成 `generated_video`。"
           - Veo `referenceImages` 最多接受 3 张 ready image media；`lastFrameMediaId` 必须搭配 `firstFrameMediaId`。
           - 不支持的 MIME、空图片、超过 20MB 的图片、空视频或非 mp4 视频被后端拒绝。
+
+      - feature_id: channel_react_site_workspace
+        name: Channel React Site Workspace and Public Preview
+        user_value: 用户可以让 Agent 在当前 channel 里创建、编辑、构建一个静态 React/Vite 网站，并通过固定 `craft-spaces.bricks.cool` 子域名访问最新成功构建。
+        entry_paths:
+          - migration: channel_sites public slug binding
+            route_hint: apps/node_backend/src/db/migrations/028_create_channel_sites.sql
+          - migration: channel site publish commit tracking
+            route_hint: apps/node_backend/src/db/migrations/029_add_channel_site_publish_commits.sql
+          - screen: ChatScreen title-bar site publish status
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - service: Flutter site publish status API client
+            route_hint: apps/mobile_chat_app/lib/features/chat/site_publish_api_service.dart
+          - service: user-scoped channel filesystem paths
+            route_hint: apps/node_backend/src/services/channelFileService.ts
+          - service: persistent per-user sandbox filesystem and shell runner
+            route_hint: apps/node_backend/src/services/userSandboxService.ts
+          - service: same-host gVisor sandbox runner
+            route_hint: apps/node_sandbox_runner/src/index.ts
+          - ops: Vultr host sandbox runner installer
+            route_hint: tools/sandbox_runner/install_vultr.sh
+          - service: site workspace, starter, build, media copy
+            route_hint: apps/node_backend/src/services/channelSiteService.ts
+          - route: Host <slug>.craft-spaces.bricks.cool static site serving
+            route_hint: apps/node_backend/src/routes/channelSiteHost.ts
+          - route: /sites/<slug> preview path static site serving
+            route_hint: apps/node_backend/src/routes/channelSiteHost.ts
+          - route: authenticated site publish status API
+            route_hint: apps/node_backend/src/routes/channelSiteApi.ts
+          - tools: site_workspace_config/init, site_file_*, site_shell_exec, site_publish_status, site_build, site_media_copy
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - "`site_workspace_init` initializes one Vite + React + TypeScript workspace for the current channel and creates an initial git commit."
+          - Chat title bar shows a lightweight Site status pill; opening it shows the public URL, publish time, current commit, live commit, Visit, Share, Refresh, and Publish actions.
+          - Channel filesystem directories are nested under one persistent per-user sandbox with opaque user and channel path segments, so raw user IDs and channel IDs are not exposed in paths.
+          - Same-user channels share one sandbox filesystem root, while different users resolve to different sandbox roots.
+          - "`site_file_write/read/list/mkdir/delete` operate only inside the current channel workspace and reject traversal paths."
+          - "`site_shell_exec` and `site_build` execute through the user sandbox runner instead of direct host shell execution."
+          - Production uses `BRICKS_SANDBOX_RUNNER=http` so the Bricks app is control plane only; user commands run in same-host gVisor containers managed by the sandbox runner.
+          - Production and preview apps send `BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes` so the shared runner mounts the same workspace root while both environments share one database.
+          - "`site_publish_status` reports the public URL, current git commit, last successful published commit, latest publish time, and commit-based unpublished update state."
+          - "`site_build` creates a git snapshot commit, runs npm install/build, writes `jobs/build.log` and `jobs/build.json`, stores the latest publish commit, and only replaces `web/dist` plus `published_commit_sha` after a successful build."
+          - "Starter Vite builds use a relative base so `/sites/<slug>` preview URLs load JS/CSS assets below the same site path."
+          - "`site_media_copy` copies current-channel uploaded/generated media into `workspace/public/assets/` and returns a public asset path."
+          - "Production requests to `<slug>.craft-spaces.bricks.cool` resolve through `channel_sites.public_slug`, serve the latest successful `web/dist`, apply React SPA fallback, and include `X-Robots-Tag: noindex`."
+          - "Preview deployments set `BRICKS_PUBLIC_SITE_BASE_URL` so site tools return `https://<preview-host>/sites/<slug>` URLs that do not depend on the global `craft-spaces` wildcard origin certificate."
+          - "Generated site responses override the main app CSP with a site-specific policy that allows common external HTTPS scripts, styles, fonts, media, workers, frames, and WebSocket connections."
 
       - feature_id: scope_instructions_config
         name: 频道和分区会话指令配置
@@ -322,7 +369,7 @@ products:
           - 在 Turso/libSQL 数据库下，table_create / table_add_column / table_add_row / table_update_row / table_delete_row 均应成功执行，不应因 PostgreSQL-only SQL（例如 NOW() 或 ::jsonb）失败。
           - 当 table_create 执行时抛出数据库错误，聊天历史应显示工具错误结果，并将对应 tool_call_start 标记为已完成，不能永久显示“正在调用”。
           - 相邻工具调用在聊天流中应折叠为一个 `Thinking` / `Thinking complete completed/total` 标志，不直接显示工具名或长 JSON；同 task 的 thinking 行应显示在 `Processing...` 占位前；点击 thinking 标志可在模态窗口查看具体 tool/reasoning 过程；紧随其后的助手文本不重复显示头像/模型名。
-          - 默认 agent-loop 预算为 10 steps / 50 tool calls，单步模型流超时为 60s；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
+          - 默认 agent-loop 预算为 10 steps / 50 tool calls，单步模型流超时为 10 分钟；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
           - 添加一列 Priority 后，已有行不变（O(1) schema change）。
           - 软删除行后，table_get 不返回该行。
 
@@ -535,13 +582,13 @@ products:
             route_hint: .github/workflows/dokku_production_deploy.yml
           - route: https://<branch-slug>.craft-dev.bricks.cool
             route_hint: .github/workflows/dokku_preview_deploy.yml
-          - mount: /app/data/channels
+          - mount: /app/data/sandboxes
             route_hint: Dockerfile
         smoke_checks:
-          - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/channels`。
+          - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/sandboxes`。
           - PR open/synchronize 后创建或更新 `bricks-preview-<branch-slug>`，域名为 `<branch-slug>.craft-dev.bricks.cool`。
           - Dokku preview deploy 成功后发布 GitHub Deployment status，PR timeline 的 `View deployment` 按钮指向 preview 域名。
-          - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/channels`，不共享 production 或其他 preview 的 channel 文件。
+          - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/sandboxes`，不共享 production 或其他 preview 的 sandbox 文件。
           - Turso credentials, JWT signing secret, and encryption key stay in Dokku server config; preview apps copy them from the production app on the server instead of reading GitHub Actions secrets.
           - Production CSP must allow Flutter Web bootstrap scripts so `craft.bricks.cool` renders the login app instead of a blank page.
           - Flutter Web app shell files such as `index.html`, `main.dart.js`, `flutter.js`, and `flutter_service_worker.js` must return no-store/no-cache headers so preview deploys do not serve stale UI bundles.
