@@ -125,6 +125,13 @@ function httpRunnerToken(): string | null {
   return process.env.BRICKS_SANDBOX_RUNNER_TOKEN?.trim() || null;
 }
 
+function httpRunnerRootSegments(): string[] | undefined {
+  const value = process.env.BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS?.trim();
+  if (!value) return undefined;
+  const segments = value.split(',').map((segment) => segment.trim()).filter(Boolean);
+  return segments.length > 0 ? segments : undefined;
+}
+
 function truncateOutput(value: string, maxBytes: number): string {
   const buffer = Buffer.from(value);
   if (buffer.length <= maxBytes) return value;
@@ -262,6 +269,7 @@ async function runHttpSandboxCommand(input: RunInUserSandboxInput): Promise<Sand
     },
     body: JSON.stringify({
       userSegment: opaqueSandboxSegment('user', input.userId),
+      sandboxRootSegments: httpRunnerRootSegments(),
       cwd: input.containerCwd,
       command: input.command,
       timeoutMs: input.timeoutMs ?? 120_000,

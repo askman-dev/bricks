@@ -1,5 +1,6 @@
 export interface RunRequest {
   userSegment: string;
+  sandboxRootSegments?: string[];
   cwd: string;
   command: string;
   timeoutMs?: number;

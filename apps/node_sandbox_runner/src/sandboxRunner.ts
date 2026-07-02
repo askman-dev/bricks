@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { execFile } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
@@ -35,20 +36,39 @@ export function validateContainerCwd(value: string): string {
   return normalized;
 }
 
-export function userSandboxRoot(config: RunnerConfig, userSegment: string): string {
-  return path.join(config.sandboxRoot, userSegment);
+export function validateSandboxRootSegments(value: string[] | undefined): string[] {
+  if (!value) return [];
+  if (value.length > 8) {
+    throw new SandboxRunnerError('Too many sandboxRootSegments');
+  }
+  return value.map((segment) => {
+    const trimmed = segment.trim();
+    if (!/^[a-zA-Z0-9._-]{1,80}$/.test(trimmed) || trimmed === '.' || trimmed === '..') {
+      throw new SandboxRunnerError('Invalid sandboxRootSegments');
+    }
+    return trimmed;
+  });
 }
 
-export function userSandboxFsRoot(config: RunnerConfig, userSegment: string): string {
-  return path.join(userSandboxRoot(config, userSegment), 'fs');
+function rootScopeId(rootSegments: string[]): string {
+  if (rootSegments.length === 0) return 'root';
+  return crypto.createHash('sha256').update(rootSegments.join('/')).digest('hex').slice(0, 12);
 }
 
-export function userSandboxHomeRoot(config: RunnerConfig, userSegment: string): string {
-  return path.join(userSandboxRoot(config, userSegment), 'home');
+export function userSandboxRoot(config: RunnerConfig, rootSegments: string[], userSegment: string): string {
+  return path.join(config.sandboxRoot, ...rootSegments, userSegment);
 }
 
-export function containerName(config: RunnerConfig, userSegment: string): string {
-  return `${config.containerPrefix}-${userSegment}`;
+export function userSandboxFsRoot(config: RunnerConfig, rootSegments: string[], userSegment: string): string {
+  return path.join(userSandboxRoot(config, rootSegments, userSegment), 'fs');
+}
+
+export function userSandboxHomeRoot(config: RunnerConfig, rootSegments: string[], userSegment: string): string {
+  return path.join(userSandboxRoot(config, rootSegments, userSegment), 'home');
+}
+
+export function containerName(config: RunnerConfig, rootSegments: string[], userSegment: string): string {
+  return `${config.containerPrefix}-${rootScopeId(rootSegments)}-${userSegment}`;
 }
 
 function truncateOutput(value: string, maxBytes: number): string {
@@ -69,18 +89,26 @@ async function dockerJson(config: RunnerConfig, args: string[]): Promise<unknown
   }
 }
 
-export async function ensureUserSandboxDirectories(config: RunnerConfig, userSegment: string): Promise<void> {
-  const fsRoot = userSandboxFsRoot(config, userSegment);
+export async function ensureUserSandboxDirectories(
+  config: RunnerConfig,
+  rootSegments: string[],
+  userSegment: string,
+): Promise<void> {
+  const fsRoot = userSandboxFsRoot(config, rootSegments, userSegment);
   await fs.mkdir(path.join(fsRoot, 'channels'), { recursive: true });
   await fs.mkdir(path.join(fsRoot, 'shared'), { recursive: true });
   await fs.mkdir(path.join(fsRoot, 'tmp'), { recursive: true });
-  await fs.mkdir(userSandboxHomeRoot(config, userSegment), { recursive: true });
-  await fs.mkdir(path.join(userSandboxRoot(config, userSegment), 'meta'), { recursive: true });
+  await fs.mkdir(userSandboxHomeRoot(config, rootSegments, userSegment), { recursive: true });
+  await fs.mkdir(path.join(userSandboxRoot(config, rootSegments, userSegment), 'meta'), { recursive: true });
 }
 
-export async function ensureUserContainer(config: RunnerConfig, userSegment: string): Promise<string> {
-  await ensureUserSandboxDirectories(config, userSegment);
-  const name = containerName(config, userSegment);
+export async function ensureUserContainer(
+  config: RunnerConfig,
+  rootSegments: string[],
+  userSegment: string,
+): Promise<string> {
+  await ensureUserSandboxDirectories(config, rootSegments, userSegment);
+  const name = containerName(config, rootSegments, userSegment);
   const inspect = await dockerJson(config, ['inspect', name]);
   const existing = Array.isArray(inspect) ? inspect[0] as { State?: { Running?: boolean } } | undefined : undefined;
   if (existing?.State?.Running) {
@@ -116,9 +144,9 @@ export async function ensureUserContainer(config: RunnerConfig, userSegment: str
       '--env',
       `BRICKS_SANDBOX_FS_ROOT=${WORKSPACE_ROOT}`,
       '--mount',
-      `type=bind,source=${userSandboxFsRoot(config, userSegment)},target=${WORKSPACE_ROOT}`,
+      `type=bind,source=${userSandboxFsRoot(config, rootSegments, userSegment)},target=${WORKSPACE_ROOT}`,
       '--mount',
-      `type=bind,source=${userSandboxHomeRoot(config, userSegment)},target=${HOME_ROOT}`,
+      `type=bind,source=${userSandboxHomeRoot(config, rootSegments, userSegment)},target=${HOME_ROOT}`,
       config.image,
       'sleep',
       'infinity',
@@ -133,6 +161,7 @@ export async function ensureUserContainer(config: RunnerConfig, userSegment: str
 
 export async function runSandboxCommand(config: RunnerConfig, request: RunRequest): Promise<RunResponse> {
   const userSegment = validateUserSegment(request.userSegment);
+  const rootSegments = validateSandboxRootSegments(request.sandboxRootSegments);
   const cwd = validateContainerCwd(request.cwd);
   const command = request.command.trim();
   if (!command) {
@@ -140,7 +169,7 @@ export async function runSandboxCommand(config: RunnerConfig, request: RunReques
   }
   const maxBuffer = Math.min(request.maxBufferBytes ?? config.maxOutputBytes, config.maxOutputBytes * 4);
   const timeout = Math.min(request.timeoutMs ?? config.defaultTimeoutMs, config.defaultTimeoutMs * 4);
-  const name = await ensureUserContainer(config, userSegment);
+  const name = await ensureUserContainer(config, rootSegments, userSegment);
 
   try {
     const { stdout, stderr } = await execFileAsync(

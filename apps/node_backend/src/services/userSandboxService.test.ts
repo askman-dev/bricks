@@ -20,12 +20,14 @@ describe('userSandboxService', () => {
   let previousRoot: string | undefined;
   let previousRunner: string | undefined;
   let previousRunnerUrl: string | undefined;
+  let previousRunnerRootSegments: string | undefined;
   let previousNodeEnv: string | undefined;
 
   beforeEach(async () => {
     previousRoot = process.env.BRICKS_SANDBOX_ROOT;
     previousRunner = process.env.BRICKS_SANDBOX_RUNNER;
     previousRunnerUrl = process.env.BRICKS_SANDBOX_RUNNER_URL;
+    previousRunnerRootSegments = process.env.BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS;
     previousNodeEnv = process.env.NODE_ENV;
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bricks-user-sandbox-'));
     process.env.BRICKS_SANDBOX_ROOT = tempDir;
@@ -49,6 +51,11 @@ describe('userSandboxService', () => {
       delete process.env.BRICKS_SANDBOX_RUNNER_URL;
     } else {
       process.env.BRICKS_SANDBOX_RUNNER_URL = previousRunnerUrl;
+    }
+    if (previousRunnerRootSegments === undefined) {
+      delete process.env.BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS;
+    } else {
+      process.env.BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS = previousRunnerRootSegments;
     }
     if (previousNodeEnv === undefined) {
       delete process.env.NODE_ENV;
@@ -106,6 +113,7 @@ describe('userSandboxService', () => {
     vi.stubGlobal('fetch', fetchMock);
     process.env.BRICKS_SANDBOX_RUNNER = 'http';
     process.env.BRICKS_SANDBOX_RUNNER_URL = 'https://sandbox-runner.test/';
+    process.env.BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS = 'production,sandboxes';
 
     const { runInUserSandbox, userSandboxFsRoot } = await import('./userSandboxService.js');
     const result = await runInUserSandbox({
@@ -125,6 +133,9 @@ describe('userSandboxService', () => {
     );
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(init.body)).not.toContain(tempDir);
+    expect(JSON.parse(String(init.body))).toEqual(expect.objectContaining({
+      sandboxRootSegments: ['production', 'sandboxes'],
+    }));
   });
 
   it('rejects local runner in production', async () => {

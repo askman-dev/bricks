@@ -70,6 +70,7 @@ jobs:
             BRICKS_SANDBOX_ROOT=/app/data/sandboxes
             BRICKS_SANDBOX_RUNNER=http
             BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787
+            BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes
             BRICKS_PUBLIC_SITE_DOMAIN=craft-spaces.bricks.cool
             GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback
             OAUTH_ALLOWED_RETURN_ORIGINS=https://craft.bricks.cool

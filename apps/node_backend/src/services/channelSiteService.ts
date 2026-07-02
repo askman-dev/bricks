@@ -248,6 +248,24 @@ function isMissingExecutableError(error: unknown, executable: string): boolean {
   return maybeCode === 'ENOENT' || error.message.includes(`${executable}: command not found`);
 }
 
+async function writeGitUnavailableMarker(root: string, reason: string): Promise<void> {
+  const markerPath = path.join(root, '..', '.bricks', 'git-unavailable.json');
+  await fs.mkdir(path.dirname(markerPath), { recursive: true });
+  await fs.writeFile(
+    markerPath,
+    JSON.stringify(
+      {
+        ok: false,
+        reason,
+        createdAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ) + '\n',
+    'utf8',
+  );
+}
+
 async function initializeGitRepositoryIfAvailable(params: {
   userId: string;
   channelId: string;
@@ -271,26 +289,16 @@ async function initializeGitRepositoryIfAvailable(params: {
         'GIT_COMMITTER_NAME=Bricks GIT_COMMITTER_EMAIL=bricks@localhost ' +
         'git commit -m "Initial Bricks site"',
     });
-    if (result.exitCode !== 0) throw new Error(result.stderr || 'git initialization failed');
-  } catch (error) {
-    if (!isMissingExecutableError(error, 'git')) {
-      throw error;
+    if (result.exitCode !== 0) {
+      await writeGitUnavailableMarker(params.root, result.stderr || 'git initialization failed');
     }
-    const markerPath = path.join(params.root, '..', '.bricks', 'git-unavailable.json');
-    await fs.mkdir(path.dirname(markerPath), { recursive: true });
-    await fs.writeFile(
-      markerPath,
-      JSON.stringify(
-        {
-          ok: false,
-          reason: 'git executable is not available in this runtime',
-          createdAt: new Date().toISOString(),
-        },
-        null,
-        2,
-      ) + '\n',
-      'utf8',
-    );
+  } catch (error) {
+    const reason = isMissingExecutableError(error, 'git')
+      ? 'git executable is not available in this runtime'
+      : error instanceof Error
+        ? error.message
+        : 'git initialization failed';
+    await writeGitUnavailableMarker(params.root, reason);
   }
 }
 

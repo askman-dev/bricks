@@ -38,9 +38,14 @@ describe('sandboxRunner', () => {
   });
 
   it('rejects invalid user segments and cwd escapes', async () => {
-    const { validateContainerCwd, validateUserSegment } = await import('./sandboxRunner.js');
+    const { validateContainerCwd, validateSandboxRootSegments, validateUserSegment } = await import(
+      './sandboxRunner.js'
+    );
 
     expect(() => validateUserSegment('user-xyz')).toThrow(/Invalid userSegment/);
+    expect(() => validateSandboxRootSegments(['previews', '../prod'])).toThrow(
+      /Invalid sandboxRootSegments/,
+    );
     expect(() => validateContainerCwd('/etc')).toThrow(/inside \/workspace/);
     expect(() => validateContainerCwd('/workspace/../etc')).toThrow(/inside \/workspace|Invalid cwd/);
     expect(validateContainerCwd('/workspace/channels/channel-abc/workspace')).toBe(
@@ -54,14 +59,20 @@ describe('sandboxRunner', () => {
     execFileAsyncMock.mockResolvedValueOnce({ stdout: '', stderr: '' });
     execFileAsyncMock.mockResolvedValueOnce({ stdout: 'container-id\n', stderr: '' });
 
-    await ensureUserContainer(config(root), 'user-0123456789abcdef');
+    await ensureUserContainer(config(root), ['production', 'sandboxes'], 'user-0123456789abcdef');
 
     const runCall = execFileAsyncMock.mock.calls[1];
     expect(runCall[0]).toBe('docker');
     expect(runCall[1]).toEqual(expect.arrayContaining(['--runtime', 'runsc']));
     expect(runCall[1]).toEqual(
       expect.arrayContaining([
-        `type=bind,source=${path.join(root, 'user-0123456789abcdef', 'fs')},target=/workspace`,
+        `type=bind,source=${path.join(
+          root,
+          'production',
+          'sandboxes',
+          'user-0123456789abcdef',
+          'fs',
+        )},target=/workspace`,
       ]),
     );
     expect(runCall[1].join(' ')).not.toContain(path.join(root, 'user-other'));
@@ -77,11 +88,11 @@ describe('sandboxRunner', () => {
     });
     execFileAsyncMock.mockResolvedValueOnce({ stdout: 'started\n', stderr: '' });
 
-    await ensureUserContainer(config(root), 'user-0123456789abcdef');
+    await ensureUserContainer(config(root), ['production', 'sandboxes'], 'user-0123456789abcdef');
 
     expect(execFileAsyncMock.mock.calls[1][1]).toEqual([
       'start',
-      'bricks-sandbox-user-0123456789abcdef',
+      expect.stringMatching(/^bricks-sandbox-[a-f0-9]{12}-user-0123456789abcdef$/),
     ]);
     await fs.rm(root, { recursive: true, force: true });
   });
@@ -98,6 +109,7 @@ describe('sandboxRunner', () => {
 
     const result = await runSandboxCommand(config(root), {
       userSegment: 'user-0123456789abcdef',
+      sandboxRootSegments: ['previews', 'branch-slug', 'sandboxes'],
       cwd: '/workspace/channels/channel-abc/workspace',
       command: 'pwd',
     });
@@ -107,7 +119,7 @@ describe('sandboxRunner', () => {
       'exec',
       '--workdir',
       '/workspace/channels/channel-abc/workspace',
-      'bricks-sandbox-user-0123456789abcdef',
+      expect.stringMatching(/^bricks-sandbox-[a-f0-9]{12}-user-0123456789abcdef$/),
       '/bin/bash',
       '-lc',
       'pwd',

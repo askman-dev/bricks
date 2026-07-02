@@ -42,6 +42,9 @@ function parseRunRequest(value: unknown): RunRequest {
   }
   return {
     userSegment: body.userSegment,
+    sandboxRootSegments: Array.isArray(body.sandboxRootSegments)
+      ? body.sandboxRootSegments.filter((segment): segment is string => typeof segment === 'string')
+      : undefined,
     cwd: body.cwd,
     command: body.command,
     timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,

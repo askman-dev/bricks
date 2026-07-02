@@ -365,6 +365,7 @@ index:
       - docs/tasks/doing/2026-06-30-11-57-CST-channel-react-site-workspace-preview.md
       - docs/tasks/done/2026-06-30-19-10-CST-user-sandbox-runtime-refactor.md
       - docs/tasks/done/2026-06-30-23-30-CST-gvisor-sandbox-runner.md
+      - docs/tasks/done/2026-07-02-10-43-CST-fix-sandbox-runner-root-scoping.md
       - docs/deploy/dokku.md
     test_index:
       - apps/node_sandbox_runner/src/sandboxRunner.test.ts
@@ -398,7 +399,7 @@ index:
       - Channel filesystem paths must include an opaque user segment and opaque channel segment under a per-user sandbox; channelId-only paths can leak or collide across users.
       - Shell/build commands must delegate to the user sandbox runner; direct host `exec` can let AI-authored scripts format or mutate the host repository.
       - Production must not use the local runner; `BRICKS_SANDBOX_RUNNER=http` should target the same-host runner, which creates per-user containers with Docker `--runtime=runsc`.
-      - The sandbox runner must mount only one user's filesystem root into each container; mounting the whole sandbox root would break user isolation.
+      - The sandbox runner must mount only one user's filesystem root inside the configured sandbox root; while production and preview share one database, both must pass `production,sandboxes` so commands run against the same workspace files.
       - Same-user channels intentionally share one sandbox filesystem, so privacy and deletion safety boundaries must be enforced at user level rather than channel level.
       - Workspace file tools must reject absolute paths, `..`, `.`, null bytes, empty segments, and protected `.git` or `node_modules` deletion.
       - Failed builds must never replace the previous successful `web/dist`; otherwise a bad agent edit can take down the public site.

@@ -37,6 +37,7 @@ ENV BRICKS_STATIC_ROOT=/app/public
 ENV BRICKS_SANDBOX_ROOT=/app/data/sandboxes
 ENV BRICKS_SANDBOX_RUNNER=http
 ENV BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787
+ENV BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates git \

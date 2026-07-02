@@ -189,6 +189,7 @@ products:
           - "`site_file_write/read/list/mkdir/delete` operate only inside the current channel workspace and reject traversal paths."
           - "`site_shell_exec` and `site_build` execute through the user sandbox runner instead of direct host shell execution."
           - Production uses `BRICKS_SANDBOX_RUNNER=http` so the Bricks app is control plane only; user commands run in same-host gVisor containers managed by the sandbox runner.
+          - Production and preview apps send `BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes` so the shared runner mounts the same workspace root while both environments share one database.
           - "`site_build` runs npm install/build, writes `jobs/build.log` and `jobs/build.json`, and only replaces `web/dist` after a successful build."
           - "`site_media_copy` copies current-channel uploaded/generated media into `workspace/public/assets/` and returns a public asset path."
           - "Production requests to `<slug>.craft-spaces.bricks.cool` resolve through `channel_sites.public_slug`, serve the latest successful `web/dist`, apply React SPA fallback, and include `X-Robots-Tag: noindex`."
