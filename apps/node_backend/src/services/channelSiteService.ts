@@ -25,6 +25,8 @@ export interface ChannelSite {
   publicSlug: string;
   latestBuildStatus: 'not_built' | 'succeeded' | 'failed';
   latestBuildAt: string | null;
+  latestPublishCommitSha: string | null;
+  publishedCommitSha: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,8 +38,18 @@ interface ChannelSiteRow {
   public_slug: string;
   latest_build_status: 'not_built' | 'succeeded' | 'failed';
   latest_build_at: string | null;
+  latest_publish_commit_sha: string | null;
+  published_commit_sha: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ChannelSitePublishStatus {
+  state: 'not_published' | 'published' | 'update_available' | 'publish_failed';
+  currentCommitSha: string | null;
+  publishedCommitSha: string | null;
+  latestPublishCommitSha: string | null;
+  hasUnpublishedChanges: boolean;
 }
 
 export class ChannelSiteError extends Error {
@@ -55,6 +67,8 @@ function toChannelSite(row: ChannelSiteRow): ChannelSite {
     publicSlug: row.public_slug,
     latestBuildStatus: row.latest_build_status,
     latestBuildAt: row.latest_build_at,
+    latestPublishCommitSha: row.latest_publish_commit_sha ?? null,
+    publishedCommitSha: row.published_commit_sha ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -335,12 +349,30 @@ export function channelSiteDto(site: ChannelSite) {
     publicUrl: publicSiteUrl(site.publicSlug),
     latestBuildStatus: site.latestBuildStatus,
     latestBuildAt: site.latestBuildAt,
+    latestPublishCommitSha: site.latestPublishCommitSha,
+    publishedCommitSha: site.publishedCommitSha,
     paths: {
       workspace: 'workspace/',
       dist: 'web/dist/',
       latestBuildLog: 'jobs/build.log',
       latestBuildStatus: 'jobs/build.json',
       futureGitRemote: null,
+    },
+  };
+}
+
+export function channelSitePublishStatusDto(site: ChannelSite, status: ChannelSitePublishStatus) {
+  return {
+    site: channelSiteDto(site),
+    publish: {
+      state: status.state,
+      currentCommitSha: status.currentCommitSha,
+      publishedCommitSha: status.publishedCommitSha,
+      latestPublishCommitSha: status.latestPublishCommitSha,
+      hasUnpublishedChanges: status.hasUnpublishedChanges,
+      publicUrl: publicSiteUrl(site.publicSlug),
+      latestBuildStatus: site.latestBuildStatus,
+      latestBuildAt: site.latestBuildAt,
     },
   };
 }
@@ -478,17 +510,84 @@ async function updateBuildStatus(
   userId: string,
   channelId: string,
   status: 'succeeded' | 'failed',
+  commitSha: string | null,
 ): Promise<ChannelSite> {
   const result = await pool.query<ChannelSiteRow>(
     `UPDATE channel_sites
         SET latest_build_status = $3,
             latest_build_at = CURRENT_TIMESTAMP,
+            latest_publish_commit_sha = $4,
+            published_commit_sha = CASE WHEN $3 = 'succeeded' THEN $4 ELSE published_commit_sha END,
             updated_at = CURRENT_TIMESTAMP
       WHERE user_id = $1 AND channel_id = $2
       RETURNING *`,
-    [userId, channelId, status],
+    [userId, channelId, status, commitSha],
   );
   return toChannelSite(result.rows[0]);
+}
+
+async function commitWorkspaceSnapshot(params: {
+  userId: string;
+  channelId: string;
+}): Promise<string | null> {
+  const command =
+    'git add . && ' +
+    'GIT_AUTHOR_NAME=Bricks GIT_AUTHOR_EMAIL=bricks@localhost ' +
+    'GIT_COMMITTER_NAME=Bricks GIT_COMMITTER_EMAIL=bricks@localhost ' +
+    'git commit --allow-empty -m "Publish site update" && ' +
+    'git rev-parse HEAD';
+  const result = await runWorkspaceCommand({
+    userId: params.userId,
+    channelId: params.channelId,
+    command,
+  });
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const lines = result.stdout.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.at(-1) ?? null;
+}
+
+export async function currentWorkspaceCommitSha(params: {
+  userId: string;
+  channelId: string;
+}): Promise<string | null> {
+  await ensureWebsiteWorkspace(params.userId, params.channelId);
+  const result = await runWorkspaceCommand({
+    userId: params.userId,
+    channelId: params.channelId,
+    command: 'git rev-parse HEAD',
+  });
+  if (result.exitCode !== 0) return null;
+  return result.stdout.trim().split(/\r?\n/).at(-1)?.trim() || null;
+}
+
+export async function getChannelSitePublishStatus(params: {
+  userId: string;
+  channelId: string;
+}): Promise<{ site: ChannelSite; status: ChannelSitePublishStatus }> {
+  const site = await ensureWebsiteWorkspace(params.userId, params.channelId);
+  const currentCommitSha = await currentWorkspaceCommitSha(params);
+  const publishedCommitSha = site.publishedCommitSha;
+  const hasUnpublishedChanges = Boolean(currentCommitSha && publishedCommitSha && currentCommitSha !== publishedCommitSha);
+  let state: ChannelSitePublishStatus['state'] = 'not_published';
+  if (publishedCommitSha && currentCommitSha === publishedCommitSha) {
+    state = 'published';
+  } else if (publishedCommitSha && site.latestBuildStatus === 'failed') {
+    state = 'publish_failed';
+  } else if (publishedCommitSha && hasUnpublishedChanges) {
+    state = 'update_available';
+  }
+  return {
+    site,
+    status: {
+      state,
+      currentCommitSha,
+      publishedCommitSha,
+      latestPublishCommitSha: site.latestPublishCommitSha,
+      hasUnpublishedChanges,
+    },
+  };
 }
 
 export async function buildChannelSite(params: {
@@ -504,6 +603,10 @@ export async function buildChannelSite(params: {
 
   let log = '';
   let ok = false;
+  const publishCommitSha = await commitWorkspaceSnapshot(params);
+  log += publishCommitSha
+    ? `Publish commit: ${publishCommitSha}\n`
+    : 'Publish commit: unavailable\n';
   try {
     const install = await runWorkspaceCommand({
       userId: params.userId,
@@ -533,7 +636,7 @@ export async function buildChannelSite(params: {
     await fs.writeFile(logPath, truncateOutput(log), 'utf8');
   }
 
-  const site = await updateBuildStatus(params.userId, params.channelId, ok ? 'succeeded' : 'failed');
+  const site = await updateBuildStatus(params.userId, params.channelId, ok ? 'succeeded' : 'failed', publishCommitSha);
   await fs.writeFile(
     statusPath,
     JSON.stringify(
@@ -542,6 +645,8 @@ export async function buildChannelSite(params: {
         status: site.latestBuildStatus,
         publicUrl: publicSiteUrl(site.publicSlug),
         updatedAt: site.latestBuildAt,
+        publishCommitSha,
+        publishedCommitSha: site.publishedCommitSha,
       },
       null,
       2,

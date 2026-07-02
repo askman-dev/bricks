@@ -352,12 +352,16 @@ index:
     capability: Channel-scoped React/Vite website workspace, build, media asset copy, and public static preview host
     code_index:
       - apps/node_backend/src/db/migrations/028_create_channel_sites.sql
+      - apps/node_backend/src/db/migrations/029_add_channel_site_publish_commits.sql
+      - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+      - apps/mobile_chat_app/lib/features/chat/site_publish_api_service.dart
       - apps/node_backend/src/services/userSandboxService.ts
       - apps/node_sandbox_runner/src/index.ts
       - apps/node_sandbox_runner/src/server.ts
       - apps/node_sandbox_runner/src/sandboxRunner.ts
       - apps/node_backend/src/services/channelFileService.ts
       - apps/node_backend/src/services/channelSiteService.ts
+      - apps/node_backend/src/routes/channelSiteApi.ts
       - apps/node_backend/src/routes/channelSiteHost.ts
       - apps/node_backend/src/services/localAgentLoopService.ts
       - apps/node_backend/src/app.ts
@@ -366,12 +370,14 @@ index:
       - docs/tasks/done/2026-06-30-19-10-CST-user-sandbox-runtime-refactor.md
       - docs/tasks/done/2026-06-30-23-30-CST-gvisor-sandbox-runner.md
       - docs/tasks/done/2026-07-02-10-43-CST-fix-sandbox-runner-root-scoping.md
+      - docs/tasks/done/2026-07-02-12-18-CST-site-publish-status.md
       - docs/deploy/dokku.md
     test_index:
       - apps/node_sandbox_runner/src/sandboxRunner.test.ts
       - apps/node_sandbox_runner/src/server.test.ts
       - apps/node_backend/src/services/userSandboxService.test.ts
       - apps/node_backend/src/services/channelFileService.test.ts
+      - apps/node_backend/src/routes/channelSiteApi.test.ts
       - apps/node_backend/src/routes/channelSiteHost.test.ts
       - apps/node_backend/src/services/localAgentLoopService.test.ts
       - apps/node_backend/src/app.test.ts
@@ -381,10 +387,14 @@ index:
       - craft-spaces.bricks.cool
       - /sites/<slug>
       - site_workspace_init
+      - site_publish_status
       - site_build
       - site_media_copy
       - Vite
       - React
+      - published_commit_sha
+      - latest_publish_commit_sha
+      - publish status
       - user-scoped filesystem
       - user sandbox
       - gVisor
@@ -403,6 +413,8 @@ index:
       - Same-user channels intentionally share one sandbox filesystem, so privacy and deletion safety boundaries must be enforced at user level rather than channel level.
       - Workspace file tools must reject absolute paths, `..`, `.`, null bytes, empty segments, and protected `.git` or `node_modules` deletion.
       - Failed builds must never replace the previous successful `web/dist`; otherwise a bad agent edit can take down the public site.
+      - Publish status is commit-based only in the current architecture; if future flows need uncommitted workspace detection, dirty-state checks must be added separately without breaking the published commit contract.
+      - "`site_build` must create a git snapshot before building so `published_commit_sha` identifies the workspace tree that produced the live artifact."
       - A `succeeded` build record with a missing `web/dist/index.html` must return a controlled not-published response instead of leaking a backend 500.
       - Public slug lookup must not expose user_id or channel_id, and `craft-spaces` responses must include `X-Robots-Tag: noindex`.
       - PR preview environments should use `BRICKS_PUBLIC_SITE_BASE_URL` path URLs and Vite starter builds must use relative asset paths; otherwise generated `craft-spaces` links can fail before production wildcard origin TLS is configured or assets can resolve to the Bricks app root.

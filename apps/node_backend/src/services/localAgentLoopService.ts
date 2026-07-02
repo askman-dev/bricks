@@ -69,11 +69,13 @@ import { mediaAssetToDto } from './mediaService.js';
 import {
   buildChannelSite,
   channelSiteDto,
+  channelSitePublishStatusDto,
   ChannelSiteError,
   copyMediaToSiteAssets,
   deleteWorkspacePath,
   ensureChannelSite,
   ensureWebsiteWorkspace,
+  getChannelSitePublishStatus,
   listWorkspaceFiles,
   makeWorkspaceDirectory,
   readWorkspaceFile,
@@ -106,6 +108,7 @@ export const INTERNAL_TOOL_SITE_FILE_WRITE = 'site.file.write';
 export const INTERNAL_TOOL_SITE_DIRECTORY_MKDIR = 'site.directory.mkdir';
 export const INTERNAL_TOOL_SITE_PATH_DELETE = 'site.path.delete';
 export const INTERNAL_TOOL_SITE_SHELL_EXEC = 'site.shell.exec';
+export const INTERNAL_TOOL_SITE_PUBLISH_STATUS = 'site.publish.status';
 export const INTERNAL_TOOL_SITE_BUILD = 'site.build';
 export const INTERNAL_TOOL_SITE_MEDIA_COPY = 'site.media.copy';
 
@@ -178,6 +181,7 @@ export const INTERNAL_TOOLS = [
   INTERNAL_TOOL_SITE_DIRECTORY_MKDIR,
   INTERNAL_TOOL_SITE_PATH_DELETE,
   INTERNAL_TOOL_SITE_SHELL_EXEC,
+  INTERNAL_TOOL_SITE_PUBLISH_STATUS,
   INTERNAL_TOOL_SITE_BUILD,
   INTERNAL_TOOL_SITE_MEDIA_COPY,
   INTERNAL_TOOL_TODO_LIST_CREATE,
@@ -1125,6 +1129,28 @@ export async function executeInternalTool(
       try {
         const result = await runWorkspaceCommand({ userId, channelId, command });
         return { ok: result.exitCode === 0, toolName, data: result, error: result.exitCode === 0 ? null : { code: 'invalid_args', message: 'Workspace command failed' } };
+      } catch (error) {
+        return channelSiteFailure(toolName, error);
+      }
+    }
+    case INTERNAL_TOOL_SITE_PUBLISH_STATUS: {
+      const channelId = readStringArg(args, 'channelId', MAX_IDENTIFIER_LENGTH);
+      if (!channelId) {
+        return {
+          ok: false,
+          toolName,
+          data: null,
+          error: { code: 'invalid_args', message: 'channelId is a required string argument' },
+        };
+      }
+      try {
+        const result = await getChannelSitePublishStatus({ userId, channelId });
+        return {
+          ok: true,
+          toolName,
+          data: channelSitePublishStatusDto(result.site, result.status),
+          error: null,
+        };
       } catch (error) {
         return channelSiteFailure(toolName, error);
       }
@@ -2205,9 +2231,22 @@ export function buildAgentTools(
       execute: (args) => runTool(INTERNAL_TOOL_SITE_SHELL_EXEC, args),
     },
 
+    site_publish_status: {
+      description:
+        'Return the current channel website publish status, public URL, latest publish time, current git commit, and last successful published commit. Use before reporting whether a site is live or up to date.',
+      parametersSchema: {
+        type: 'object',
+        properties: {
+          channelId: { type: 'string', description: 'The channel identifier. Defaults to the current chat channel.' },
+        },
+        additionalProperties: false,
+      },
+      execute: (args) => runTool(INTERNAL_TOOL_SITE_PUBLISH_STATUS, args),
+    },
+
     site_build: {
       description:
-        'Install dependencies if needed, build the current channel website, and publish the latest successful dist to the fixed public URL. Failed builds keep the previous public dist.',
+        'Publish the current channel website: create a git snapshot commit, install dependencies if needed, build the site, and publish the latest successful dist to the fixed public URL. After editing website files, call this tool automatically so the user does not need to ask for compilation. Failed builds keep the previous public dist.',
       parametersSchema: {
         type: 'object',
         properties: {

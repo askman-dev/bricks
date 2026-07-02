@@ -13,6 +13,7 @@ const chatRouter = express.Router();
 const platformRouter = express.Router();
 const resourcesRouter = express.Router();
 const mediaRouter = express.Router();
+const channelSiteApiRouter = express.Router();
 const cronRouter = express.Router();
 const channelSiteHostRouter = express.Router();
 
@@ -45,6 +46,10 @@ resourcesRouter.get('/noop', (_req, res) => {
 });
 
 mediaRouter.get('/noop', (_req, res) => {
+  res.json({ ok: true });
+});
+
+channelSiteApiRouter.get('/noop', (_req, res) => {
   res.json({ ok: true });
 });
 
@@ -82,6 +87,10 @@ vi.mock('./routes/resources.js', () => ({
 
 vi.mock('./routes/media.js', () => ({
   default: mediaRouter,
+}));
+
+vi.mock('./routes/channelSiteApi.js', () => ({
+  default: channelSiteApiRouter,
 }));
 
 vi.mock('./routes/cron.js', () => ({

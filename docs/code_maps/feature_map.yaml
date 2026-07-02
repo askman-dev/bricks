@@ -166,6 +166,12 @@ products:
         entry_paths:
           - migration: channel_sites public slug binding
             route_hint: apps/node_backend/src/db/migrations/028_create_channel_sites.sql
+          - migration: channel site publish commit tracking
+            route_hint: apps/node_backend/src/db/migrations/029_add_channel_site_publish_commits.sql
+          - screen: ChatScreen title-bar site publish status
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - service: Flutter site publish status API client
+            route_hint: apps/mobile_chat_app/lib/features/chat/site_publish_api_service.dart
           - service: user-scoped channel filesystem paths
             route_hint: apps/node_backend/src/services/channelFileService.ts
           - service: persistent per-user sandbox filesystem and shell runner
@@ -180,17 +186,21 @@ products:
             route_hint: apps/node_backend/src/routes/channelSiteHost.ts
           - route: /sites/<slug> preview path static site serving
             route_hint: apps/node_backend/src/routes/channelSiteHost.ts
-          - tools: site_workspace_config/init, site_file_*, site_shell_exec, site_build, site_media_copy
+          - route: authenticated site publish status API
+            route_hint: apps/node_backend/src/routes/channelSiteApi.ts
+          - tools: site_workspace_config/init, site_file_*, site_shell_exec, site_publish_status, site_build, site_media_copy
             route_hint: apps/node_backend/src/services/localAgentLoopService.ts
         smoke_checks:
           - "`site_workspace_init` initializes one Vite + React + TypeScript workspace for the current channel and creates an initial git commit."
+          - Chat title bar shows a lightweight Site status pill; opening it shows the public URL, publish time, current commit, live commit, refresh action, and a Publish button that sends a publish prompt.
           - Channel filesystem directories are nested under one persistent per-user sandbox with opaque user and channel path segments, so raw user IDs and channel IDs are not exposed in paths.
           - Same-user channels share one sandbox filesystem root, while different users resolve to different sandbox roots.
           - "`site_file_write/read/list/mkdir/delete` operate only inside the current channel workspace and reject traversal paths."
           - "`site_shell_exec` and `site_build` execute through the user sandbox runner instead of direct host shell execution."
           - Production uses `BRICKS_SANDBOX_RUNNER=http` so the Bricks app is control plane only; user commands run in same-host gVisor containers managed by the sandbox runner.
           - Production and preview apps send `BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes` so the shared runner mounts the same workspace root while both environments share one database.
-          - "`site_build` runs npm install/build, writes `jobs/build.log` and `jobs/build.json`, and only replaces `web/dist` after a successful build."
+          - "`site_publish_status` reports the public URL, current git commit, last successful published commit, latest publish time, and commit-based unpublished update state."
+          - "`site_build` creates a git snapshot commit, runs npm install/build, writes `jobs/build.log` and `jobs/build.json`, stores the latest publish commit, and only replaces `web/dist` plus `published_commit_sha` after a successful build."
           - "Starter Vite builds use a relative base so `/sites/<slug>` preview URLs load JS/CSS assets below the same site path."
           - "`site_media_copy` copies current-channel uploaded/generated media into `workspace/public/assets/` and returns a public asset path."
           - "Production requests to `<slug>.craft-spaces.bricks.cool` resolve through `channel_sites.public_slug`, serve the latest successful `web/dist`, apply React SPA fallback, and include `X-Robots-Tag: noindex`."
