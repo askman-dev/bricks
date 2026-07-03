@@ -172,7 +172,8 @@ class _ComposerBarState extends State<ComposerBar>
   }
 
   void _handlePastedImage(ComposerPastedImage image) {
-    if (widget.onPasteImage == null ||
+    if (!mounted ||
+        widget.onPasteImage == null ||
         widget.draftUpload != null ||
         widget.isStreaming ||
         widget.onSend == null) {

@@ -2554,7 +2554,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _attachPastedImageToDraft(ComposerPastedImage image) async {
-    if (_isUploadingAttachment || _isSending) return;
+    if (!mounted || _isUploadingAttachment || _isSending) return;
     final filename = image.filename.trim().isEmpty
         ? 'pasted-image.png'
         : image.filename.trim();

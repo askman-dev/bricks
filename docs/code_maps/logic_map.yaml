@@ -348,6 +348,7 @@ index:
     doc_index:
       - docs/tasks/done/2026-06-29-23-06-CST-media-upload-preview-multimodal.md
       - docs/tasks/done/2026-07-02-12-49-CST-paste-image-upload-flow.md
+      - docs/tasks/done/2026-07-03-17-41-CST-pr-286-code-review-fixes.md
       - docs/tasks/doing/2026-06-29-14-32-CST-gemini-image-video-generation-architecture.md
       - docs/tasks/doing/2026-06-29-16-13-CST-dokku-channel-media-deployment-plan.md
     test_index:
@@ -392,6 +393,7 @@ index:
       - 桌面 Safari 对聊天图片 tile 的高阶 tap 手势可能不稳定；缩略图打开必须保留 primary pointer down/up 链路和可见 Open image 入口，避免只依赖 GestureDetector.onTap。
       - Web 下载不能直接导航到 `/download`，必须用当前 token 拉取 Blob 后触发浏览器下载；否则受保护 media 会返回 401。
       - Web 粘贴图片监听只应在 composer 获得焦点时处理 image clipboard item；否则可能拦截页面其他输入区域的正常粘贴。
+      - Web clipboard image reads finish asynchronously; callbacks must check mounted state before calling parent upload paths.
       - Gemini 多模态输入只应把当前用户可访问、当前 channel 的 ready image asset 转为 image part；错误地传递跨 channel 或失败 asset 会造成隐私或 provider 错误风险。
       - Gemini image generation 和 Veo reference images 只能读取当前用户、当前 channel、ready image asset；跨 channel 或非 image media 必须被拒绝。
       - Veo operation 完成后必须及时下载 provider video URI 到 Bricks-owned storage；只保存 provider URI 会受 2 天 provider retention 影响。
@@ -877,6 +879,7 @@ index:
       - docs/tasks/done/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
       - docs/tasks/done/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
       - docs/tasks/done/2026-07-03-15-47-CST-editable-todo-and-note-resources.md
+      - docs/tasks/done/2026-07-03-17-41-CST-pr-286-code-review-fixes.md
     test_index:
       - apps/node_backend/src/services/localAgentLoopService.test.ts
       - apps/mobile_chat_app/test/chat_navigation_page_test.dart
@@ -915,6 +918,7 @@ index:
       - docs/tasks/done/2026-06-16-15-32-+08-note-content-type-implementation.md
       - docs/tasks/done/2026-06-12-14-00-+08-note-content-type.md
       - docs/tasks/done/2026-07-03-15-47-CST-editable-todo-and-note-resources.md
+      - docs/tasks/done/2026-07-03-17-41-CST-pr-286-code-review-fixes.md
     test_index:
       - apps/node_backend/src/routes/resources.test.ts
       - apps/node_backend/src/services/localAgentLoopService.test.ts
@@ -932,6 +936,7 @@ index:
       - Markdown note
       - editable note resource
       - Markdown editor
+      - Markdown preview toggle
       - line range
       - 10000 line limit
     change_risks:
@@ -942,6 +947,7 @@ index:
       - ChatScreen relies on `resources.notes` typed invalidation to refresh the Resources tab after agent tool calls.
       - The Resources preview loads full Note body on tap; very large notes may need pagination or markdown editing optimization in a later iteration.
       - Note body edits use whole-document PATCH; future partial-line editing must preserve line-number semantics and avoid overwriting concurrent changes without detection.
+      - Note save failures must keep the Markdown editor and unsaved draft visible so the user can retry or copy their changes.
 
   - feature_id: asset_tables
     capability: 用户通过自然语言让 AI 管理动态 JSONB 表格（O(1) 列操作，行软删除）；AI 调用 table_* 工具
