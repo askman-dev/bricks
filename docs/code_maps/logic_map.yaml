@@ -115,7 +115,7 @@ index:
       - build.sh
     doc_index:
       - docs/tasks/doing/2026-07-03-13-42-CST-workbook-lab-repo-strategy-research.md
-      - docs/tasks/doing/2026-07-03-14-54-CST-puzzle-pack-maker-app-shell.md
+      - docs/tasks/done/2026-07-03-14-54-CST-puzzle-pack-maker-app-shell.md
     test_index:
       - apps/puzzle_pack_maker/test/widget_test.dart
       - apps/node_backend/src/routes/auth.test.ts
