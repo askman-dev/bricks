@@ -25,9 +25,16 @@ Preview host data:
 dokku apps:create bricks
 mkdir -p /home/bricks/data/production/sandboxes
 dokku storage:mount bricks /home/bricks/data/production/sandboxes:/app/data/sandboxes
-dokku domains:set bricks craft.bricks.cool
+dokku domains:set bricks craft.bricks.cool craft-spaces.bricks.cool '*.craft-spaces.bricks.cool'
 dokku letsencrypt:enable bricks
 ```
+
+Generated channel sites use stable wildcard hosts such as
+`https://s-abc123.craft-spaces.bricks.cool/`. The production app must keep both
+`craft-spaces.bricks.cool` and `*.craft-spaces.bricks.cool` bound to the same
+Dokku app so future site slugs route without per-site domain changes. Cloudflare
+edge certificates cover the browser-to-Cloudflare hop; the Dokku origin must
+also accept the wildcard SNI for Cloudflare-to-origin TLS.
 
 Install the same-host sandbox runner before enabling AI shell execution:
 
