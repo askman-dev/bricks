@@ -4,10 +4,14 @@ WORKDIR /workspace
 COPY pubspec.yaml melos.yaml ./
 COPY packages ./packages
 COPY apps/mobile_chat_app ./apps/mobile_chat_app
+COPY apps/puzzle_pack_maker ./apps/puzzle_pack_maker
 RUN flutter config --enable-web >/dev/null \
   && cd apps/mobile_chat_app \
   && flutter pub get \
-  && flutter build web --release
+  && flutter build web --release \
+  && cd ../puzzle_pack_maker \
+  && flutter pub get \
+  && flutter build web --release --base-href /puzzle-pack-maker/
 
 FROM node:20-bookworm-slim AS docs-build
 
@@ -49,6 +53,7 @@ COPY --from=backend-build /workspace/apps/node_backend/node_modules ./node_modul
 COPY --from=backend-build /workspace/apps/node_backend/dist ./dist
 COPY --from=backend-build /workspace/apps/node_backend/src/db/migrations ./dist/db/migrations
 COPY --from=flutter-web-build /workspace/apps/mobile_chat_app/build/web ./public
+COPY --from=flutter-web-build /workspace/apps/puzzle_pack_maker/build/web ./public/puzzle-pack-maker
 COPY --from=docs-build /workspace/apps/docs_site/build ./public/docs
 
 EXPOSE 3000

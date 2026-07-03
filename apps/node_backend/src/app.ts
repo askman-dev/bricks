@@ -155,6 +155,14 @@ if (staticRoot) {
       next();
       return;
     }
+    if (
+      req.path === '/puzzle-pack-maker' ||
+      req.path.startsWith('/puzzle-pack-maker/')
+    ) {
+      res.setHeader('Cache-Control', NO_STORE_STATIC_CACHE);
+      res.sendFile(path.join(resolvedStaticRoot, 'puzzle-pack-maker', 'index.html'));
+      return;
+    }
     res.setHeader('Cache-Control', NO_STORE_STATIC_CACHE);
     res.sendFile(path.join(resolvedStaticRoot, 'index.html'));
   });

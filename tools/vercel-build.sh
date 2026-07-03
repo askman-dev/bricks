@@ -51,6 +51,20 @@ build_docs_site() {
   cp -R apps/docs_site/build/. apps/mobile_chat_app/build/web/docs/
 }
 
+build_puzzle_pack_maker() {
+  echo "Building Puzzle Pack Maker web app..."
+  (
+    cd apps/puzzle_pack_maker
+    flutter pub get
+    flutter build web --release --base-href /puzzle-pack-maker/
+  )
+
+  echo "Copying Puzzle Pack Maker into Flutter web output..."
+  rm -rf apps/mobile_chat_app/build/web/puzzle-pack-maker
+  mkdir -p apps/mobile_chat_app/build/web/puzzle-pack-maker
+  cp -R apps/puzzle_pack_maker/build/web/. apps/mobile_chat_app/build/web/puzzle-pack-maker/
+}
+
 ensure_flutter
 flutter config --enable-web >/dev/null
 
@@ -59,6 +73,10 @@ if [ "${INSTALL_ONLY}" = "--install-only" ]; then
   flutter --version
   (
     cd apps/mobile_chat_app
+    flutter pub get
+  )
+  (
+    cd apps/puzzle_pack_maker
     flutter pub get
   )
   flutter precache --web 2>&1 || echo "Warning: flutter precache --web failed; build may be slower." >&2
@@ -73,6 +91,8 @@ flutter --version
   flutter pub get
   flutter build web --release
 )
+
+build_puzzle_pack_maker
 
 # Useful for local runs where --install-only was not executed first.
 if [ ! -d apps/docs_site/node_modules ]; then
