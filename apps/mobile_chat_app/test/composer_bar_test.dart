@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/chat/widgets/composer_bar.dart';
 
@@ -14,7 +15,8 @@ Widget _buildBar(
         String? activeModelLabel,
         List<String> slashCommands = const [],
         List<ComposerAtAction> atActions = const [],
-        void Function(String value)? onAtActionSelected}) =>
+        void Function(String value)? onAtActionSelected,
+        void Function(String text)? onSend}) =>
     MaterialApp(
       home: Scaffold(
         body: Column(
@@ -30,6 +32,7 @@ Widget _buildBar(
               onAtActionSelected: onAtActionSelected,
               onOpenModelSelection: onOpenModelSelection,
               onShowInfo: onShowInfo,
+              onSend: onSend,
             ),
           ],
         ),
@@ -373,6 +376,48 @@ void main() {
       expect(sent, 'hello');
       final textField = tester.widget<TextField>(find.byType(TextField));
       expect(textField.focusNode?.hasFocus, isTrue);
+    });
+
+    testWidgets('Shift+Enter inserts newline without sending', (tester) async {
+      var sendCount = 0;
+
+      await tester.pumpWidget(
+        _buildBar(
+          onSend: (_) => sendCount++,
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, 'hello\n');
+      expect(sendCount, 0);
+    });
+
+    testWidgets('Enter sends the current draft', (tester) async {
+      String? sent;
+
+      await tester.pumpWidget(
+        _buildBar(
+          onSend: (text) => sent = text,
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump(_settle);
+
+      expect(sent, 'hello');
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, isEmpty);
     });
   });
 

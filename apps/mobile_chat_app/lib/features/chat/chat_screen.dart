@@ -33,6 +33,7 @@ import 'note_api_service.dart';
 import 'site_publish_api_service.dart';
 import 'todo_api_service.dart';
 import 'widgets/composer_bar.dart';
+import 'widgets/composer_pasted_image.dart';
 import 'widgets/message_list.dart';
 import '../../services/authenticated_api_client.dart';
 
@@ -2552,6 +2553,31 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _attachPastedImageToDraft(ComposerPastedImage image) async {
+    if (!mounted || _isUploadingAttachment || _isSending) return;
+    final filename = image.filename.trim().isEmpty
+        ? 'pasted-image.png'
+        : image.filename.trim();
+    final mimeType =
+        image.mimeType.trim().isEmpty ? 'image/png' : image.mimeType.trim();
+    final generation = ++_imageUploadGeneration;
+    setState(() {
+      _isUploadingAttachment = true;
+      _draftUpload = ComposerDraftUpload(
+        filename: filename,
+        mimeType: mimeType,
+        dataBase64: image.dataBase64,
+        isUploading: true,
+      );
+    });
+    await _uploadDraftImage(
+      filename: filename,
+      mimeType: mimeType,
+      dataBase64: image.dataBase64,
+      generation: generation,
+    );
+  }
+
   Future<void> _uploadDraftImage({
     required String filename,
     required String mimeType,
@@ -3227,6 +3253,7 @@ class _ChatScreenState extends State<ChatScreen> {
           closeOnChannelSelected: closeOnChannelSelected,
           todoApiService: _todoApiService,
           noteApiService: _noteApiService,
+          onResourceChanged: _refreshResources,
           onActionSelected: (action) {
             switch (action) {
               case ChatNavigationAction.appSettings:
@@ -3541,6 +3568,8 @@ class _ChatScreenState extends State<ChatScreen> {
               onSend: _isSending ? null : _sendMessage,
               onAttachImage:
                   _isUploadingAttachment ? null : _attachImageToDraft,
+              onPasteImage:
+                  _isUploadingAttachment ? null : _attachPastedImageToDraft,
               onCancelDraftUpload: _cancelDraftImageUpload,
               onRetryDraftUpload: _retryDraftImageUpload,
               onRemoveAttachment: _removePendingAttachment,

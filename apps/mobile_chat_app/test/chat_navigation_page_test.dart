@@ -1,6 +1,91 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_chat_app/features/chat/chat_navigation_page.dart';
+import 'package:mobile_chat_app/features/chat/note_api_service.dart';
+import 'package:mobile_chat_app/features/chat/todo_api_service.dart';
+
+final _resourceDate = DateTime.utc(2026, 7, 3, 9);
+
+class _FakeTodoApiService extends TodoApiService {
+  _FakeTodoApiService(this.items);
+
+  List<TodoItem> items;
+  bool? lastIsCompleted;
+  bool failNextUpdate = false;
+
+  @override
+  Future<List<TodoItem>> listTodos({
+    required String listId,
+    bool includeCompleted = true,
+  }) async {
+    return items;
+  }
+
+  @override
+  Future<TodoItem> updateTodo({
+    required String listId,
+    required String id,
+    String? title,
+    String? notes,
+    bool? isCompleted,
+  }) async {
+    if (failNextUpdate) {
+      failNextUpdate = false;
+      throw Exception('todo update failed');
+    }
+    lastIsCompleted = isCompleted;
+    final current = items.singleWhere((item) => item.id == id);
+    final updated = TodoItem(
+      id: current.id,
+      listId: current.listId,
+      title: title ?? current.title,
+      notes: notes ?? current.notes,
+      isCompleted: isCompleted ?? current.isCompleted,
+      displayOrder: current.displayOrder,
+      createdAt: current.createdAt,
+      updatedAt: _resourceDate.add(const Duration(minutes: 1)),
+    );
+    items = items.map((item) => item.id == id ? updated : item).toList();
+    return updated;
+  }
+}
+
+class _FakeNoteApiService extends NoteApiService {
+  _FakeNoteApiService(this.detail);
+
+  NoteDetail detail;
+  String? lastBody;
+  bool failNextUpdate = false;
+
+  @override
+  Future<NoteDetail> getNote(String noteId) async {
+    return detail;
+  }
+
+  @override
+  Future<NoteDetail> updateNote({
+    required String noteId,
+    String? title,
+    String? body,
+    bool? isPublished,
+  }) async {
+    if (failNextUpdate) {
+      failNextUpdate = false;
+      throw Exception('note save failed');
+    }
+    lastBody = body;
+    detail = NoteDetail(
+      id: detail.id,
+      title: title ?? detail.title,
+      body: body ?? detail.body,
+      isPublished: isPublished ?? detail.isPublished,
+      lineCount: (body ?? detail.body).split('\n').length,
+      createdAt: detail.createdAt,
+      updatedAt: _resourceDate.add(const Duration(minutes: 1)),
+    );
+    return detail;
+  }
+}
 
 Widget _buildPage({
   ValueChanged<ChatNavigationAction>? onActionSelected,
@@ -11,6 +96,9 @@ Widget _buildPage({
   bool closeOnChannelSelected = true,
   List<ChatNodeItem> nodes = const [],
   List<ChatResourceItem> resources = const [],
+  TodoApiService? todoApiService,
+  NoteApiService? noteApiService,
+  VoidCallback? onResourceChanged,
   TextDirection textDirection = TextDirection.ltr,
 }) =>
     MaterialApp(
@@ -30,6 +118,9 @@ Widget _buildPage({
             selectedChannelId: 'default',
             nodes: nodes,
             resources: resources,
+            todoApiService: todoApiService,
+            noteApiService: noteApiService,
+            onResourceChanged: onResourceChanged,
             onChannelSelected: onChannelSelected,
             onChannelRename: onChannelRename,
             onChannelArchive: onChannelArchive,
@@ -483,6 +574,252 @@ void main() {
       expect(find.text('Note'), findsOneWidget);
       expect(find.text('Body'), findsOneWidget);
       expect(find.text('# Research preview'), findsWidgets);
+    });
+
+    testWidgets('todo preview marks an item done and refreshes resources',
+        (tester) async {
+      var refreshCount = 0;
+      final todoService = _FakeTodoApiService([
+        TodoItem(
+          id: 'todo_item_1',
+          listId: 'todo_1',
+          title: 'Draft worksheet',
+          isCompleted: false,
+          displayOrder: 0,
+          createdAt: _resourceDate,
+          updatedAt: _resourceDate,
+        ),
+      ]);
+
+      await tester.pumpWidget(_buildPage(
+        todoApiService: todoService,
+        onResourceChanged: () => refreshCount++,
+        resources: [
+          ChatResourceItem(
+            id: 'todo_1',
+            type: ChatResourceType.todoList,
+            title: 'My Todo List',
+            updatedAt: _resourceDate,
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('My Todo List'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Draft worksheet'), findsOneWidget);
+      expect(find.textContaining('Pending'), findsOneWidget);
+
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+
+      expect(todoService.lastIsCompleted, isTrue);
+      expect(refreshCount, 1);
+      expect(find.textContaining('Completed'), findsOneWidget);
+    });
+
+    testWidgets('todo update failure keeps current items visible',
+        (tester) async {
+      final todoService = _FakeTodoApiService([
+        TodoItem(
+          id: 'todo_item_1',
+          listId: 'todo_1',
+          title: 'Draft worksheet',
+          isCompleted: false,
+          displayOrder: 0,
+          createdAt: _resourceDate,
+          updatedAt: _resourceDate,
+        ),
+      ])
+        ..failNextUpdate = true;
+
+      await tester.pumpWidget(_buildPage(
+        todoApiService: todoService,
+        resources: [
+          ChatResourceItem(
+            id: 'todo_1',
+            type: ChatResourceType.todoList,
+            title: 'My Todo List',
+            updatedAt: _resourceDate,
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('My Todo List'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Draft worksheet'), findsOneWidget);
+      expect(find.textContaining('Pending'), findsOneWidget);
+      expect(find.text('Failed to load items'), findsNothing);
+      expect(find.textContaining('Todo update failed'), findsWidgets);
+    });
+
+    testWidgets('note preview edits and saves markdown body', (tester) async {
+      var refreshCount = 0;
+      final noteService = _FakeNoteApiService(
+        NoteDetail(
+          id: 'note_1',
+          title: 'Research Note',
+          body: '# Research preview',
+          isPublished: true,
+          lineCount: 1,
+          createdAt: _resourceDate,
+          updatedAt: _resourceDate,
+        ),
+      );
+
+      await tester.pumpWidget(_buildPage(
+        noteApiService: noteService,
+        onResourceChanged: () => refreshCount++,
+        resources: [
+          ChatResourceItem(
+            id: 'note_1',
+            type: ChatResourceType.note,
+            title: 'Research Note',
+            updatedAt: _resourceDate,
+            notes: '# Research preview',
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research Note'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '# Updated\n- item');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(noteService.lastBody, '# Updated\n- item');
+      expect(refreshCount, 1);
+      expect(find.text('Note saved'), findsOneWidget);
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, '# Updated\n- item');
+    });
+
+    testWidgets('note preview has markdown toolbar and preview mode',
+        (tester) async {
+      final noteService = _FakeNoteApiService(
+        NoteDetail(
+          id: 'note_1',
+          title: 'Research Note',
+          body: 'Plain note',
+          isPublished: true,
+          lineCount: 1,
+          createdAt: _resourceDate,
+          updatedAt: _resourceDate,
+        ),
+      );
+
+      await tester.pumpWidget(_buildPage(
+        noteApiService: noteService,
+        resources: [
+          ChatResourceItem(
+            id: 'note_1',
+            type: ChatResourceType.note,
+            title: 'Research Note',
+            updatedAt: _resourceDate,
+            notes: 'Plain note',
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research Note'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Bold'), findsOneWidget);
+      expect(find.byTooltip('Checklist'), findsOneWidget);
+
+      await tester.tap(find.byType(TextField));
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'Plain note',
+          selection: TextSelection.collapsed(offset: 0),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byTooltip('Checklist'));
+      await tester.pumpAndSettle();
+
+      var textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, '- [ ] Plain note');
+
+      await tester.enterText(find.byType(TextField), 'Plain note');
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'Plain note',
+          selection: TextSelection(baseOffset: 0, extentOffset: 10),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byTooltip('Bold'));
+      await tester.pumpAndSettle();
+
+      textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, '**Plain note**');
+
+      await tester.tap(find.text('Preview'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('**Plain note**'), findsOneWidget);
+    });
+
+    testWidgets('note save failure keeps editor visible', (tester) async {
+      final noteService = _FakeNoteApiService(
+        NoteDetail(
+          id: 'note_1',
+          title: 'Research Note',
+          body: '# Research preview',
+          isPublished: true,
+          lineCount: 1,
+          createdAt: _resourceDate,
+          updatedAt: _resourceDate,
+        ),
+      )..failNextUpdate = true;
+
+      await tester.pumpWidget(_buildPage(
+        noteApiService: noteService,
+        resources: [
+          ChatResourceItem(
+            id: 'note_1',
+            type: ChatResourceType.note,
+            title: 'Research Note',
+            updatedAt: _resourceDate,
+            notes: '# Research preview',
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Resources'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research Note'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '# Updated');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Failed to load note'), findsNothing);
+      expect(find.textContaining('Note save failed'), findsWidgets);
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller?.text, '# Updated');
     });
 
     testWidgets('tapping New Channel fires createChannel action',

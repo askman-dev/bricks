@@ -133,6 +133,29 @@ class NoteApiService {
         jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<NoteDetail> updateNote({
+    required String noteId,
+    String? title,
+    String? body,
+    bool? isPublished,
+  }) async {
+    final patch = <String, dynamic>{};
+    if (title != null) patch['title'] = title;
+    if (body != null) patch['body'] = body;
+    if (isPublished != null) patch['isPublished'] = isPublished;
+
+    final response = await _apiClient.patch(
+      _noteUri(noteId),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(patch),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update note: ${response.statusCode}');
+    }
+    return NoteDetail.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   void dispose() {
     if (_ownsClient) {
       _apiClient.close();

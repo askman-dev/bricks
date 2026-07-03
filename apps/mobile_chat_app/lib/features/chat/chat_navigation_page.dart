@@ -147,6 +147,7 @@ class ChatNavigationPage extends StatefulWidget {
     this.onChannelArchive,
     this.onNodeSelected,
     this.onResourceSelected,
+    this.onResourceChanged,
     this.onRequestClose,
     this.closeOnChannelSelected = true,
     this.todoApiService,
@@ -176,6 +177,10 @@ class ChatNavigationPage extends StatefulWidget {
   /// [ChatResourceItem] is passed. If null, tapping opens
   /// [_ResourcePreviewPage] internally.
   final ValueChanged<ChatResourceItem>? onResourceSelected;
+
+  /// Called after a resource detail edit succeeds so callers can refresh list
+  /// summaries and updated timestamps.
+  final VoidCallback? onResourceChanged;
 
   final bool closeOnChannelSelected;
 
@@ -289,6 +294,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
           resource: resource,
           todoApiService: widget.todoApiService,
           noteApiService: widget.noteApiService,
+          onResourceChanged: widget.onResourceChanged,
         ),
       ),
     );
@@ -637,11 +643,13 @@ class _ResourcePreviewPage extends StatefulWidget {
     required this.resource,
     this.todoApiService,
     this.noteApiService,
+    this.onResourceChanged,
   });
 
   final ChatResourceItem resource;
   final TodoApiService? todoApiService;
   final NoteApiService? noteApiService;
+  final VoidCallback? onResourceChanged;
 
   @override
   State<_ResourcePreviewPage> createState() => _ResourcePreviewPageState();
@@ -649,9 +657,13 @@ class _ResourcePreviewPage extends StatefulWidget {
 
 class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
   List<TodoItem>? _items;
-  NoteDetail? _note;
+  TextEditingController? _noteController;
+  final Set<String> _updatingTodoIds = {};
   bool _loading = false;
-  String? _error;
+  bool _savingNote = false;
+  bool _showNotePreview = false;
+  String? _loadError;
+  String? _editError;
 
   @override
   void initState() {
@@ -659,8 +671,26 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
     if (widget.resource.type == ChatResourceType.todoList) {
       _fetchItems();
     } else if (widget.resource.type == ChatResourceType.note) {
+      _noteController =
+          TextEditingController(text: widget.resource.notes ?? '');
       _fetchNote();
     }
+  }
+
+  @override
+  void dispose() {
+    _noteController?.dispose();
+    super.dispose();
+  }
+
+  List<TodoItem> _sortTodoItems(List<TodoItem> raw) {
+    return List<TodoItem>.from(raw)
+      ..sort((a, b) {
+        if (a.isCompleted != b.isCompleted) {
+          return a.isCompleted ? 1 : -1;
+        }
+        return a.displayOrder.compareTo(b.displayOrder);
+      });
   }
 
   Future<void> _fetchItems() async {
@@ -669,30 +699,24 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
 
     setState(() {
       _loading = true;
-      _error = null;
+      _loadError = null;
     });
     try {
       final raw = await service.listTodos(
         listId: widget.resource.id,
       );
-      // Sort a copy: incomplete first (by displayOrder), then completed.
-      final items = List<TodoItem>.from(raw)
-        ..sort((a, b) {
-          if (a.isCompleted != b.isCompleted) {
-            return a.isCompleted ? 1 : -1;
-          }
-          return a.displayOrder.compareTo(b.displayOrder);
-        });
+      final items = _sortTodoItems(raw);
       if (mounted) {
         setState(() {
           _items = items;
           _loading = false;
+          _loadError = null;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _loadError = e.toString();
           _loading = false;
         });
       }
@@ -705,24 +729,205 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
 
     setState(() {
       _loading = true;
-      _error = null;
+      _loadError = null;
     });
     try {
       final note = await service.getNote(widget.resource.id);
       if (mounted) {
         setState(() {
-          _note = note;
+          _noteController?.text = note.body;
           _loading = false;
+          _loadError = null;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _loadError = e.toString();
           _loading = false;
         });
       }
     }
+  }
+
+  Future<void> _toggleTodoItem(TodoItem item, bool isCompleted) async {
+    final service = widget.todoApiService;
+    if (service == null || _updatingTodoIds.contains(item.id)) return;
+
+    setState(() {
+      _updatingTodoIds.add(item.id);
+      _editError = null;
+    });
+    try {
+      final updated = await service.updateTodo(
+        listId: item.listId,
+        id: item.id,
+        isCompleted: isCompleted,
+      );
+      if (!mounted) return;
+      setState(() {
+        final current = _items ?? const <TodoItem>[];
+        _items = _sortTodoItems(
+          current
+              .map((candidate) =>
+                  candidate.id == updated.id ? updated : candidate)
+              .toList(),
+        );
+        _updatingTodoIds.remove(item.id);
+        _editError = null;
+      });
+      widget.onResourceChanged?.call();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _editError = e.toString();
+        _updatingTodoIds.remove(item.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Todo update failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _saveNote() async {
+    final service = widget.noteApiService;
+    final controller = _noteController;
+    if (service == null || controller == null || _savingNote) return;
+
+    setState(() {
+      _savingNote = true;
+      _editError = null;
+    });
+    try {
+      final updated = await service.updateNote(
+        noteId: widget.resource.id,
+        body: controller.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _noteController?.text = updated.body;
+        _savingNote = false;
+        _editError = null;
+      });
+      widget.onResourceChanged?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Note saved')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _editError = e.toString();
+        _savingNote = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Note save failed: $e')),
+      );
+    }
+  }
+
+  void _applyMarkdownFormat(_MarkdownFormatAction action) {
+    final controller = _noteController;
+    if (controller == null) return;
+
+    switch (action) {
+      case _MarkdownFormatAction.heading:
+        _prefixCurrentLine('## ');
+        return;
+      case _MarkdownFormatAction.bold:
+        _surroundSelection('**', '**', 'bold text');
+        return;
+      case _MarkdownFormatAction.italic:
+        _surroundSelection('*', '*', 'italic text');
+        return;
+      case _MarkdownFormatAction.unorderedList:
+        _prefixCurrentLine('- ');
+        return;
+      case _MarkdownFormatAction.orderedList:
+        _prefixCurrentLine('1. ');
+        return;
+      case _MarkdownFormatAction.checklist:
+        _prefixCurrentLine('- [ ] ');
+        return;
+      case _MarkdownFormatAction.quote:
+        _prefixCurrentLine('> ');
+        return;
+      case _MarkdownFormatAction.code:
+        _insertCodeMarkup();
+        return;
+    }
+  }
+
+  ({String text, int start, int end}) _currentNoteSelection() {
+    final controller = _noteController!;
+    final text = controller.text;
+    final selection = controller.selection;
+    final rawStart = selection.isValid ? selection.start : text.length;
+    final rawEnd = selection.isValid ? selection.end : text.length;
+    final start = rawStart.clamp(0, text.length).toInt();
+    final end = rawEnd.clamp(0, text.length).toInt();
+    return (
+      text: text,
+      start: start < end ? start : end,
+      end: end > start ? end : start
+    );
+  }
+
+  void _surroundSelection(
+    String prefix,
+    String suffix,
+    String placeholder,
+  ) {
+    final controller = _noteController!;
+    final selection = _currentNoteSelection();
+    final selected = selection.text.substring(selection.start, selection.end);
+    final inner = selected.isEmpty ? placeholder : selected;
+    final replacement = '$prefix$inner$suffix';
+    controller.value = TextEditingValue(
+      text: selection.text.replaceRange(
+        selection.start,
+        selection.end,
+        replacement,
+      ),
+      selection: TextSelection(
+        baseOffset: selection.start + prefix.length,
+        extentOffset: selection.start + prefix.length + inner.length,
+      ),
+    );
+  }
+
+  void _prefixCurrentLine(String prefix) {
+    final controller = _noteController!;
+    final selection = _currentNoteSelection();
+    final searchStart = selection.start == 0 ? 0 : selection.start - 1;
+    final lineStart = selection.text.lastIndexOf('\n', searchStart) + 1;
+    controller.value = TextEditingValue(
+      text: selection.text.replaceRange(lineStart, lineStart, prefix),
+      selection: TextSelection.collapsed(
+        offset: selection.end + prefix.length,
+      ),
+    );
+  }
+
+  void _insertCodeMarkup() {
+    final controller = _noteController!;
+    final selection = _currentNoteSelection();
+    final selected = selection.text.substring(selection.start, selection.end);
+    final inner = selected.isEmpty ? 'code' : selected;
+    final isBlock = inner.contains('\n');
+    final prefix = isBlock ? '```\n' : '`';
+    final suffix = isBlock ? '\n```' : '`';
+    final replacement = '$prefix$inner$suffix';
+    controller.value = TextEditingValue(
+      text: selection.text.replaceRange(
+        selection.start,
+        selection.end,
+        replacement,
+      ),
+      selection: TextSelection(
+        baseOffset: selection.start + prefix.length,
+        extentOffset: selection.start + prefix.length + inner.length,
+      ),
+    );
   }
 
   @override
@@ -747,6 +952,16 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
               title: const Text('Notes'),
               subtitle: Text(notes),
             ),
+          if (_editError != null)
+            ListTile(
+              leading: const Icon(Icons.error_outline),
+              title: const Text('Update failed'),
+              subtitle: Text(
+                _editError!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           if (isTodoList) ...[
             const Divider(),
             Padding(
@@ -761,12 +976,12 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_error != null)
+            else if (_loadError != null)
               ListTile(
                 leading: const Icon(Icons.error_outline),
                 title: const Text('Failed to load items'),
                 subtitle: Text(
-                  _error!,
+                  _loadError!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -782,7 +997,15 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
                 subtitle: Text('This list has no todo items yet'),
               )
             else
-              ..._items!.map((item) => _TodoItemTile(item: item)),
+              ..._items!.map(
+                (item) => _TodoItemTile(
+                  item: item,
+                  isUpdating: _updatingTodoIds.contains(item.id),
+                  onChanged: widget.todoApiService == null
+                      ? null
+                      : (value) => _toggleTodoItem(item, value),
+                ),
+              ),
           ],
           if (isNote) ...[
             const Divider(),
@@ -798,12 +1021,12 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_error != null)
+            else if (_loadError != null)
               ListTile(
                 leading: const Icon(Icons.error_outline),
                 title: const Text('Failed to load note'),
                 subtitle: Text(
-                  _error!,
+                  _loadError!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -812,16 +1035,67 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
                   onPressed: _fetchNote,
                 ),
               )
-            else
+            else ...[
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: SelectableText(
-                  _note?.body ?? resource.notes ?? '',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        height: 1.45,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment<bool>(
+                        value: false,
+                        icon: Icon(Icons.edit_outlined),
+                        label: Text('Edit'),
                       ),
+                      ButtonSegment<bool>(
+                        value: true,
+                        icon: Icon(Icons.visibility_outlined),
+                        label: Text('Preview'),
+                      ),
+                    ],
+                    selected: {_showNotePreview},
+                    onSelectionChanged: (selection) {
+                      setState(() {
+                        _showNotePreview = selection.first;
+                      });
+                    },
+                  ),
                 ),
               ),
+              if (_showNotePreview)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: _MarkdownNotePreview(
+                    text: _noteController?.text ?? '',
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: _MarkdownNoteEditor(
+                    controller: _noteController!,
+                    onFormat: _applyMarkdownFormat,
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: widget.noteApiService == null || _savingNote
+                        ? null
+                        : _saveNote,
+                    icon: _savingNote
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: const Text('Save'),
+                  ),
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 24),
         ],
@@ -830,11 +1104,304 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
   }
 }
 
+enum _MarkdownFormatAction {
+  heading,
+  bold,
+  italic,
+  unorderedList,
+  orderedList,
+  checklist,
+  quote,
+  code,
+}
+
+class _MarkdownNoteEditor extends StatelessWidget {
+  const _MarkdownNoteEditor({
+    required this.controller,
+    required this.onFormat,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<_MarkdownFormatAction> onFormat;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Material(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(8),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _MarkdownToolbarButton(
+                    icon: Icons.title,
+                    tooltip: 'Heading',
+                    onPressed: () => onFormat(_MarkdownFormatAction.heading),
+                  ),
+                  _MarkdownToolbarButton(
+                    icon: Icons.format_bold,
+                    tooltip: 'Bold',
+                    onPressed: () => onFormat(_MarkdownFormatAction.bold),
+                  ),
+                  _MarkdownToolbarButton(
+                    icon: Icons.format_italic,
+                    tooltip: 'Italic',
+                    onPressed: () => onFormat(_MarkdownFormatAction.italic),
+                  ),
+                  _MarkdownToolbarButton(
+                    icon: Icons.format_list_bulleted,
+                    tooltip: 'Bulleted list',
+                    onPressed: () =>
+                        onFormat(_MarkdownFormatAction.unorderedList),
+                  ),
+                  _MarkdownToolbarButton(
+                    icon: Icons.format_list_numbered,
+                    tooltip: 'Numbered list',
+                    onPressed: () =>
+                        onFormat(_MarkdownFormatAction.orderedList),
+                  ),
+                  _MarkdownToolbarButton(
+                    icon: Icons.checklist,
+                    tooltip: 'Checklist',
+                    onPressed: () => onFormat(_MarkdownFormatAction.checklist),
+                  ),
+                  _MarkdownToolbarButton(
+                    icon: Icons.format_quote,
+                    tooltip: 'Quote',
+                    onPressed: () => onFormat(_MarkdownFormatAction.quote),
+                  ),
+                  _MarkdownToolbarButton(
+                    icon: Icons.code,
+                    tooltip: 'Code',
+                    onPressed: () => onFormat(_MarkdownFormatAction.code),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          TextField(
+            controller: controller,
+            minLines: 8,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.all(12),
+            ),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              height: 1.45,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MarkdownToolbarButton extends StatelessWidget {
+  const _MarkdownToolbarButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      icon: Icon(icon),
+      onPressed: onPressed,
+    );
+  }
+}
+
+class _MarkdownNotePreview extends StatelessWidget {
+  const _MarkdownNotePreview({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lines = text.split('\n');
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final line in lines) _MarkdownPreviewLine(line: line),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MarkdownPreviewLine extends StatelessWidget {
+  const _MarkdownPreviewLine({required this.line});
+
+  final String line;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final trimmed = line.trimLeft();
+    final indent = line.length - trimmed.length;
+    if (trimmed.isEmpty) {
+      return const SizedBox(height: 12);
+    }
+    if (trimmed.startsWith('# ')) {
+      return _PreviewText(
+        trimmed.substring(2),
+        style: theme.textTheme.titleLarge,
+      );
+    }
+    if (trimmed.startsWith('## ')) {
+      return _PreviewText(
+        trimmed.substring(3),
+        style: theme.textTheme.titleMedium,
+      );
+    }
+    if (trimmed.startsWith('### ')) {
+      return _PreviewText(
+        trimmed.substring(4),
+        style: theme.textTheme.titleSmall,
+      );
+    }
+    if (trimmed.startsWith('> ')) {
+      return Padding(
+        padding: EdgeInsets.only(left: indent.toDouble()),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                color: theme.colorScheme.primary,
+                width: 3,
+              ),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: _PreviewText(
+              trimmed.substring(2),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    final checklist = _stripListPrefix(trimmed, '- [ ] ') ??
+        _stripListPrefix(trimmed, '- [x] ') ??
+        _stripListPrefix(trimmed, '- [X] ');
+    if (checklist != null) {
+      return _PreviewListLine(
+        indent: indent,
+        marker: trimmed.startsWith('- [ ] ') ? '☐' : '☑',
+        text: checklist,
+      );
+    }
+    final unordered =
+        _stripListPrefix(trimmed, '- ') ?? _stripListPrefix(trimmed, '* ');
+    if (unordered != null) {
+      return _PreviewListLine(
+        indent: indent,
+        marker: '•',
+        text: unordered,
+      );
+    }
+    final ordered = RegExp(r'^\d+\.\s+').firstMatch(trimmed);
+    if (ordered != null) {
+      return _PreviewListLine(
+        indent: indent,
+        marker: trimmed.substring(0, ordered.end).trim(),
+        text: trimmed.substring(ordered.end),
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.only(left: indent.toDouble()),
+      child: _PreviewText(trimmed),
+    );
+  }
+
+  static String? _stripListPrefix(String text, String prefix) {
+    return text.startsWith(prefix) ? text.substring(prefix.length) : null;
+  }
+}
+
+class _PreviewListLine extends StatelessWidget {
+  const _PreviewListLine({
+    required this.indent,
+    required this.marker,
+    required this.text,
+  });
+
+  final int indent;
+  final String marker;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: indent.toDouble()),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 28, child: Text(marker)),
+          Expanded(child: _PreviewText(text)),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewText extends StatelessWidget {
+  const _PreviewText(this.text, {this.style});
+
+  final String text;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectableText(
+      text,
+      style: style ?? Theme.of(context).textTheme.bodyMedium,
+    );
+  }
+}
+
 /// A single row in the todo-list detail view.
 class _TodoItemTile extends StatelessWidget {
-  const _TodoItemTile({required this.item});
+  const _TodoItemTile({
+    required this.item,
+    required this.isUpdating,
+    this.onChanged,
+  });
 
   final TodoItem item;
+  final bool isUpdating;
+  final ValueChanged<bool>? onChanged;
 
   static String _formatDate(DateTime dt) {
     // Format as YYYY-MM-DD HH:mm (local time).
@@ -849,13 +1416,17 @@ class _TodoItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        item.isCompleted
-            ? Icons.check_circle_outline
-            : Icons.radio_button_unchecked,
-        color: item.isCompleted ? Theme.of(context).colorScheme.primary : null,
-      ),
+    return CheckboxListTile(
+      value: item.isCompleted,
+      onChanged: isUpdating || onChanged == null
+          ? null
+          : (value) => onChanged!(value ?? false),
+      secondary: isUpdating
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
       title: Text(
         item.title,
         style: item.isCompleted
