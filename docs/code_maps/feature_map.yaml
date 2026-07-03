@@ -79,6 +79,7 @@ products:
         smoke_checks:
           - 发送一条消息后可以看到消息列表更新。
           - 发送消息后输入框应保持可输入并恢复焦点，流式回复期间仍可继续编辑下一条草稿。
+          - 输入框内按 `Shift+Enter` 插入换行且不发送；普通 `Enter` 仍发送当前草稿。
           - 宽屏内联 Navigation 打开时，拖动右侧分隔手柄应能在最小/最大宽度范围内调整侧边栏宽度。
           - 宽屏内联 Navigation 打开时，Navigation 与 chat 区域之间应显示一条可拖拽的垂直分界线。
           - 将路由切到 plugin/OpenClaw 节点后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
@@ -159,6 +160,8 @@ products:
             route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
           - widget: ComposerBar attachment strip
             route_hint: apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
+          - widget: ComposerBar web clipboard image paste handler
+            route_hint: apps/mobile_chat_app/lib/features/chat/widgets/composer_paste_image_web.dart
           - widget: MessageList media attachment rendering
             route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
           - service: ChatHistoryApiService.uploadImage/respond mediaAttachmentIds
@@ -183,6 +186,7 @@ products:
             route_hint: apps/node_backend/src/routes/chat.ts
         smoke_checks:
           - 选择图片后，输入框上方立即显示本地缩略图与上传进度；失败后保留缩略图并提供重试和移除。
+          - 在输入框聚焦时粘贴剪贴板图片，应进入同一套上传中、失败重试、上传完成附件流程。
           - 上传成功后，输入框上方显示带 Authorization header 的 media preview，而不是只显示占位 icon。
           - 发送带图片的消息后，user 气泡显示图片附件并保持原有投递状态。
           - 点击/点按聊天图片附件会通过 primary pointer 打开全屏预览；Safari/Chrome 桌面浏览器均应可用，右上角关闭按钮返回聊天。
@@ -332,6 +336,8 @@ products:
         name: 对话式待办列表与待办事项
         user_value: 用户可用自然语言让 AI 管理待办列表（topic 分组）及列表下的待办项；每个待办项必须属于一个父列表，不能脱离列表存在。
         entry_paths:
+          - widget: ChatNavigationPage todo resource preview
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
           - service: TodoApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/todo_api_service.dart
           - service: AuthenticatedApiClient
@@ -354,11 +360,12 @@ products:
           - 用户说"帮我创建一个工作待办列表"，AI 调用 todolist_create 并确认。
           - 用户说"帮我在工作列表里添加：完成报告"，AI 调用 todo_create（带 listId）并确认。
           - 用户说"查看我的工作列表"，AI 调用 todolist_get，返回列表及子项。
+          - Resources tab 中打开 todo list 后，勾选待办项应调用 PATCH 并 visibly 切换为完成/未完成状态。
           - DELETE /api/resources/todo-lists/:listId 返回 { deleted: true }，同时级联删除所有子项。
 
       - feature_id: conversational_notes
         name: 对话式 Markdown Notes
-        user_value: 用户可让 AI 把聊天中检索或生成的长 Markdown 资料保存为独立 Note，并在 Resources 中只读查看。
+        user_value: 用户可让 AI 把聊天中检索或生成的长 Markdown 资料保存为独立 Note，并在 Resources 中查看和编辑 Markdown 内容。
         entry_paths:
           - service: NoteApiService
             route_hint: apps/mobile_chat_app/lib/features/chat/note_api_service.dart
@@ -379,7 +386,8 @@ products:
         smoke_checks:
           - 用户说"把刚才找到的资料保存成 Note"，AI 调用 note_create，body 保留 Markdown 原文。
           - Resources tab 显示 Note 资源，选择 Notes 过滤器后只显示 Notes。
-          - 点击 Note 资源后打开只读预览，展示完整 body 或列表中的 preview fallback。
+          - 点击 Note 资源后打开 Markdown 编辑区，展示完整 body 或列表中的 preview fallback。
+          - 修改 Note body 后点击 Save，应调用 PATCH 并保留编辑后的 Markdown 内容。
           - note_read_lines 读取指定行号范围时只返回该范围及总行数。
           - note_append_lines 超过 10000 行上限时返回明确错误且内容不变。
 

@@ -3,13 +3,24 @@ import 'dart:convert';
 import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../auth/auth_service.dart';
 import '../../settings/llm_config_service.dart';
 import '../chat_message.dart';
+import 'composer_paste_image.dart';
+import 'composer_pasted_image.dart';
 
 /// Actions available in the composer popup menu.
 enum ComposerMenuAction { model, info }
+
+class _SubmitComposerIntent extends Intent {
+  const _SubmitComposerIntent();
+}
+
+class _InsertComposerNewlineIntent extends Intent {
+  const _InsertComposerNewlineIntent();
+}
 
 class ComposerAtAction {
   const ComposerAtAction({
@@ -58,6 +69,7 @@ class ComposerBar extends StatefulWidget {
     this.draftUpload,
     this.onSend,
     this.onAttachImage,
+    this.onPasteImage,
     this.onCancelDraftUpload,
     this.onRetryDraftUpload,
     this.onRemoveAttachment,
@@ -81,6 +93,7 @@ class ComposerBar extends StatefulWidget {
   final ComposerDraftUpload? draftUpload;
   final void Function(String text)? onSend;
   final VoidCallback? onAttachImage;
+  final void Function(ComposerPastedImage image)? onPasteImage;
   final VoidCallback? onCancelDraftUpload;
   final VoidCallback? onRetryDraftUpload;
   final void Function(String mediaId)? onRemoveAttachment;
@@ -106,6 +119,7 @@ class _ComposerBarState extends State<ComposerBar>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+  late final ComposerPasteImageSubscription _pasteImageSubscription;
   late AnimationController _spinController;
   bool _hasDraft = false;
 
@@ -118,6 +132,10 @@ class _ComposerBarState extends State<ComposerBar>
     )..repeat();
     _focusNode.addListener(() => setState(() {}));
     _controller.addListener(_onDraftChanged);
+    _pasteImageSubscription = listenForComposerPastedImages(
+      focusNode: _focusNode,
+      onImage: _handlePastedImage,
+    );
   }
 
   void _onDraftChanged() {
@@ -153,6 +171,28 @@ class _ComposerBarState extends State<ComposerBar>
     });
   }
 
+  void _handlePastedImage(ComposerPastedImage image) {
+    if (widget.onPasteImage == null ||
+        widget.draftUpload != null ||
+        widget.isStreaming ||
+        widget.onSend == null) {
+      return;
+    }
+    widget.onPasteImage!(image);
+  }
+
+  void _insertNewLineAtCursor() {
+    final value = _controller.value;
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : value.text.length;
+    final nextText = value.text.replaceRange(start, end, '\n');
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: start + 1),
+    );
+  }
+
   void _insertSlashCommand(String command) {
     final trimmed = command.trim();
     if (trimmed.isEmpty) return;
@@ -179,6 +219,7 @@ class _ComposerBarState extends State<ComposerBar>
 
   @override
   void dispose() {
+    _pasteImageSubscription.cancel();
     _spinController.dispose();
     _controller.removeListener(_onDraftChanged);
     _controller.dispose();
@@ -251,30 +292,56 @@ class _ComposerBarState extends State<ComposerBar>
                         ),
                       ),
                     ),
-                  TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    enabled: true,
-                    maxLines: 5,
-                    minLines: 1,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _submit(),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: chatColors.onMessageAssistant),
-                    decoration: InputDecoration(
-                      hintText: 'Ask Bricks to create something…',
-                      hintStyle: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: chatColors.composerPlaceholder),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.fromLTRB(
-                        BricksSpacing.md,
-                        6,
-                        BricksSpacing.md,
-                        2,
+                  Shortcuts(
+                    shortcuts: const <ShortcutActivator, Intent>{
+                      SingleActivator(LogicalKeyboardKey.enter):
+                          _SubmitComposerIntent(),
+                      SingleActivator(LogicalKeyboardKey.enter, shift: true):
+                          _InsertComposerNewlineIntent(),
+                    },
+                    child: Actions(
+                      actions: <Type, Action<Intent>>{
+                        _SubmitComposerIntent:
+                            CallbackAction<_SubmitComposerIntent>(
+                          onInvoke: (_) {
+                            _submit();
+                            return null;
+                          },
+                        ),
+                        _InsertComposerNewlineIntent:
+                            CallbackAction<_InsertComposerNewlineIntent>(
+                          onInvoke: (_) {
+                            _insertNewLineAtCursor();
+                            return null;
+                          },
+                        ),
+                      },
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        enabled: true,
+                        maxLines: 5,
+                        minLines: 1,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _submit(),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: chatColors.onMessageAssistant),
+                        decoration: InputDecoration(
+                          hintText: 'Ask Bricks to create something…',
+                          hintStyle: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: chatColors.composerPlaceholder),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.fromLTRB(
+                            BricksSpacing.md,
+                            6,
+                            BricksSpacing.md,
+                            2,
+                          ),
+                        ),
                       ),
                     ),
                   ),

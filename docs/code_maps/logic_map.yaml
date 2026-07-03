@@ -189,6 +189,7 @@ index:
       - docs/tasks/done/2026-05-19-14-27-CST-tool-call-thinking-group.md
       - docs/tasks/done/2026-05-19-17-38-CST-subsection-rename-menu.md
       - docs/tasks/done/2026-05-21-10-41-CST-channel-new-ui-harness.md
+      - docs/tasks/done/2026-07-03-09-58-CST-chat-input-shift-enter-newline.md
       - docs/plans/2026-06-23-16-24-CST-desktop-sidebar-divider-visibility.md
       - docs/testing/local-chat-fixture-db.md
     test_index:
@@ -228,6 +229,7 @@ index:
       - scoped display name
       - slash-commands
       - route-aware composer actions
+      - Shift+Enter newline
       - markdown-table
       - long-polling (deprecated, replaced by SSE)
       - SSE (Server-Sent Events)
@@ -272,6 +274,7 @@ index:
       - 宽屏侧边栏 resize handle 若命中区域太窄或未设为 opaque hit test，用户会以为拖拽调宽功能失效。
       - 如果抽屉式导航与宽屏内联导航共用关闭策略，点击频道可能在宽屏下误收起侧栏，或在窄屏下无法关闭全屏抽屉。
       - 发送消息后若 streaming 状态禁用 TextField，会打断连续输入工作流并丢失键盘焦点。
+      - composer keyboard shortcuts 必须区分 plain Enter 与 Shift+Enter；若回退到 TextField.onSubmitted-only，桌面/web 多行输入会被误发送。
       - 输入框 focus 态若重新引入强边框，会破坏暗色 composer 的安静层级并制造不必要的视觉噪音。
       - 输入框底部 action 若混用不同 enabled 颜色，用户会误解部分按钮被禁用或处于不同优先级。
       - 标题区子区切换与右上角管理菜单职责若混淆，可能导致用户误触或切换不可达。
@@ -337,9 +340,14 @@ index:
       - apps/mobile_chat_app/lib/features/chat/media_download_web.dart
       - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
+      - apps/mobile_chat_app/lib/features/chat/widgets/composer_paste_image.dart
+      - apps/mobile_chat_app/lib/features/chat/widgets/composer_paste_image_stub.dart
+      - apps/mobile_chat_app/lib/features/chat/widgets/composer_paste_image_web.dart
+      - apps/mobile_chat_app/lib/features/chat/widgets/composer_pasted_image.dart
       - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
     doc_index:
       - docs/tasks/done/2026-06-29-23-06-CST-media-upload-preview-multimodal.md
+      - docs/tasks/done/2026-07-02-12-49-CST-paste-image-upload-flow.md
       - docs/tasks/doing/2026-06-29-14-32-CST-gemini-image-video-generation-architecture.md
       - docs/tasks/doing/2026-06-29-16-13-CST-dokku-channel-media-deployment-plan.md
     test_index:
@@ -351,6 +359,7 @@ index:
       - apps/node_backend/src/routes/chat.test.ts
       - apps/mobile_chat_app/test/message_list_test.dart
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
+      - apps/mobile_chat_app/test/composer_bar_test.dart
     keywords:
       - media_assets
       - BRICKS_SANDBOX_ROOT
@@ -374,6 +383,7 @@ index:
       - full-screen media preview
       - authenticated media download
       - FilePicker
+      - clipboard paste image
       - Image.network Authorization
     change_risks:
       - media_assets 必须按 user_id 授权读取；若只按 media id 查找，可能泄露其他用户上传/生成图片。
@@ -381,6 +391,7 @@ index:
       - Flutter Image.network 预览依赖 Authorization header；若 AuthService token hydration 失败，图片附件会显示 broken image 但消息文本仍可见。
       - 桌面 Safari 对聊天图片 tile 的高阶 tap 手势可能不稳定；缩略图打开必须保留 primary pointer down/up 链路和可见 Open image 入口，避免只依赖 GestureDetector.onTap。
       - Web 下载不能直接导航到 `/download`，必须用当前 token 拉取 Blob 后触发浏览器下载；否则受保护 media 会返回 401。
+      - Web 粘贴图片监听只应在 composer 获得焦点时处理 image clipboard item；否则可能拦截页面其他输入区域的正常粘贴。
       - Gemini 多模态输入只应把当前用户可访问、当前 channel 的 ready image asset 转为 image part；错误地传递跨 channel 或失败 asset 会造成隐私或 provider 错误风险。
       - Gemini image generation 和 Veo reference images 只能读取当前用户、当前 channel、ready image asset；跨 channel 或非 image media 必须被拒绝。
       - Veo operation 完成后必须及时下载 provider video URI 到 Bricks-owned storage；只保存 provider URI 会受 2 天 provider retention 影响。
@@ -860,12 +871,15 @@ index:
       - apps/node_backend/src/services/localAgentLoopService.ts
       - apps/node_backend/src/routes/resources.ts
       - apps/mobile_chat_app/lib/features/chat/todo_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_navigation_page.dart
       - apps/mobile_chat_app/lib/services/authenticated_api_client.dart
     doc_index:
       - docs/tasks/done/2026-05-16-02-20-+00-todos-tables-highlights-tools.md
       - docs/tasks/done/2026-05-19-13-02-CST-highlight-list-and-auth-api-architecture.md
+      - docs/tasks/done/2026-07-03-15-47-CST-editable-todo-and-note-resources.md
     test_index:
       - apps/node_backend/src/services/localAgentLoopService.test.ts
+      - apps/mobile_chat_app/test/chat_navigation_page_test.dart
     keywords:
       - todo
       - todo list
@@ -875,15 +889,17 @@ index:
       - INTERNAL_TOOL_TODO_CREATE
       - todolist.create
       - todo.create
+      - editable todo resource
     change_risks:
       - todo.create 等所有 todo item 工具均要求传入 listId；若 AI 不提供 listId 将返回 invalid_args。
       - todoListService.deleteTodoList 依赖 DB CASCADE 删除子 asset_todos；若 FK 未正确迁移，cascade 不生效。
       - 修改 INTERNAL_TOOLS 常量列表若遗漏新工具会导致 tool_not_allowed 错误。
       - todoService 的 updateTodo 使用动态 SET 子句；若新增字段须同步 DTO 和路由 PATCH 处理。
       - TodoApiService 不再接收 token 参数；资源预览和聊天页加载应依赖 AuthenticatedApiClient 的统一缺 token/401 错误路径。
+      - Resources todo checkbox 更新失败时必须保留原状态并显示可重试错误，否则用户会误以为状态已持久化。
 
   - feature_id: conversational_notes
-    capability: 用户通过自然语言让 AI 将聊天中检索或生成的长 Markdown 资料保存到独立 Note；AI 调用 note_* 内部工具，客户端在 Resources 中只读预览
+    capability: 用户通过自然语言让 AI 将聊天中检索或生成的长 Markdown 资料保存到独立 Note；AI 调用 note_* 内部工具，客户端在 Resources 中查看和编辑 Markdown body
     code_index:
       - apps/node_backend/src/db/migrations/024_create_asset_notes.sql
       - apps/node_backend/src/services/noteService.ts
@@ -898,6 +914,7 @@ index:
     doc_index:
       - docs/tasks/done/2026-06-16-15-32-+08-note-content-type-implementation.md
       - docs/tasks/done/2026-06-12-14-00-+08-note-content-type.md
+      - docs/tasks/done/2026-07-03-15-47-CST-editable-todo-and-note-resources.md
     test_index:
       - apps/node_backend/src/routes/resources.test.ts
       - apps/node_backend/src/services/localAgentLoopService.test.ts
@@ -913,7 +930,8 @@ index:
       - note_delete_lines
       - resources.notes
       - Markdown note
-      - read-only preview
+      - editable note resource
+      - Markdown editor
       - line range
       - 10000 line limit
     change_risks:
@@ -922,7 +940,8 @@ index:
       - Line operations are 1-based and inclusive; off-by-one errors can overwrite or delete the wrong Markdown block.
       - append/replace mutations enforce a 10000-line cap in service and route/tool paths; bypassing service logic would skip the guard.
       - ChatScreen relies on `resources.notes` typed invalidation to refresh the Resources tab after agent tool calls.
-      - The Resources preview loads full Note body on tap; very large notes may need pagination or markdown rendering optimization in a later iteration.
+      - The Resources preview loads full Note body on tap; very large notes may need pagination or markdown editing optimization in a later iteration.
+      - Note body edits use whole-document PATCH; future partial-line editing must preserve line-number semantics and avoid overwriting concurrent changes without detection.
 
   - feature_id: asset_tables
     capability: 用户通过自然语言让 AI 管理动态 JSONB 表格（O(1) 列操作，行软删除）；AI 调用 table_* 工具

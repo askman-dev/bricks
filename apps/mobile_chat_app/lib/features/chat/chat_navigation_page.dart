@@ -147,6 +147,7 @@ class ChatNavigationPage extends StatefulWidget {
     this.onChannelArchive,
     this.onNodeSelected,
     this.onResourceSelected,
+    this.onResourceChanged,
     this.onRequestClose,
     this.closeOnChannelSelected = true,
     this.todoApiService,
@@ -176,6 +177,10 @@ class ChatNavigationPage extends StatefulWidget {
   /// [ChatResourceItem] is passed. If null, tapping opens
   /// [_ResourcePreviewPage] internally.
   final ValueChanged<ChatResourceItem>? onResourceSelected;
+
+  /// Called after a resource detail edit succeeds so callers can refresh list
+  /// summaries and updated timestamps.
+  final VoidCallback? onResourceChanged;
 
   final bool closeOnChannelSelected;
 
@@ -289,6 +294,7 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
           resource: resource,
           todoApiService: widget.todoApiService,
           noteApiService: widget.noteApiService,
+          onResourceChanged: widget.onResourceChanged,
         ),
       ),
     );
@@ -637,11 +643,13 @@ class _ResourcePreviewPage extends StatefulWidget {
     required this.resource,
     this.todoApiService,
     this.noteApiService,
+    this.onResourceChanged,
   });
 
   final ChatResourceItem resource;
   final TodoApiService? todoApiService;
   final NoteApiService? noteApiService;
+  final VoidCallback? onResourceChanged;
 
   @override
   State<_ResourcePreviewPage> createState() => _ResourcePreviewPageState();
@@ -649,8 +657,10 @@ class _ResourcePreviewPage extends StatefulWidget {
 
 class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
   List<TodoItem>? _items;
-  NoteDetail? _note;
+  TextEditingController? _noteController;
+  final Set<String> _updatingTodoIds = {};
   bool _loading = false;
+  bool _savingNote = false;
   String? _error;
 
   @override
@@ -659,8 +669,26 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
     if (widget.resource.type == ChatResourceType.todoList) {
       _fetchItems();
     } else if (widget.resource.type == ChatResourceType.note) {
+      _noteController =
+          TextEditingController(text: widget.resource.notes ?? '');
       _fetchNote();
     }
+  }
+
+  @override
+  void dispose() {
+    _noteController?.dispose();
+    super.dispose();
+  }
+
+  List<TodoItem> _sortTodoItems(List<TodoItem> raw) {
+    return List<TodoItem>.from(raw)
+      ..sort((a, b) {
+        if (a.isCompleted != b.isCompleted) {
+          return a.isCompleted ? 1 : -1;
+        }
+        return a.displayOrder.compareTo(b.displayOrder);
+      });
   }
 
   Future<void> _fetchItems() async {
@@ -675,14 +703,7 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
       final raw = await service.listTodos(
         listId: widget.resource.id,
       );
-      // Sort a copy: incomplete first (by displayOrder), then completed.
-      final items = List<TodoItem>.from(raw)
-        ..sort((a, b) {
-          if (a.isCompleted != b.isCompleted) {
-            return a.isCompleted ? 1 : -1;
-          }
-          return a.displayOrder.compareTo(b.displayOrder);
-        });
+      final items = _sortTodoItems(raw);
       if (mounted) {
         setState(() {
           _items = items;
@@ -711,7 +732,7 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
       final note = await service.getNote(widget.resource.id);
       if (mounted) {
         setState(() {
-          _note = note;
+          _noteController?.text = note.body;
           _loading = false;
         });
       }
@@ -722,6 +743,73 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
           _loading = false;
         });
       }
+    }
+  }
+
+  Future<void> _toggleTodoItem(TodoItem item, bool isCompleted) async {
+    final service = widget.todoApiService;
+    if (service == null || _updatingTodoIds.contains(item.id)) return;
+
+    setState(() {
+      _updatingTodoIds.add(item.id);
+      _error = null;
+    });
+    try {
+      final updated = await service.updateTodo(
+        listId: item.listId,
+        id: item.id,
+        isCompleted: isCompleted,
+      );
+      if (!mounted) return;
+      setState(() {
+        final current = _items ?? const <TodoItem>[];
+        _items = _sortTodoItems(
+          current
+              .map((candidate) =>
+                  candidate.id == updated.id ? updated : candidate)
+              .toList(),
+        );
+        _updatingTodoIds.remove(item.id);
+      });
+      widget.onResourceChanged?.call();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _updatingTodoIds.remove(item.id);
+      });
+    }
+  }
+
+  Future<void> _saveNote() async {
+    final service = widget.noteApiService;
+    final controller = _noteController;
+    if (service == null || controller == null || _savingNote) return;
+
+    setState(() {
+      _savingNote = true;
+      _error = null;
+    });
+    try {
+      final updated = await service.updateNote(
+        noteId: widget.resource.id,
+        body: controller.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _noteController?.text = updated.body;
+        _savingNote = false;
+      });
+      widget.onResourceChanged?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Note saved')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _savingNote = false;
+      });
     }
   }
 
@@ -782,7 +870,15 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
                 subtitle: Text('This list has no todo items yet'),
               )
             else
-              ..._items!.map((item) => _TodoItemTile(item: item)),
+              ..._items!.map(
+                (item) => _TodoItemTile(
+                  item: item,
+                  isUpdating: _updatingTodoIds.contains(item.id),
+                  onChanged: widget.todoApiService == null
+                      ? null
+                      : (value) => _toggleTodoItem(item, value),
+                ),
+              ),
           ],
           if (isNote) ...[
             const Divider(),
@@ -812,16 +908,42 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
                   onPressed: _fetchNote,
                 ),
               )
-            else
+            else ...[
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: SelectableText(
-                  _note?.body ?? resource.notes ?? '',
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: TextField(
+                  controller: _noteController,
+                  minLines: 8,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                  ),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         height: 1.45,
+                        fontFamily: 'monospace',
                       ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: widget.noteApiService == null || _savingNote
+                        ? null
+                        : _saveNote,
+                    icon: _savingNote
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: const Text('Save'),
+                  ),
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 24),
         ],
@@ -832,9 +954,15 @@ class _ResourcePreviewPageState extends State<_ResourcePreviewPage> {
 
 /// A single row in the todo-list detail view.
 class _TodoItemTile extends StatelessWidget {
-  const _TodoItemTile({required this.item});
+  const _TodoItemTile({
+    required this.item,
+    required this.isUpdating,
+    this.onChanged,
+  });
 
   final TodoItem item;
+  final bool isUpdating;
+  final ValueChanged<bool>? onChanged;
 
   static String _formatDate(DateTime dt) {
     // Format as YYYY-MM-DD HH:mm (local time).
@@ -849,13 +977,17 @@ class _TodoItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        item.isCompleted
-            ? Icons.check_circle_outline
-            : Icons.radio_button_unchecked,
-        color: item.isCompleted ? Theme.of(context).colorScheme.primary : null,
-      ),
+    return CheckboxListTile(
+      value: item.isCompleted,
+      onChanged: isUpdating || onChanged == null
+          ? null
+          : (value) => onChanged!(value ?? false),
+      secondary: isUpdating
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
       title: Text(
         item.title,
         style: item.isCompleted
