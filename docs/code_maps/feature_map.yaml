@@ -1,7 +1,7 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-06-17
+last_updated: 2026-06-30
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
@@ -42,6 +42,7 @@ products:
           - 发送一条消息后可以看到消息列表更新。
           - 发送消息后输入框应保持可输入并恢复焦点，流式回复期间仍可继续编辑下一条草稿。
           - 宽屏内联 Navigation 打开时，拖动右侧分隔手柄应能在最小/最大宽度范围内调整侧边栏宽度。
+          - 宽屏内联 Navigation 打开时，Navigation 与 chat 区域之间应显示一条可拖拽的垂直分界线。
           - 将路由切到 plugin/OpenClaw 节点后发送消息，在插件离线时应呈现“已发送但未完成（未读）”。
           - 启动并配置 openclaw 插件后再次发送，消息应完成并出现 assistant 回复。
           - 当用户拥有多个 OpenClaw 节点时，输入框左侧路由菜单应仅列出真实节点；菜单主标题显示节点名称，副标题显示 `OpenClaw`。
@@ -53,7 +54,7 @@ products:
           - 当 writeSeq 因更新语义与原始对话顺序冲突时，列表仍应按 seqId 保持“先问后答”。
           - local 与 plugin 路由均通过 `/api/chat/respond` 先入库 user query 并返回 async accepted，再由后台异步写入 assistant 回复。
           - 发送后 user query 仍先显示“已接受”状态；assistant 身份占位可在 SSE dispatch 占位到达时提前出现，但 assistant 正文气泡仍应等待真实内容开始到达。
-          - Agent tool 结果可通过 message metadata 的 typed invalidations 驱动前端局部刷新；普通对话完成不应全量请求 scopes/channel-names/scope-settings。
+          - Agent tool 结果可通过 message metadata 的 typed invalidations 驱动前端局部刷新；普通对话完成不应全量请求 scopes/channels/scope-settings。
           - user query 气泡应显示两段状态：入库后先显示第一枚 ✓；AI 开始回复后显示第二枚状态，local/其他远端为第二枚 ✓，OpenClaw plugin 为单色路由状态图标。
           - user query 的时间/线程与投递状态应显示在气泡内；长按气泡可弹出“复制/分叉（待开发）/重发（待开发）”菜单，并在底部显示 message id 与 task id。
           - 发送消息后，user query 由后端 /respond 端点统一持久化；前端不执行独立入库请求。
@@ -65,7 +66,7 @@ products:
           - 当向上浏览历史消息后，输入框上方应出现向下箭头按钮；点击后应快速跳转到最新消息。
           - 刷新页面后，已发送过消息的频道仍会在侧边栏中显示并可继续会话。
           - 新建频道时必须输入频道名，且重复名称会被拦截。
-          - 新建频道确认后，即使还没有发送消息，刷新页面后侧边栏仍应从 `chat_channel_names` 恢复该频道名称。
+          - 新建频道确认后，即使还没有发送消息，刷新页面后侧边栏仍应从 `chat_channels` 恢复该频道名称。
           - Navigation 的 Channels tab 创建按钮显示为 `New Channel`。
           - 默认频道显示为 `Default Channel`。
           - Navigation 的 Channels tab 列表项不显示 leading 图标；长按频道菜单显示 `Rename` / `Archive`。
@@ -95,8 +96,8 @@ products:
           - 当路由为 OpenClaw 时，输入框左下角应额外出现 `/` 斜杠命令按钮，选择命令后应自动填充到输入框。
           - 未来新增的 plugin 平台（例如 Hermes）应复用 plugin 路由，平台差异留在 node/plugin 配置层。
           - 顶部频道名称应支持下拉切换频道，切换后分区标签与分区列表需同步刷新为目标频道的数据。
-          - AI tool 创建 thread 或改名当前 channel 后，客户端应通过同步 scopes/channel names 刷新顶部名称与 Thread 列表，不需要整页刷新。
-          - 非主 Thread 首次收到用户消息时，后端应先在 `chat_channel_names` 写入 `source=first_message_exact` 的可读名；本轮 assistant 成功完成后仅尝试一次 `first_message_generated`，成功或 fallback 后通过 typed invalidation 刷新 Thread 名称。
+          - AI tool 创建 thread 或改名当前 channel 后，客户端应通过同步 scopes/channels 刷新顶部名称与 Thread 列表，不需要整页刷新。
+          - 非主 Thread 首次收到用户消息时，后端应先在 `chat_channels` 写入 `source=first_message_exact` 的可读名；本轮 assistant 成功完成后仅尝试一次 `first_message_generated`，成功或 fallback 后通过 typed invalidation 刷新 Thread 名称。
           - 顶部频道下拉菜单顶部应显示 `Rename` / `Archive` 功能分组；默认频道下这两个功能禁用，非默认频道下应调用频道改名与归档持久化路径；频道很多时菜单应限制在合理最大高度内并支持内部滚动。
           - 频道名称右侧应内嵌分区下拉按钮（显示当前分区名+下箭头），且该菜单与频道标题左对齐，不再使用右上角三个点。
           - Thread 菜单主线程显示为 `Thread`；菜单应先显示 `New Thread` 功能组；在子线程内应显示小号浅色“当前组”标题及 `Rename` / `Archive` 操作；主线程不显示当前组操作；底部列表组显示主线程和已有子线程；菜单弹出动画应保持快速缩放+淡入。
@@ -111,6 +112,100 @@ products:
           - 输入框底部可点击且非禁用的动作按钮（路由、`/`、`@`、配置、发送）应使用一致的白色系 enabled 颜色，除非该状态刻意使用 accent。
           - OpenClaw plugin 路由与投递状态图标应使用单色图标，不使用彩色 emoji。
           - 用户消息与 assistant 消息正文应共享同一文本样式基线（字号一致）；时间/thread 等 meta 信息应统一为次级灰。
+
+      - feature_id: chat_media_attachments
+        name: 频道内图片附件、生成图片与生成视频持久化
+        user_value: 用户可在聊天中上传图片，上传中/失败时能看到草稿缩略图与重试/移除操作，刷新后仍能预览/下载；Gemini 路由会把上传图片作为多模态输入读取；AI 生成图片和 Veo 生成视频可作为频道内持久附件保存，供同一频道 workspace/Agent 访问。
+        entry_paths:
+          - screen: ChatScreen composer image action
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - widget: ComposerBar attachment strip
+            route_hint: apps/mobile_chat_app/lib/features/chat/widgets/composer_bar.dart
+          - widget: MessageList media attachment rendering
+            route_hint: apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
+          - service: ChatHistoryApiService.uploadImage/respond mediaAttachmentIds
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+          - route: POST /api/media/uploads
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: POST /api/media/generated-images
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: POST /api/media/image-generations
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: POST /api/media/video-generations
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: GET|POST /api/media/generation-jobs/:jobId
+            route_hint: apps/node_backend/src/routes/media.ts
+          - route: GET /api/media/:mediaId/preview|content|download
+            route_hint: apps/node_backend/src/routes/media.ts
+          - service: Gemini media generation provider integration
+            route_hint: apps/node_backend/src/services/mediaGenerationService.ts
+          - tool: media_image_generate / media_video_generate
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+          - llm: Gemini multimodal image parts
+            route_hint: apps/node_backend/src/routes/chat.ts
+        smoke_checks:
+          - 选择图片后，输入框上方立即显示本地缩略图与上传进度；失败后保留缩略图并提供重试和移除。
+          - 上传成功后，输入框上方显示带 Authorization header 的 media preview，而不是只显示占位 icon。
+          - 发送带图片的消息后，user 气泡显示图片附件并保持原有投递状态。
+          - 点击/点按聊天图片附件会通过 primary pointer 打开全屏预览；Safari/Chrome 桌面浏览器均应可用，右上角关闭按钮返回聊天。
+          - 长按或右键/两指点按聊天图片附件会显示 Download 菜单项；全屏预览右上角也提供 Download image 按钮，并通过带 Authorization 的下载请求保存图片。
+          - Gemini/Google AI Studio 路由收到上传图片时，模型请求包含 text part 与 image part，能够基于图片内容回答。
+          - 刷新或 SSE 同步后，图片附件仍从 message metadata 恢复并可加载预览。
+          - 访问 media preview/content/download 路由必须携带当前用户 token；跨用户 media id 返回 404。
+          - 数据库 `media_assets.channel_relative_path` 只保存频道内相对路径，不保存宿主机绝对路径。
+          - 同一 channel 的上传图片写入该 channel 目录下 `media/uploads/`，生成图片写入 `media/generated/images/`，生成视频写入 `media/generated/videos/`。
+          - "`POST /api/media/image-generations` 使用用户的 Google AI Studio 配置调用 Gemini Interactions API，并把返回图片保存成 `generated_image`。"
+          - "AI 通过 `media_image_generate` 生成成功后，最终 assistant 消息 metadata 应包含 `mediaAttachments`，UI 显示真实预览而不是 `[image: ...]` 文本占位。"
+          - "`POST /api/media/video-generations` 创建 `media_generation_jobs` 记录并保存 Veo operation name；轮询 job 完成后下载 provider video URI 并保存成 `generated_video`。"
+          - Veo `referenceImages` 最多接受 3 张 ready image media；`lastFrameMediaId` 必须搭配 `firstFrameMediaId`。
+          - 不支持的 MIME、空图片、超过 20MB 的图片、空视频或非 mp4 视频被后端拒绝。
+
+      - feature_id: channel_react_site_workspace
+        name: Channel React Site Workspace and Public Preview
+        user_value: 用户可以让 Agent 在当前 channel 里创建、编辑、构建一个静态 React/Vite 网站，并通过固定 `craft-spaces.bricks.cool` 子域名访问最新成功构建。
+        entry_paths:
+          - migration: channel_sites public slug binding
+            route_hint: apps/node_backend/src/db/migrations/028_create_channel_sites.sql
+          - migration: channel site publish commit tracking
+            route_hint: apps/node_backend/src/db/migrations/029_add_channel_site_publish_commits.sql
+          - screen: ChatScreen title-bar site publish status
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - service: Flutter site publish status API client
+            route_hint: apps/mobile_chat_app/lib/features/chat/site_publish_api_service.dart
+          - service: user-scoped channel filesystem paths
+            route_hint: apps/node_backend/src/services/channelFileService.ts
+          - service: persistent per-user sandbox filesystem and shell runner
+            route_hint: apps/node_backend/src/services/userSandboxService.ts
+          - service: same-host gVisor sandbox runner
+            route_hint: apps/node_sandbox_runner/src/index.ts
+          - ops: Vultr host sandbox runner installer
+            route_hint: tools/sandbox_runner/install_vultr.sh
+          - service: site workspace, starter, build, media copy
+            route_hint: apps/node_backend/src/services/channelSiteService.ts
+          - route: Host <slug>.craft-spaces.bricks.cool static site serving
+            route_hint: apps/node_backend/src/routes/channelSiteHost.ts
+          - route: /sites/<slug> preview path static site serving
+            route_hint: apps/node_backend/src/routes/channelSiteHost.ts
+          - route: authenticated site publish status API
+            route_hint: apps/node_backend/src/routes/channelSiteApi.ts
+          - tools: site_workspace_config/init, site_file_*, site_shell_exec, site_publish_status, site_build, site_media_copy
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - "`site_workspace_init` initializes one Vite + React + TypeScript workspace for the current channel and creates an initial git commit."
+          - Chat title bar shows a lightweight Site status pill; opening it shows the public URL, publish time, current commit, live commit, Visit, Share, Refresh, and Publish actions.
+          - Channel filesystem directories are nested under one persistent per-user sandbox with opaque user and channel path segments, so raw user IDs and channel IDs are not exposed in paths.
+          - Same-user channels share one sandbox filesystem root, while different users resolve to different sandbox roots.
+          - "`site_file_write/read/list/mkdir/delete` operate only inside the current channel workspace and reject traversal paths."
+          - "`site_shell_exec` and `site_build` execute through the user sandbox runner instead of direct host shell execution."
+          - Production uses `BRICKS_SANDBOX_RUNNER=http` so the Bricks app is control plane only; user commands run in same-host gVisor containers managed by the sandbox runner.
+          - Production and preview apps send `BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes` so the shared runner mounts the same workspace root while both environments share one database.
+          - "`site_publish_status` reports the public URL, current git commit, last successful published commit, latest publish time, and commit-based unpublished update state."
+          - "`site_build` creates a git snapshot commit, runs npm install/build, writes `jobs/build.log` and `jobs/build.json`, stores the latest publish commit, and only replaces `web/dist` plus `published_commit_sha` after a successful build."
+          - "Starter Vite builds use a relative base so `/sites/<slug>` preview URLs load JS/CSS assets below the same site path."
+          - "`site_media_copy` copies current-channel uploaded/generated media into `workspace/public/assets/` and returns a public asset path."
+          - "Production requests to `<slug>.craft-spaces.bricks.cool` resolve through `channel_sites.public_slug`, serve the latest successful `web/dist`, apply React SPA fallback, and include `X-Robots-Tag: noindex`."
+          - "Preview deployments set `BRICKS_PUBLIC_SITE_BASE_URL` so site tools return `https://<preview-host>/sites/<slug>` URLs that do not depend on the global `craft-spaces` wildcard origin certificate."
+          - "Generated site responses override the main app CSP with a site-specific policy that allows common external HTTPS scripts, styles, fonts, media, workers, frames, and WebSocket connections."
 
       - feature_id: scope_instructions_config
         name: 频道和分区会话指令配置
@@ -218,6 +313,7 @@ products:
           - 页面可正常渲染且无崩溃。
           - Chat navigation 的 Resources tab 将 todo lists、asset tables、notes、text highlights 作为原子资源按更新时间倒序显示。
           - Resources tab 顶部 type filter 可按资源类型过滤列表。
+          - Resources tab item 标题最多显示两行并省略溢出，第二行用小 icon + 类型文本显示资源类型。
 
       - feature_id: conversational_todos
         name: 对话式待办列表与待办事项
@@ -298,7 +394,7 @@ products:
           - 在 Turso/libSQL 数据库下，table_create / table_add_column / table_add_row / table_update_row / table_delete_row 均应成功执行，不应因 PostgreSQL-only SQL（例如 NOW() 或 ::jsonb）失败。
           - 当 table_create 执行时抛出数据库错误，聊天历史应显示工具错误结果，并将对应 tool_call_start 标记为已完成，不能永久显示“正在调用”。
           - 相邻工具调用在聊天流中应折叠为一个 `Thinking` / `Thinking complete completed/total` 标志，不直接显示工具名或长 JSON；同 task 的 thinking 行应显示在 `Processing...` 占位前；点击 thinking 标志可在模态窗口查看具体 tool/reasoning 过程；紧随其后的助手文本不重复显示头像/模型名。
-          - 默认 agent-loop 预算为 10 steps / 50 tool calls，单步模型流超时为 60s；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
+          - 默认 agent-loop 预算为 10 steps / 50 tool calls，单步模型流超时为 10 分钟；如果 tool call 后未产生最终文本，后端必须写入非空失败消息并说明是 tool-call limit、step limit、真实 timeout、stream error 或 empty-final-after-tools，而不是写入空 completed assistant 消息。
           - 添加一列 Priority 后，已有行不变（O(1) schema change）。
           - 软删除行后，table_get 不返回该行。
 
@@ -381,6 +477,7 @@ products:
           - 未登录请求返回预期状态码。
           - 合法回跳参数通过校验。
           - 仅允许受控 native OAuth callback，拒绝任意自定义 scheme 回跳。
+          - legacy `/api` OAuth route mount 只应限流 OAuth anonymous endpoints，不得让已认证的 `/api/config?category=llm` 读请求误返回 anonymous auth 429。
 
       - feature_id: backend_chat_llm
         name: Chat 与 LLM 调用
@@ -406,7 +503,7 @@ products:
           - '非目标 plugin 对其他 plugin 创建的 assistant message 执行 PATCH 时，应返回 403。'
           - '/api/v1/platform/events/ack 禁止 body 中传 pluginId，合法 ACK 可重复调用并返回成功。'
           - '/api/config/nodes/:nodeId/agents?sourcePlatform=openclaw 在请求时即时执行 OpenClaw CLI 查询 agents，并用于 plugin 路由的 OpenClaw @ 下拉菜单。'
-          - '调用 /api/chat/channel-names 可保存并读取每个用户的频道自定义名称。'
+          - '调用 /api/chat/channels 可保存并读取每个用户的频道与 Thread 注册信息；调用 /api/chat/channels/archive 可归档并隐藏对应行。'
           - '使用 /api/config/nodes 创建多个节点后，不同节点的 token 应绑定不同 pluginId。'
           - '/api/v1/platform/messages 写入后，消息 metadata 应包含 nodeId/nodeName（当 pluginId 可映射到节点）。'
           - '高频访问 `/api/config?category=llm` 不应因应用层全局 IP 限流触发 429。'
@@ -485,3 +582,40 @@ products:
           - 执行 `DOCS_URL=http://localhost:3000 DOCS_BASE_URL=/docs/ npm run build` 后，docs 输出可被 `/docs/` 前缀访问。
           - 执行 `bash ./tools/vercel-build.sh` 后，`apps/mobile_chat_app/build/web/docs/index.html` 存在。
           - 本地静态服务访问 `/docs/` 呈现 Docusaurus 页面，访问 `/` 仍呈现 Flutter Web 首页。
+
+  - product_id: dokku_deployment
+    name: Dokku Deployment
+    platform:
+      - dokku
+      - docker
+      - github_actions
+    entry_points:
+      - path: Dockerfile
+        route: Dokku Dockerfile deployment
+      - path: .github/workflows/dokku_production_deploy.yml
+        route: main branch production deploy
+      - path: .github/workflows/dokku_preview_deploy.yml
+        route: pull request preview deploy
+      - path: docs/deploy/dokku.md
+        route: deployment runbook
+    features:
+      - feature_id: dokku_channel_deployment
+        name: Dokku 主站与 PR 预览部署
+        user_value: main 分支自动部署到 `craft.bricks.cool`，PR 分支自动部署到独立预览域名和独立频道磁盘根目录。
+        entry_paths:
+          - route: https://craft.bricks.cool
+            route_hint: .github/workflows/dokku_production_deploy.yml
+          - route: https://<branch-slug>.craft-dev.bricks.cool
+            route_hint: .github/workflows/dokku_preview_deploy.yml
+          - mount: /app/data/sandboxes
+            route_hint: Dockerfile
+        smoke_checks:
+          - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/sandboxes`。
+          - PR open/synchronize 后创建或更新 `bricks-preview-<branch-slug>`，域名为 `<branch-slug>.craft-dev.bricks.cool`。
+          - Dokku preview deploy 成功后发布 GitHub Deployment status，PR timeline 的 `View deployment` 按钮指向 preview 域名。
+          - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/sandboxes`，不共享 production 或其他 preview 的 sandbox 文件。
+          - Turso credentials, JWT signing secret, and encryption key stay in Dokku server config; preview apps copy them from the production app on the server instead of reading GitHub Actions secrets.
+          - Production CSP must allow Flutter Web bootstrap scripts so `craft.bricks.cool` renders the login app instead of a blank page.
+          - Flutter Web app shell files such as `index.html`, `main.dart.js`, `flutter.js`, and `flutter_service_worker.js` must return no-store/no-cache headers so preview deploys do not serve stale UI bundles.
+          - PR close/merge 后对应 preview app 被 destroy，preview data root 被删除。
+          - GitHub OAuth callback 固定为 `https://craft.bricks.cool/api/callback`，preview 登录完成后可 redirect 回 preview 域名。

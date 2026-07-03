@@ -1,4 +1,5 @@
 import express, { Response } from "express";
+import { readFile } from "fs/promises";
 import rateLimit from "express-rate-limit";
 import { authenticate, AuthRequest } from "../middleware/auth.js";
 import {
@@ -31,13 +32,13 @@ import {
   upsertChatScopeSetting,
 } from "../services/chatRouterService.js";
 import {
+  archiveChatChannel,
   claimFirstMessageGeneratedNameAttempt,
   completeFirstMessageGeneratedName,
-  deleteChatChannelName,
   insertFirstMessageExactNameIfMissing,
-  listChatChannelNames,
-  upsertChatChannelName,
-} from "../services/chatChannelNameService.js";
+  listChatChannels,
+  upsertChatChannel,
+} from "../services/chatChannelService.js";
 import {
   getPlatformNodeByNodeId,
   listPlatformNodes,
@@ -50,7 +51,13 @@ import {
 import {
   buildAgentTools,
 } from "../services/localAgentLoopService.js";
-import type { AgentLoopStepResult, LlmProvider } from "../llm/types.js";
+import {
+  listMediaAssetsForUser,
+  mediaAssetToDto,
+  resolveMediaAssetPath,
+  type MediaAsset,
+} from "../services/mediaService.js";
+import type { AgentLoopStepResult, LlmProvider, UnifiedMessage } from "../llm/types.js";
 import { parseMaxTokens } from "./validation.js";
 
 const router = express.Router();
@@ -73,7 +80,7 @@ const MAX_ASSISTANT_STREAM_OUTPUT_CHARS = 120 * 1024;
 const STREAM_FLUSH_INTERVAL_MS = 300;
 const DEFAULT_INTERNAL_LOOP_MAX_STEPS = 10;
 const DEFAULT_INTERNAL_LOOP_MAX_TOOL_CALLS = 50;
-const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 60000;
+const DEFAULT_INTERNAL_LOOP_TIMEOUT_MS = 600000;
 const MAX_AUTO_THREAD_NAME_CHARS = 80;
 const AUTO_THREAD_TITLE_GENERATION_TIMEOUT_MS = 20_000;
 
@@ -106,6 +113,88 @@ function toolResultSucceeded(result: unknown): boolean {
   return isRecord(result) && result.ok === true;
 }
 
+function isGeneratedMediaToolName(toolName: string): boolean {
+  return toolName === "media_image_generate" || toolName === "media_video_generate";
+}
+
+function isMediaAttachmentMetadata(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.kind === "string" &&
+    typeof value.origin === "string" &&
+    typeof value.mimeType === "string" &&
+    typeof value.filename === "string" &&
+    typeof value.previewUrl === "string" &&
+    typeof value.contentUrl === "string" &&
+    typeof value.downloadUrl === "string"
+  );
+}
+
+function mediaAttachmentsForToolResult(
+  stepResult: AgentLoopStepResult,
+): Record<string, unknown>[] {
+  if (!isGeneratedMediaToolName(stepResult.toolName) || !toolResultSucceeded(stepResult.result)) {
+    return [];
+  }
+  const resultData = isRecord(stepResult.result)
+    ? isRecord(stepResult.result.data)
+      ? stepResult.result.data
+      : {}
+    : {};
+  const attachments: Record<string, unknown>[] = [];
+  if (isMediaAttachmentMetadata(resultData.media)) {
+    attachments.push(resultData.media);
+  }
+  const resultJob = isRecord(resultData.job) ? resultData.job : null;
+  if (isMediaAttachmentMetadata(resultJob?.resultMedia)) {
+    attachments.push(resultJob.resultMedia);
+  }
+  return attachments;
+}
+
+function appendMediaAttachments(
+  target: Record<string, unknown>[],
+  additions: Record<string, unknown>[],
+): void {
+  const seenIds = new Set(
+    target
+      .map((item) => item.id)
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+  );
+  for (const addition of additions) {
+    const id = typeof addition.id === "string" ? addition.id.trim() : "";
+    if (!id || seenIds.has(id)) continue;
+    seenIds.add(id);
+    target.push(addition);
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripGeneratedMediaReferenceText(
+  content: string,
+  attachments: Record<string, unknown>[],
+): string {
+  if (attachments.length === 0 || content.length === 0) return content;
+  let next = content;
+  for (const attachment of attachments) {
+    const relativePath =
+      typeof attachment.channelRelativePath === "string"
+        ? attachment.channelRelativePath.trim()
+        : "";
+    if (!relativePath) continue;
+    const markerPattern = new RegExp(
+      `\\[\\s*(?:image|video):\\s*${escapeRegExp(relativePath)}(?:\\s*\\([^\\)]*\\))?\\s*\\]`,
+      "g",
+    );
+    next = next.replace(markerPattern, "");
+  }
+  return next.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function invalidationsForToolResult(
   stepResult: AgentLoopStepResult,
 ): ChatClientInvalidation[] {
@@ -128,12 +217,22 @@ function invalidationsForToolResult(
 
   switch (stepResult.toolName) {
     case "chat_channel_create":
-      return [{ kind: "chat.scopes", ...(channelId ? { channelId } : {}) }];
+      if (!channelId) return [];
+      return [
+        { kind: "chat.channelNames", channelId, threadId: null },
+        { kind: "chat.scopeSettings", channelId, threadId: null },
+      ];
     case "chat_thread_create":
+      if (!channelId) return [];
       return [
         {
-          kind: "chat.scopes",
-          ...(channelId ? { channelId } : {}),
+          kind: "chat.channelNames",
+          channelId,
+          ...(threadId ? { threadId } : {}),
+        },
+        {
+          kind: "chat.scopeSettings",
+          channelId,
           ...(threadId ? { threadId } : {}),
         },
       ];
@@ -591,6 +690,72 @@ function parseOutputTone(value: unknown): ChatOutputTone | null {
   return null;
 }
 
+function parseMediaAttachmentIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const mediaId =
+      typeof item === "string"
+        ? item.trim()
+        : isRecord(item) && typeof item.mediaId === "string"
+          ? item.mediaId.trim()
+          : isRecord(item) && typeof item.id === "string"
+            ? item.id.trim()
+            : "";
+    if (!mediaId || seen.has(mediaId)) continue;
+    seen.add(mediaId);
+    ids.push(mediaId);
+  }
+  return ids.slice(0, 10);
+}
+
+function mediaAttachmentsMetadata(assets: MediaAsset[]) {
+  return assets.map((asset) => mediaAssetToDto(asset));
+}
+
+async function imageAssetsToModelParts(assets: MediaAsset[]) {
+  const parts: Array<{ type: "image"; image: Uint8Array; mediaType: string }> = [];
+  for (const asset of assets) {
+    if (asset.kind !== "image" || asset.status !== "ready") continue;
+    const absolutePath = await resolveMediaAssetPath(asset);
+    const data = await readFile(absolutePath);
+    parts.push({
+      type: "image",
+      image: data,
+      mediaType: asset.mimeType,
+    });
+  }
+  return parts;
+}
+
+async function attachImagesToLatestUserMessage(
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  assets: MediaAsset[],
+): Promise<UnifiedMessage[]> {
+  if (assets.length === 0) return messages;
+  let latestUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages[index].role === "user") {
+      latestUserIndex = index;
+      break;
+    }
+  }
+  if (latestUserIndex < 0) return messages;
+  const imageParts = await imageAssetsToModelParts(assets);
+  if (imageParts.length === 0) return messages;
+  return messages.map((message, index) => {
+    if (index !== latestUserIndex) return message;
+    const content: UnifiedMessage["content"] = [
+      ...(message.content.trim()
+        ? [{ type: "text" as const, text: message.content }]
+        : []),
+      ...imageParts,
+    ];
+    return { ...message, content };
+  });
+}
+
 function parseScopeType(value: unknown): ChatScopeType | null {
   if (value === "channel" || value === "thread") return value;
   return null;
@@ -835,6 +1000,7 @@ async function runDefaultRouterRespondAsync(params: {
   threadInstructions: string | null;
   channelOutputTone?: ChatOutputTone | null;
   inputGrammarFixerEnabled: boolean;
+  mediaAttachments: MediaAsset[];
 }) {
   const {
     userId,
@@ -853,6 +1019,7 @@ async function runDefaultRouterRespondAsync(params: {
     threadInstructions,
     channelOutputTone,
     inputGrammarFixerEnabled,
+    mediaAttachments,
   } = params;
 
   // NOTE: This runs after the HTTP response has been sent. On Vercel Serverless
@@ -886,13 +1053,18 @@ async function runDefaultRouterRespondAsync(params: {
     const loopTimeoutMs = parseBoundedInt(body.timeoutMs, {
       fallback: DEFAULT_INTERNAL_LOOP_TIMEOUT_MS,
       min: 1000,
-      max: 120000,
+      max: 600000,
     });
 
     const modelMessages = await listSessionMessagesForModel(userId, acceptedSessionId, {
       limit: 40,
       maxChars: 10000,
     });
+    const preferredProvider = parseProvider(body.provider);
+    const modelMessagesWithMedia =
+      preferredProvider === "google_ai_studio"
+        ? await attachImagesToLatestUserMessage(modelMessages, mediaAttachments)
+        : modelMessages;
 
     const composedSystemPrompt = buildComposedSystemPrompt({
       systemPrompt,
@@ -903,8 +1075,8 @@ async function runDefaultRouterRespondAsync(params: {
       threadId,
     });
     const messagesWithSystem = composedSystemPrompt
-      ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessages]
-      : modelMessages;
+      ? [{ role: 'system' as const, content: composedSystemPrompt }, ...modelMessagesWithMedia]
+      : modelMessagesWithMedia;
 
     let textStream: AsyncIterable<string>;
     let provider: string;
@@ -914,6 +1086,7 @@ async function runDefaultRouterRespondAsync(params: {
     let completedToolCallCount = 0;
     let failedToolCallCount = 0;
     const collectedInvalidations: ChatClientInvalidation[] = [];
+    const collectedMediaAttachments: Record<string, unknown>[] = [];
     try {
       collectedInvalidations.push(
         ...(await insertFirstMessageExactThreadName({
@@ -937,7 +1110,11 @@ async function runDefaultRouterRespondAsync(params: {
     // plain natural language.  The managedStream generator yields text deltas
     // eagerly for tool-free steps, so streaming UX is equivalent to the direct
     // streamWithUserConfig path for ordinary chat messages.
-    const agentTools = buildAgentTools(userId);
+    const agentTools = buildAgentTools(userId, {
+      channelId,
+      threadId,
+      defaultPrompt: userMessage,
+    });
     const streamResult = await streamWithAgentToolsAndUserConfig(
         userId,
         {
@@ -957,6 +1134,12 @@ async function runDefaultRouterRespondAsync(params: {
             const stepInvalidations = dedupeInvalidations(
               stepResults.flatMap(invalidationsForToolResult),
             );
+            const stepMediaAttachments: Record<string, unknown>[] = [];
+            appendMediaAttachments(
+              stepMediaAttachments,
+              stepResults.flatMap(mediaAttachmentsForToolResult),
+            );
+            appendMediaAttachments(collectedMediaAttachments, stepMediaAttachments);
             collectedInvalidations.push(...stepInvalidations);
             const stepSuffix = `:ts:${toolStepIndex}`;
             const stepMessageId = `${assistantMessageId.slice(0, 255 - stepSuffix.length)}${stepSuffix}`;
@@ -993,6 +1176,9 @@ async function runDefaultRouterRespondAsync(params: {
 	                  ...(stepInvalidations.length > 0
 	                    ? { invalidations: stepInvalidations }
 	                    : {}),
+                    ...(stepMediaAttachments.length > 0
+                      ? { mediaAttachments: stepMediaAttachments }
+                      : {}),
 	                },
 	                createdAt: null,
 	              },
@@ -1216,7 +1402,7 @@ async function runDefaultRouterRespondAsync(params: {
             ]);
           },
         },
-        parseProvider(body.provider),
+        preferredProvider,
       );
     textStream = streamResult.textStream;
     provider = streamResult.provider;
@@ -1235,7 +1421,7 @@ async function runDefaultRouterRespondAsync(params: {
       sessionId: acceptedSessionId,
       threadId,
       role: "assistant",
-      content,
+      content: stripGeneratedMediaReferenceText(content, collectedMediaAttachments),
       taskState: "dispatched",
       checkpointCursor: null,
       metadata: {
@@ -1247,6 +1433,9 @@ async function runDefaultRouterRespondAsync(params: {
         }),
         provider,
         streamMode: "model-chunk",
+        ...(collectedMediaAttachments.length > 0
+          ? { mediaAttachments: collectedMediaAttachments }
+          : {}),
       },
       createdAt: null,
     });
@@ -1300,7 +1489,9 @@ async function runDefaultRouterRespondAsync(params: {
     const finalInvalidations = dedupeInvalidations(collectedInvalidations);
     const streamStopInfo = getStreamStopInfo();
     const emptyFinalStopReason =
-      assistantContent.trim().length === 0 && totalToolCallCount > 0
+      assistantContent.trim().length === 0 &&
+      collectedMediaAttachments.length === 0 &&
+      totalToolCallCount > 0
         ? classifyEmptyFinalStopReason({
             totalToolCallCount,
             loopMaxToolCalls,
@@ -1309,14 +1500,20 @@ async function runDefaultRouterRespondAsync(params: {
             streamStopInfo,
           })
         : null;
+    const visibleAssistantContent = stripGeneratedMediaReferenceText(
+      assistantContent,
+      collectedMediaAttachments,
+    );
+    const hasVisibleAssistantContent = visibleAssistantContent.trim().length > 0;
+    const hasGeneratedMediaAttachments = collectedMediaAttachments.length > 0;
     const finalContent =
-      assistantContent.trim().length > 0
-        ? assistantContent
+      hasVisibleAssistantContent
+        ? visibleAssistantContent
         : emptyFinalStopReason != null
           ? emptyFinalStopReason.message
-          : assistantContent;
+          : visibleAssistantContent;
     const finalTaskState =
-      assistantContent.trim().length === 0 && totalToolCallCount > 0
+      !hasVisibleAssistantContent && !hasGeneratedMediaAttachments && totalToolCallCount > 0
         ? "failed"
         : "completed";
     const agentLoopStopReason =
@@ -1353,6 +1550,9 @@ async function runDefaultRouterRespondAsync(params: {
           }),
           provider,
           streamMode: "model-chunk",
+          ...(collectedMediaAttachments.length > 0
+            ? { mediaAttachments: collectedMediaAttachments }
+            : {}),
           ...(finalInvalidations.length > 0
             ? { invalidations: finalInvalidations }
             : {}),
@@ -1465,6 +1665,19 @@ router.post(
       const assistantMessageId = parseSessionId(body.assistantMessageId);
       const userMessage =
         typeof body.userMessage === "string" ? body.userMessage.trim() : "";
+      const mediaAttachmentIds = parseMediaAttachmentIds(body.mediaAttachmentIds);
+      const mediaAssets =
+        mediaAttachmentIds.length > 0
+          ? await listMediaAssetsForUser(userId, mediaAttachmentIds)
+          : [];
+      const mediaById = new Map(mediaAssets.map((asset) => [asset.id, asset]));
+      const orderedMediaAssets = mediaAttachmentIds
+        .map((mediaId) => mediaById.get(mediaId))
+        .filter((asset): asset is MediaAsset => Boolean(asset));
+      const hasMissingMedia = orderedMediaAssets.length !== mediaAttachmentIds.length;
+      const hasWrongChannelMedia = orderedMediaAssets.some(
+        (asset) => asset.channelId !== channelId,
+      );
       const parsedMaxTokens = parseMaxTokens(body.maxTokens);
 
       if (
@@ -1474,11 +1687,18 @@ router.post(
         !sessionId ||
         !userMessageId ||
         !assistantMessageId ||
-        !userMessage
+        (!userMessage && orderedMediaAssets.length === 0)
       ) {
         res.status(400).json({
           error:
-            "Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, userMessage are required",
+            "Invalid payload: taskId, idempotencyKey, channelId, sessionId, userMessageId, assistantMessageId, and userMessage or mediaAttachmentIds are required",
+        });
+        return;
+      }
+
+      if (hasMissingMedia || hasWrongChannelMedia) {
+        res.status(400).json({
+          error: "Invalid payload: all media attachments must exist and belong to the current channel",
         });
         return;
       }
@@ -1543,6 +1763,9 @@ router.post(
         targetPluginId: isPluginRoute ? targetNode?.pluginId : null,
         pendingAssistantMessageId:
           isPluginRoute ? assistantMessageId : undefined,
+        ...(orderedMediaAssets.length > 0
+          ? { mediaAttachments: mediaAttachmentsMetadata(orderedMediaAssets) }
+          : {}),
       };
 
       const scopeInstructions = await resolveScopeInstructions(userId, {
@@ -1667,6 +1890,7 @@ router.post(
         threadInstructions: scopeInstructions.threadInstructions,
         channelOutputTone: scopeInstructions.channelOutputTone,
         inputGrammarFixerEnabled: scopeInstructions.inputGrammarFixerEnabled,
+        mediaAttachments: orderedMediaAssets,
       });
 
       res.json({
@@ -1973,7 +2197,7 @@ router.get("/scope-settings", async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get("/channel-names", async (req: AuthRequest, res: Response) => {
+router.get("/channels", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
@@ -1981,15 +2205,15 @@ router.get("/channel-names", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const channelNames = await listChatChannelNames(userId);
-    res.json({ channelNames });
+    const channels = await listChatChannels(userId);
+    res.json({ channels });
   } catch (error) {
-    console.error("List chat channel names error:", error);
+    console.error("List chat channels error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.put("/channel-names", async (req: AuthRequest, res: Response) => {
+router.put("/channels", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
@@ -2018,19 +2242,60 @@ router.put("/channel-names", async (req: AuthRequest, res: Response) => {
     }
 
     if (!displayNameRaw) {
-      const deleted = await deleteChatChannelName(userId, channelId, threadId);
-      res.json({ deleted: deleted.deleted });
+      res.status(400).json({
+        error: "Invalid payload: displayName is required",
+      });
       return;
     }
 
-    const setting = await upsertChatChannelName(userId, {
+    const setting = await upsertChatChannel(userId, {
       channelId,
       threadId,
       displayName: displayNameRaw,
     });
     res.json({ setting });
   } catch (error) {
-    console.error("Upsert chat channel name error:", error);
+    console.error("Upsert chat channel error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/channels/archive", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const channelId = parseSessionId(body.channelId);
+    const threadId = parseSessionId(body.threadId);
+    const displayNameRaw =
+      typeof body.displayName === "string" ? body.displayName.trim() : "";
+
+    if (!channelId) {
+      res.status(400).json({
+        error: "Invalid payload: channelId is required",
+      });
+      return;
+    }
+
+    if (displayNameRaw.length > 255) {
+      res.status(400).json({
+        error: "Invalid payload: displayName must be 255 characters or fewer",
+      });
+      return;
+    }
+
+    const setting = await archiveChatChannel(userId, {
+      channelId,
+      threadId,
+      displayName: displayNameRaw || channelId,
+    });
+    res.json({ setting });
+  } catch (error) {
+    console.error("Archive chat channel error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

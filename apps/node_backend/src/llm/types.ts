@@ -4,8 +4,14 @@ export type LlmProvider = 'anthropic' | 'google_ai_studio';
 
 export interface UnifiedMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: UnifiedMessageContent;
 }
+
+export type UnifiedMessageContent = string | UnifiedMessagePart[];
+
+export type UnifiedMessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; image: Uint8Array; mediaType: string };
 
 export interface UnifiedChatRequest {
   model?: string;

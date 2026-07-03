@@ -419,17 +419,13 @@ class _ChatNavigationPageState extends State<ChatNavigationPage>
                       )
                     else
                       ...resources.map((resource) {
-                        final notes = resource.notes?.trim();
                         return ListTile(
-                          leading: Icon(_iconForResourceType(resource.type)),
-                          title: Text(resource.title),
-                          subtitle: notes != null && notes.isNotEmpty
-                              ? Text(
-                                  notes,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                )
-                              : null,
+                          title: Text(
+                            resource.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: _ResourceTypeMeta(resource: resource),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
                             if (widget.onResourceSelected != null) {
@@ -592,6 +588,40 @@ class _NodeDetailPage extends StatelessWidget {
               );
             }),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResourceTypeMeta extends StatelessWidget {
+  const _ResourceTypeMeta({required this.resource});
+
+  final ChatResourceItem resource;
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.bodySmall;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _iconForResourceType(resource.type),
+            size: 14,
+            color: textStyle?.color,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              _labelForResourceType(resource.type),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textStyle,
+            ),
+          ),
         ],
       ),
     );

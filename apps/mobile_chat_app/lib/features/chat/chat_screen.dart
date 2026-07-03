@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:agent_core/agent_core.dart';
 import 'package:agent_sdk_contract/agent_sdk_contract.dart';
 import 'package:chat_domain/chat_domain.dart';
 import 'package:design_system/design_system.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:workspace_fs/workspace_fs.dart';
 
 import 'chat_history_api_service.dart';
@@ -26,6 +30,7 @@ import 'chat_message.dart';
 import 'chat_builtin_agents.dart';
 import 'chat_navigation_page.dart';
 import 'note_api_service.dart';
+import 'site_publish_api_service.dart';
 import 'todo_api_service.dart';
 import 'widgets/composer_bar.dart';
 import 'widgets/message_list.dart';
@@ -50,6 +55,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final Set<String> _archivedMessageIds = {};
   bool _isSending = false;
   bool _isStreaming = false;
+  bool _isUploadingAttachment = false;
+  int _imageUploadGeneration = 0;
+  ComposerDraftUpload? _draftUpload;
+  final List<ChatMediaAttachment> _pendingMediaAttachments = [];
   bool _loadingAgents = true;
   bool _loadingLlmConfigs = true;
   bool _refreshingScopeTopology = false;
@@ -83,6 +92,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final TodoApiService _todoApiService = TodoApiService();
   final AssetTableApiService _assetTableApiService = AssetTableApiService();
   final NoteApiService _noteApiService = NoteApiService();
+  final SitePublishApiService _sitePublishApiService = SitePublishApiService();
+  SitePublishStatus? _sitePublishStatus;
+  bool _loadingSitePublishStatus = false;
+  int _sitePublishStatusGeneration = 0;
   String? _sessionConfigSlotId;
   String? _sessionModelOverride;
   String? _authToken;
@@ -170,7 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final mergedDefinitions = _mergeWithBuiltInAgents(customDefinitions);
       List<ChatPersistedScope> persistedScopes = const [];
       List<ChatScopeSetting> scopeSettings = const [];
-      List<ChatChannelNameSetting> channelNames = const [];
+      List<ChatChannelSetting> channels = const [];
       List<PlatformNodeConfig> platformNodes = const [];
       Map<String, List<PlatformAgentConfig>> openClawAgentsByNodeId = const {};
       List<TodoList> todoLists = const [];
@@ -193,10 +206,10 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
       try {
-        channelNames = await _chatHistoryApiService.loadChannelNames();
+        channels = await _chatHistoryApiService.loadChannels();
       } catch (e) {
         debugPrint(
-          'loadChannelNames failed, continuing without channel name hydration: $e',
+          'loadChannels failed, continuing without channel hydration: $e',
         );
       }
       try {
@@ -248,17 +261,13 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (!mounted) return;
       _syncParticipants(mergedDefinitions);
-      final restoredChannels = _hydrateChannelsFromScopes(persistedScopes);
-      final restoredNamedChannels = _applyPersistedChannelNames(
-        channels: restoredChannels,
-        channelNames: channelNames,
-      );
-      final restoredSubSections = _hydrateSubSectionsFromScopes(
-        scopes: persistedScopes,
-        channelNames: channelNames,
-      );
+      final restoredChannels = _hydrateChannelsFromRegistry(channels);
+      final restoredSubSections = _hydrateSubSectionsFromRegistry(channels);
       final restoredLastSubSectionByChannel =
-          _hydrateLastActiveSubSectionByChannel(persistedScopes);
+          _hydrateLastActiveSubSectionByChannel(
+        persistedScopes,
+        restoredSubSections,
+      );
       final restoredChannelLastMessageAt =
           _hydrateChannelLastMessageAt(persistedScopes);
       final restoredChannelRouters = _hydrateChannelRouters(scopeSettings);
@@ -295,7 +304,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _authToken = authToken;
         _channels
           ..clear()
-          ..addAll(restoredNamedChannels);
+          ..addAll(restoredChannels);
         _channelLastMessageAt
           ..clear()
           ..addAll(restoredChannelLastMessageAt);
@@ -337,6 +346,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _notes = notes;
       });
       await _loadMessagesForActiveScope();
+      unawaited(_refreshSitePublishStatus());
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -669,20 +679,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$prefix-${now.year}-${two(now.month)}-${two(now.day)}-${two(now.hour)}-${two(now.minute)}-${two(now.second)}-${three(now.millisecond)}';
   }
 
-  String _fallbackScopeName(String id, {required String prefix}) {
-    final parsedEpoch = int.tryParse(
-      id.replaceFirst(RegExp(r'^[a-zA-Z_-]+-'), ''),
-    );
-    if (parsedEpoch != null && parsedEpoch > 0) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(parsedEpoch);
-      String two(int value) => value.toString().padLeft(2, '0');
-      return '$prefix-${dt.year}-${two(dt.month)}-${two(dt.day)}-${two(dt.hour)}-${two(dt.minute)}';
-    }
-    return id;
-  }
-
-  List<ChatChannel> _hydrateChannelsFromScopes(
-    List<ChatPersistedScope> scopes,
+  List<ChatChannel> _hydrateChannelsFromRegistry(
+    List<ChatChannelSetting> channels,
   ) {
     final channelsById = <String, ChatChannel>{
       'default': const ChatChannel(
@@ -691,13 +689,14 @@ class _ChatScreenState extends State<ChatScreen> {
         isDefault: true,
       ),
     };
-    for (final scope in scopes) {
-      if (scope.channelId == 'default') continue;
+    for (final channel in channels) {
+      if (channel.scopeType != ChatScopeType.channel) continue;
+      if (channel.channelId == 'default') continue;
       channelsById.putIfAbsent(
-        scope.channelId,
+        channel.channelId,
         () => ChatChannel(
-          id: scope.channelId,
-          name: _fallbackScopeName(scope.channelId, prefix: 'channel'),
+          id: channel.channelId,
+          name: channel.displayName,
           isDefault: false,
         ),
       );
@@ -725,63 +724,52 @@ class _ChatScreenState extends State<ChatScreen> {
     return byChannel;
   }
 
-  Map<String, List<ChatSubSection>> _hydrateSubSectionsFromScopes({
-    required List<ChatPersistedScope> scopes,
-    required List<ChatChannelNameSetting> channelNames,
-  }) {
-    final threadNamesByScope = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId != null &&
-            item.threadId!.trim().isNotEmpty &&
-            item.threadId != 'main')
-          _subSectionKey(item.channelId, item.threadId!): item.displayName,
-    };
+  Map<String, List<ChatSubSection>> _hydrateSubSectionsFromRegistry(
+    List<ChatChannelSetting> channels,
+  ) {
     final subSections = <String, List<ChatSubSection>>{
       'default': <ChatSubSection>[],
     };
-    for (final scope in scopes) {
+    for (final channel in channels) {
+      final threadId = channel.threadId;
+      if (channel.scopeType != ChatScopeType.thread ||
+          threadId == null ||
+          threadId.trim().isEmpty ||
+          threadId == 'main') {
+        continue;
+      }
       final channelSections = subSections.putIfAbsent(
-        scope.channelId,
+        channel.channelId,
         () => <ChatSubSection>[],
       );
-      if (scope.threadId == 'main' ||
-          channelSections.any((item) => item.id == scope.threadId)) {
+      if (channelSections.any((item) => item.id == threadId)) {
         continue;
       }
       channelSections.add(
         ChatSubSection(
-          id: scope.threadId,
-          parentChannelId: scope.channelId,
-          name: threadNamesByScope[_subSectionKey(
-                scope.channelId,
-                scope.threadId,
-              )] ??
-              _fallbackScopeName(scope.threadId, prefix: 'sub'),
-          createdAt: scope.lastActivityAt ?? DateTime.now(),
+          id: threadId,
+          parentChannelId: channel.channelId,
+          name: channel.displayName,
+          createdAt: DateTime.now(),
         ),
       );
     }
     return subSections;
   }
 
-  List<ChatChannel> _applyPersistedChannelNames({
-    required List<ChatChannel> channels,
-    required List<ChatChannelNameSetting> channelNames,
-  }) {
-    if (channelNames.isEmpty) return channels;
-    final namesById = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId == null || item.threadId!.trim().isEmpty)
-          item.channelId: item.displayName,
-    };
-    return applyChannelDisplayNames(channels, namesById);
-  }
-
   Map<String, String> _hydrateLastActiveSubSectionByChannel(
     List<ChatPersistedScope> scopes,
+    Map<String, List<ChatSubSection>> subSectionsByChannel,
   ) {
     final byChannel = <String, ChatPersistedScope>{};
     for (final scope in scopes) {
+      if (scope.threadId != 'main') {
+        final visibleSections = subSectionsByChannel[scope.channelId];
+        final isVisible =
+            visibleSections?.any((section) => section.id == scope.threadId) ??
+                false;
+        if (!isVisible) continue;
+      }
       final current = byChannel[scope.channelId];
       final currentAt = current?.lastActivityAt;
       final nextAt = scope.lastActivityAt;
@@ -924,11 +912,13 @@ class _ChatScreenState extends State<ChatScreen> {
           _archivedMessageIds.clear();
           _latestCheckpointCursor = null;
           _lastSyncedSeq = 0;
+          _sitePublishStatus = null;
         });
         _configureActiveScopeSync();
+        unawaited(_refreshSitePublishStatus());
         unawaited(
           _chatHistoryApiService
-              .saveChannelName(
+              .saveChannel(
             channelId: id,
             displayName: name,
           )
@@ -980,7 +970,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         unawaited(
           _chatHistoryApiService
-              .saveChannelName(
+              .saveChannel(
             channelId: channelId,
             displayName: name,
           )
@@ -1023,9 +1013,9 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     unawaited(
       _chatHistoryApiService
-          .saveChannelName(
+          .archiveChannel(
         channelId: channelId,
-        displayName: null,
+        displayName: channel.name,
       )
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('Failed to archive channel "$channelId": $error');
@@ -1133,8 +1123,10 @@ class _ChatScreenState extends State<ChatScreen> {
       _archivedMessageIds.clear();
       _latestCheckpointCursor = null;
       _lastSyncedSeq = 0;
+      _sitePublishStatus = null;
     });
     unawaited(_loadMessagesForActiveScope());
+    unawaited(_refreshSitePublishStatus());
   }
 
   List<ChatSubSection> get _activeSubSections {
@@ -1375,6 +1367,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _configureActiveScopeSync();
+    unawaited(
+      _chatHistoryApiService
+          .saveChannel(
+        channelId: _activeChannelId,
+        threadId: section.id,
+        displayName: section.name,
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Failed to save subsection "${section.id}": $error');
+      }),
+    );
   }
 
   Future<void> _handleBranch(ChatMessage message) async {
@@ -2193,7 +2196,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _consumeChatInvalidations(ChatHistorySnapshot snapshot) {
     var refreshScopes = false;
-    var refreshChannelNames = false;
+    var refreshChannels = false;
     var refreshScopeSettings = false;
     var refreshResources = false;
 
@@ -2208,7 +2211,7 @@ class _ChatScreenState extends State<ChatScreen> {
           case ChatInvalidationKind.chatScopes:
             refreshScopes = true;
           case ChatInvalidationKind.chatChannelNames:
-            refreshChannelNames = true;
+            refreshChannels = true;
           case ChatInvalidationKind.chatScopeSettings:
             refreshScopeSettings = true;
           case ChatInvalidationKind.resourcesTodoLists:
@@ -2223,11 +2226,11 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    if (refreshScopes || refreshChannelNames || refreshScopeSettings) {
+    if (refreshScopes || refreshChannels || refreshScopeSettings) {
       unawaited(
         _refreshScopeTopologyParts(
           refreshScopes: refreshScopes,
-          refreshChannelNames: refreshChannelNames,
+          refreshChannels: refreshChannels,
           refreshScopeSettings: refreshScopeSettings,
         ),
       );
@@ -2260,66 +2263,26 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
       ];
 
-  List<ChatChannelNameSetting> _currentChannelNameSettings() => [
+  List<ChatChannelSetting> _currentChannelSettings() => [
         for (final channel in _channels)
-          ChatChannelNameSetting(
+          ChatChannelSetting(
             channelId: channel.id,
             displayName: channel.name,
+            scopeType: ChatScopeType.channel,
           ),
         for (final sections in _channelSubSections.values)
           for (final section in sections)
-            ChatChannelNameSetting(
+            ChatChannelSetting(
               channelId: section.parentChannelId,
               threadId: section.id,
               displayName: section.name,
+              scopeType: ChatScopeType.thread,
             ),
       ];
 
-  void _applyChannelNamesToCurrentTopology(
-    List<ChatChannelNameSetting> channelNames,
-  ) {
-    final channelNamesById = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId == null || item.threadId == 'main')
-          item.channelId: item.displayName,
-    };
-    final threadNamesByKey = <String, String>{
-      for (final item in channelNames)
-        if (item.threadId != null &&
-            item.threadId!.trim().isNotEmpty &&
-            item.threadId != 'main')
-          _subSectionKey(item.channelId, item.threadId!): item.displayName,
-    };
-
-    final renamedChannels = [
-      for (final channel in _channels)
-        ChatChannel(
-          id: channel.id,
-          name: channelNamesById[channel.id] ?? channel.name,
-          isDefault: channel.isDefault,
-        ),
-    ];
-    _channels
-      ..clear()
-      ..addAll(renamedChannels);
-    _channelSubSections.updateAll(
-      (channelId, sections) => [
-        for (final section in sections)
-          ChatSubSection(
-            id: section.id,
-            parentChannelId: section.parentChannelId,
-            name: threadNamesByKey[
-                    _subSectionKey(section.parentChannelId, section.id)] ??
-                section.name,
-            createdAt: section.createdAt,
-          ),
-      ],
-    );
-  }
-
   Future<void> _refreshScopeTopologyParts({
     required bool refreshScopes,
-    required bool refreshChannelNames,
+    required bool refreshChannels,
     required bool refreshScopeSettings,
   }) async {
     if (_refreshingScopeTopology) return;
@@ -2327,7 +2290,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final results = await Future.wait<Object>([
         if (refreshScopes) _chatHistoryApiService.loadScopes(),
-        if (refreshChannelNames) _chatHistoryApiService.loadChannelNames(),
+        if (refreshChannels) _chatHistoryApiService.loadChannels(),
         if (refreshScopeSettings) _chatHistoryApiService.loadScopeSettings(),
       ]);
       if (!mounted) return;
@@ -2335,30 +2298,23 @@ class _ChatScreenState extends State<ChatScreen> {
       final scopes = refreshScopes
           ? results[index++] as List<ChatPersistedScope>
           : _currentPersistedScopes();
-      final channelNames = refreshChannelNames
-          ? results[index++] as List<ChatChannelNameSetting>
-          : _currentChannelNameSettings();
+      final channels = refreshChannels
+          ? results[index++] as List<ChatChannelSetting>
+          : _currentChannelSettings();
       final settings = refreshScopeSettings
           ? results[index++] as List<ChatScopeSetting>
           : const <ChatScopeSetting>[];
-      final restoredChannels = _hydrateChannelsFromScopes(scopes);
-      final restoredNamedChannels = _applyPersistedChannelNames(
-        channels: restoredChannels,
-        channelNames: channelNames,
-      );
+      final restoredChannels = _hydrateChannelsFromRegistry(channels);
       final restoredChannelLastMessageAt = _hydrateChannelLastMessageAt(scopes);
-      final restoredSubSections = _hydrateSubSectionsFromScopes(
-        scopes: scopes,
-        channelNames: channelNames,
-      );
+      final restoredSubSections = _hydrateSubSectionsFromRegistry(channels);
       final restoredLastSubSectionByChannel =
-          _hydrateLastActiveSubSectionByChannel(scopes);
+          _hydrateLastActiveSubSectionByChannel(scopes, restoredSubSections);
 
       setState(() {
-        if (refreshScopes) {
+        if (refreshScopes || refreshChannels) {
           _channels
             ..clear()
-            ..addAll(restoredNamedChannels);
+            ..addAll(restoredChannels);
           _channelLastMessageAt
             ..clear()
             ..addAll(restoredChannelLastMessageAt);
@@ -2368,8 +2324,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _lastActiveSubSectionByChannel
             ..clear()
             ..addAll(restoredLastSubSectionByChannel);
-        } else if (refreshChannelNames) {
-          _applyChannelNamesToCurrentTopology(channelNames);
         }
         if (refreshScopeSettings) {
           _channelRouters
@@ -2428,6 +2382,17 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastSyncedSeq = 0;
     });
     _configureActiveScopeSync();
+    unawaited(
+      _chatHistoryApiService
+          .saveChannel(
+        channelId: _activeChannelId,
+        threadId: section.id,
+        displayName: section.name,
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Failed to save subsection "${section.id}": $error');
+      }),
+    );
   }
 
   void _renameActiveSubSection() {
@@ -2471,7 +2436,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         unawaited(
           _chatHistoryApiService
-              .saveChannelName(
+              .saveChannel(
             channelId: channelId,
             threadId: sectionId,
             displayName: name,
@@ -2509,10 +2474,10 @@ class _ChatScreenState extends State<ChatScreen> {
     unawaited(_loadMessagesForActiveScope());
     unawaited(
       _chatHistoryApiService
-          .saveChannelName(
+          .archiveChannel(
         channelId: channelId,
         threadId: sectionId,
-        displayName: null,
+        displayName: sectionName,
       )
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('Failed to archive subsection "$sectionId": $error');
@@ -2602,8 +2567,139 @@ class _ChatScreenState extends State<ChatScreen> {
     return true;
   }
 
+  String _mimeTypeForPickedFile(PlatformFile file) {
+    final extension = (file.extension ?? '').toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'png':
+      default:
+        return 'image/png';
+    }
+  }
+
+  Future<void> _attachImageToDraft() async {
+    if (_isUploadingAttachment || _isSending) return;
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+      final file =
+          result == null || result.files.isEmpty ? null : result.files.first;
+      final bytes = file?.bytes;
+      if (file == null || bytes == null || bytes.isEmpty) return;
+      final mimeType = _mimeTypeForPickedFile(file);
+      final dataBase64 = base64Encode(bytes);
+      final generation = ++_imageUploadGeneration;
+      setState(() {
+        _isUploadingAttachment = true;
+        _draftUpload = ComposerDraftUpload(
+          filename: file.name,
+          mimeType: mimeType,
+          dataBase64: dataBase64,
+          isUploading: true,
+        );
+      });
+      await _uploadDraftImage(
+        filename: file.name,
+        mimeType: mimeType,
+        dataBase64: dataBase64,
+        generation: generation,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isUploadingAttachment = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image upload failed: $error')),
+      );
+    }
+  }
+
+  Future<void> _uploadDraftImage({
+    required String filename,
+    required String mimeType,
+    required String dataBase64,
+    required int generation,
+  }) async {
+    try {
+      final attachment = await _chatHistoryApiService.uploadImage(
+        scope: _activeScope,
+        filename: filename,
+        mimeType: mimeType,
+        dataBase64: dataBase64,
+      );
+      if (!mounted || generation != _imageUploadGeneration) return;
+      setState(() {
+        _pendingMediaAttachments.add(attachment);
+        _draftUpload = null;
+        _isUploadingAttachment = false;
+      });
+    } catch (error) {
+      if (!mounted || generation != _imageUploadGeneration) return;
+      setState(() {
+        _draftUpload = ComposerDraftUpload(
+          filename: filename,
+          mimeType: mimeType,
+          dataBase64: dataBase64,
+          isUploading: false,
+          errorText: error.toString(),
+        );
+        _isUploadingAttachment = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image upload failed: $error')),
+      );
+    }
+  }
+
+  void _retryDraftImageUpload() {
+    final draft = _draftUpload;
+    if (draft == null || draft.isUploading || _isSending) return;
+    final generation = ++_imageUploadGeneration;
+    setState(() {
+      _isUploadingAttachment = true;
+      _draftUpload = ComposerDraftUpload(
+        filename: draft.filename,
+        mimeType: draft.mimeType,
+        dataBase64: draft.dataBase64,
+        isUploading: true,
+      );
+    });
+    unawaited(
+      _uploadDraftImage(
+        filename: draft.filename,
+        mimeType: draft.mimeType,
+        dataBase64: draft.dataBase64,
+        generation: generation,
+      ),
+    );
+  }
+
+  void _cancelDraftImageUpload() {
+    _imageUploadGeneration++;
+    setState(() {
+      _draftUpload = null;
+      _isUploadingAttachment = false;
+    });
+  }
+
+  void _removePendingAttachment(String mediaId) {
+    setState(() {
+      _pendingMediaAttachments.removeWhere((item) => item.id == mediaId);
+    });
+  }
+
   void _sendMessage(String text) {
-    if (text.trim().isEmpty || _isSending) return;
+    final attachments =
+        List<ChatMediaAttachment>.unmodifiable(_pendingMediaAttachments);
+    if ((text.trim().isEmpty && attachments.isEmpty) || _isSending) return;
 
     final agent = _activeAgent;
     final activeParticipants = _participantManager.participants.active;
@@ -2647,6 +2743,7 @@ class _ChatScreenState extends State<ChatScreen> {
       messageId: userMessageId,
       role: 'user',
       content: text,
+      mediaAttachments: attachments,
       taskId: taskId,
       idempotencyKey: idempotencyKey,
       createdAt: envelope.createdAt,
@@ -2668,6 +2765,8 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _isSending = true;
       _isStreaming = false;
+      _pendingMediaAttachments.clear();
+      _draftUpload = null;
     });
 
     final runtimeSettings = _settingsForAgent(agent);
@@ -2681,6 +2780,7 @@ class _ChatScreenState extends State<ChatScreen> {
       userMessageId: userMessageId,
       assistantMessageId: assistantMessageId,
       userMessage: text,
+      mediaAttachmentIds: attachments.map((item) => item.id).toList(),
       resolvedBotId: resolvedBotId,
       resolvedSkillId: resolvedSkillId,
       provider: runtimeSettings.provider,
@@ -2779,6 +2879,37 @@ class _ChatScreenState extends State<ChatScreen> {
             break;
           }
         }
+      });
+    }
+  }
+
+  Future<void> _refreshSitePublishStatus() async {
+    final channelId = _activeChannelId;
+    final generation = ++_sitePublishStatusGeneration;
+    setState(() {
+      _loadingSitePublishStatus = true;
+    });
+    try {
+      final status = await _sitePublishApiService.fetchStatus(channelId);
+      if (!mounted ||
+          generation != _sitePublishStatusGeneration ||
+          channelId != _activeChannelId) {
+        return;
+      }
+      setState(() {
+        _sitePublishStatus = status;
+        _loadingSitePublishStatus = false;
+      });
+    } catch (error) {
+      debugPrint('loadSitePublishStatus failed: $error');
+      if (!mounted ||
+          generation != _sitePublishStatusGeneration ||
+          channelId != _activeChannelId) {
+        return;
+      }
+      setState(() {
+        _sitePublishStatus = null;
+        _loadingSitePublishStatus = false;
       });
     }
   }
@@ -2904,6 +3035,177 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  String _sitePublishLabel() {
+    if (_loadingSitePublishStatus) return 'Site';
+    switch (_sitePublishStatus?.state) {
+      case SitePublishState.published:
+        return 'Published';
+      case SitePublishState.updateAvailable:
+        return 'Update';
+      case SitePublishState.publishFailed:
+        return 'Failed';
+      case SitePublishState.notPublished:
+      case null:
+        return 'Site';
+    }
+  }
+
+  Color _sitePublishColor(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    if (_loadingSitePublishStatus) return colors.outline;
+    switch (_sitePublishStatus?.state) {
+      case SitePublishState.published:
+        return colors.primary;
+      case SitePublishState.updateAvailable:
+        return colors.tertiary;
+      case SitePublishState.publishFailed:
+        return colors.error;
+      case SitePublishState.notPublished:
+      case null:
+        return colors.outline;
+    }
+  }
+
+  String _shortCommit(String? sha) {
+    if (sha == null || sha.isEmpty) return 'Unknown';
+    return sha.length <= 7 ? sha : sha.substring(0, 7);
+  }
+
+  String _publishedAtLabel(DateTime? value) {
+    if (value == null) return 'Never';
+    final local = value.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _siteShareText(String publicUrl) {
+    return 'Check out this site I made with Bricks: $publicUrl';
+  }
+
+  Future<void> _visitSite(String publicUrl) async {
+    final uri = Uri.tryParse(publicUrl);
+    if (uri == null) return;
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open site')),
+      );
+    }
+  }
+
+  Future<void> _shareSite(String publicUrl) async {
+    await Clipboard.setData(ClipboardData(text: _siteShareText(publicUrl)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Share text copied')),
+    );
+  }
+
+  Widget _sitePublishStatusButton(BuildContext context) {
+    final color = _sitePublishColor(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          foregroundColor: color,
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+        onPressed: _showSitePublishDialog,
+        icon: _loadingSitePublishStatus
+            ? SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              )
+            : Icon(Icons.public, size: 18, color: color),
+        label: Text(_sitePublishLabel()),
+      ),
+    );
+  }
+
+  Future<void> _showSitePublishDialog() async {
+    final status = _sitePublishStatus;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        final publicUrl = status?.publicUrl ?? '';
+        final hasPublicUrl = publicUrl.trim().isNotEmpty;
+        return AlertDialog(
+          title: const Text('Site publish'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  publicUrl.isEmpty ? 'Public URL not ready' : publicUrl,
+                ),
+                const SizedBox(height: 16),
+                _SitePublishInfoRow(
+                    label: 'Status', value: _sitePublishLabel()),
+                _SitePublishInfoRow(
+                  label: 'Published',
+                  value: _publishedAtLabel(status?.latestBuildAt),
+                ),
+                _SitePublishInfoRow(
+                  label: 'Current',
+                  value: _shortCommit(status?.currentCommitSha),
+                ),
+                _SitePublishInfoRow(
+                  label: 'Live',
+                  value: _shortCommit(status?.publishedCommitSha),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: hasPublicUrl
+                  ? () {
+                      Navigator.of(context).pop();
+                      unawaited(_visitSite(publicUrl));
+                    }
+                  : null,
+              child: const Text('Visit'),
+            ),
+            TextButton(
+              onPressed: hasPublicUrl
+                  ? () {
+                      Navigator.of(context).pop();
+                      unawaited(_shareSite(publicUrl));
+                    }
+                  : null,
+              child: const Text('Share'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                unawaited(_refreshSitePublishStatus());
+              },
+              child: const Text('Refresh'),
+            ),
+            FilledButton(
+              onPressed: _isSending
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      _sendMessage(
+                        'Publish the current website for this channel. If the build fails, inspect the build log, fix the issue, and publish again.',
+                      );
+                    },
+              child: const Text('Publish'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -3152,6 +3454,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       actions: [
+        _sitePublishStatusButton(context),
         IconButton(
           icon: const Icon(Icons.tune_outlined),
           tooltip: 'Conversation config',
@@ -3306,6 +3609,13 @@ class _ChatScreenState extends State<ChatScreen> {
               onOpenModelSelection: _openRuntimeModelConfigDialog,
               onShowInfo: _showDebugInfoDialog,
               onSend: _isSending ? null : _sendMessage,
+              onAttachImage:
+                  _isUploadingAttachment ? null : _attachImageToDraft,
+              onCancelDraftUpload: _cancelDraftImageUpload,
+              onRetryDraftUpload: _retryDraftImageUpload,
+              onRemoveAttachment: _removePendingAttachment,
+              attachments: _pendingMediaAttachments,
+              draftUpload: _draftUpload,
               onStop: _stopStreaming,
               isStreaming: _isStreaming,
             );
@@ -3355,15 +3665,19 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                     child: SizedBox(
                       width: 12,
-                      child: Center(
-                        child: SizedBox(
-                          width: 1,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: theme.dividerColor,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: 1,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: theme.dividerColor,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
@@ -3413,6 +3727,34 @@ class _ChannelConfigValue {
   final String? instructions;
   final ChatOutputToneSetting outputTone;
   final bool inputGrammarFixerEnabled;
+}
+
+class _SitePublishInfoRow extends StatelessWidget {
+  const _SitePublishInfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: BricksSpacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 84,
+            child: Text(label, style: textTheme.bodySmall),
+          ),
+          Expanded(child: SelectableText(value)),
+        ],
+      ),
+    );
+  }
 }
 
 /// A two-tab dialog for configuring channel and thread settings.

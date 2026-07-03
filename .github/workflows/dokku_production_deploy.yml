@@ -1,0 +1,106 @@
+name: Deploy Production to Dokku
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: dokku-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DOKKU_HOST: ${{ secrets.DOKKU_HOST }}
+      DOKKU_PORT: ${{ secrets.DOKKU_PORT || '22' }}
+      DOKKU_APP: bricks
+      PRODUCTION_DOMAIN: craft.bricks.cool
+      PRODUCTION_SANDBOX_ROOT: /home/bricks/data/production/sandboxes
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DOKKU_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          ssh-keyscan -p "${DOKKU_PORT}" "${DOKKU_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Ensure production app
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" bash -s <<'REMOTE'
+            set -euo pipefail
+            app="bricks"
+            data_root="/home/bricks/data/production/sandboxes"
+            domain="craft.bricks.cool"
+            dokku apps:exists "$app" || dokku apps:create "$app"
+            mkdir -p "$data_root"
+            if ! dokku storage:list "$app" | grep -Fq "$data_root:/app/data/sandboxes"; then
+              dokku storage:mount "$app" "$data_root:/app/data/sandboxes"
+            fi
+            dokku domains:set "$app" "$domain"
+            if ! dokku ports:list "$app" | grep -Eq 'http:80:3000|http[[:space:]]+80[[:space:]]+3000'; then
+              dokku ports:set "$app" http:80:3000
+            fi
+            dokku letsencrypt:set "$app" email admin@bricks.cool
+          REMOTE
+
+      - name: Configure production environment
+        env:
+          SECRET_GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          SECRET_GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          SECRET_CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_SANDBOX_RUNNER_TOKEN: ${{ secrets.SANDBOX_RUNNER_TOKEN }}
+        run: |
+          set -euo pipefail
+          config_args=(
+            NODE_ENV=production
+            TRUST_PROXY=true
+            BRICKS_STATIC_ROOT=/app/public
+            BRICKS_SANDBOX_ROOT=/app/data/sandboxes
+            BRICKS_SANDBOX_RUNNER=http
+            BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787
+            BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes
+            BRICKS_PUBLIC_SITE_DOMAIN=craft-spaces.bricks.cool
+            GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback
+            OAUTH_ALLOWED_RETURN_ORIGINS=https://craft.bricks.cool
+            CORS_ORIGIN=https://craft.bricks.cool
+          )
+          add_config() {
+            local key="$1"
+            local value="$2"
+            if [ -n "$value" ]; then
+              config_args+=("${key}=${value}")
+            fi
+          }
+          add_config GITHUB_CLIENT_ID "$SECRET_GH_OAUTH_CLIENT_ID"
+          add_config GITHUB_CLIENT_SECRET "$SECRET_GH_OAUTH_CLIENT_SECRET"
+          add_config CRON_SECRET "$SECRET_CRON_SECRET"
+          add_config GEMINI_API_KEY "$SECRET_GEMINI_API_KEY"
+          add_config ANTHROPIC_API_KEY "$SECRET_ANTHROPIC_API_KEY"
+          add_config BRICKS_SANDBOX_RUNNER_TOKEN "$SECRET_SANDBOX_RUNNER_TOKEN"
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
+            dokku config:set --no-restart "${DOKKU_APP}" "${config_args[@]}"
+
+      - name: Deploy to Dokku
+        run: |
+          set -euo pipefail
+          git remote add dokku "ssh://dokku@${DOKKU_HOST}:${DOKKU_PORT}/${DOKKU_APP}" || true
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+            git push dokku HEAD:refs/heads/main --force
+
+      - name: Enable HTTPS
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
+            dokku letsencrypt:enable "${DOKKU_APP}" || true

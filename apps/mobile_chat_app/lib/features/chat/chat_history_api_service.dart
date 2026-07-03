@@ -77,15 +77,17 @@ class ChatForkResult {
   final String forkedSessionId;
 }
 
-class ChatChannelNameSetting {
-  const ChatChannelNameSetting({
+class ChatChannelSetting {
+  const ChatChannelSetting({
     required this.channelId,
     required this.displayName,
+    required this.scopeType,
     this.threadId,
   });
 
   final String channelId;
   final String displayName;
+  final ChatScopeType scopeType;
   final String? threadId;
 }
 
@@ -115,6 +117,7 @@ class ChatHistoryApiService {
     'traceId',
     'source',
     'inputGrammarFix',
+    'mediaAttachments',
   ];
 
   void dispose() {
@@ -146,8 +149,16 @@ class ChatHistoryApiService {
   Uri get _batchMessagesUri => Uri.parse('$_base/api/chat/messages/batch');
   Uri get _scopesUri => Uri.parse('$_base/api/chat/scopes');
   Uri get _scopeSettingsUri => Uri.parse('$_base/api/chat/scope-settings');
-  Uri get _channelNamesUri => Uri.parse('$_base/api/chat/channel-names');
+  Uri get _channelsUri => Uri.parse('$_base/api/chat/channels');
+  Uri get _archiveChannelUri => Uri.parse('$_base/api/chat/channels/archive');
   Uri get _forkUri => Uri.parse('$_base/api/chat/fork');
+  Uri get _mediaUploadsUri => Uri.parse('$_base/api/media/uploads');
+
+  Uri mediaUrl(String pathOrUrl) {
+    final parsed = Uri.tryParse(pathOrUrl);
+    if (parsed != null && parsed.hasScheme) return parsed;
+    return Uri.parse('$_base$pathOrUrl');
+  }
 
   ChatTaskState? _parseTaskState(Object? value) {
     if (value is! String || value.isEmpty) return null;
@@ -220,26 +231,31 @@ class ChatHistoryApiService {
     }).toList(growable: false);
   }
 
-  Future<List<ChatChannelNameSetting>> loadChannelNames() async {
-    final response = await _apiClient.get(_channelNamesUri);
+  Future<List<ChatChannelSetting>> loadChannels() async {
+    final response = await _apiClient.get(_channelsUri);
     if (response.statusCode != 200) {
       throw Exception(
-        'Failed to load chat channel names (${response.statusCode})',
+        'Failed to load chat channels (${response.statusCode})',
       );
     }
     final raw = jsonDecode(response.body);
     if (raw is! Map) return const [];
     final map = Map<String, dynamic>.from(raw);
-    return ((map['channelNames'] as List?) ?? const [])
+    return ((map['channels'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
-        .map(
-          (item) => ChatChannelNameSetting(
+        .map((item) {
+          final scopeType = chatScopeTypeFromApi(item['scopeType'] as String?);
+          if (scopeType == null) {
+            throw const FormatException('Invalid scopeType');
+          }
+          return ChatChannelSetting(
             channelId: (item['channelId'] as String?) ?? '',
             displayName: (item['displayName'] as String?) ?? '',
+            scopeType: scopeType,
             threadId: item['threadId'] as String?,
-          ),
-        )
+          );
+        })
         .where(
           (item) =>
               item.channelId.trim().isNotEmpty &&
@@ -385,6 +401,7 @@ class ChatHistoryApiService {
     required String userMessageId,
     required String assistantMessageId,
     required String userMessage,
+    List<String> mediaAttachmentIds = const [],
     String? resolvedBotId,
     String? resolvedSkillId,
     String? provider,
@@ -408,6 +425,8 @@ class ChatHistoryApiService {
         'userMessageId': userMessageId,
         'assistantMessageId': assistantMessageId,
         'userMessage': userMessage,
+        if (mediaAttachmentIds.isNotEmpty)
+          'mediaAttachmentIds': mediaAttachmentIds,
         'resolvedBotId': resolvedBotId,
         'resolvedSkillId': resolvedSkillId,
         'provider': provider,
@@ -433,6 +452,37 @@ class ChatHistoryApiService {
       taskState: _parseTaskState(map['state']),
       router: map['router'] as String?,
     );
+  }
+
+  Future<ChatMediaAttachment> uploadImage({
+    required ChatSessionScope scope,
+    required String filename,
+    required String mimeType,
+    required String dataBase64,
+  }) async {
+    final response = await _apiClient.post(
+      _mediaUploadsUri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'channelId': scope.channelId,
+        'threadId': scope.threadId == 'main' ? null : scope.threadId,
+        'filename': filename,
+        'mimeType': mimeType,
+        'dataBase64': dataBase64,
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw Exception('Failed to upload image (${response.statusCode})');
+    }
+    final raw = jsonDecode(response.body);
+    if (raw is! Map || raw['media'] is! Map) {
+      throw const FormatException('Invalid media upload response');
+    }
+    final attachment = ChatMediaAttachment.fromMap(raw['media']);
+    if (attachment == null) {
+      throw const FormatException('Invalid media attachment response');
+    }
+    return attachment;
   }
 
   Future<void> saveScopeSetting({
@@ -469,25 +519,48 @@ class ChatHistoryApiService {
     }
   }
 
-  Future<void> saveChannelName({
+  Future<void> saveChannel({
     required String channelId,
-    String? displayName,
+    required String displayName,
     String? threadId,
   }) async {
     final response = await _apiClient.put(
-      _channelNamesUri,
+      _channelsUri,
       headers: {
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
         'channelId': channelId,
         if (threadId != null) 'threadId': threadId,
-        'displayName': displayName?.trim(),
+        'displayName': displayName.trim(),
       }),
     );
     if (response.statusCode != 200) {
       throw Exception(
-        'Failed to save chat channel name (${response.statusCode})',
+        'Failed to save chat channel (${response.statusCode})',
+      );
+    }
+  }
+
+  Future<void> archiveChannel({
+    required String channelId,
+    required String displayName,
+    String? threadId,
+  }) async {
+    final response = await _apiClient.post(
+      _archiveChannelUri,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'channelId': channelId,
+        if (threadId != null) 'threadId': threadId,
+        'displayName': displayName.trim(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to archive chat channel (${response.statusCode})',
       );
     }
   }

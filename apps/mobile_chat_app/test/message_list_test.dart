@@ -1,10 +1,12 @@
 import 'dart:ui';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:design_system/design_system.dart';
 import 'package:mobile_chat_app/features/chat/chat_message.dart';
 import 'package:mobile_chat_app/features/chat/widgets/message_list.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Must match _kBottomPaddingRatio in message_list.dart
 const double _kTestBottomPaddingRatio = 1 / 3;
@@ -31,6 +33,24 @@ List<ChatMessage> _messages(String prefix, int count) {
     ),
   );
 }
+
+ChatMediaAttachment _imageAttachment({
+  String id = 'media-1',
+  String filename = 'plant.png',
+}) =>
+    ChatMediaAttachment(
+      id: id,
+      kind: 'image',
+      origin: 'generated_image',
+      mimeType: 'image/png',
+      filename: filename,
+      previewUrl: '/api/media/$id/preview',
+      contentUrl: '/api/media/$id/content',
+      downloadUrl: '/api/media/$id/download',
+      sizeBytes: 1024,
+      status: 'ready',
+      channelRelativePath: 'media/generated/images/$filename',
+    );
 
 Widget _build(
   List<ChatMessage> messages, {
@@ -1166,6 +1186,79 @@ void main() {
       expect(find.text('Resend'), findsOneWidget);
       expect(find.text('message id: u-menu'), findsOneWidget);
       expect(find.text('task id: task-menu'), findsOneWidget);
+    });
+  });
+
+  group('Media attachment interactions', () {
+    testWidgets('tap opens full screen image preview and back closes it',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'auth_token': 'token-123'});
+      final assistant = ChatMessage(
+        messageId: 'a-media-preview',
+        role: 'assistant',
+        content: '',
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+        mediaAttachments: [_imageAttachment()],
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pump();
+
+      expect(find.byTooltip('Open image'), findsOneWidget);
+
+      await tester.tap(find.text('plant.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Back to chat'), findsOneWidget);
+      expect(find.byTooltip('Download image'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back to chat'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Back to chat'), findsNothing);
+      expect(find.text('plant.png'), findsOneWidget);
+    });
+
+    testWidgets('long press shows image download action', (tester) async {
+      SharedPreferences.setMockInitialValues({'auth_token': 'token-123'});
+      final assistant = ChatMessage(
+        messageId: 'a-media-menu',
+        role: 'assistant',
+        content: '',
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+        mediaAttachments: [_imageAttachment()],
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pump();
+
+      await tester.longPress(find.text('plant.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Download'), findsOneWidget);
+    });
+
+    testWidgets('secondary click shows image download action', (tester) async {
+      SharedPreferences.setMockInitialValues({'auth_token': 'token-123'});
+      final assistant = ChatMessage(
+        messageId: 'a-media-secondary-menu',
+        role: 'assistant',
+        content: '',
+        timestamp: DateTime.utc(2026, 1, 1, 7, 33),
+        mediaAttachments: [_imageAttachment()],
+      );
+
+      await tester.pumpWidget(_build([assistant]));
+      await tester.pump();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('plant.png')),
+        buttons: kSecondaryButton,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Download'), findsOneWidget);
     });
   });
 

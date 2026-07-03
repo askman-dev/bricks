@@ -435,20 +435,23 @@ void main() {
     expect(settings.single.resolvedTargetPluginId, 'plugin-local-main');
   });
 
-  test('loads and saves channel name mappings', () async {
+  test('loads, saves, and archives chat channels', () async {
+    var sawSave = false;
     final client = MockClient((request) async {
       if (request.method == 'GET') {
-        expect(request.url.path.endsWith('/chat/channel-names'), isTrue);
+        expect(request.url.path.endsWith('/chat/channels'), isTrue);
         return http.Response(
           jsonEncode({
-            'channelNames': [
+            'channels': [
               {
                 'channelId': 'channel-1',
+                'scopeType': 'channel',
                 'displayName': 'renamed-channel',
               },
               {
                 'channelId': 'channel-1',
                 'threadId': 'sub-1',
+                'scopeType': 'thread',
                 'displayName': 'renamed-subsection',
               },
             ],
@@ -457,11 +460,31 @@ void main() {
         );
       }
 
-      expect(request.method, equals('PUT'));
+      if (request.method == 'PUT') {
+        sawSave = true;
+        expect(request.url.path.endsWith('/chat/channels'), isTrue);
+        final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(decoded['channelId'], equals('channel-1'));
+        expect(decoded['threadId'], equals('sub-1'));
+        expect(decoded['displayName'], equals('latest-channel-name'));
+        return http.Response(
+          jsonEncode({
+            'setting': {
+              'channelId': 'channel-1',
+              'displayName': 'latest-channel-name',
+            },
+          }),
+          200,
+        );
+      }
+
+      expect(request.method, equals('POST'));
+      expect(sawSave, isTrue);
+      expect(request.url.path.endsWith('/chat/channels/archive'), isTrue);
       final decoded = jsonDecode(request.body) as Map<String, dynamic>;
       expect(decoded['channelId'], equals('channel-1'));
       expect(decoded['threadId'], equals('sub-1'));
-      expect(decoded['displayName'], equals('latest-channel-name'));
+      expect(decoded['displayName'], equals('renamed-subsection'));
       return http.Response(
         jsonEncode({
           'setting': {
@@ -474,18 +497,25 @@ void main() {
     });
 
     final service = _serviceFor(client);
-    final channelNames = await service.loadChannelNames();
-    await service.saveChannelName(
+    final channels = await service.loadChannels();
+    await service.saveChannel(
       channelId: 'channel-1',
       threadId: 'sub-1',
       displayName: 'latest-channel-name',
     );
+    await service.archiveChannel(
+      channelId: 'channel-1',
+      threadId: 'sub-1',
+      displayName: 'renamed-subsection',
+    );
 
-    expect(channelNames, hasLength(2));
-    expect(channelNames.first.channelId, equals('channel-1'));
-    expect(channelNames.first.displayName, equals('renamed-channel'));
-    expect(channelNames.last.threadId, equals('sub-1'));
-    expect(channelNames.last.displayName, equals('renamed-subsection'));
+    expect(channels, hasLength(2));
+    expect(channels.first.channelId, equals('channel-1'));
+    expect(channels.first.scopeType, equals(ChatScopeType.channel));
+    expect(channels.first.displayName, equals('renamed-channel'));
+    expect(channels.last.threadId, equals('sub-1'));
+    expect(channels.last.scopeType, equals(ChatScopeType.thread));
+    expect(channels.last.displayName, equals('renamed-subsection'));
   });
 
   test('listenEvents yields parsed snapshots from SSE data frames', () async {

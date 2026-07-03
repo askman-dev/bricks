@@ -14,7 +14,7 @@ const DEFAULT_TABLES = [
   'chat_messages',
   'chat_sync_checkpoints',
   'chat_scope_settings',
-  'chat_channel_names',
+  'chat_channels',
   'platform_nodes',
   'chat_sessions',
 ];
@@ -24,7 +24,7 @@ const USER_SCOPED_TABLES = new Set([
   'chat_messages',
   'chat_sync_checkpoints',
   'chat_scope_settings',
-  'chat_channel_names',
+  'chat_channels',
   'platform_nodes',
   'chat_sessions',
 ]);

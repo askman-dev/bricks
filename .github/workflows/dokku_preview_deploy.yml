@@ -1,0 +1,236 @@
+name: Deploy PR Preview to Dokku
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: read
+
+concurrency:
+  group: dokku-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  slug:
+    runs-on: ubuntu-latest
+    outputs:
+      branch_slug: ${{ steps.slug.outputs.branch_slug }}
+      app_name: ${{ steps.slug.outputs.app_name }}
+      domain: ${{ steps.slug.outputs.domain }}
+      data_root: ${{ steps.slug.outputs.data_root }}
+    steps:
+      - id: slug
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw="${{ github.head_ref }}"
+          normalized="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')"
+          hash="$(printf '%s' "$raw" | sha1sum | cut -c1-8)"
+          base="${normalized:-branch}"
+          if [ "${#base}" -gt 48 ]; then
+            base="$(printf '%s' "$base" | cut -c1-48 | sed -E 's/-+$//')"
+          fi
+          branch_slug="${base}-${hash}"
+          app_name="bricks-preview-${branch_slug}"
+          domain="${branch_slug}.craft-dev.bricks.cool"
+          data_root="/home/bricks/data/production/sandboxes"
+          echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
+          echo "app_name=${app_name}" >> "$GITHUB_OUTPUT"
+          echo "domain=${domain}" >> "$GITHUB_OUTPUT"
+          echo "data_root=${data_root}" >> "$GITHUB_OUTPUT"
+
+  cleanup:
+    if: github.event.action == 'closed'
+    needs: slug
+    runs-on: ubuntu-latest
+    env:
+      DOKKU_HOST: ${{ secrets.DOKKU_HOST }}
+      DOKKU_PORT: ${{ secrets.DOKKU_PORT || '22' }}
+      APP_NAME: ${{ needs.slug.outputs.app_name }}
+      DATA_ROOT: ${{ needs.slug.outputs.data_root }}
+    steps:
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DOKKU_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          ssh-keyscan -p "${DOKKU_PORT}" "${DOKKU_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Destroy preview app and data
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" bash -s -- "${APP_NAME}" "${DATA_ROOT}" <<'REMOTE'
+            set -euo pipefail
+            app="$1"
+            data_root="$2"
+            case "$app" in
+              bricks-preview-*) ;;
+              *) echo "Refusing unexpected app name: $app" >&2; exit 1 ;;
+            esac
+            preserve_data_root=false
+            case "$data_root" in
+              /home/bricks/data/production/sandboxes) preserve_data_root=true ;;
+              /home/bricks/data/previews/*/sandboxes) ;;
+              *) echo "Refusing unexpected data root: $data_root" >&2; exit 1 ;;
+            esac
+            if dokku apps:exists "$app"; then
+              dokku apps:destroy "$app" --force
+            fi
+            if [ "$preserve_data_root" = false ]; then
+              rm -rf -- "$(dirname "$data_root")"
+            fi
+          REMOTE
+
+  deploy:
+    if: github.event.action != 'closed'
+    needs: slug
+    runs-on: ubuntu-latest
+    env:
+      DOKKU_HOST: ${{ secrets.DOKKU_HOST }}
+      DOKKU_PORT: ${{ secrets.DOKKU_PORT || '22' }}
+      APP_NAME: ${{ needs.slug.outputs.app_name }}
+      DOMAIN: ${{ needs.slug.outputs.domain }}
+      DATA_ROOT: ${{ needs.slug.outputs.data_root }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DOKKU_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          ssh-keyscan -p "${DOKKU_PORT}" "${DOKKU_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Ensure preview app
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" bash -s -- "${APP_NAME}" "${DOMAIN}" "${DATA_ROOT}" <<'REMOTE'
+            set -euo pipefail
+            app="$1"
+            domain="$2"
+            data_root="$3"
+            dokku apps:exists "$app" || dokku apps:create "$app"
+            mkdir -p "$data_root"
+            if ! dokku storage:list "$app" | grep -Fq "$data_root:/app/data/sandboxes"; then
+              dokku storage:mount "$app" "$data_root:/app/data/sandboxes"
+            fi
+            dokku domains:set "$app" "$domain"
+            if ! dokku ports:list "$app" | grep -Eq 'http:80:3000|http[[:space:]]+80[[:space:]]+3000'; then
+              dokku ports:set "$app" http:80:3000
+            fi
+            dokku letsencrypt:set "$app" email admin@bricks.cool
+          REMOTE
+
+      - name: Configure preview environment
+        env:
+          SECRET_GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          SECRET_GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          SECRET_CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_SANDBOX_RUNNER_TOKEN: ${{ secrets.SANDBOX_RUNNER_TOKEN }}
+        run: |
+          set -euo pipefail
+          config_args=(
+            NODE_ENV=production
+            TRUST_PROXY=true
+            BRICKS_STATIC_ROOT=/app/public
+            BRICKS_SANDBOX_ROOT=/app/data/sandboxes
+            BRICKS_SANDBOX_RUNNER=http
+            BRICKS_SANDBOX_RUNNER_URL=http://172.17.0.1:8787
+            BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes
+            "BRICKS_PUBLIC_SITE_BASE_URL=https://${DOMAIN}"
+            GITHUB_CALLBACK_URL=https://craft.bricks.cool/api/callback
+            "OAUTH_ALLOWED_RETURN_ORIGINS=https://${DOMAIN}"
+            "CORS_ORIGIN=https://${DOMAIN}"
+          )
+          add_config() {
+            local key="$1"
+            local value="$2"
+            if [ -n "$value" ]; then
+              config_args+=("${key}=${value}")
+            fi
+          }
+          add_config GITHUB_CLIENT_ID "$SECRET_GH_OAUTH_CLIENT_ID"
+          add_config GITHUB_CLIENT_SECRET "$SECRET_GH_OAUTH_CLIENT_SECRET"
+          add_config CRON_SECRET "$SECRET_CRON_SECRET"
+          add_config GEMINI_API_KEY "$SECRET_GEMINI_API_KEY"
+          add_config ANTHROPIC_API_KEY "$SECRET_ANTHROPIC_API_KEY"
+          add_config BRICKS_SANDBOX_RUNNER_TOKEN "$SECRET_SANDBOX_RUNNER_TOKEN"
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
+            dokku config:set --no-restart "${APP_NAME}" "${config_args[@]}"
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
+            bash -s -- "${APP_NAME}" <<'REMOTE'
+          set -euo pipefail
+          app="$1"
+          production_app="bricks"
+          copy_from_production() {
+            local key="$1"
+            local value
+            value="$(dokku config:get "$production_app" "$key" 2>/dev/null || true)"
+            if [ -n "$value" ]; then
+              dokku config:set --no-restart "$app" "${key}=${value}" >/dev/null
+            fi
+          }
+          copy_from_production TURSO_DATABASE_URL
+          copy_from_production TURSO_AUTH_TOKEN
+          copy_from_production JWT_SECRET
+          copy_from_production ENCRYPTION_KEY
+          REMOTE
+
+      - name: Deploy preview
+        run: |
+          set -euo pipefail
+          git remote add dokku "ssh://dokku@${DOKKU_HOST}:${DOKKU_PORT}/${APP_NAME}" || true
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+            git push dokku HEAD:refs/heads/main --force
+
+      - name: Enable HTTPS
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${DOKKU_PORT}" "root@${DOKKU_HOST}" \
+            dokku letsencrypt:enable "${APP_NAME}" || true
+
+      - name: Publish GitHub deployment status
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: https://${{ needs.slug.outputs.domain }}
+          BRANCH_SLUG: ${{ needs.slug.outputs.branch_slug }}
+        with:
+          script: |
+            const previewUrl = process.env.PREVIEW_URL;
+            const branchSlug = process.env.BRANCH_SLUG;
+            const environment = `dokku-preview/${branchSlug}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha,
+              auto_merge: false,
+              required_contexts: [],
+              environment,
+              transient_environment: true,
+              production_environment: false,
+              description: `Dokku preview for PR #${context.payload.pull_request.number}`,
+            });
+
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'success',
+              environment,
+              environment_url: previewUrl,
+              log_url: runUrl,
+              auto_inactive: true,
+              description: 'Dokku preview deployment is ready.',
+            });

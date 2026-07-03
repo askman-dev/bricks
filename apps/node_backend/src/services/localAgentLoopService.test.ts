@@ -3,9 +3,17 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const upsertChatScopeSettingMock = vi.fn();
 const setChannelOutputToneMock = vi.fn();
 const setChannelInputGrammarFixerMock = vi.fn();
-const upsertChatChannelNameMock = vi.fn();
+const upsertChatChannelMock = vi.fn();
 const listChatScopeSettingsMock = vi.fn().mockResolvedValue([]);
-const listChatChannelNamesMock = vi.fn().mockResolvedValue([]);
+const listChatChannelsMock = vi.fn().mockResolvedValue([]);
+const generateImageMediaMock = vi.fn();
+const startVideoGenerationJobMock = vi.fn();
+const mediaAssetToDtoMock = vi.fn((asset: Record<string, unknown>) => ({
+  id: asset.id,
+  kind: asset.kind,
+  previewUrl: `/api/media/${asset.id}/preview`,
+  downloadUrl: `/api/media/${asset.id}/download`,
+}));
 
 vi.mock('./chatRouterService.js', () => ({
   CHAT_ROUTER_LOCAL: 'local',
@@ -25,9 +33,9 @@ vi.mock('./chatRouterService.js', () => ({
   listChatScopeSettings: listChatScopeSettingsMock,
 }));
 
-vi.mock('./chatChannelNameService.js', () => ({
-  upsertChatChannelName: upsertChatChannelNameMock,
-  listChatChannelNames: listChatChannelNamesMock,
+vi.mock('./chatChannelService.js', () => ({
+  upsertChatChannel: upsertChatChannelMock,
+  listChatChannels: listChatChannelsMock,
 }));
 
 vi.mock('./todoService.js', () => ({
@@ -119,12 +127,71 @@ vi.mock('./scheduledActionService.js', () => ({
   deleteScheduledAction: vi.fn().mockResolvedValue({ deleted: true }),
 }));
 
+vi.mock('./mediaGenerationService.js', () => {
+  class MockMediaGenerationError extends Error {
+    constructor(message: string, readonly statusCode = 400) {
+      super(message);
+      this.name = 'MediaGenerationError';
+    }
+  }
+
+  return {
+    generateImageMedia: generateImageMediaMock,
+    startVideoGenerationJob: startVideoGenerationJobMock,
+    mediaGenerationJobToDto: vi.fn((job: Record<string, unknown>, media?: Record<string, unknown>) => ({
+      id: job.id,
+      kind: job.kind,
+      status: job.status,
+      resultMediaId: media?.id ?? job.resultMediaId ?? null,
+    })),
+    MediaGenerationError: MockMediaGenerationError,
+  };
+});
+
+vi.mock('./mediaService.js', () => ({
+  mediaAssetToDto: mediaAssetToDtoMock,
+}));
+
+vi.mock('./channelSiteService.js', () => {
+  class MockChannelSiteError extends Error {
+    constructor(message: string, readonly statusCode = 400) {
+      super(message);
+      this.name = 'ChannelSiteError';
+    }
+  }
+  const site = {
+    id: 'site-1',
+    channelId: 'default',
+    publicSlug: 's-abc123',
+    publicUrl: 'https://s-abc123.craft-spaces.bricks.cool',
+    latestBuildStatus: 'not_built',
+    latestBuildAt: null,
+  };
+  return {
+    ChannelSiteError: MockChannelSiteError,
+    ensureChannelSite: vi.fn().mockResolvedValue(site),
+    ensureWebsiteWorkspace: vi.fn().mockResolvedValue(site),
+    channelSiteDto: vi.fn((value) => value),
+    listWorkspaceFiles: vi.fn().mockResolvedValue([]),
+    readWorkspaceFile: vi.fn().mockResolvedValue({ path: 'src/main.tsx', content: 'content', sizeBytes: 7 }),
+    writeWorkspaceFile: vi.fn().mockResolvedValue({ path: 'src/main.tsx', sizeBytes: 7 }),
+    makeWorkspaceDirectory: vi.fn().mockResolvedValue({ path: 'src' }),
+    deleteWorkspacePath: vi.fn().mockResolvedValue({ path: 'src/old.ts', deleted: true }),
+    runWorkspaceCommand: vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 }),
+    buildChannelSite: vi.fn().mockResolvedValue({ site, ok: true, log: 'ok' }),
+    copyMediaToSiteAssets: vi.fn().mockResolvedValue({ mediaId: 'media-1', path: 'public/assets/media-1.png', publicPath: '/assets/media-1.png' }),
+  };
+});
+
 describe('localAgentLoopService', () => {
   beforeEach(() => {
     upsertChatScopeSettingMock.mockReset();
     setChannelOutputToneMock.mockReset();
     setChannelInputGrammarFixerMock.mockReset();
-    upsertChatChannelNameMock.mockReset();
+    upsertChatChannelMock.mockReset();
+    generateImageMediaMock.mockReset();
+    startVideoGenerationJobMock.mockReset();
+    mediaAssetToDtoMock.mockClear();
   });
 
   it('rejects tools outside allowlist', async () => {
@@ -253,6 +320,11 @@ describe('localAgentLoopService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.data?.sessionId).toBe('session:ops:main');
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'ops',
+      displayName: 'ops',
+      source: 'tool',
+    });
   });
 
   it('creates thread scope for create tool', async () => {
@@ -274,6 +346,12 @@ describe('localAgentLoopService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.data?.sessionId).toBe('session:ops:bugs');
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'ops',
+      threadId: 'bugs',
+      displayName: 'bugs',
+      source: 'tool',
+    });
   });
 
   it('runs tool calls in sequence and stops on failure', async () => {
@@ -362,7 +440,7 @@ describe('localAgentLoopService', () => {
   });
 
   it('renames a channel via chat_channel_rename tool', async () => {
-    upsertChatChannelNameMock.mockResolvedValue({
+    upsertChatChannelMock.mockResolvedValue({
       channelId: 'default',
       displayName: 'My Channel',
       createdAt: '2026-05-09T00:00:00.000Z',
@@ -383,7 +461,7 @@ describe('localAgentLoopService', () => {
     expect(result.ok).toBe(true);
     expect(result.data?.channelId).toBe('default');
     expect(result.data?.displayName).toBe('My Channel');
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith('u-1', {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
       channelId: 'default',
       displayName: 'My Channel',
     });
@@ -406,7 +484,7 @@ describe('localAgentLoopService', () => {
   });
 
   it('renames a thread via chat_thread_rename tool', async () => {
-    upsertChatChannelNameMock.mockResolvedValue({
+    upsertChatChannelMock.mockResolvedValue({
       channelId: 'default',
       threadId: 'bugs',
       displayName: 'Bug Reports',
@@ -429,7 +507,7 @@ describe('localAgentLoopService', () => {
     expect(result.data?.channelId).toBe('default');
     expect(result.data?.threadId).toBe('bugs');
     expect(result.data?.displayName).toBe('Bug Reports');
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith('u-1', {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith('u-1', {
       channelId: 'default',
       threadId: 'bugs',
       displayName: 'Bug Reports',
@@ -786,6 +864,155 @@ describe('localAgentLoopService', () => {
       { name: 'Alice', age: '30', active: 'true' },
       { name: 'Bob', score: '7', archived: null },
     ]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Media generation tool tests
+  // -------------------------------------------------------------------------
+
+  it('exposes media generation tools in buildAgentTools', async () => {
+    const { buildAgentTools } = await import('./localAgentLoopService.js');
+
+    const tools = buildAgentTools('u-1');
+
+    expect(tools.media_image_generate).toBeDefined();
+    expect(tools.media_video_generate).toBeDefined();
+    expect(tools.media_video_generate.parametersSchema).toMatchObject({
+      type: 'object',
+      required: ['prompt'],
+      properties: {
+        referenceMediaIds: {
+          type: 'array',
+          maxItems: 3,
+        },
+      },
+    });
+  });
+
+  it('dispatches media_image_generate and returns job and media DTOs', async () => {
+    generateImageMediaMock.mockResolvedValue({
+      job: {
+        id: 'job-1',
+        kind: 'image',
+        status: 'succeeded',
+        resultMediaId: 'media-1',
+      },
+      media: {
+        id: 'media-1',
+        kind: 'image',
+      },
+    });
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_MEDIA_IMAGE_GENERATE,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_MEDIA_IMAGE_GENERATE,
+      args: {
+        channelId: 'default',
+        threadId: 'thread-1',
+        prompt: 'Create a tiny isometric house',
+        referenceMediaIds: ['media-ref'],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(generateImageMediaMock).toHaveBeenCalledWith({
+      userId: 'u-1',
+      channelId: 'default',
+      threadId: 'thread-1',
+      prompt: 'Create a tiny isometric house',
+      referenceMediaIds: ['media-ref'],
+      model: null,
+      configId: null,
+    });
+    expect(result.data?.media).toEqual(
+      expect.objectContaining({ id: 'media-1', previewUrl: '/api/media/media-1/preview' }),
+    );
+  });
+
+  it('injects current chat context into media generation agent tools', async () => {
+    generateImageMediaMock.mockResolvedValue({
+      job: {
+        id: 'job-context-1',
+        kind: 'image',
+        status: 'succeeded',
+        resultMediaId: 'media-context-1',
+      },
+      media: {
+        id: 'media-context-1',
+        kind: 'image',
+      },
+    });
+    const { buildAgentTools } = await import('./localAgentLoopService.js');
+
+    const tools = buildAgentTools('u-1', {
+      channelId: 'default',
+      threadId: 'thread-1',
+      defaultPrompt: 'Generate a pixel spaceship',
+    });
+    const result = await tools.media_image_generate.execute({});
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        toolName: 'media.image.generate',
+      }),
+    );
+    expect(generateImageMediaMock).toHaveBeenCalledWith({
+      userId: 'u-1',
+      channelId: 'default',
+      threadId: 'thread-1',
+      prompt: 'Generate a pixel spaceship',
+      referenceMediaIds: [],
+      model: null,
+      configId: null,
+    });
+  });
+
+  it('dispatches media_video_generate and returns a running job DTO', async () => {
+    startVideoGenerationJobMock.mockResolvedValue({
+      id: 'job-video-1',
+      kind: 'video',
+      status: 'running',
+      resultMediaId: null,
+    });
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_MEDIA_VIDEO_GENERATE,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_MEDIA_VIDEO_GENERATE,
+      args: {
+        channelId: 'default',
+        prompt: 'Animate this product photo',
+        referenceMediaIds: ['image-1', 'image-2'],
+        durationSeconds: 8,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(startVideoGenerationJobMock).toHaveBeenCalledWith({
+      userId: 'u-1',
+      channelId: 'default',
+      threadId: null,
+      prompt: 'Animate this product photo',
+      referenceMediaIds: ['image-1', 'image-2'],
+      firstFrameMediaId: null,
+      lastFrameMediaId: null,
+      aspectRatio: null,
+      durationSeconds: 8,
+      resolution: null,
+      model: null,
+      configId: null,
+    });
+    expect(result.data?.job).toEqual(
+      expect.objectContaining({ id: 'job-video-1', status: 'running' }),
+    );
   });
 
   // -------------------------------------------------------------------------

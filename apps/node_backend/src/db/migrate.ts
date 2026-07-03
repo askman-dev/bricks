@@ -132,6 +132,15 @@ interface Migration {
   sql: string;
 }
 
+export function isRecoverableSqliteDuplicateColumn(stmt: string, error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /\bALTER\s+TABLE\b/i.test(stmt) &&
+    /\bADD\s+COLUMN\b/i.test(stmt) &&
+    /duplicate column name/i.test(message)
+  );
+}
+
 // Create migrations tracking table
 async function createMigrationsTable(): Promise<void> {
   const query = isTurso
@@ -191,6 +200,12 @@ async function applyMigration(migration: Migration): Promise<void> {
         try {
           await client.query(stmt);
         } catch (stmtError) {
+          if (isRecoverableSqliteDuplicateColumn(stmt, stmtError)) {
+            console.warn(
+              `Skipping already-applied SQLite column during migration ${migration.filename}: ${stmt}`,
+            );
+            continue;
+          }
           // Re-throw with statement context to make SQL parse failures easy to diagnose
           const msg = `Migration ${migration.filename}: statement ${i + 1}/${statements.length} failed.\nSQL: ${stmt}\nError: ${(stmtError as Error).message}`;
           throw Object.assign(new Error(msg), { cause: stmtError });

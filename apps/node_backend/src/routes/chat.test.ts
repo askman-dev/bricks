@@ -23,14 +23,18 @@ const {
   claimFirstMessageGeneratedNameAttemptMock,
   completeFirstMessageGeneratedNameMock,
   insertFirstMessageExactNameIfMissingMock,
-  listChatChannelNamesMock,
-  upsertChatChannelNameMock,
-  deleteChatChannelNameMock,
+  archiveChatChannelMock,
+  listChatChannelsMock,
+  upsertChatChannelMock,
   generateWithUserConfigMock,
   streamWithAgentToolsAndUserConfigMock,
   buildAgentToolsMock,
   getPlatformNodeByNodeIdMock,
   listPlatformNodesMock,
+  listMediaAssetsForUserMock,
+  mediaAssetToDtoMock,
+  resolveMediaAssetPathMock,
+  readFileMock,
 } = vi.hoisted(() => ({
   acceptTaskMock: vi.fn(async () => ({
     taskId: "task-1",
@@ -73,15 +77,25 @@ const {
   claimFirstMessageGeneratedNameAttemptMock: vi.fn(async () => null),
   completeFirstMessageGeneratedNameMock: vi.fn(async () => null),
   insertFirstMessageExactNameIfMissingMock: vi.fn(async () => null),
-  listChatChannelNamesMock: vi.fn(async () => []),
-  upsertChatChannelNameMock: vi.fn(async () => ({
+  archiveChatChannelMock: vi.fn(async () => ({
     channelId: "channel-1",
     threadId: null,
+    scopeType: "channel",
     displayName: "项目频道",
+    archivedAt: "2026-04-18T08:02:00.000Z",
+    createdAt: "2026-04-18T08:00:00.000Z",
+    updatedAt: "2026-04-18T08:02:00.000Z",
+  })),
+  listChatChannelsMock: vi.fn(async () => []),
+  upsertChatChannelMock: vi.fn(async () => ({
+    channelId: "channel-1",
+    threadId: null,
+    scopeType: "channel",
+    displayName: "项目频道",
+    archivedAt: null,
     createdAt: "2026-04-18T08:00:00.000Z",
     updatedAt: "2026-04-18T08:00:00.000Z",
   })),
-  deleteChatChannelNameMock: vi.fn(async () => ({ deleted: true })),
   generateWithUserConfigMock: vi.fn(async () => ({
     provider: "anthropic",
     model: "claude-sonnet-4-5",
@@ -115,6 +129,24 @@ const {
       updatedAt: "2026-04-17T07:00:00.000Z",
     },
   ]),
+  listMediaAssetsForUserMock: vi.fn(async () => []),
+  mediaAssetToDtoMock: vi.fn((asset: Record<string, unknown>) => ({
+    id: asset.id,
+    kind: asset.kind,
+    origin: asset.origin,
+    mimeType: asset.mimeType,
+    filename: asset.filename,
+    previewUrl: `/api/media/${asset.id}/preview`,
+    contentUrl: `/api/media/${asset.id}/content`,
+    downloadUrl: `/api/media/${asset.id}/download`,
+    channelRelativePath: asset.channelRelativePath,
+  })),
+  resolveMediaAssetPathMock: vi.fn(async () => "/tmp/bricks-test-image.jpg"),
+  readFileMock: vi.fn(async () => Buffer.from("fake-image")),
+}));
+
+vi.mock("fs/promises", () => ({
+  readFile: readFileMock,
 }));
 
 vi.mock("../services/chatAsyncTransportService.js", () => ({
@@ -149,17 +181,23 @@ vi.mock("../services/platformNodeService.js", () => ({
   listPlatformNodes: listPlatformNodesMock,
 }));
 
-vi.mock("../services/chatChannelNameService.js", () => ({
+vi.mock("../services/chatChannelService.js", () => ({
+  archiveChatChannel: archiveChatChannelMock,
   claimFirstMessageGeneratedNameAttempt: claimFirstMessageGeneratedNameAttemptMock,
   completeFirstMessageGeneratedName: completeFirstMessageGeneratedNameMock,
-  deleteChatChannelName: deleteChatChannelNameMock,
   insertFirstMessageExactNameIfMissing: insertFirstMessageExactNameIfMissingMock,
-  listChatChannelNames: listChatChannelNamesMock,
-  upsertChatChannelName: upsertChatChannelNameMock,
+  listChatChannels: listChatChannelsMock,
+  upsertChatChannel: upsertChatChannelMock,
 }));
 
 vi.mock('../services/localAgentLoopService.js', () => ({
   buildAgentTools: buildAgentToolsMock,
+}));
+
+vi.mock("../services/mediaService.js", () => ({
+  listMediaAssetsForUser: listMediaAssetsForUserMock,
+  mediaAssetToDto: mediaAssetToDtoMock,
+  resolveMediaAssetPath: resolveMediaAssetPathMock,
 }));
 
 vi.mock("../llm/llm_service.js", () => ({
@@ -240,9 +278,9 @@ describe("chat routes", () => {
     completeFirstMessageGeneratedNameMock.mockResolvedValue(null);
     insertFirstMessageExactNameIfMissingMock.mockReset();
     insertFirstMessageExactNameIfMissingMock.mockResolvedValue(null);
-    listChatChannelNamesMock.mockClear();
-    upsertChatChannelNameMock.mockClear();
-    deleteChatChannelNameMock.mockClear();
+    archiveChatChannelMock.mockClear();
+    listChatChannelsMock.mockClear();
+    upsertChatChannelMock.mockClear();
     generateWithUserConfigMock.mockReset();
     generateWithUserConfigMock.mockResolvedValue({
       provider: "anthropic",
@@ -251,6 +289,13 @@ describe("chat routes", () => {
     });
     streamWithAgentToolsAndUserConfigMock.mockClear();
     buildAgentToolsMock.mockClear();
+    listMediaAssetsForUserMock.mockReset();
+    listMediaAssetsForUserMock.mockResolvedValue([]);
+    mediaAssetToDtoMock.mockClear();
+    resolveMediaAssetPathMock.mockReset();
+    resolveMediaAssetPathMock.mockResolvedValue("/tmp/bricks-test-image.jpg");
+    readFileMock.mockReset();
+    readFileMock.mockResolvedValue(Buffer.from("fake-image"));
     getPlatformNodeByNodeIdMock.mockReset();
     getPlatformNodeByNodeIdMock.mockImplementation(
       async (_userId: string, nodeId: string) => ({
@@ -433,7 +478,7 @@ describe("chat routes", () => {
       expect.objectContaining({
         maxSteps: 10,
         maxToolCalls: 50,
-        timeoutMs: 60000,
+        timeoutMs: 600000,
       }),
       undefined,
     );
@@ -451,6 +496,88 @@ describe("chat routes", () => {
         content: "sync reply",
       }),
     ]);
+  });
+
+  it("passes uploaded image attachments to Gemini as multimodal parts", async () => {
+    resolveChatScopeRoutingMock.mockResolvedValueOnce({
+      router: "local",
+      nodeId: null,
+    });
+    listSessionMessagesForModelMock.mockResolvedValueOnce([
+      { role: "user", content: "What is in this image?" },
+    ] as any);
+    listMediaAssetsForUserMock.mockResolvedValueOnce([
+      {
+        id: "media-1",
+        userId: "user-123",
+        channelId: "default",
+        threadId: null,
+        kind: "image",
+        origin: "user_upload",
+        status: "ready",
+        mimeType: "image/jpeg",
+        filename: "photo.jpg",
+        channelRelativePath: "media/uploads/media-1.jpg",
+        thumbnailChannelRelativePath: null,
+        sizeBytes: 42,
+        width: null,
+        height: null,
+        durationMs: null,
+        sourceMessageId: null,
+        provider: null,
+        providerOperationName: null,
+        prompt: null,
+        errorText: null,
+        createdAt: "2026-06-29T00:00:00.000Z",
+        updatedAt: "2026-06-29T00:00:00.000Z",
+      },
+    ] as any);
+    readFileMock.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: "task-image-1",
+        idempotencyKey: "idem-image-1",
+        channelId: "default",
+        sessionId: "session:default:main",
+        userMessageId: "msg-user-image-1",
+        assistantMessageId: "msg-assistant-image-1",
+        userMessage: "What is in this image?",
+        provider: "gemini",
+        mediaAttachmentIds: ["media-1"],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 0);
+    });
+    expect(resolveMediaAssetPathMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "media-1" }),
+    );
+    expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalledWith(
+      "user-123",
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: [
+              { type: "text", text: "What is in this image?" },
+              {
+                type: "image",
+                image: Buffer.from([1, 2, 3]),
+                mediaType: "image/jpeg",
+              },
+            ],
+          }),
+        ]),
+      }),
+      expect.any(Object),
+      expect.any(Object),
+      "google_ai_studio",
+    );
   });
 
   it("auto-names a non-main thread from the first message and generates one title", async () => {
@@ -588,7 +715,11 @@ describe("chat routes", () => {
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123', {
+      channelId: 'default',
+      threadId: null,
+      defaultPrompt: '/channel create ops',
+    });
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
@@ -612,7 +743,11 @@ describe("chat routes", () => {
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123');
+    expect(buildAgentToolsMock).toHaveBeenCalledWith('user-123', {
+      channelId: 'default',
+      threadId: null,
+      defaultPrompt: 'create a channel called ops',
+    });
     expect(streamWithAgentToolsAndUserConfigMock).toHaveBeenCalled();
   });
 
@@ -943,28 +1078,30 @@ describe("chat routes", () => {
     expect(differentSession.status).toBe(200);
   });
 
-  it("lists persisted channel names", async () => {
-    listChatChannelNamesMock.mockResolvedValueOnce([
+  it("lists persisted chat channels", async () => {
+    listChatChannelsMock.mockResolvedValueOnce([
       {
         channelId: "channel-1",
         threadId: null,
+        scopeType: "channel",
         displayName: "重命名频道",
+        archivedAt: null,
         createdAt: "2026-04-18T08:00:00.000Z",
         updatedAt: "2026-04-18T08:01:00.000Z",
       },
     ] as any);
 
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`);
+    const response = await fetch(`${baseUrl}/api/chat/channels`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      channelNames?: Array<{ channelId: string; displayName: string }>;
+      channels?: Array<{ channelId: string; displayName: string }>;
     };
-    expect(body.channelNames?.[0]?.channelId).toBe("channel-1");
-    expect(body.channelNames?.[0]?.displayName).toBe("重命名频道");
+    expect(body.channels?.[0]?.channelId).toBe("channel-1");
+    expect(body.channels?.[0]?.displayName).toBe("重命名频道");
   });
 
-  it("upserts channel name when displayName is non-empty", async () => {
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+  it("upserts channel when displayName is non-empty", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -974,16 +1111,16 @@ describe("chat routes", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith("user-123", {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith("user-123", {
       channelId: "channel-1",
       threadId: null,
       displayName: "新频道名",
     });
-    expect(deleteChatChannelNameMock).not.toHaveBeenCalled();
+    expect(archiveChatChannelMock).not.toHaveBeenCalled();
   });
 
-  it("upserts subsection name when threadId is provided", async () => {
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+  it("upserts thread channel row when threadId is provided", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -994,15 +1131,15 @@ describe("chat routes", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(upsertChatChannelNameMock).toHaveBeenCalledWith("user-123", {
+    expect(upsertChatChannelMock).toHaveBeenCalledWith("user-123", {
       channelId: "channel-1",
       threadId: "sub-1",
       displayName: "新分区名",
     });
   });
 
-  it("deletes channel name mapping when displayName is null", async () => {
-    const response = await fetch(`${baseUrl}/api/chat/channel-names`, {
+  it("rejects channel upsert when displayName is null", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1011,13 +1148,28 @@ describe("chat routes", () => {
       }),
     });
 
+    expect(response.status).toBe(400);
+    expect(upsertChatChannelMock).not.toHaveBeenCalled();
+    expect(archiveChatChannelMock).not.toHaveBeenCalled();
+  });
+
+  it("archives channel row through explicit lifecycle endpoint", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/channels/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelId: "channel-1",
+        displayName: "Archived Channel",
+      }),
+    });
+
     expect(response.status).toBe(200);
-    expect(deleteChatChannelNameMock).toHaveBeenCalledWith(
-      "user-123",
-      "channel-1",
-      null,
-    );
-    expect(upsertChatChannelNameMock).not.toHaveBeenCalled();
+    expect(archiveChatChannelMock).toHaveBeenCalledWith("user-123", {
+      channelId: "channel-1",
+      threadId: null,
+      displayName: "Archived Channel",
+    });
+    expect(upsertChatChannelMock).not.toHaveBeenCalled();
   });
 
   it('writes tool_call_start DB message when onToolCallStart callback is triggered', async () => {
@@ -1294,7 +1446,7 @@ describe("chat routes", () => {
         modelId: 'claude-sonnet-4-5',
         getStopInfo: () => ({
           type: 'timeout_reached',
-          timeoutMs: 60000,
+          timeoutMs: 600000,
           stepIndex: 1,
         }),
       };
@@ -1324,11 +1476,11 @@ describe("chat routes", () => {
         messageId: 'msg-a-timeout-1',
         role: 'assistant',
         taskState: 'failed',
-        content: expect.stringContaining('step timeout was reached (60000ms)'),
+        content: expect.stringContaining('step timeout was reached (600000ms)'),
         metadata: expect.objectContaining({
           agentLoopStopReason: expect.objectContaining({
             type: 'timeout_reached',
-            timeoutMs: 60000,
+            timeoutMs: 600000,
             timeoutStepIndex: 1,
             toolCallCount: 1,
             completedToolCallCount: 1,
@@ -1398,7 +1550,8 @@ describe("chat routes", () => {
 
     const expectedInvalidations = [
       { kind: 'chat.channelNames', channelId: 'channel-1', threadId: null },
-      { kind: 'chat.scopes', channelId: 'channel-1', threadId: 'thread-1' },
+      { kind: 'chat.channelNames', channelId: 'channel-1', threadId: 'thread-1' },
+      { kind: 'chat.scopeSettings', channelId: 'channel-1', threadId: 'thread-1' },
     ];
     expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
       expect.objectContaining({
@@ -1415,6 +1568,107 @@ describe("chat routes", () => {
         content: 'updated',
         metadata: expect.objectContaining({
           invalidations: expectedInvalidations,
+        }),
+      }),
+    ]);
+  });
+
+  it('attaches generated media from successful agent tool results to the final assistant message', async () => {
+    const generatedMedia = {
+      id: 'generated-image-1',
+      kind: 'image',
+      origin: 'generated_image',
+      status: 'ready',
+      mimeType: 'image/png',
+      filename: 'generated-image-1.png',
+      sizeBytes: 12345,
+      previewUrl: '/api/media/generated-image-1/preview',
+      contentUrl: '/api/media/generated-image-1/content',
+      downloadUrl: '/api/media/generated-image-1/download',
+      channelRelativePath: 'media/generated/images/generated-image-1.png',
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const implGeneratedMedia = async (...args: any[]) => {
+      const options = args[3] as {
+        onStepFinish?: (
+          stepResults: Array<{
+            toolName: string;
+            args: Record<string, unknown>;
+            result: unknown;
+          }>,
+        ) => Promise<void>;
+      };
+      if (options.onStepFinish) {
+        await options.onStepFinish([
+          {
+            toolName: 'media_image_generate',
+            args: {
+              prompt: 'Generate a Mars greenhouse',
+            },
+            result: {
+              ok: true,
+              toolName: 'media.image.generate',
+              data: {
+                job: {
+                  id: 'job-generated-image-1',
+                  kind: 'image',
+                  status: 'succeeded',
+                  resultMediaId: 'generated-image-1',
+                  resultMedia: generatedMedia,
+                },
+                media: generatedMedia,
+              },
+              error: null,
+            },
+          },
+        ]);
+      }
+      return {
+        textStream: (async function* () {
+          yield '图像生成完成\n\n';
+          yield '[image: media/generated/images/generated-image-1.png (image/png)]\n\n';
+          yield '渲染日志';
+        })(),
+        provider: 'google_ai_studio',
+        modelId: 'gemini-flash-latest',
+      };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamWithAgentToolsAndUserConfigMock.mockImplementationOnce(implGeneratedMedia as any);
+
+    const response = await fetch(`${baseUrl}/api/chat/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskId: 'task-generated-media-1',
+        idempotencyKey: 'idem-generated-media-1',
+        channelId: 'default',
+        sessionId: 'session:default:main',
+        userMessageId: 'msg-u-generated-media-1',
+        assistantMessageId: 'msg-a-generated-media-1',
+        userMessage: 'generate an image',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-generated-media-1:ts:1',
+        metadata: expect.objectContaining({
+          mediaAttachments: [generatedMedia],
+        }),
+      }),
+    ]);
+    expect(upsertMessagesMock).toHaveBeenCalledWith('user-123', [
+      expect.objectContaining({
+        messageId: 'msg-a-generated-media-1',
+        role: 'assistant',
+        taskState: 'completed',
+        content: '图像生成完成\n\n渲染日志',
+        metadata: expect.objectContaining({
+          mediaAttachments: [generatedMedia],
         }),
       }),
     ]);

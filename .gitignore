@@ -10,6 +10,8 @@
 .history
 .cache/
 .idea/
+.antigravitycli/
+.agents/skills/source-command-opsx-*/
 
 # IntelliJ/Melos generated files
 *.iml
@@ -130,3 +132,4 @@ pubspec_overrides.yaml
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock.github/aw/logs/
 .worktree/
+.env.migration-test.local

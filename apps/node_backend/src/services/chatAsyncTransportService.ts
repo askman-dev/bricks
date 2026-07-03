@@ -1,7 +1,5 @@
 import pool from '../db/index.js';
 import {
-  buildChatSessionId,
-  listChatScopeSettings,
   normalizeChatThreadId,
 } from './chatRouterService.js';
 
@@ -348,7 +346,28 @@ function collectMessages(
 ): Array<{ role: 'user' | 'assistant'; content: string }> {
   const collected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   for (const row of rows) {
-    const content = row.content?.trim() ?? '';
+    const metadata = parseMetadata(row.metadata);
+    const mediaAttachments = Array.isArray(metadata?.mediaAttachments)
+      ? metadata.mediaAttachments
+      : [];
+    const mediaContext = mediaAttachments
+      .map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return '';
+        const record = item as Record<string, unknown>;
+        const kind = typeof record.kind === 'string' ? record.kind : 'file';
+        const origin = typeof record.origin === 'string' ? record.origin : 'media';
+        const path =
+          typeof record.channelRelativePath === 'string'
+            ? record.channelRelativePath
+            : '';
+        const mimeType = typeof record.mimeType === 'string' ? record.mimeType : '';
+        return path ? `[${origin} ${kind}: ${path}${mimeType ? ` (${mimeType})` : ''}]` : '';
+      })
+      .filter(Boolean)
+      .join('\n');
+    const content = [row.content?.trim() ?? '', mediaContext]
+      .filter((part) => part.trim().length > 0)
+      .join('\n\n');
     if (!content) continue;
     if (budget.used + content.length > budget.maxChars) break;
     budget.used += content.length;
@@ -463,8 +482,7 @@ export async function forkThread(input: ForkThreadInput): Promise<ForkThreadResu
 }
 
 export async function listUserScopes(userId: string): Promise<ChatPersistedScope[]> {
-  const [result, settings] = await Promise.all([
-    pool.query<ChatScopeRow>(
+  const result = await pool.query<ChatScopeRow>(
     `SELECT
         scope.channel_id,
         scope.thread_id,
@@ -490,9 +508,7 @@ export async function listUserScopes(userId: string): Promise<ChatPersistedScope
        GROUP BY scope.channel_id, scope.thread_id, scope.session_id
        ORDER BY last_activity_at DESC`,
     [userId],
-    ),
-    listChatScopeSettings(userId),
-  ]);
+  );
 
   const bySessionId = new Map<string, ChatPersistedScope>();
   for (const row of result.rows) {
@@ -502,21 +518,6 @@ export async function listUserScopes(userId: string): Promise<ChatPersistedScope
       threadId,
       sessionId: row.session_id,
       lastActivityAt: row.last_activity_at,
-    });
-  }
-
-  for (const setting of settings) {
-    const threadId =
-      setting.scopeType === 'thread'
-        ? normalizeChatThreadId(setting.threadId)
-        : 'main';
-    const sessionId = buildChatSessionId(setting.channelId, threadId);
-    if (bySessionId.has(sessionId)) continue;
-    bySessionId.set(sessionId, {
-      channelId: setting.channelId,
-      threadId,
-      sessionId,
-      lastActivityAt: null,
     });
   }
 

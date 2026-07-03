@@ -34,11 +34,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Plans',
+      label: 'Tasks',
       items: [
-        'plans/2026-04-26-10-20-UTC-docusaurus-doc-ia-restructure',
-        'plans/2026-04-21-07-57-UTC-readme-refresh-consolidated-plan',
-        'plans/2026-04-08-02-40-UTC-code-map-foundation',
+        'tasks/done/2026-04-26-10-20-UTC-docusaurus-doc-ia-restructure',
+        'tasks/done/2026-04-21-07-57-UTC-readme-refresh-consolidated-plan',
+        'tasks/done/2026-04-08-02-40-UTC-code-map-foundation',
       ],
     },
   ],

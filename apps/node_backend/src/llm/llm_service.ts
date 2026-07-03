@@ -136,12 +136,19 @@ function resolveModel(
   return { model: adapter.createModel(modelId, runtimeConfig), modelId };
 }
 
+function toAiSdkMessages(request: UnifiedChatRequest) {
+  return request.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+}
+
 export async function generateWithUserConfig(
   userId: string,
   request: UnifiedChatRequest,
   preferredProvider?: LlmProvider,
 ): Promise<UnifiedChatResponse> {
-  const runtimeConfig = await resolveRuntimeConfig(
+  const runtimeConfig = await resolveRuntimeConfigForUser(
     userId,
     preferredProvider,
     request.configId,
@@ -150,10 +157,8 @@ export async function generateWithUserConfig(
 
   const result = await generateText({
     model,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: toAiSdkMessages(request) as any,
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
   });
@@ -174,7 +179,7 @@ export async function streamWithUserConfig(
   provider: LlmProvider;
   modelId: string;
 }> {
-  const runtimeConfig = await resolveRuntimeConfig(
+  const runtimeConfig = await resolveRuntimeConfigForUser(
     userId,
     preferredProvider,
     request.configId,
@@ -183,10 +188,8 @@ export async function streamWithUserConfig(
 
   const result = streamText({
     model,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: toAiSdkMessages(request) as any,
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
   });
@@ -198,7 +201,7 @@ export async function streamWithUserConfig(
   };
 }
 
-async function resolveRuntimeConfig(
+export async function resolveRuntimeConfigForUser(
   userId: string,
   preferredProvider?: LlmProvider,
   preferredConfigId?: string,
@@ -254,7 +257,7 @@ export async function resolveRuntimeConfigForTest(
   preferredProvider?: LlmProvider,
   preferredConfigId?: string,
 ): Promise<LlmRuntimeConfig> {
-  return resolveRuntimeConfig(userId, preferredProvider, preferredConfigId);
+  return resolveRuntimeConfigForUser(userId, preferredProvider, preferredConfigId);
 }
 
 function defaultEndpoint(provider: LlmProvider): string {
@@ -391,7 +394,7 @@ interface SdkStepSummary {
 type AgentStopCondition = (event: { steps?: SdkStepSummary[] }) => boolean;
 
 /** Maximum timeout we allow for a single agent-loop model step (ms). */
-const MAX_AGENT_TIMEOUT_MS = 120_000;
+const MAX_AGENT_TIMEOUT_MS = 600_000;
 
 /**
  * Streams a model-driven agent loop that can call internal tools.
@@ -466,7 +469,7 @@ export async function streamWithAgentToolsAndUserConfig(
   modelId: string;
   getStopInfo: () => AgentLoopStreamStopInfo | null;
 }> {
-  const runtimeConfig = await resolveRuntimeConfig(
+  const runtimeConfig = await resolveRuntimeConfigForUser(
     userId,
     preferredProvider,
     request.configId,
@@ -537,10 +540,8 @@ export async function streamWithAgentToolsAndUserConfig(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     stopWhen: stopConditions as any,
     abortSignal: abortController.signal,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: toAiSdkMessages(request) as any,
     temperature: request.temperature,
     maxOutputTokens: request.maxTokens ?? 1024,
     // The onStepFinish callback shape changed in AI SDK v6; cast the event to
