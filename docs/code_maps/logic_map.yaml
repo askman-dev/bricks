@@ -1,7 +1,7 @@
 version: 1
 map_type: logic_map
 owner: bricks
-last_updated: 2026-06-30
+last_updated: 2026-07-03
 purpose: >
   为人类测试员、AI 测试员与 AI 工程师提供“功能 -> 代码/文档/关键词”映射，
   用于影响面分析、回归测试设计与遗留逻辑清理。
@@ -92,6 +92,47 @@ index:
       - 登录成功后导航状态未同步。
       - iOS debug 包若默认使用 localhost，会把请求发到手机本机而不是 Bricks API，导致 GitHub 登录后无法加载线上账号数据。
       - native callback scheme 配置或后端 allowlist 不一致会导致 iOS 登录无法返回应用。
+
+  - feature_id: puzzle_pack_maker_shell
+    capability: Puzzle Pack Maker 独立 App 壳、GitHub 登录与三 Tab 首页
+    code_index:
+      - apps/puzzle_pack_maker/lib/main.dart
+      - apps/puzzle_pack_maker/lib/app/puzzle_pack_maker_app.dart
+      - apps/puzzle_pack_maker/lib/features/auth/login_screen.dart
+      - apps/puzzle_pack_maker/lib/features/auth/auth_service.dart
+      - apps/puzzle_pack_maker/lib/features/auth/github_oauth.dart
+      - apps/puzzle_pack_maker/lib/features/auth/github_oauth_io.dart
+      - apps/puzzle_pack_maker/lib/features/auth/github_oauth_web.dart
+      - apps/puzzle_pack_maker/lib/features/auth/oauth_callback.dart
+      - apps/puzzle_pack_maker/lib/features/home/puzzle_pack_home_screen.dart
+      - apps/puzzle_pack_maker/lib/services/api_config.dart
+      - apps/puzzle_pack_maker/ios/Runner/Info.plist
+      - apps/puzzle_pack_maker/web/index.html
+      - apps/node_backend/src/routes/auth_return_to.ts
+      - apps/node_backend/src/app.ts
+      - tools/vercel-build.sh
+      - Dockerfile
+      - build.sh
+    doc_index:
+      - docs/tasks/doing/2026-07-03-13-42-CST-workbook-lab-repo-strategy-research.md
+      - docs/tasks/doing/2026-07-03-14-54-CST-puzzle-pack-maker-app-shell.md
+    test_index:
+      - apps/puzzle_pack_maker/test/widget_test.dart
+      - apps/node_backend/src/routes/auth.test.ts
+      - apps/node_backend/src/app.test.ts
+    keywords:
+      - puzzle-pack-maker
+      - Puzzle Pack Maker
+      - "puzzlepackmaker://auth/github/callback"
+      - GitHub OAuth
+      - "/puzzle-pack-maker"
+      - Flutter Web base href
+      - three tabs
+    change_risks:
+      - "`/puzzle-pack-maker` 静态 fallback 若配置错误，会加载根 Bricks app 或找不到 Flutter JS/CSS 资源。"
+      - "Web build 若没有使用 `--base-href /puzzle-pack-maker/`，部署到子路径后资源 URL 会指向根路径并失败。"
+      - "后端 native return allowlist 若漏掉 `puzzlepackmaker://auth/github/callback`，独立 iOS app GitHub 登录完成后无法回到 app。"
+      - Puzzle Pack Maker 复制了少量 auth 客户端代码；未来拆仓库前需要保持 OAuth contract 与 Bricks 后端一致。
 
   - feature_id: chat_session
     capability: 多 Agent 聊天会话与仲裁

@@ -29,6 +29,8 @@ clean_build() {
     # Clean Flutter build artifacts
     rm -rf apps/mobile_chat_app/build
     rm -rf apps/mobile_chat_app/.dart_tool
+    rm -rf apps/puzzle_pack_maker/build
+    rm -rf apps/puzzle_pack_maker/.dart_tool
 
     # Clean package build artifacts
     find packages -type d -name "build" -exec rm -rf {} + 2>/dev/null || true
@@ -89,6 +91,10 @@ build_web() {
 
     cd apps/mobile_chat_app
     flutter build web --release
+    cd ../..
+
+    cd apps/puzzle_pack_maker
+    flutter build web --release --base-href /puzzle-pack-maker/
     cd ../..
 
     print_success "Web build completed"

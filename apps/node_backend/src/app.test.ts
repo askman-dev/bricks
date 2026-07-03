@@ -1,5 +1,5 @@
 import express from 'express';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -113,6 +113,11 @@ beforeAll(async () => {
   await writeFile(path.join(staticRoot, 'main.dart.js'), 'console.log("app")');
   await writeFile(path.join(staticRoot, 'flutter.js'), 'console.log("flutter")');
   await writeFile(path.join(staticRoot, 'asset.txt'), 'asset');
+  await mkdir(path.join(staticRoot, 'puzzle-pack-maker'), { recursive: true });
+  await writeFile(
+    path.join(staticRoot, 'puzzle-pack-maker', 'index.html'),
+    '<!doctype html><title>Puzzle Pack Maker</title>',
+  );
   process.env.BRICKS_STATIC_ROOT = staticRoot;
 
   const { default: app } = await import('./app.js');
@@ -211,6 +216,15 @@ describe('app static cache headers', () => {
     const response = await fetch(`${baseUrl}/chat/thread-1`);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
+  });
+
+  it('serves Puzzle Pack Maker from the /puzzle-pack-maker subpath fallback', async () => {
+    for (const pathname of ['/puzzle-pack-maker', '/puzzle-pack-maker/create']) {
+      const response = await fetch(`${baseUrl}${pathname}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toContain('no-store');
+      expect(await response.text()).toContain('Puzzle Pack Maker');
+    }
   });
 
   it('keeps non-shell static assets on a short cache policy', async () => {

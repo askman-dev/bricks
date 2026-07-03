@@ -47,6 +47,11 @@ describe('auth return_to validation', () => {
         nodeEnv: 'production',
       })
     ).toBe(true);
+    expect(
+      isAllowedReturnTo('puzzlepackmaker://auth/github/callback', {
+        nodeEnv: 'production',
+      })
+    ).toBe(true);
   });
 
   it('rejects arbitrary native scheme return_to values', () => {
@@ -372,5 +377,17 @@ describe('buildPostLoginRedirectTarget', () => {
     );
 
     expect(redirect).toBe('bricks://auth/github/callback#auth_token=jwt-token');
+  });
+
+  it('appends auth_token fragment for Puzzle Pack Maker native callback targets', () => {
+    const redirect = buildPostLoginRedirectTarget(
+      'puzzlepackmaker://auth/github/callback',
+      'jwt-token',
+      'https://craft.bricks.cool'
+    );
+
+    expect(redirect).toBe(
+      'puzzlepackmaker://auth/github/callback#auth_token=jwt-token'
+    );
   });
 });

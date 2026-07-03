@@ -6,6 +6,7 @@ interface ReturnToValidationOptions {
 
 const ALLOWED_NATIVE_RETURN_TARGETS = new Set([
   'bricks://auth/github/callback',
+  'puzzlepackmaker://auth/github/callback',
 ]);
 
 export function isAllowedReturnTo(

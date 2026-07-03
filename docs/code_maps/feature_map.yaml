@@ -1,11 +1,49 @@
 version: 1
 map_type: feature_map
 owner: bricks
-last_updated: 2026-06-30
+last_updated: 2026-07-03
 purpose: >
   为人类测试员和 AI 测试员提供产品功能清单与进入路径，作为回归测试与变更影响评估的入口索引。
 
 products:
+  - product_id: puzzle_pack_maker
+    name: Puzzle Pack Maker
+    platform:
+      - flutter_mobile
+      - flutter_web
+    entry_points:
+      - path: apps/puzzle_pack_maker/lib/main.dart
+        route: App root
+      - path: https://craft.bricks.cool/puzzle-pack-maker
+        route: Production web subpath
+    features:
+      - feature_id: puzzle_pack_maker_shell
+        name: Puzzle Pack Maker 登录后三 Tab 壳
+        user_value: 用户可在独立 Puzzle Pack Maker app 中通过 GitHub 登录，并进入 Create/Gallery/Library 三 tab 初始页面。
+        entry_paths:
+          - screen: PuzzlePackMakerApp startup router
+            route_hint: apps/puzzle_pack_maker/lib/app/puzzle_pack_maker_app.dart
+          - screen: LoginScreen
+            route_hint: apps/puzzle_pack_maker/lib/features/auth/login_screen.dart
+          - screen: PuzzlePackHomeScreen
+            route_hint: apps/puzzle_pack_maker/lib/features/home/puzzle_pack_home_screen.dart
+          - service: Puzzle Pack Maker OAuth helpers
+            route_hint: apps/puzzle_pack_maker/lib/features/auth/
+          - route: GitHub OAuth native return allowlist
+            route_hint: apps/node_backend/src/routes/auth_return_to.ts
+          - route: Static subpath host fallback
+            route_hint: apps/node_backend/src/app.ts
+          - deployment: Web build copied to /puzzle-pack-maker
+            route_hint: tools/vercel-build.sh
+        smoke_checks:
+          - 访问 `https://craft.bricks.cool/puzzle-pack-maker` 时加载 Puzzle Pack Maker web app，而不是根路径 Bricks chat app。
+          - 未登录用户看到 Puzzle Pack Maker 登录页和 `Continue with GitHub` 按钮。
+          - Web 登录从 `/api/auth/github?return_to=<current puzzle-pack-maker URL>` 发起，完成后回到 `/puzzle-pack-maker`。
+          - iOS 登录使用 `puzzlepackmaker://auth/github/callback` 回到独立 app。
+          - 登录后底部显示 `Create`、`Gallery`、`Library` 三个 tab。
+          - 切换三个 tab 时分别显示对应 Hello World 内容。
+          - 根路径 `https://craft.bricks.cool` 仍加载原 Bricks web app。
+
   - product_id: mobile_chat_app
     name: Mobile Chat App
     platform:
