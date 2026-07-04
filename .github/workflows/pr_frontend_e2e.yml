@@ -67,7 +67,7 @@ jobs:
       - name: Publish screenshot to PR comment
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
         env:
-          GITHUB_TOKEN: ${{ secrets.CRAZYGO_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
