@@ -70,6 +70,8 @@ describe('chatRouterService', () => {
         router: 'plugin',
         nodeId: 'node_default',
         instructions: null,
+        outputTone: { type: 'preset', preset: 'direct' },
+        inputGrammarFixerEnabled: false,
         createdAt: '2026-04-17T07:00:00.000Z',
         updatedAt: '2026-04-17T07:05:00.000Z',
       },
@@ -170,6 +172,33 @@ describe('chatRouterService', () => {
 
     expect(result.channelInstructions).toBe('channel-level context');
     expect(result.threadInstructions).toBe('section-specific context');
+  });
+
+  it('resolves channel output tone and grammar fixer settings', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          scope_type: 'channel',
+          instructions: 'channel context',
+          output_tone_type: 'custom',
+          output_tone_preset: null,
+          output_tone_custom: 'Use plain technical language.',
+          input_grammar_fixer_enabled: true,
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const result = await resolveScopeInstructions('u-1', {
+      channelId: 'channel-a',
+      threadId: 'main',
+    });
+
+    expect(result.channelOutputTone).toEqual({
+      type: 'custom',
+      instruction: 'Use plain technical language.',
+    });
+    expect(result.inputGrammarFixerEnabled).toBe(true);
   });
 
   it('returns null thread instructions when in main section', async () => {

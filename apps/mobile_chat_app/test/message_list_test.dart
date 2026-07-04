@@ -504,6 +504,34 @@ void main() {
         const EdgeInsets.only(bottom: BricksSpacing.md),
       );
     });
+
+    testWidgets('shows grammar accepted icon and suggestion text for users',
+        (tester) async {
+      final accepted = ChatMessage(
+        messageId: 'u-grammar-ok',
+        role: 'user',
+        content: 'This sentence is clean.',
+        timestamp: DateTime.utc(2026, 1, 1),
+        inputGrammarFix: const InputGrammarFixResult(status: 'accepted'),
+      );
+      final suggested = ChatMessage(
+        messageId: 'u-grammar-fix',
+        role: 'user',
+        content: 'What does this sentence mean?',
+        timestamp: DateTime.utc(2026, 1, 1, 0, 1),
+        inputGrammarFix: const InputGrammarFixResult(
+          status: 'suggested',
+          suggestion: 'What does this sentence mean?',
+        ),
+      );
+
+      await tester.pumpWidget(_build([accepted, suggested]));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.spellcheck), findsOneWidget);
+      expect(find.byTooltip('English looks good'), findsOneWidget);
+      expect(find.text('What does this sentence mean?'), findsNWidgets(2));
+    });
   });
 
   group('Assistant markdown rendering', () {
@@ -1154,8 +1182,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Copy'), findsOneWidget);
-      expect(find.text('Branch (coming soon)'), findsOneWidget);
-      expect(find.text('Resend (coming soon)'), findsOneWidget);
+      expect(find.text('Branch'), findsOneWidget);
+      expect(find.text('Resend'), findsOneWidget);
       expect(find.text('message id: u-menu'), findsOneWidget);
       expect(find.text('task id: task-menu'), findsOneWidget);
     });
@@ -1683,8 +1711,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
 
-      expect(find.text('归档此轮'), findsNothing);
-      expect(find.text('归档此回复'), findsNothing);
+      expect(find.text('Archive Round'), findsNothing);
+      expect(find.text('Archive Reply'), findsNothing);
       expect(find.text('移入Thread'), findsNothing);
     });
 
@@ -1702,8 +1730,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
 
-      expect(find.text('归档此轮'), findsOneWidget);
-      await tester.tap(find.text('归档此轮'));
+      expect(find.text('Archive Round'), findsOneWidget);
+      await tester.tap(find.text('Archive Round'));
       await tester.pumpAndSettle();
 
       expect(received?.messageId, 'a-action');
@@ -1723,8 +1751,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
 
-      expect(find.text('归档此回复'), findsOneWidget);
-      await tester.tap(find.text('归档此回复'));
+      expect(find.text('Archive Reply'), findsOneWidget);
+      await tester.tap(find.text('Archive Reply'));
       await tester.pumpAndSettle();
 
       expect(received?.messageId, 'a-action');
@@ -1762,8 +1790,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
 
-      expect(find.text('归档此轮'), findsOneWidget);
-      expect(find.text('归档此回复'), findsNothing);
+      expect(find.text('Archive Round'), findsOneWidget);
+      expect(find.text('Archive Reply'), findsNothing);
       expect(find.text('移入Thread'), findsNothing);
     });
   });

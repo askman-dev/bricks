@@ -129,6 +129,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, String> _threadNodeIds = {};
   final Map<String, String> _channelInstructions = {};
   final Map<String, String> _threadInstructions = {};
+  final Map<String, ChatOutputToneSetting> _channelOutputTones = {};
+  final Map<String, bool> _channelInputGrammarFixers = {};
   final Set<String> _topologyRefreshedTaskIds = {};
   int _respondGeneration = 0;
   int _idCounter = 0;
@@ -277,6 +279,10 @@ class _ChatScreenState extends State<ChatScreen> {
           _hydrateChannelInstructions(scopeSettings);
       final restoredThreadInstructions =
           _hydrateThreadInstructions(scopeSettings);
+      final restoredChannelOutputTones =
+          _hydrateChannelOutputTones(scopeSettings);
+      final restoredChannelInputGrammarFixers =
+          _hydrateChannelInputGrammarFixers(scopeSettings);
       final resolvedActiveChannel = _topologyResolver.resolveChannelId(
         channels: restoredChannels,
         requestedChannelId: _activeChannelId,
@@ -327,6 +333,12 @@ class _ChatScreenState extends State<ChatScreen> {
         _threadInstructions
           ..clear()
           ..addAll(restoredThreadInstructions);
+        _channelOutputTones
+          ..clear()
+          ..addAll(restoredChannelOutputTones);
+        _channelInputGrammarFixers
+          ..clear()
+          ..addAll(restoredChannelInputGrammarFixers);
         _platformNodes = platformNodes;
         _activeChannelId = resolvedActiveChannel;
         _activeSubSection = restoredActiveSubSection;
@@ -858,6 +870,28 @@ class _ChatScreenState extends State<ChatScreen> {
           value;
     }
     return instructions;
+  }
+
+  Map<String, ChatOutputToneSetting> _hydrateChannelOutputTones(
+    List<ChatScopeSetting> settings,
+  ) {
+    final tones = <String, ChatOutputToneSetting>{};
+    for (final setting in settings) {
+      if (setting.scopeType != ChatScopeType.channel) continue;
+      tones[setting.channelId] = setting.outputTone;
+    }
+    return tones;
+  }
+
+  Map<String, bool> _hydrateChannelInputGrammarFixers(
+    List<ChatScopeSetting> settings,
+  ) {
+    final fixers = <String, bool>{};
+    for (final setting in settings) {
+      if (setting.scopeType != ChatScopeType.channel) continue;
+      fixers[setting.channelId] = setting.inputGrammarFixerEnabled;
+    }
+    return fixers;
   }
 
   void _createChannel() {
@@ -1838,16 +1872,24 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _saveChannelInstructions(String? instructions) async {
+  Future<void> _saveChannelSettings({
+    required String? instructions,
+    required ChatOutputToneSetting outputTone,
+    required bool inputGrammarFixerEnabled,
+  }) async {
     final channelId = _activeChannelId;
     final normalized = instructions?.trim();
-    final previous = _channelInstructions[channelId];
+    final previousInstructions = _channelInstructions[channelId];
+    final previousOutputTone = _channelOutputTones[channelId];
+    final previousInputGrammarFixer = _channelInputGrammarFixers[channelId];
     setState(() {
       if (normalized == null || normalized.isEmpty) {
         _channelInstructions.remove(channelId);
       } else {
         _channelInstructions[channelId] = normalized;
       }
+      _channelOutputTones[channelId] = outputTone;
+      _channelInputGrammarFixers[channelId] = inputGrammarFixerEnabled;
     });
 
     final effectiveRouter = _channelRouters[channelId] ?? ChatRouter.local;
@@ -1861,19 +1903,31 @@ class _ChatScreenState extends State<ChatScreen> {
             ? _channelNodeIds[channelId]
             : null,
         instructions: normalized?.isEmpty ?? true ? null : normalized,
+        outputTone: outputTone,
+        inputGrammarFixerEnabled: inputGrammarFixerEnabled,
       );
       if (!mounted) return;
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        if (previous == null || previous.isEmpty) {
+        if (previousInstructions == null || previousInstructions.isEmpty) {
           _channelInstructions.remove(channelId);
         } else {
-          _channelInstructions[channelId] = previous;
+          _channelInstructions[channelId] = previousInstructions;
+        }
+        if (previousOutputTone == null) {
+          _channelOutputTones.remove(channelId);
+        } else {
+          _channelOutputTones[channelId] = previousOutputTone;
+        }
+        if (previousInputGrammarFixer == null) {
+          _channelInputGrammarFixers.remove(channelId);
+        } else {
+          _channelInputGrammarFixers[channelId] = previousInputGrammarFixer;
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save channel instructions: $error')),
+        SnackBar(content: Text('Failed to save channel settings: $error')),
       );
     }
   }
@@ -1933,6 +1987,10 @@ class _ChatScreenState extends State<ChatScreen> {
     final threadController = TextEditingController(
       text: isSubSection ? (_threadInstructions[threadKey] ?? '') : '',
     );
+    final outputTone =
+        _channelOutputTones[channelId] ?? ChatOutputToneSetting.direct;
+    final inputGrammarFixerEnabled =
+        _channelInputGrammarFixers[channelId] ?? false;
 
     await showDialog<void>(
       context: context,
@@ -1940,9 +1998,15 @@ class _ChatScreenState extends State<ChatScreen> {
         isSubSection: isSubSection,
         channelController: channelController,
         threadController: threadController,
+        initialOutputTone: outputTone,
+        initialInputGrammarFixerEnabled: inputGrammarFixerEnabled,
         onSaveChannel: (value) async {
           Navigator.of(dialogContext).pop();
-          await _saveChannelInstructions(value);
+          await _saveChannelSettings(
+            instructions: value.instructions,
+            outputTone: value.outputTone,
+            inputGrammarFixerEnabled: value.inputGrammarFixerEnabled,
+          );
         },
         onSaveThread: (value) async {
           Navigator.of(dialogContext).pop();
@@ -2281,6 +2345,12 @@ class _ChatScreenState extends State<ChatScreen> {
           _threadInstructions
             ..clear()
             ..addAll(_hydrateThreadInstructions(settings));
+          _channelOutputTones
+            ..clear()
+            ..addAll(_hydrateChannelOutputTones(settings));
+          _channelInputGrammarFixers
+            ..clear()
+            ..addAll(_hydrateChannelInputGrammarFixers(settings));
         }
       });
     } catch (error) {
@@ -3676,6 +3746,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+class _ChannelConfigValue {
+  const _ChannelConfigValue({
+    required this.instructions,
+    required this.outputTone,
+    required this.inputGrammarFixerEnabled,
+  });
+
+  final String? instructions;
+  final ChatOutputToneSetting outputTone;
+  final bool inputGrammarFixerEnabled;
+}
+
 class _SitePublishInfoRow extends StatelessWidget {
   const _SitePublishInfoRow({
     required this.label,
@@ -3704,12 +3786,14 @@ class _SitePublishInfoRow extends StatelessWidget {
   }
 }
 
-/// A two-tab dialog for configuring channel and thread instructions.
+/// A two-tab dialog for configuring channel and thread settings.
 class _ScopeConfigDialog extends StatefulWidget {
   const _ScopeConfigDialog({
     required this.isSubSection,
     required this.channelController,
     required this.threadController,
+    required this.initialOutputTone,
+    required this.initialInputGrammarFixerEnabled,
     required this.onSaveChannel,
     required this.onSaveThread,
   });
@@ -3717,7 +3801,9 @@ class _ScopeConfigDialog extends StatefulWidget {
   final bool isSubSection;
   final TextEditingController channelController;
   final TextEditingController threadController;
-  final Future<void> Function(String? value) onSaveChannel;
+  final ChatOutputToneSetting initialOutputTone;
+  final bool initialInputGrammarFixerEnabled;
+  final Future<void> Function(_ChannelConfigValue value) onSaveChannel;
   final Future<void> Function(String? value) onSaveThread;
 
   @override
@@ -3727,6 +3813,9 @@ class _ScopeConfigDialog extends StatefulWidget {
 class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  late final TextEditingController _customToneController;
+  late String _toneSelection;
+  late bool _inputGrammarFixerEnabled;
   bool _isSaving = false;
 
   @override
@@ -3734,6 +3823,14 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChange);
+    _customToneController = TextEditingController(
+      text: widget.initialOutputTone.customInstruction ?? '',
+    );
+    _toneSelection = widget.initialOutputTone.isCustom
+        ? 'custom'
+        : (widget.initialOutputTone.preset ?? ChatOutputTonePreset.direct)
+            .apiValue;
+    _inputGrammarFixerEnabled = widget.initialInputGrammarFixerEnabled;
   }
 
   void _onTabChange() {
@@ -3744,6 +3841,7 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
   void dispose() {
     _tabController.removeListener(_onTabChange);
     _tabController.dispose();
+    _customToneController.dispose();
     super.dispose();
   }
 
@@ -3752,13 +3850,28 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
     setState(() => _isSaving = true);
     try {
       if (_tabController.index == 0) {
-        await widget.onSaveChannel(widget.channelController.text);
+        await widget.onSaveChannel(
+          _ChannelConfigValue(
+            instructions: widget.channelController.text,
+            outputTone: _selectedOutputTone(),
+            inputGrammarFixerEnabled: _inputGrammarFixerEnabled,
+          ),
+        );
       } else {
         await widget.onSaveThread(widget.threadController.text);
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  ChatOutputToneSetting _selectedOutputTone() {
+    if (_toneSelection == 'custom') {
+      return ChatOutputToneSetting.custom(_customToneController.text.trim());
+    }
+    return ChatOutputToneSetting.preset(
+      chatOutputTonePresetFromApi(_toneSelection),
+    );
   }
 
   @override
@@ -3780,24 +3893,81 @@ class _ScopeConfigDialogState extends State<_ScopeConfigDialog>
             ),
             const SizedBox(height: BricksSpacing.sm),
             SizedBox(
-              height: 180,
+              height: 300,
               child: TabBarView(
                 controller: _tabController,
                 children: [
                   // Channel tab
-                  Padding(
+                  SingleChildScrollView(
                     padding: const EdgeInsets.only(top: BricksSpacing.sm),
-                    child: TextField(
-                      controller: widget.channelController,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      decoration: const InputDecoration(
-                        labelText: 'Instructions',
-                        hintText:
-                            'Describe the broad context or topic for this channel.',
-                        border: OutlineInputBorder(),
-                      ),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: 120,
+                          child: TextField(
+                            controller: widget.channelController,
+                            maxLines: null,
+                            expands: true,
+                            textAlignVertical: TextAlignVertical.top,
+                            decoration: const InputDecoration(
+                              labelText: 'Instructions',
+                              hintText:
+                                  'Describe the broad context or topic for this channel.',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: BricksSpacing.md),
+                        DropdownButtonFormField<String>(
+                          initialValue: _toneSelection,
+                          decoration: const InputDecoration(
+                            labelText: 'Output style',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'direct',
+                              child: Text('Direct'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'socratic',
+                              child: Text('Socratic'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'rhetorical',
+                              child: Text('Rhetorical'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'custom',
+                              child: Text('Custom'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() => _toneSelection = value);
+                          },
+                        ),
+                        if (_toneSelection == 'custom') ...[
+                          const SizedBox(height: BricksSpacing.md),
+                          TextField(
+                            controller: _customToneController,
+                            maxLines: 3,
+                            decoration: const InputDecoration(
+                              labelText: 'Custom style',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: BricksSpacing.sm),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Grammar suggestions'),
+                          value: _inputGrammarFixerEnabled,
+                          onChanged: (value) {
+                            setState(() => _inputGrammarFixerEnabled = value);
+                          },
+                        ),
+                      ],
                     ),
                   ),
                   // Thread tab

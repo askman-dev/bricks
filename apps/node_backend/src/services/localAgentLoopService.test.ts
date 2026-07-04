@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const upsertChatScopeSettingMock = vi.fn();
+const setChannelOutputToneMock = vi.fn();
+const setChannelInputGrammarFixerMock = vi.fn();
 const upsertChatChannelMock = vi.fn();
 const listChatScopeSettingsMock = vi.fn().mockResolvedValue([]);
 const listChatChannelsMock = vi.fn().mockResolvedValue([]);
@@ -21,6 +23,12 @@ vi.mock('./chatRouterService.js', () => ({
     const t = threadId?.trim();
     return t && t.length > 0 ? t : 'main';
   },
+  normalizeChatOutputTonePreset: (value?: string | null) =>
+    value === 'direct' || value === 'socratic' || value === 'rhetorical'
+      ? value
+      : null,
+  setChannelOutputTone: setChannelOutputToneMock,
+  setChannelInputGrammarFixer: setChannelInputGrammarFixerMock,
   upsertChatScopeSetting: upsertChatScopeSettingMock,
   listChatScopeSettings: listChatScopeSettingsMock,
 }));
@@ -178,6 +186,8 @@ vi.mock('./channelSiteService.js', () => {
 describe('localAgentLoopService', () => {
   beforeEach(() => {
     upsertChatScopeSettingMock.mockReset();
+    setChannelOutputToneMock.mockReset();
+    setChannelInputGrammarFixerMock.mockReset();
     upsertChatChannelMock.mockReset();
     generateImageMediaMock.mockReset();
     startVideoGenerationJobMock.mockReset();
@@ -227,6 +237,71 @@ describe('localAgentLoopService', () => {
       router: 'local',
       instructions: 'Keep concise',
     });
+  });
+
+  it('persists channel output tone preset tool', async () => {
+    setChannelOutputToneMock.mockResolvedValue({
+      scopeType: 'channel',
+      channelId: 'default',
+      threadId: null,
+      outputTone: { type: 'preset', preset: 'socratic' },
+      updatedAt: '2026-06-17T00:00:00.000Z',
+    });
+
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_CHAT_CHANNEL_OUTPUT_TONE_SET,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_CHANNEL_OUTPUT_TONE_SET,
+      args: {
+        channelId: 'default',
+        preset: 'socratic',
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(setChannelOutputToneMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'default',
+      outputTone: { type: 'preset', preset: 'socratic' },
+    });
+    expect(result.data?.outputTone).toEqual({
+      type: 'preset',
+      preset: 'socratic',
+    });
+  });
+
+  it('persists channel grammar fixer setting tool', async () => {
+    setChannelInputGrammarFixerMock.mockResolvedValue({
+      scopeType: 'channel',
+      channelId: 'default',
+      threadId: null,
+      inputGrammarFixerEnabled: true,
+      updatedAt: '2026-06-17T00:00:00.000Z',
+    });
+
+    const {
+      executeInternalTool,
+      INTERNAL_TOOL_CHAT_CHANNEL_INPUT_GRAMMAR_FIX_SET,
+    } = await import('./localAgentLoopService.js');
+
+    const result = await executeInternalTool({
+      userId: 'u-1',
+      toolName: INTERNAL_TOOL_CHAT_CHANNEL_INPUT_GRAMMAR_FIX_SET,
+      args: {
+        channelId: 'default',
+        enabled: true,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(setChannelInputGrammarFixerMock).toHaveBeenCalledWith('u-1', {
+      channelId: 'default',
+      enabled: true,
+    });
+    expect(result.data?.inputGrammarFixerEnabled).toBe(true);
   });
 
   it('creates channel scope for create tool', async () => {

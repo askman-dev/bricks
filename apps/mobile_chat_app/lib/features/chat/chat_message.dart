@@ -182,6 +182,37 @@ class ChatInvalidation {
   }
 }
 
+class InputGrammarFixResult {
+  const InputGrammarFixResult({
+    required this.status,
+    this.suggestion,
+  });
+
+  final String status;
+  final String? suggestion;
+
+  bool get isAccepted => status == 'accepted';
+  bool get hasSuggestion =>
+      status == 'suggested' && suggestion != null && suggestion!.isNotEmpty;
+
+  Map<String, Object?> toMap() => {
+        'status': status,
+        'suggestion': suggestion,
+      };
+
+  static InputGrammarFixResult? fromMap(Object? value) {
+    if (value is! Map) return null;
+    final map = Map<Object?, Object?>.from(value);
+    final status = map['status'];
+    if (status != 'accepted' && status != 'suggested') return null;
+    final suggestion = map['suggestion'];
+    return InputGrammarFixResult(
+      status: status as String,
+      suggestion: suggestion is String ? suggestion : null,
+    );
+  }
+}
+
 /// A chat message displayed in the [MessageList].
 ///
 /// This is a thin view-model for the chat UI, distinct from
@@ -222,6 +253,7 @@ class ChatMessage {
     this.isRecovered = false,
     this.agentLoopPhase,
     this.agentLoopTool,
+    this.inputGrammarFix,
     this.invalidations = const [],
     this.mediaAttachments = const [],
   }) : timestamp = timestamp ?? DateTime.now();
@@ -272,6 +304,7 @@ class ChatMessage {
   /// The tool name associated with a `tool_call_start` phase message.
   /// Extracted from `agentLoop.toolName` in server metadata.
   final String? agentLoopTool;
+  final InputGrammarFixResult? inputGrammarFix;
   final List<ChatInvalidation> invalidations;
   final List<ChatMediaAttachment> mediaAttachments;
 
@@ -310,6 +343,7 @@ class ChatMessage {
     bool? isRecovered,
     String? agentLoopPhase,
     String? agentLoopTool,
+    InputGrammarFixResult? inputGrammarFix,
     List<ChatInvalidation>? invalidations,
     List<ChatMediaAttachment>? mediaAttachments,
   }) {
@@ -349,6 +383,7 @@ class ChatMessage {
       isRecovered: isRecovered ?? this.isRecovered,
       agentLoopPhase: agentLoopPhase ?? this.agentLoopPhase,
       agentLoopTool: agentLoopTool ?? this.agentLoopTool,
+      inputGrammarFix: inputGrammarFix ?? this.inputGrammarFix,
       invalidations: invalidations ?? this.invalidations,
       mediaAttachments: mediaAttachments ?? this.mediaAttachments,
     );
@@ -390,6 +425,7 @@ class ChatMessage {
       'isRecovered': isRecovered,
       'agentLoopPhase': agentLoopPhase,
       'agentLoopTool': agentLoopTool,
+      if (inputGrammarFix != null) 'inputGrammarFix': inputGrammarFix!.toMap(),
       if (invalidations.isNotEmpty)
         'invalidations': invalidations.map((item) => item.toMap()).toList(),
       if (mediaAttachments.isNotEmpty)
@@ -472,6 +508,7 @@ class ChatMessage {
       isRecovered: map['isRecovered'] as bool? ?? false,
       agentLoopPhase: map['agentLoopPhase'] as String?,
       agentLoopTool: map['agentLoopTool'] as String?,
+      inputGrammarFix: InputGrammarFixResult.fromMap(map['inputGrammarFix']),
       invalidations: parseInvalidations(map['invalidations']),
       mediaAttachments: parseMediaAttachments(map['mediaAttachments']),
     );

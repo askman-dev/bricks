@@ -692,6 +692,61 @@ void main() {
     );
   });
 
+  test('loads and saves channel output tone and grammar fixer', () async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET') {
+        expect(request.url.path.endsWith('/chat/scope-settings'), isTrue);
+        return http.Response(
+          jsonEncode({
+            'settings': [
+              {
+                'scopeType': 'channel',
+                'channelId': 'ch-1',
+                'router': 'default',
+                'outputTone': {
+                  'type': 'preset',
+                  'preset': 'socratic',
+                },
+                'inputGrammarFixerEnabled': true,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+
+      expect(request.method, equals('PUT'));
+      final decoded = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(decoded['scopeType'], equals('channel'));
+      expect(decoded['channelId'], equals('ch-1'));
+      expect(decoded['outputTone'], {
+        'type': 'custom',
+        'instruction': 'Use calm and plain language.',
+      });
+      expect(decoded['inputGrammarFixerEnabled'], isFalse);
+      return http.Response(
+        jsonEncode({'setting': {}}),
+        200,
+      );
+    });
+
+    final service = _serviceFor(client);
+    final settings = await service.loadScopeSettings();
+    await service.saveScopeSetting(
+      scopeType: ChatScopeType.channel,
+      channelId: 'ch-1',
+      router: ChatRouter.local,
+      outputTone: const ChatOutputToneSetting.custom(
+        'Use calm and plain language.',
+      ),
+      inputGrammarFixerEnabled: false,
+    );
+
+    expect(settings, hasLength(1));
+    expect(settings.single.outputTone.preset, ChatOutputTonePreset.socratic);
+    expect(settings.single.inputGrammarFixerEnabled, isTrue);
+  });
+
   test('parses agentLoop metadata into agentLoopPhase and agentLoopTool',
       () async {
     final client = MockClient((request) async {

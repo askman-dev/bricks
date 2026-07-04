@@ -273,6 +273,31 @@ products:
           - 清空指令后保存，刷新页面后该范围不应再贡献任何提示上下文。
           - plugin/OpenClaw 路由下保存或发送消息，OpenClaw dispatch 行为不变。
 
+      - feature_id: channel_output_tone_and_grammar_fixer
+        name: 频道输出风格与输入语法建议
+        user_value: 用户可在频道配置中设置默认回复风格，并开启轻量英文语法建议；AI 可通过工具修改这些频道级设置。
+        entry_paths:
+          - screen: ChatScreen._openScopeConfigDialog
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - widget: _ScopeConfigDialog Channel tab
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_screen.dart
+          - service: ChatHistoryApiService.saveScopeSetting (outputTone/inputGrammarFixerEnabled)
+            route_hint: apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+          - route: PUT /api/chat/scope-settings (output tone / grammar fixer fields)
+            route_hint: apps/node_backend/src/routes/chat.ts
+          - route: POST /api/chat/respond (tone prompt injection / grammar metadata)
+            route_hint: apps/node_backend/src/routes/chat.ts
+          - tool: chat_channel_output_tone_set / chat_channel_custom_output_tone_set / chat_channel_input_grammar_fix_set
+            route_hint: apps/node_backend/src/services/localAgentLoopService.ts
+        smoke_checks:
+          - Channel 配置中可选择 Direct / Socratic / Rhetorical / Custom，默认应为 Direct。
+          - 保存频道输出风格后刷新页面，Channel 配置应恢复已保存风格。
+          - 选择 Custom 时必须能输入自定义风格文本并保存。
+          - local/Bricks Default 回复应把频道输出风格作为系统提示的一部分；OpenClaw plugin dispatch 行为不变。
+          - AI tool 修改输出风格或语法建议开关后，客户端应通过 typed invalidation 刷新 scope settings。
+          - 开启 grammar suggestions 后发送英文问题，主回复仍使用用户原始输入；语法检查结果稍后更新在 user 气泡上。
+          - 语法检查 accepted 时 user 气泡显示 spellcheck 图标；suggested 时在 user 气泡下显示建议文本。
+
       - feature_id: model_settings
         name: 模型与提供商配置
         user_value: 用户可选择可用模型并保存默认配置，并可快速复制 API URL 与 API Key。

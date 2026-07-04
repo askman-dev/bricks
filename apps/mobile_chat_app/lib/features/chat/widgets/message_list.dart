@@ -962,7 +962,31 @@ class _MessageListState extends State<MessageList> {
                                 foregroundColor: chatColors.onMessageUser,
                               ),
                             ],
+                            if (msg.inputGrammarFix?.isAccepted ?? false) ...[
+                              const SizedBox(width: BricksSpacing.xs),
+                              Tooltip(
+                                message: 'English looks good',
+                                child: Icon(
+                                  Icons.spellcheck,
+                                  size: 14,
+                                  color: chatColors.onMessageUser
+                                      .withValues(alpha: 0.78),
+                                ),
+                              ),
+                            ],
                           ],
+                        ),
+                      ),
+                    if (isUser && (msg.inputGrammarFix?.hasSuggestion ?? false))
+                      Padding(
+                        padding: const EdgeInsets.only(top: BricksSpacing.xs),
+                        child: Text(
+                          msg.inputGrammarFix!.suggestion!,
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: chatColors.onMessageUser
+                                        .withValues(alpha: 0.78),
+                                  ),
                         ),
                       ),
                   ],
@@ -3090,8 +3114,8 @@ class _UserMessageContextMenu extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _MenuItem(label: 'Copy', value: 'copy'),
-                _MenuItem(label: 'Branch (coming soon)', value: 'branch'),
-                _MenuItem(label: 'Resend (coming soon)', value: 'resend'),
+                _MenuItem(label: 'Branch', value: 'branch'),
+                _MenuItem(label: 'Resend', value: 'resend'),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -3176,9 +3200,9 @@ class _AssistantMessageActionMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       if (showArchiveRound)
-        const _MenuItem(label: '归档此轮', value: 'archive_round'),
+        const _MenuItem(label: 'Archive Round', value: 'archive_round'),
       if (showArchiveReply)
-        const _MenuItem(label: '归档此回复', value: 'archive_reply'),
+        const _MenuItem(label: 'Archive Reply', value: 'archive_reply'),
       if (showFork) const _MenuItem(label: 'Fork', value: 'fork'),
     ];
     final menuHeight = _itemHeight * items.length;

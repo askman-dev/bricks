@@ -21,8 +21,12 @@ import {
   deleteChatScopeSetting,
   listChatScopeSettings,
   normalizeChatRouterValue,
+  normalizeChatOutputTonePreset,
   resolveChatScopeRouting,
   resolveScopeInstructions,
+  setChannelInputGrammarFixer,
+  setChannelOutputTone,
+  type ChatOutputTone,
   type ChatRouter,
   type ChatScopeType,
   upsertChatScopeSetting,
@@ -233,6 +237,9 @@ function invalidationsForToolResult(
         },
       ];
     case "chat_channel_instruction_set":
+    case "chat_channel_output_tone_set":
+    case "chat_channel_custom_output_tone_set":
+    case "chat_channel_input_grammar_fix_set":
       return [
         {
           kind: "chat.scopeSettings",
@@ -666,6 +673,23 @@ function parseChatRouter(value: unknown): ChatRouter | null {
   return typeof value === "string" ? normalizeChatRouterValue(value) : null;
 }
 
+function parseOutputTone(value: unknown): ChatOutputTone | null {
+  if (!isRecord(value)) return null;
+  if (value.type === "custom" && typeof value.instruction === "string") {
+    const instruction = value.instruction.trim();
+    return instruction ? { type: "custom", instruction } : null;
+  }
+
+  if (value.type === "preset") {
+    const preset = normalizeChatOutputTonePreset(
+      typeof value.preset === "string" ? value.preset : null,
+    );
+    return preset ? { type: "preset", preset } : null;
+  }
+
+  return null;
+}
+
 function parseMediaAttachmentIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const ids: string[] = [];
@@ -805,6 +829,7 @@ function buildComposedSystemPrompt(params: {
   systemPrompt: string | null;
   channelInstructions: string | null;
   threadInstructions: string | null;
+  channelOutputTone?: ChatOutputTone | null;
   channelId: string;
   threadId: string | null;
 }): string | null {
@@ -824,10 +849,138 @@ function buildComposedSystemPrompt(params: {
   const ci = params.channelInstructions?.trim();
   if (ci) parts.push(`Channel context:\n${ci}`);
 
+  parts.push(`Channel output style:\n${renderOutputTonePrompt(params.channelOutputTone)}`);
+
   const ti = params.threadInstructions?.trim();
   if (ti) parts.push(`Section context:\n${ti}`);
 
   return parts.length > 0 ? parts.join('\n\n') : null;
+}
+
+function renderOutputTonePrompt(outputTone: ChatOutputTone | null | undefined): string {
+  const tone: ChatOutputTone = outputTone ?? { type: "preset", preset: "direct" };
+  if (tone.type === 'custom') {
+    return `Use this custom output style for replies in this channel:\n${tone.instruction}`;
+  }
+
+  switch (tone.preset) {
+    case 'socratic':
+      return (
+        'Use the Socratic style: guide the user with focused questions and reflective prompts. ' +
+        'Prefer helping the user reason through tradeoffs before giving firm conclusions.'
+      );
+    case 'rhetorical':
+      return (
+        'Use the Rhetorical style: use richer language, stronger rhythm, vivid phrasing, ' +
+        'and expressive structure while preserving accuracy.'
+      );
+    case 'direct':
+    default:
+      return (
+        'Use the Direct style: be rigorous, efficient, and concise. ' +
+        'Avoid exaggeration, avoid decorative rhetoric, and preserve accuracy.'
+      );
+  }
+}
+
+function shouldRunInputGrammarFixer(text: string): boolean {
+  const latinWords = text.match(/[A-Za-z][A-Za-z'-]*/g) ?? [];
+  return latinWords.length >= 3;
+}
+
+function parseGrammarFixerResult(text: string): {
+  status: "accepted" | "suggested";
+  suggestion: string | null;
+} | null {
+  try {
+    const parsed = JSON.parse(text.trim());
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const status = (parsed as { status?: unknown }).status;
+    if (status === "accepted") {
+      return { status: "accepted", suggestion: null };
+    }
+
+    const suggestion = (parsed as { suggestion?: unknown }).suggestion;
+    if (status === "suggested" && typeof suggestion === "string" && suggestion.trim()) {
+      return { status: "suggested", suggestion: suggestion.trim() };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function runInputGrammarFixerAsync(params: {
+  userId: string;
+  taskId: string;
+  sessionId: string;
+  userMessageId: string;
+  channelId: string;
+  threadId: string | null;
+  userMessage: string;
+  createdAt: string | null;
+  body: Record<string, unknown>;
+  baseMetadata: Record<string, unknown>;
+}) {
+  if (!shouldRunInputGrammarFixer(params.userMessage)) return;
+
+  try {
+    const result = await generateWithUserConfig(params.userId, {
+      model: typeof params.body.model === "string" ? params.body.model : undefined,
+      configId: typeof params.body.configId === "string" ? params.body.configId : undefined,
+      maxTokens: 256,
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an English grammar checker for chat input.\n" +
+            "Return JSON only.\n" +
+            "If the user's English is acceptable for a normal chat, return " +
+            '{"status":"accepted","suggestion":null}.\n' +
+            "If there are meaningful grammar, spelling, or naturalness issues, return " +
+            '{"status":"suggested","suggestion":"<one corrected version>"}.\n' +
+            "Preserve the user's meaning. Do not improve the idea. Do not explain.",
+        },
+        {
+          role: "user",
+          content: params.userMessage,
+        },
+      ],
+    }, parseProvider(params.body.provider));
+
+    const parsed = parseGrammarFixerResult(result.text);
+    if (!parsed) return;
+
+    await upsertMessages(params.userId, [
+      {
+        messageId: params.userMessageId,
+        taskId: params.taskId,
+        channelId: params.channelId,
+        sessionId: params.sessionId,
+        threadId: params.threadId,
+        role: "user",
+        content: params.userMessage,
+        taskState: "accepted",
+        checkpointCursor: null,
+        metadata: {
+          ...params.baseMetadata,
+          inputGrammarFix: {
+            status: parsed.status,
+            suggestion: parsed.suggestion,
+            checkedAt: new Date().toISOString(),
+          },
+        },
+        createdAt: params.createdAt,
+      },
+    ]);
+  } catch (error) {
+    console.error("Input grammar fixer error:", error);
+  }
 }
 
 async function runDefaultRouterRespondAsync(params: {
@@ -845,6 +998,8 @@ async function runDefaultRouterRespondAsync(params: {
   systemPrompt: string | null;
   channelInstructions: string | null;
   threadInstructions: string | null;
+  channelOutputTone?: ChatOutputTone | null;
+  inputGrammarFixerEnabled: boolean;
   mediaAttachments: MediaAsset[];
 }) {
   const {
@@ -862,6 +1017,8 @@ async function runDefaultRouterRespondAsync(params: {
     systemPrompt,
     channelInstructions,
     threadInstructions,
+    channelOutputTone,
+    inputGrammarFixerEnabled,
     mediaAttachments,
   } = params;
 
@@ -913,6 +1070,7 @@ async function runDefaultRouterRespondAsync(params: {
       systemPrompt,
       channelInstructions,
       threadInstructions,
+      channelOutputTone,
       channelId,
       threadId,
     });
@@ -1610,6 +1768,11 @@ router.post(
           : {}),
       };
 
+      const scopeInstructions = await resolveScopeInstructions(userId, {
+        channelId,
+        threadId,
+      });
+
       if (resolvedRouter === CHAT_ROUTER_PLUGIN) {
         const persisted = await upsertMessages(userId, [
           {
@@ -1627,6 +1790,21 @@ router.post(
               typeof body.createdAt === "string" ? body.createdAt : null,
           },
         ]);
+
+        if (scopeInstructions.inputGrammarFixerEnabled) {
+          void runInputGrammarFixerAsync({
+            userId,
+            taskId: acceptedTaskId,
+            sessionId: acceptedSessionId,
+            userMessageId,
+            channelId,
+            threadId: input.threadId,
+            userMessage,
+            createdAt: typeof body.createdAt === "string" ? body.createdAt : null,
+            body,
+            baseMetadata: userMessageMetadata,
+          });
+        }
 
         try {
           await emitAssistantDispatchPlaceholder({
@@ -1675,10 +1853,21 @@ router.post(
         },
       ]);
 
-      const scopeInstructions = await resolveScopeInstructions(userId, {
-        channelId,
-        threadId,
-      });
+      if (scopeInstructions.inputGrammarFixerEnabled) {
+        void runInputGrammarFixerAsync({
+          userId,
+          taskId: acceptedTaskId,
+          sessionId: acceptedSessionId,
+          userMessageId,
+          channelId,
+          threadId: input.threadId,
+          userMessage,
+          createdAt: typeof body.createdAt === "string" ? body.createdAt : null,
+          body,
+          baseMetadata: userMessageMetadata,
+        });
+      }
+
       const systemPrompt =
         typeof body.systemPrompt === "string" && body.systemPrompt.trim()
           ? body.systemPrompt.trim()
@@ -1699,6 +1888,8 @@ router.post(
         systemPrompt,
         channelInstructions: scopeInstructions.channelInstructions,
         threadInstructions: scopeInstructions.threadInstructions,
+        channelOutputTone: scopeInstructions.channelOutputTone,
+        inputGrammarFixerEnabled: scopeInstructions.inputGrammarFixerEnabled,
         mediaAttachments: orderedMediaAssets,
       });
 
@@ -2176,6 +2367,16 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
     const channelId = parseSessionId(body.channelId);
     const threadId = parseSessionId(body.threadId);
     const nodeId = parseSessionId(body.nodeId);
+    const outputTone =
+      body.outputTone === null || body.outputTone === undefined
+        ? undefined
+        : parseOutputTone(body.outputTone);
+    const inputGrammarFixerEnabled =
+      body.inputGrammarFixerEnabled === null || body.inputGrammarFixerEnabled === undefined
+        ? undefined
+        : typeof body.inputGrammarFixerEnabled === "boolean"
+          ? body.inputGrammarFixerEnabled
+          : null;
     let instructionsRaw: string | null | undefined;
     if (body.instructions === null || body.instructions === undefined) {
       instructionsRaw = undefined;
@@ -2211,6 +2412,25 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    if (body.outputTone !== null && body.outputTone !== undefined && !outputTone) {
+      res.status(400).json({
+        error:
+          'Invalid payload: outputTone must be a preset direct/socratic/rhetorical or a non-empty custom instruction',
+      });
+      return;
+    }
+
+    if (
+      body.inputGrammarFixerEnabled !== null &&
+      body.inputGrammarFixerEnabled !== undefined &&
+      inputGrammarFixerEnabled === null
+    ) {
+      res.status(400).json({
+        error: "Invalid payload: inputGrammarFixerEnabled must be a boolean",
+      });
+      return;
+    }
+
     if (routerValue === CHAT_ROUTER_PLUGIN) {
       if (!nodeId) {
         res.status(400).json({
@@ -2237,7 +2457,7 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const setting = await upsertChatScopeSetting(userId, {
+    let setting = await upsertChatScopeSetting(userId, {
       scopeType,
       channelId,
       threadId,
@@ -2245,6 +2465,16 @@ router.put("/scope-settings", async (req: AuthRequest, res: Response) => {
       nodeId: routerValue === CHAT_ROUTER_PLUGIN ? nodeId : null,
       instructions: instructionsRaw,
     });
+
+    if (scopeType === "channel" && outputTone) {
+      setting = await setChannelOutputTone(userId, { channelId, outputTone });
+    }
+    if (scopeType === "channel" && inputGrammarFixerEnabled !== undefined) {
+      setting = await setChannelInputGrammarFixer(userId, {
+        channelId,
+        enabled: inputGrammarFixerEnabled,
+      });
+    }
     res.json({ setting });
   } catch (error) {
     console.error("Upsert chat scope setting error:", error);

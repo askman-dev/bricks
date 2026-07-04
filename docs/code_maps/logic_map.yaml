@@ -514,38 +514,52 @@ index:
       - 指令字段在 DB 中允许 NULL；若 DTO 层遗漏 null 转换，可能导致 undefined 被序列化为 undefined 字符串。
 
 
-  - feature_id: scope_instructions_config
-    capability: 频道与分区级别的会话指令配置及提示词组合
+  - feature_id: channel_output_tone_and_grammar_fixer
+    capability: 频道级输出风格、AI 可改设置工具、英文输入语法建议
     code_index:
       - apps/mobile_chat_app/lib/features/chat/chat_screen.dart
       - apps/mobile_chat_app/lib/features/chat/chat_history_api_service.dart
+      - apps/mobile_chat_app/lib/features/chat/chat_message.dart
       - apps/mobile_chat_app/lib/features/chat/chat_topology.dart
+      - apps/mobile_chat_app/lib/features/chat/widgets/message_list.dart
       - apps/node_backend/src/routes/chat.ts
       - apps/node_backend/src/services/chatRouterService.ts
-      - apps/node_backend/src/db/migrations/013_add_instructions_to_chat_scope_settings.sql
+      - apps/node_backend/src/services/localAgentLoopService.ts
+      - apps/node_backend/src/db/migrations/025_add_channel_output_tone_and_grammar_fixer.sql
     doc_index:
       - docs/tasks/done/2026-04-30-17-51-+08-scope-instructions-config.md
+      - docs/tasks/doing/2026-06-17-14-41-CST-channel-output-tone-and-grammar-fixer.md
+      - docs/backlog/2026-06-17-reply-action-skill-bindings.md
     test_index:
       - apps/mobile_chat_app/test/chat_history_api_service_test.dart
+      - apps/mobile_chat_app/test/message_list_test.dart
       - apps/node_backend/src/services/chatRouterService.test.ts
+      - apps/node_backend/src/services/localAgentLoopService.test.ts
+      - apps/node_backend/src/routes/chat.test.ts
     keywords:
-      - scope instructions
-      - channel instructions
-      - thread instructions
-      - system prompt
-      - prompt composition
-      - conversation config
-      - scope config dialog
-      - tune icon
-      - instructions field
-      - resolveScopeInstructions
+      - output tone
+      - response style
+      - direct tone
+      - socratic tone
+      - rhetorical tone
+      - custom tone
+      - input grammar fixer
+      - grammar suggestion
+      - channel settings
+      - scope settings invalidation
+      - chat_channel_output_tone_set
+      - chat_channel_custom_output_tone_set
+      - chat_channel_input_grammar_fix_set
+      - buildComposedSystemPrompt
+      - runInputGrammarFixerAsync
     change_risks:
-      - 若 resolveScopeInstructions 查询中 thread_id 的判断逻辑与 normalizeChatThreadId 不一致，主区消息可能携带错误的子区指令。
-      - 若 buildComposedSystemPrompt 未对空字符串做 trim/null 检查，发给模型的 system 消息可能含空段落噪音。
-      - 若 _hydrateChannelInstructions/_hydrateThreadInstructions 在应用启动时未正确调用，保存值不会在刷新后恢复。
-      - _saveChannelInstructions 的乐观更新+失败回滚若 state key 命名与读取不一致，会导致静默数据错位。
-      - plugin/OpenClaw 路由走的是 dispatch placeholder 分支，若在该分支误加 system prompt 拼接逻辑，会干扰 OpenClaw dispatch 行为。
-      - 指令字段在 DB 中允许 NULL；若 DTO 层遗漏 null 转换，可能导致 undefined 被序列化为 undefined 字符串。
+      - 若输出风格被当作普通对话内容而不是 system prompt 片段注入，用户更改风格后可能在历史中产生难以回滚的语义污染。
+      - Direct 默认风格必须覆盖缺省值；若前后端默认不一致，刷新前后同一频道回复风格会漂移。
+      - Custom 风格需要保存稳定文本而不是 display label，否则后续模型请求无法复用用户定义。
+      - grammar fixer 只能更新 user message metadata；若改写并替换主请求输入，会违背当前“模型看到原始问题”的产品约束。
+      - grammar fixer 是异步轻量请求；若失败不应阻塞主回复，也不应把错误 UI 暴露为主会话失败。
+      - AI tool 修改频道设置后必须返回 chat.scopeSettings invalidation，否则前端会继续显示旧输出风格或旧 grammar 开关。
+      - 数据库新增字段需兼容既有 chat_scope_settings 行；缺省值应保持 Direct / grammar disabled。
 
   - feature_id: model_settings
     capability: 模型配置读写
