@@ -622,7 +622,7 @@ products:
     features:
       - feature_id: dokku_channel_deployment
         name: Dokku 主站与 PR 预览部署
-        user_value: main 分支自动部署到 `craft.bricks.cool`，PR 分支自动部署到独立预览域名和独立频道磁盘根目录。
+        user_value: main 分支自动部署到 `craft.bricks.cool`，PR 分支自动部署到独立预览域名；preview 与 production 共享数据库和 production sandbox workspace root。
         entry_paths:
           - route: https://craft.bricks.cool
             route_hint: .github/workflows/dokku_production_deploy.yml
@@ -634,9 +634,9 @@ products:
           - main push 后 production app 重新部署并继续使用 `/home/bricks/data/production/sandboxes`。
           - PR open/synchronize 后创建或更新 `bricks-preview-<branch-slug>`，域名为 `<branch-slug>.craft-dev.bricks.cool`。
           - Dokku preview deploy 成功后发布 GitHub Deployment status，PR timeline 的 `View deployment` 按钮指向 preview 域名。
-          - 每个 preview app mount 到 `/home/bricks/data/previews/<branch-slug>/sandboxes`，不共享 production 或其他 preview 的 sandbox 文件。
+          - 每个 preview app mount 到 `/home/bricks/data/production/sandboxes`，并设置 `BRICKS_SANDBOX_RUNNER_ROOT_SEGMENTS=production,sandboxes`，与 production 共享 channel workspace 和 generated site build output。
           - Turso credentials, JWT signing secret, and encryption key stay in Dokku server config; preview apps copy them from the production app on the server instead of reading GitHub Actions secrets.
           - Production CSP must allow Flutter Web bootstrap scripts so `craft.bricks.cool` renders the login app instead of a blank page.
           - Flutter Web app shell files such as `index.html`, `main.dart.js`, `flutter.js`, and `flutter_service_worker.js` must return no-store/no-cache headers so preview deploys do not serve stale UI bundles.
-          - PR close/merge 后对应 preview app 被 destroy，preview data root 被删除。
+          - PR close/merge 后对应 preview app 被 destroy；当 `DATA_ROOT=/home/bricks/data/production/sandboxes` 时 cleanup 必须保留共享 production data root。
           - GitHub OAuth callback 固定为 `https://craft.bricks.cool/api/callback`，preview 登录完成后可 redirect 回 preview 域名。

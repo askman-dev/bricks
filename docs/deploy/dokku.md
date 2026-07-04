@@ -13,10 +13,11 @@ Production host data:
 /home/bricks/data/production/sandboxes
 ```
 
-Preview host data:
+Preview apps intentionally use the same production host data root while they
+share the production database:
 
 ```text
-/home/bricks/data/previews/<branch-slug>/sandboxes
+/home/bricks/data/production/sandboxes
 ```
 
 ## Production App
@@ -101,3 +102,8 @@ validated preview `return_to` URL.
 Preview apps copy `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `JWT_SECRET`, and
 `ENCRYPTION_KEY` from the production Dokku app on the server during deployment,
 so those values do not leave the server through GitHub Actions.
+
+When a pull request is closed, the preview workflow destroys the matching
+`bricks-preview-*` Dokku app. Because preview apps mount
+`/home/bricks/data/production/sandboxes`, cleanup must preserve that shared
+production data root.

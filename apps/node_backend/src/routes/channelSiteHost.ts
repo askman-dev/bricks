@@ -78,6 +78,11 @@ function sendSiteNotPublished(res: Response): void {
   res.status(404).send('Site not published');
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === 'ENOENT' ||
+    (error as NodeJS.ErrnoException).code === 'ENOTDIR';
+}
+
 async function serveChannelSiteBySlug(slug: string, req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const site = await getChannelSiteBySlug(slug);
@@ -101,17 +106,28 @@ async function serveChannelSiteBySlug(slug: string, req: Request, res: Response,
     try {
       const stat = await fs.stat(target);
       if (stat.isFile()) {
-        await sendStaticFile(res, target);
+        try {
+          await sendStaticFile(res, target);
+        } catch (error) {
+          if (isMissingFileError(error)) {
+            sendSiteNotPublished(res);
+            return;
+          }
+          throw error;
+        }
         return;
       }
-    } catch {
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        throw error;
+      }
       // Fall through to SPA fallback.
     }
 
     try {
       await sendStaticFile(res, path.join(distRoot, 'index.html'));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (isMissingFileError(error)) {
         sendSiteNotPublished(res);
         return;
       }

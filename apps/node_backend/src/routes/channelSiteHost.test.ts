@@ -4,15 +4,37 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { serviceMock } = vi.hoisted(() => ({
+const { serviceMock, fsMockState } = vi.hoisted(() => ({
   serviceMock: {
     getChannelSiteBySlug: vi.fn(),
     publicSiteDomain: vi.fn(() => 'craft-spaces.bricks.cool'),
     webDistPath: vi.fn(),
   },
+  fsMockState: {
+    readFileError: null as NodeJS.ErrnoException | null,
+  },
 }));
 
 vi.mock('../services/channelSiteService.js', () => serviceMock);
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  const readFile = vi.fn((...args: Parameters<typeof actual.readFile>) => {
+    if (fsMockState.readFileError) {
+      const error = fsMockState.readFileError;
+      fsMockState.readFileError = null;
+      return Promise.reject(error);
+    }
+    return actual.readFile(...args);
+  });
+  return {
+    ...actual,
+    readFile,
+    default: {
+      ...actual,
+      readFile,
+    },
+  };
+});
 
 describe('channelSiteHost route', () => {
   let tempDir: string;
@@ -54,6 +76,7 @@ describe('channelSiteHost route', () => {
     await rm(tempDir, { recursive: true, force: true });
     serviceMock.getChannelSiteBySlug.mockReset();
     serviceMock.webDistPath.mockReset();
+    fsMockState.readFileError = null;
   });
 
   it('serves static files for craft-spaces slug hosts with noindex headers', async () => {
@@ -101,6 +124,18 @@ describe('channelSiteHost route', () => {
     serviceMock.webDistPath.mockReturnValue(path.join(tempDir, 'missing-dist'));
 
     const response = await fetch(`${baseUrl}/sites/s-abc123/`);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex');
+    expect(await response.text()).toBe('Site not published');
+  });
+
+  it('returns not published instead of 500 when an asset disappears during read', async () => {
+    fsMockState.readFileError = Object.assign(new Error('missing asset'), { code: 'ENOENT' });
+
+    const response = await fetch(`${baseUrl}/assets/app.js`, {
+      headers: { 'X-Forwarded-Host': 's-abc123.craft-spaces.bricks.cool' },
+    });
 
     expect(response.status).toBe(404);
     expect(response.headers.get('x-robots-tag')).toBe('noindex');
